@@ -1,995 +1,1141 @@
-@extends('layouts.vertical', ['title' => 'FBA Sales Data', 'sidenav' => 'condensed'])
-
+@extends('layouts.vertical', ['title' => 'FBA ADS KW', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
-@endsection
-@section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .tabulator .tabulator-header {
+            background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
+            border-bottom: 1px solid #403f3f;
+            box-shadow: 0 4px 16px rgba(37, 99, 235, 0.10);
+        }
+
+        .tabulator .tabulator-header .tabulator-col {
+            text-align: center;
+            background: #D8F3F3;
+            border-right: 1px solid #262626;
+            padding: 16px 10px;
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 1.08rem;
+            letter-spacing: 0.02em;
+            transition: background 0.2s;
+        }
+
+        .tabulator .tabulator-header .tabulator-col:hover {
+            background: #D8F3F3;
+            color: #2563eb;
+        }
+
+        .tabulator-row {
+            background-color: #fff !important;
+            transition: background 0.18s;
+        }
+
+        .tabulator-row:nth-child(even) {
+            background-color: #f8fafc !important;
+        }
+
+        .tabulator .tabulator-cell {
+            text-align: center;
+            padding: 14px 10px;
+            border-right: 1px solid #262626;
+            border-bottom: 1px solid #262626;
+            font-size: 1rem;
+            color: #22223b;
+            vertical-align: middle;
+            transition: background 0.18s, color 0.18s;
+        }
+
+        .tabulator .tabulator-cell:focus {
+            outline: 1px solid #262626;
+            background: #e0eaff;
+        }
+
+        .tabulator-row:hover {
+            background-color: #dbeafe !important;
+        }
+
+        .parent-row {
+            background-color: #e0eaff !important;
+            font-weight: 700;
+        }
+
+        #account-health-master .tabulator {
+            border-radius: 18px;
+            box-shadow: 0 6px 24px rgba(37, 99, 235, 0.13);
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+
+        .tabulator .tabulator-row .tabulator-cell:last-child,
+        .tabulator .tabulator-header .tabulator-col:last-child {
+            border-right: none;
+        }
+
+        .tabulator .tabulator-footer {
+            background: #f4f7fa;
+            border-top: 1px solid #262626;
+            font-size: 1rem;
+            color: #4b5563;
+            padding: 5px;
+            height: 100px;
+        }
+
+        .tabulator .tabulator-footer:hover {
+            background: #e0eaff;
+        }
+
+        @media (max-width: 768px) {
+
+            .tabulator .tabulator-header .tabulator-col,
+            .tabulator .tabulator-cell {
+                padding: 8px 2px;
+                font-size: 0.95rem;
+            }
+        }
+
+        /* Pagination styling */
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+            padding: 8px 16px;
+            margin: 0 4px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+            background: #e0eaff;
+            color: #2563eb;
+        }
+
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+            background: #2563eb;
+            color: white;
+        }
+
+        .green-bg {
+            color: #05bd30 !important;
+        }
+
+        .pink-bg {
+            color: #ff01d0 !important;
+        }
+
+        .red-bg {
+            color: #ff2727 !important;
+        }
+        .parent-row-bg{
+            background-color: #c3efff !important;
+        }
+    </style>
 @endsection
 
 @section('content')
-    <div class="toast-container"></div>
-    <div class="container-fluid">
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h4>FBA Data </h4>
-                        <div>
-                            <select id="inventory-filter" class="form-select form-select-sm me-2"
-                                style="width: auto; display: inline-block;">
-                                <option value="all">All Inventory</option>
-                                <option value="zero">0 Inventory</option>
-                                <option value="more">More than 0</option>
-                            </select>
-                            <select id="parent-filter" class="form-select form-select-sm me-2"
-                                style="width: auto; display: inline-block;">
-                                <option value="show">Show Parent</option>
-                                <option value="hide">Hide Parent</option>
-                            </select>
-                            <select id="pft-filter" class="form-select form-select-sm me-2"
-                                style="width: auto; display: inline-block;">
-                                <option value="all">All Pft%</option>
-                                <option value="0-10">0-10%</option>
-                                <option value="11-14">11-14%</option>
-                                <option value="15-20">15-20%</option>
-                                <option value="21-49">21-49%</option>
-                                <option value="50+">50%+</option>
-                            </select>
-                            <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info me-2">
-                                <i class="fa fa-download"></i> Sample Template
-                            </a>
-                            <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success me-2">
-                                <i class="fa fa-file-excel"></i>
-                            </a>
-                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
-                                data-bs-target="#importModal">
-                                <i class="fa fa-upload"></i>
-                            </button>
+    @include('layouts.shared.page-title', [
+        'page_title' => 'FBA ADS KW',
+        'sub_title' => 'FBA Keyword Ads Data',
+    ])
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body py-3">
+                    <div class="mb-4">
+                                                <h4 class="fw-bold text-primary mb-3 d-flex align-items-center">
+                            <i class="fa-solid fa-chart-line me-2"></i>
+                            FBA Ads KW
+                        </h4>
+
+                        <!-- Filters & Export Row -->
+                        <div class="row g-2 align-items-center mb-3">
+                            <!-- Filter Section -->
+                            <div class="col-md-9">
+                                <div class="d-flex flex-wrap gap-2">
+                                    <div>
+                                        <label class="form-label small text-muted mb-1">INV Filter</label>
+                                        <select id="inv-filter" class="form-select form-select-sm">
+                                            <option value="">All</option>
+                                            <option value="red">Red (&lt; 50)</option>
+                                            <option value="green">Green (≥ 50)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="form-label small text-muted mb-1">ACOS Filter</label>
+                                        <select id="acos-filter" class="form-select form-select-sm">
+                                            <option value="">All</option>
+                                            <option value="pink">Pink (&lt; 7%)</option>
+                                            <option value="green">Green (7-14%)</option>
+                                            <option value="red">Red (&gt; 14%)</option>
+                                            <option value="black">Black (100%)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="form-label small text-muted mb-1">CVR Filter</label>
+                                        <select id="cvr-filter" class="form-select form-select-sm">
+                                            <option value="">All</option>
+                                            <option value="red">Red (&lt; 5%)</option>
+                                            <option value="green">Green (5-10%)</option>
+                                            <option value="pink">Pink (&gt; 10%)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 d-flex justify-content-end gap-2">
+                                <a href="javascript:void(0)" id="export-btn" class="btn btn-sm btn-success d-flex align-items-center justify-content-center">
+                                    <i class="fas fa-file-export me-1"></i> Export Excel/CSV
+                                </a>
+                                <button class="btn btn-success btn-md d-flex align-items-center">
+                                    <span>Total Campaigns: <span id="total-campaigns" class="fw-bold ms-1 fs-5">0</span></span>
+                                </button>
+                                <button class="btn btn-primary btn-md d-flex align-items-center">
+                                    <i class="fa fa-percent me-1"></i>
+                                    <span>Of Total: <span id="percentage-campaigns" class="fw-bold ms-1 fs-5">0%</span></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Search and Controls Row -->
+                        <div class="row g-3 align-items-center">
+                            <!-- Left: Search -->
+                            <div class="col-md-6">
+                                <div class="d-flex gap-2">
+                                    <input type="text" id="global-search" class="form-control form-control-md" placeholder="Search SKU...">
+                                </div>
+                            </div>
+                            
                         </div>
                     </div>
-                    <div class="card-body" style="padding: 0;">
-                        <div id="fba-table-wrapper"
-                            style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
 
-                            <!--Table body (scrollable section) -->
-                            <div id="fba-table" style="flex: 1;"></div>
 
-                        </div>
-                    </div>
+                    <!-- Table Section -->
+                    <div id="budget-under-table"></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Inv age Modal -->
-    <div class="modal fade" id="invageModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Inv age Details</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p><strong>SKU:</strong> <span id="modalSKU"></span></p>
-                    <p><strong>Inv age:</strong> <span id="modalInvage"></span></p>
-                </div>
-            </div>
-        </div>
-    </div>
+@endsection
 
-    <!-- Import Modal -->
-    <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Import FBA Manual Data</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <form id="importForm">
-                    @csrf
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="csvFile" class="form-label">Choose CSV File</label>
-                            <input type="file" class="form-control" id="csvFile" name="file" accept=".csv"
-                                required>
-                        </div>
-                        <small class="text-muted">
-                            <i class="fa fa-info-circle"></i> CSV must have: SKU, Dimensions, Weight, Qty in each box, Total
-                            qty Sent, Total Send Cost, Inbound qty, Send cost, IN Charges
-                        </small>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="uploadBtn">Upload & Import</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-        <!-- LMP Modal -->
-        <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
-            <div class="modal-dialog modal-lg modal-dialog-scrollable">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">LMP Data for <span id="lmpSku"></span></h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div id="lmpDataList"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    @endsection
+@section('script')
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            document.body.style.zoom = "85%";
 
-    @section('script-bottom')
-        <script>
-            $(document).ready(function() {
-                const table = new Tabulator("#fba-table", {
-                    ajaxURL: "/fba-data-json",
-                    layout: "fitData",
-                    pagination: true,
-                    paginationSize: 50,
-                    rowFormatter: function(row) {
-                        if (row.getData().is_parent) {
-                            row.getElement().classList.add("parent-row");
+            console.log("AJAX URL:", "{{ url('fba-ads-data-json') }}");
+
+            const getDilColor = (value) => {
+                const percent = parseFloat(value) * 100;
+                if (percent < 16.66) return 'red';
+                if (percent >= 16.66 && percent < 25) return 'yellow';
+                if (percent >= 25 && percent < 50) return 'green';
+                return 'pink';
+            };
+
+            var table = new Tabulator("#budget-under-table", {
+                index: "SKU",
+                ajaxURL: "{{ url('fba-ads-data-json') }}",
+                ajaxResponse:function(url, params, response){
+                    console.log("AJAX URL:", url);
+                    console.log("Response from server:", response);
+                    console.log("Number of records:", Array.isArray(response) ? response.length : 'NOT AN ARRAY');
+                    console.log("Response type:", typeof response);
+                    console.log("First record:", response && response[0] ? response[0] : 'NO DATA');
+                    return response;
+                },
+                ajaxError:function(error){
+                    console.error("AJAX Error:", error);
+                    console.error("Error details:", JSON.stringify(error));
+                },
+                layout: "fitData",
+                movableColumns: true,
+                resizableColumns: true,
+                height: "700px",             
+                virtualDom: true,
+                rowFormatter: function(row) {
+                    const data = row.getData();
+                    const sku = (data.SKU || "").toLowerCase().trim();
+
+                    if (sku.includes("parent ")) {
+                        row.getElement().classList.add("parent-row-bg");
+                    }
+                },
+                columns: [
+                    {
+                        title: "Parent",
+                        field: "Parent"
+                    },
+                    {
+                        title: "SKU",
+                        field: "SKU",
+                        formatter: function(cell) {
+                            let sku = cell.getValue();
+                            return `
+                                <span>${sku}</span>
+                                <i class="fa fa-info-circle text-primary toggle-cols-btn" 
+                                data-sku="${sku}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
                         }
                     },
-                    columns: [{
-                            title: "Parent",
-                            field: "Parent",
-                            headerFilter: "input",
-                            headerFilterPlaceholder: "Search Parent...",
-                            cssClass: "text-primary",
-                            tooltip: true,
-                            frozen: true
-                        },
-                        {
-                            title: "Child SKU",
-                            field: "SKU",
-                            headerFilter: "input",
-                            headerFilterPlaceholder: "Search SKU...",
-                            cssClass: "font-weight-bold",
-                            tooltip: true,
-                            frozen: true
-                        },
-                        {
-                            title: "FBA SKU",
-                            field: "FBA_SKU",
-                            headerFilter: "input",
-                            headerFilterPlaceholder: "Search SKU...",
-                            cssClass: "font-weight-bold",
-                            tooltip: true,
-                            frozen: true
-                        },
-
-                        {
-                            title: "INV",
-                            field: "Shopify_inv",
-                            hozAlign: "center",
-                        },
-
-                        {
-                            title: "Ov L30",
-                            field: "Shopify_OV_L30",
-                            hozAlign: "center",
-                        },
-
-                        {
-                            title: "Dil",
-                            field: "Dil",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue());
-                                if (isNaN(value)) return '';
-                                const formattedValue = `${value.toFixed(0)}%`;
-                                let color = '';
-                                if (value <= 50) color = 'red';
-                                else if (value <= 100) color = 'green';
-                                else color = 'purple';
-                                return `<span style="color:${color}; font-weight:600;">${formattedValue}</span>`;
-                            },
-                        },
-
-                        {
-                            title: "FBA INV",
-                            field: "FBA_Quantity",
-                            hozAlign: "center"
-                        },
-
-
-                        {
-                            title: "L30 Units",
-                            field: "l30_units",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "FBA Dil",
-                            field: "FBA_Dil",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue());
-                                if (isNaN(value)) return '';
-                                const formattedValue = `${value.toFixed(0)}%`;
-                                let color = '';
-                                if (value <= 50) color = 'red';
-                                else if (value <= 100) color = 'green';
-                                else color = 'purple';
-                                return `<span style="color:${color}; font-weight:600;">${formattedValue}</span>`;
-                            },
-                        },
-                        {
-                            title: "UPC Codes",
-                            field: "UPC_Codes",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-
-
-                        {
-                            title: "M/A Barcode",
-                            field: "Barcode",
-                            editor: "list",
-                            editorParams: {
-                                values: ["", "M", "A"],
-                                autocomplete: true,
-                                allowEmpty: true,
-                                listOnEmpty: true
-                            },
-                            hozAlign: "center"
-                        },
-
-                        {
-                            title: "Issues at WH",
-                            field: "Issues_at_WH",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-
-                        {
-                            title: "Issues/REMARKS/UPDATE",
-                            field: "Issues_Remarks_Update",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-                        {
-                            title: "Sent By",
-                            field: "Sent_By",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-
-
-
-                        {
-                            title: "Inbound Quantity",
-                            field: "Inbound_Quantity",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-                        {
-                            title: "MSL",
-                            field: "MSL",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-                        {
-                            title: "SEND",
-                            field: "SEND",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-                        {
-                            title: "Correct Cost",
-                            field: "Correct_Cost",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-                        {
-                            title: "TPFT",
-                            field: "TPFT",
-                            hozAlign: "center",
-                            // formatter: "dollar"
-                        },
-
-                        {
-                            title: "ASIN",
-                            field: "ASIN"
-                        },
-
-
-                        {
-                            title: "L60 Units",
-                            field: "l60_units",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "0-to-90-days",
-                            field: "0-to-90-days",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-                        {
-                            title: "91-to-180-days",
-                            field: "91-to-180-days",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-                        {
-                            title: "181-to-270-days",
-                            field: "181-to-270-days",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-                        {
-                            title: "271-to-365-days",
-                            field: "271-to-365-days",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-                        {
-                            title: "365-plus-days",
-                            field: "365-plus-days",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-
-                        {
-                            title: "Dispatch Date",
-                            field: "Dispatch_Date",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-                     
-                        {
-                            title: "Weight",
-                            field: "Weight",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-
-                        {
-                            title: "Quantity Box",
-                            field: "Quantity_in_each_box",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-
-                        {
-                            title: "Sent Quantity",
-                            field: "Total_quantity_sent",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-                        {
-                            title: "Warehouse INV Reduction",
-                            field: "Warehouse_INV_Reduction",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-                      
-
-                        {
-                            title: "Approval",
-                            field: "Approval",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-                          {
-                            title: "Profit is ok",
-                            field: "Profit_is_ok",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-                     
-                          {
-                            title: "FBA Price",
-                            field: "FBA_Price",
-                            hozAlign: "center",
-                            // formatter: "dollar"
-                        },
-
-
-
-                        {
-                            title: "Pft%",
-                            field: "Pft%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const data = cell.getRow().getData();
-                                return data['Pft%_HTML'] ||
-                                    `${parseFloat(cell.getValue() || 0).toFixed(1)}%`;
-                            },
-                        },
-
-                        {
-                            title: "ROI%",
-                            field: "ROI%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-
-                        {
-                            title: "S Price",
-                            field: "S_Price",
-                            hozAlign: "center",
-                            editor: "input",
-                            cellEdited: function(cell) {
-                                var data = cell.getRow().getData();
-                                var value = cell.getValue();
-
-                                $.ajax({
-                                    url: '/update-fba-manual-data',
-                                    method: 'POST',
-                                    data: {
-                                        sku: data.FBA_SKU,
-                                        field: 's_price',
-                                        value: value,
-                                        _token: '{{ csrf_token() }}'
-                                    },
-                                    success: function() {
-                                        table
-                                            .replaceData();
-                                    }
-                                });
-                            }
-                        },
-                        {
-                            title: "SPft%",
-                            field: "SPft%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-                        {
-                            title: "SROI%",
-                            field: "SROI%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-                             {
-                            title: "LMP ",
-                            field: "lmp_1",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = cell.getValue();
-                                const rowData = cell.getRow().getData();
-                                if (value > 0) {
-                                    return `<a href="#" class="lmp-link" data-sku="${rowData.SKU}" data-lmp-data='${JSON.stringify(rowData.lmp_data)}' style="color: blue; text-decoration: underline;">${value}</a>`;
-                                } else {
-                                    return value || '';
-                                }
-                            }
-                        },
-                        {
-                            title: "ACTION ACTION",
-                            field: "ACTION_ACTION",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-                        {
-                            title: "REV COUNT",
-                            field: "REV_COUNT",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-                        {
-                            title: "RATING",
-                            field: "RATING",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-
-
-                        {
-                            title: "LP",
-                            field: "LP",
-                            hozAlign: "center"
-                        },
-
-
-                        {
-                            title: "FBA Ship",
-                            field: "FBA_Ship_Calculation",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue());
-                                if (isNaN(value)) return '';
-                                return value.toFixed(2);
-                            }
-                        },
-
-
-                        {
-                            title: "WH ACT",
-                            field: "WH_ACT",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
-
-
-                           {
-                            title: "L x W x H",
-                            field: "Dimensions",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-                          {
-                            title: "Send Cost",
-                            field: "Send_Cost",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-
-                        {
-                            title: "IN Charges",
-                            field: "IN_Charges",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-
-                        {
-                            title: "FBA Fee",
-                            field: "Fulfillment_Fee",
-                            hozAlign: "center"
-                        },
-
-
-
-                        {
-                            title: "FBA_CVR",
-                            field: "FBA_CVR",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-
-
-
-                        {
-                            title: "Done",
-                            field: "Done",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-                      
-
-
-
-                        {
-                            title: "Inv age",
-                            field: "Inv_age",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = cell.getValue();
-                                return `<span>${value || ''}</span> <i class="fa fa-eye" style="cursor:pointer; color:#3b7ddd; margin-left:5px;" onclick="openInvageModal('${value || ''}', '${cell.getRow().getData().SKU}')"></i>`;
-                            }
-                        },
-
-
-
-
-
-                        {
-                            title: "TPFT",
-                            field: "TPFT",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-
-                        {
-                            title: "0 STOCK",
-                            field: "Zero_Stock",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-                         {
-                            title: "Approval",
-                            field: "Approval",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-                        {
-                            title: "FBA Send",
-                            field: "FBA_Send",
-                            hozAlign: "center",
-                            formatter: "tickCross",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-                        
-
-                   
-                        {
-                            title: "FBA_CVR",
-                            field: "FBA_CVR",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-                        {
-                            title: "Views",
-                            field: "Current_Month_Views",
-                            hozAlign: "center"
-                        },
-
-
-
-                        {
-                            title: "Listed",
-                            field: "Listed",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-                        {
-                            title: "Live",
-                            field: "Live",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-
-
-
-
-                        {
-                            title: "FBA Fee Manual",
-                            field: "FBA_Fee_Manual",
-                            hozAlign: "center",
-                            editor: "input",
-                            formatter: function(cell) {
-                                cell.getElement().style.color = "#a80f8b"; // dark text
-                                return cell.getValue();
-                            }
-                        },
-
-                        ,
-
-
-
-
-
-
-                        {
-                            title: "Shipping Amount",
-                            field: "Shipping_Amount",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-
-
-
-                        {
-                            title: "Jan",
-                            field: "Jan",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Feb",
-                            field: "Feb",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Mar",
-                            field: "Mar",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Apr",
-                            field: "Apr",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "May",
-                            field: "May",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Jun",
-                            field: "Jun",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Jul",
-                            field: "Jul",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Aug",
-                            field: "Aug",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Sep",
-                            field: "Sep",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Oct",
-                            field: "Oct",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Nov",
-                            field: "Nov",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Dec",
-                            field: "Dec",
-                            hozAlign: "center"
+                    {
+                        title: "Campaign Name",
+                        field: "Campaign_Name",
+                        width: 200,
+                        headerSort: true
+                    },
+                    {
+                        title: "FBA QTY",
+                        field: "FBA_Quantity",
+                        visible: false
+                    },
+                    {
+                        title: "Shopify INV",
+                        field: "Shopify_inv",
+                        visible: false
+                    },
+                    {
+                        title: "Shopify OV L30",
+                        field: "Shopify_OV_L30",
+                        visible: false
+                    },
+                    {
+                        title: "DIL",
+                        field: "Dil",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            const color = getDilColor(value / 100);
+                            return `<div class="text-center"><span class="dil-percent-value ${color}">${Math.round(value)}%</span></div>`;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "L30 Units",
+                        field: "l30_units",
+                        visible: false
+                    },
+                    {
+                        title: "FBA DIL",
+                        field: "FBA_Dil",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            const color = getDilColor(value / 100);
+                            return `<div class="text-center"><span class="dil-percent-value ${color}">${Math.round(value)}%</span></div>`;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "IMP L30",
+                        field: "Ads_L30_Impressions",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let impressions_l30 = cell.getValue();
+                            return `
+                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
+                                <i class="fa fa-info-circle text-primary impressions_l30_btn" 
+                                    data-impression-l30="${impressions_l30}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
                         }
-                    ]
-                });
+                    },
+                    {
+                        title: "IMP L60",
+                        field: "Ads_L60_Impressions",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            return `
+                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "IMP L15",
+                        field: "Ads_L15_Impressions",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            return `
+                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "IMP L7",
+                        field: "Ads_L7_Impressions",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let impressions_l7 = cell.getValue();
+                            return `
+                                <span>${impressions_l7}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Clicks L30",
+                        field: "Ads_L30_Clicks",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            let color = value < 50 ? "red" : "green";
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${value.toFixed(0)}
+                                </span>
+                                <i class="fa fa-info-circle text-primary clicks_l30_btn" 
+                                data-clicks-l30="${value}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "Clicks L60",
+                        field: "Ads_L60_Clicks",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            let color = value < 50 ? "red" : "green";
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${value.toFixed(0)}
+                                </span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Clicks L15",
+                        field: "Ads_L15_Clicks",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            let color = value < 50 ? "red" : "green";
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${value.toFixed(0)}
+                                </span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Clicks L7",
+                        field: "Ads_L7_Clicks",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            let color = value < 50 ? "red" : "green";
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${value.toFixed(0)}
+                                </span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Spend L30",
+                        field: "Ads_L30_Spend",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                                <i class="fa fa-info-circle text-primary spend_l30_btn" 
+                                data-spend-l30="${value}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "Spend L60",
+                        field: "Ads_L60_Spend",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Spend L15",
+                        field: "Ads_L15_Spend",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Spend L7",
+                        field: "Ads_L7_Spend",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Ad Sales L30",
+                        field: "Ads_L30_Sales",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                                <i class="fa fa-info-circle text-primary ad_sales_l30_btn" 
+                                    data-ad_sales-l30="${value}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "Ad Sales L60",
+                        field: "Ads_L60_Sales",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Ad Sales L15",
+                        field: "Ads_L15_Sales",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Ad Sales L7",
+                        field: "Ads_L7_Sales",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Ad Sold L30",
+                        field: "Ads_L30_Orders",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                                <i class="fa fa-info-circle text-primary ad_sold_l30_btn" 
+                                    data-ad_sold-l30="${value}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "Ad Sold L60",
+                        field: "Ads_L60_Orders",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Ad Sold L15",
+                        field: "Ads_L15_Orders",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "Ad Sold L7",
+                        field: "Ads_L7_Orders",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>${value.toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "ACOS L30",
+                        field: "Ads_L30_ACOS",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            let row = cell.getRow().getData();
+                            let adSales = parseFloat(row.Ads_L30_Sales || 0);
 
-                table.on('cellEdited', function(cell) {
-                    var row = cell.getRow();
-                    var data = row.getData();
-                    var field = cell.getColumn().getField();
-                    var value = cell.getValue();
-
-                    if (field === 'Barcode' || field === 'Done' || field === 'Listed' || field === 'Live' ||
-                        field === 'Dispatch_Date' || field === 'Weight' || field === 'WH_ACT' || field ===
-                        'Quantity_in_each_box' ||
-                        field === 'Total_quantity_sent' || field === 'Send_Cost' || field ===
-                        'IN_Charges' ||
-                        field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
-                        'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
-                        'FBA_Fee_Manual' || field === 'MSL' || field === 'SEND' || field === 'Correct_Cost' ||
-                        field ===
-                        'Zero_Stock' || field === 'Approval' || field === 'Profit_is_ok' || field ===
-                        'UPC_Codes' || field === 'Issues_at_WH' || field === 'Issues_Remarks_Update' ||
-                        field === 'Sent_By' || field === '0-to-90-days' || field === '91-to-180-days' ||
-                        field === '181-to-270-days' || field === '271-to-365-days' || field === '365-plus-days' ||
-                        field === 'ACTION_ACTION' || field === 'REV_COUNT' || field === 'RATING'
-                        ) {
-                        $.ajax({
-                            url: '/update-fba-manual-data',
-                            method: 'POST',
-                            data: {
-                                sku: data.FBA_SKU,
-                                field: field.toLowerCase(),
-                                value: value,
-                                _token: '{{ csrf_token() }}'
-                            },
-                            success: function(response) {
-                                console.log('Data saved successfully');
-                            },
-                            error: function(xhr) {
-                                console.error('Error saving data');
+                            if (adSales === 0) {
+                                value = 100;
                             }
-                        });
-                    }
-                });
 
-                // INV 0 and More than 0 Filter
-                function applyFilters() {
-                    const inventoryFilter = $('#inventory-filter').val();
-                    const parentFilter = $('#parent-filter').val();
-                    const pftFilter = $('#pft-filter').val();
-
-                    table.clearFilter(true);
-
-                    if (inventoryFilter === 'zero') {
-                        table.addFilter('FBA_Quantity', '=', 0);
-                    } else if (inventoryFilter === 'more') {
-                        table.addFilter('FBA_Quantity', '>', 0);
-                    }
-
-                    if (parentFilter === 'hide') {
-                        table.addFilter(function(data) {
-                            return data.is_parent !== true;
-                        });
-                    }
-
-                    if (pftFilter !== 'all') {
-                        table.addFilter(function(data) {
-                            const value = parseFloat(data['Pft%']);
-                            if (isNaN(value)) return false;
-
-                            switch (pftFilter) {
-                                case '0-10':
-                                    return value >= 0 && value <= 10;
-                                case '11-14':
-                                    return value >= 11 && value <= 14;
-                                case '15-20':
-                                    return value >= 15 && value <= 20;
-                                case '21-49':
-                                    return value >= 21 && value <= 49;
-                                case '50+':
-                                    return value >= 50;
-                                default:
-                                    return true;
+                            let color = "green";
+                            if(value == 100){
+                                color = "#000000";
+                            }else if (value < 7) {
+                                color = "#e83e8c";
+                            } else if (value >= 7 && value <= 14) {
+                                color = "green";
+                            } else if (value > 14) {
+                                color = "red";
                             }
-                        });
+
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${value.toFixed(0)}%
+                                </span>
+                                <i class="fa fa-info-circle text-primary acos_l30_btn" 
+                                    data-acos-l30="${value}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "ACOS L60",
+                        field: "Ads_L60_ACOS",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            let row = cell.getRow().getData();
+                            let adSales = parseFloat(row.Ads_L60_Sales || 0);
+
+                            if (adSales === 0) {
+                                value = 100;
+                            }
+
+                            let color = "green";
+                            if(value == 100){
+                                color = "#000000";
+                            }else if (value < 7) {
+                                color = "#e83e8c";
+                            }else if (value >= 7 && value <= 14) {
+                                color = "green";
+                            } else if (value > 14) {
+                                color = "red";
+                            }
+
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${value.toFixed(0)}%
+                                </span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "ACOS L15",
+                        field: "Ads_L15_ACOS",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            let row = cell.getRow().getData();
+                            let adSales = parseFloat(row.Ads_L15_Sales || 0);
+
+                            if (adSales === 0) {
+                                value = 100;
+                            }
+
+                            let color = "green";
+                            if(value == 100){
+                                color = "#000000";
+                            }else if (value < 7) {
+                                color = "#e83e8c";
+                            }else if (value >= 7 && value <= 14) {
+                                color = "green";
+                            } else if (value > 14) {
+                                color = "red";
+                            }
+
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${value.toFixed(0)}%
+                                </span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "ACOS L7",
+                        field: "Ads_L7_ACOS",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let value = parseFloat(cell.getValue() || 0);
+                            let row = cell.getRow().getData();
+                            let adSales = parseFloat(row.Ads_L7_Sales || 0);
+
+                            if (adSales === 0) {
+                                value = 100;
+                            }
+
+                            let color = "green";
+                            if(value == 100){
+                                color = "#000000";
+                            }else if (value < 7) {
+                                color = "#e83e8c";
+                            }else if (value >= 7 && value <= 14) {
+                                color = "green";
+                            } else if (value > 14) {
+                                color = "red";
+                            }
+
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${value.toFixed(0)}%
+                                </span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CPC L30",
+                        field: "Ads_L30_CPC",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var clicks = parseFloat(row.Ads_L30_Clicks) || 0;
+                            var spend = parseFloat(row.Ads_L30_Spend) || 0;
+                            var cpc_l30 = clicks > 0 ? (spend / clicks) : 0;
+
+                            return `
+                                <span>
+                                    ${cpc_l30.toFixed(2)}
+                                </span>
+                                <i class="fa fa-info-circle text-primary cpc_l30_btn" 
+                                    data-cpc-l30="${cpc_l30}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "CPC L60",
+                        field: "Ads_L60_CPC",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var clicks = parseFloat(row.Ads_L60_Clicks) || 0;
+                            var spend = parseFloat(row.Ads_L60_Spend) || 0;
+                            var cpc_l60 = clicks > 0 ? (spend / clicks) : 0;
+                            return cpc_l60.toFixed(2);
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CPC L15",
+                        field: "Ads_L15_CPC",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var clicks = parseFloat(row.Ads_L15_Clicks) || 0;
+                            var spend = parseFloat(row.Ads_L15_Spend) || 0;
+                            var cpc_l15 = clicks > 0 ? (spend / clicks) : 0;
+                            return cpc_l15.toFixed(2);
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CPC L7",
+                        field: "Ads_L7_CPC",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var clicks = parseFloat(row.Ads_L7_Clicks) || 0;
+                            var spend = parseFloat(row.Ads_L7_Spend) || 0;
+                            var cpc_l7 = clicks > 0 ? (spend / clicks) : 0;
+                            return `
+                                <span>
+                                    ${cpc_l7.toFixed(2)}
+                                </span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CVR L30",
+                        field: "Ads_L30_CVR",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var cvr_l30 = parseFloat(cell.getValue() || 0);
+                            let color = "";
+                            if (cvr_l30 < 5) {
+                                color = "red";
+                            } else if (cvr_l30 >= 5 && cvr_l30 <= 10) {
+                                color = "green";
+                            } else if (cvr_l30 > 10){
+                                color = "#e83e8c";
+                            }
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${cvr_l30.toFixed(0)}%
+                                </span>
+                                <i class="fa fa-info-circle text-primary cvr_l30_btn" 
+                                    data-cvr-l30="${cvr_l30}" 
+                                    style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "CVR L60",
+                        field: "Ads_L60_CVR",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var ad_sold_l60 = parseFloat(row.Ads_L60_Orders || 0);
+                            var clicks_l60 = parseFloat(row.Ads_L60_Clicks || 0);
+                            
+                            var cvr_l60 = (clicks_l60 > 0) ? (ad_sold_l60 / clicks_l60) * 100 : 0;
+                            let color = "";
+                            if (cvr_l60 < 5) {
+                                color = "red";
+                            } else if (cvr_l60 >= 5 && cvr_l60 <= 10) {
+                                color = "green";
+                            } else if (cvr_l60 > 10){
+                                color = "#e83e8c";
+                            }
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${cvr_l60.toFixed(0)}%
+                                </span>
+                            `;
+
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CVR L15",
+                        field: "Ads_L15_CVR",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var ad_sold_l15 = parseFloat(row.Ads_L15_Orders || 0);
+                            var clicks_l15 = parseFloat(row.Ads_L15_Clicks || 0);
+
+                            var cvr_l15 = (clicks_l15 > 0) ? (ad_sold_l15 / clicks_l15) * 100 : 0;
+                            let color = "";
+                            if (cvr_l15 < 5) {
+                                color = "red";
+                            } else if (cvr_l15 >= 5 && cvr_l15 <= 10) {
+                                color = "green";
+                            } else if (cvr_l15 > 10){
+                                color = "#e83e8c";
+                            }
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${cvr_l15.toFixed(0)}%
+                                </span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CVR L7",
+                        field: "Ads_L7_CVR",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var ad_sold_l7 = parseFloat(row.Ads_L7_Orders || 0);
+                            var clicks_l7 = parseFloat(row.Ads_L7_Clicks || 0);
+
+                            var cvr_l7 = (clicks_l7 > 0) ? (ad_sold_l7 / clicks_l7) * 100 : 0;
+                            let color = "";
+                            if (cvr_l7 < 5) {
+                                color = "red";
+                            } else if (cvr_l7 >= 5 && cvr_l7 <= 10) {
+                                color = "green";
+                            } else if (cvr_l7 > 10){
+                                color = "#e83e8c";
+                            }
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${cvr_l7.toFixed(0)}%
+                                </span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "TPFT%",
+                        field: "TPFT",
+                        hozAlign: "center",
+                        formatter: function(cell){
+                            let value = parseFloat(cell.getValue()) || 0;
+                            let percent = value.toFixed(0);
+                            let color = "";
+
+                            if (value < 10) {
+                                color = "red";
+                            } else if (value >= 10 && value < 15) {
+                                color = "#ffc107";
+                            } else if (value >= 15 && value < 20) {
+                                color = "blue";
+                            } else if (value >= 20 && value <= 40) {
+                                color = "green";
+                            } else if (value > 40) {
+                                color = "#e83e8c";
+                            }
+
+                            return `
+                                <span style="font-weight:600; color:${color};">
+                                    ${percent}%
+                                </span>
+                            `;
+                        }
                     }
+                ]
+            });
+
+            table.on("tableBuilt", function() {
+
+                function combinedFilter(data) {
+
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(data.SKU?.toLowerCase().includes(searchVal))) {
+                        return false;
+                    }
+
+                    let invFilterVal = $("#inv-filter").val();
+                    if (invFilterVal === "red") {
+                        if (parseFloat(data.FBA_Quantity) >= 50) return false;
+                    } else if (invFilterVal === "green") {
+                        if (parseFloat(data.FBA_Quantity) < 50) return false;
+                    }
+
+                    let acosFilterVal = $("#acos-filter").val();
+                    if (acosFilterVal) {
+                        let acosFields = ["Ads_L30_ACOS"];
+
+                        let matched = acosFields.every(field => {
+                            let val = parseFloat(data[field]) || 0;
+                            let adSales = parseFloat(data.Ads_L30_Sales) || 0;
+                            if (adSales === 0) val = 100;
+
+                            if (acosFilterVal === "pink") {
+                                return val < 7;
+                            }
+                            if (acosFilterVal === "green") {
+                                return val >= 7 && val <= 14;
+                            }
+                            if (acosFilterVal === "red") {
+                                return val > 14;
+                            }
+                            if (acosFilterVal === "black") {
+                                return val === 100;
+                            }
+                            return false;
+                        });
+
+                        if (!matched) return false;
+                    }
+
+                    let cvrFilterVal = $("#cvr-filter").val();
+                    if (cvrFilterVal) {
+                        let cvrFields = ["Ads_L30_CVR"];
+
+                        let matched = cvrFields.every(field => {
+                            let val = parseFloat(data[field]) || 0;
+
+                            if (cvrFilterVal === "pink") {
+                                return val > 10;
+                            }
+                            if (cvrFilterVal === "green") {
+                                return val >= 5 && val <= 10;
+                            }
+                            if (cvrFilterVal === "red") {
+                                return val < 5;
+                            }
+                            return false;
+                        });
+
+                        if (!matched) return false;
+                    }
+
+                    return true;
                 }
 
-                $('#inventory-filter').on('change', function() {
-                    applyFilters();
+                table.setFilter(combinedFilter);
+
+                function updateCampaignStats() {
+                    let allRows = table.getData();
+                    let filteredRows = allRows.filter(combinedFilter);
+
+                    let total = allRows.length;
+                    let filtered = filteredRows.length;
+
+                    let percentage = total > 0 ? ((filtered / total) * 100).toFixed(0) : 0;
+
+                    const totalEl = document.getElementById("total-campaigns");
+                    const percentageEl = document.getElementById("percentage-campaigns");
+
+                    if (totalEl) totalEl.innerText = filtered;
+                    if (percentageEl) percentageEl.innerText = percentage + "%";
+                }
+
+                table.on("dataFiltered", updateCampaignStats);
+                table.on("pageLoaded", updateCampaignStats);
+                table.on("dataProcessed", updateCampaignStats);
+
+                $("#global-search").on("keyup", function() {
+                    table.setFilter(combinedFilter);
                 });
 
-                $('#parent-filter').on('change', function() {
-                    applyFilters();
+                $("#inv-filter,#acos-filter,#cvr-filter").on("change", function() {
+                    table.setFilter(combinedFilter);
                 });
 
-                $('#pft-filter').on('change', function() {
-                    applyFilters();
-                });
+                updateCampaignStats();
+            });
 
-                // AJAX Import Handler
-                $('#importForm').on('submit', function(e) {
-                    e.preventDefault();
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-cols-btn")) {
+                    let btn = e.target;
 
-                    const formData = new FormData();
-                    const file = $('#csvFile')[0].files[0];
+                    let colsToToggle = ["FBA_Quantity", "Shopify_inv", "Shopify_OV_L30", "Dil", "l30_units", "FBA_Dil"];
 
-                    if (!file) return;
-
-                    formData.append('file', file);
-                    formData.append('_token', '{{ csrf_token() }}');
-
-                    const uploadBtn = $('#uploadBtn');
-                    uploadBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Importing...');
-
-                    $.ajax({
-                        url: '/fba-manual-import',
-                        type: 'POST',
-                        data: formData,
-                        processData: false,
-                        contentType: false,
-                        success: function(response) {
-                            if (response.success) {
-                                showToast(response.message, 'success');
-                                $('#importModal').modal('hide');
-                                $('#importForm')[0].reset();
-                                table.setData('/fba-data-json');
-                            }
-                        },
-                        error: function(xhr) {
-                            const errorMsg = xhr.responseJSON?.message || 'Import failed';
-                            showToast(errorMsg, 'error');
-                        },
-                        complete: function() {
-                            uploadBtn.prop('disabled', false).html(
-                                '<i class="fa fa-upload"></i> Import');
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
                         }
                     });
-                });
-            });
+                }
 
-            // LMP Modal Event Listener
-            $(document).on('click', '.lmp-link', function(e) {
-                e.preventDefault();
-                const sku = $(this).data('sku');
-                let data = $(this).data('lmp-data');
-                console.log('SKU:', sku);
-                console.log('Raw data:', data);
-                try {
-                    if (typeof data === 'string') {
-                        data = JSON.parse(data);
-                    }
-                    console.log('Parsed data:', data);
-                    openLmpModal(sku, data);
-                } catch (error) {
-                    console.error('Error parsing LMP data:', error);
-                    alert('Error loading LMP data');
+                if (e.target.classList.contains("impressions_l30_btn")) {
+                    let colsToToggle = ["Ads_L60_Impressions", "Ads_L15_Impressions", "Ads_L7_Impressions"];
+
+                    colsToToggle.forEach(colField => {
+                        let col = table.getColumn(colField);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+
+                if (e.target.classList.contains("clicks_l30_btn")) {
+                    let colsToToggle = ["Ads_L15_Clicks", "Ads_L7_Clicks", "Ads_L60_Clicks"];
+
+                    colsToToggle.forEach(colField => {
+                        let col = table.getColumn(colField);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+
+                if (e.target.classList.contains("spend_l30_btn")) {
+                    let colsToToggle = ["Ads_L15_Spend", "Ads_L7_Spend", "Ads_L60_Spend"];
+
+                    colsToToggle.forEach(colField => {
+                        let col = table.getColumn(colField);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+
+                if (e.target.classList.contains("ad_sales_l30_btn")) {
+                    let colsToToggle = ["Ads_L15_Sales", "Ads_L7_Sales", "Ads_L60_Sales"];
+
+                    colsToToggle.forEach(colField => {
+                        let col = table.getColumn(colField);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+
+                if (e.target.classList.contains("ad_sold_l30_btn")) {
+                    let colsToToggle = ["Ads_L15_Orders", "Ads_L7_Orders", "Ads_L60_Orders"];
+
+                    colsToToggle.forEach(colField => {
+                        let col = table.getColumn(colField);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+
+                if (e.target.classList.contains("acos_l30_btn")) {
+                    let colsToToggle = ["Ads_L15_ACOS", "Ads_L7_ACOS", "Ads_L60_ACOS"];
+
+                    colsToToggle.forEach(colField => {
+                        let col = table.getColumn(colField);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+
+                if (e.target.classList.contains("cpc_l30_btn")) {
+                    let colsToToggle = ["Ads_L15_CPC", "Ads_L7_CPC", "Ads_L60_CPC"];
+
+                    colsToToggle.forEach(colField => {
+                        let col = table.getColumn(colField);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+
+                if (e.target.classList.contains("cvr_l30_btn")) {
+                    let colsToToggle = ["Ads_L15_CVR", "Ads_L7_CVR", "Ads_L60_CVR"];
+
+                    colsToToggle.forEach(colField => {
+                        let col = table.getColumn(colField);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
                 }
             });
 
-            // LMP Modal Function
-            function openLmpModal(sku, data) {
-                console.log('Opening modal for SKU:', sku, 'Data length:', data.length);
-                console.log('lmpDataList exists:', $('#lmpDataList').length);
-                $('#lmpSku').text(sku);
-                let html = '';
-                data.forEach(item => {
-                    console.log('Item:', item);
-                    html += `<div style="margin-bottom: 10px; border: 1px solid #ccc; padding: 10px;">
-                    <strong>Price: $${item.price}</strong><br>
-                    <a href="${item.link}" target="_blank">View Link</a>
-                    ${item.image ? `<br><img src="${item.image}" alt="Product Image" style="max-width: 100px; max-height: 100px;">` : ''}
-                </div>`;
-                });
-                console.log('Generated HTML:', html);
-                $('#lmpDataList').html(html);
-                $('#lmpModal').appendTo('body').modal('show');
-                console.log('Modal shown');
-            }
-        </script>
-    @endsection
+            document.getElementById("export-btn").addEventListener("click", function () {
+                let allData = table.getData("active"); 
+
+                if (allData.length === 0) {
+                    alert("No data available to export!");
+                    return;
+                }
+
+                let exportData = allData.map(row => ({ ...row }));
+
+                let ws = XLSX.utils.json_to_sheet(exportData);
+                let wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "FBA_Ads");
+
+                XLSX.writeFile(wb, "fba_ads_kw_report.xlsx");
+            });
+        });
+    </script>
+@endsection
+
