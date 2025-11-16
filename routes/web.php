@@ -2419,4 +2419,5 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Route::post('/auto-stock-balance-store', [AutoStockBalanceController::class, 'store'])->name('autostock.balance.store');
     // Route::get('/auto-stock-balance-data-list', [AutoStockBalanceController::class, 'list']);
+    
 });
