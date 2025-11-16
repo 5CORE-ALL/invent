@@ -107,11 +107,6 @@ class ListingAmazonController extends Controller
             }
         }
 
-        // If listed is set to 'Listed', ensure nr_req is 'NR'
-        if (isset($existing['listed']) && $existing['listed'] === 'Listed') {
-            $existing['nr_req'] = 'NR';
-        }
-
         AmazonListingStatus::updateOrCreate(
             ['sku' => $validated['sku']],
             ['value' => $existing]
