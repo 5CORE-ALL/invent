@@ -1,0 +1,28 @@
+name: run-tests
+
+on: [push]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: php-actions/composer@v6
+        with:
+          php_version: 8.2
+      - name: PHPUnit Tests
+        uses: php-actions/phpunit@v4
+        with:
+          php_version: 8.2
+          php_extensions: pcov
+          bootstrap: vendor/autoload.php
+          configuration: phpunit.xml.dist
+      - name: phpunit-coverage-badge
+        uses: timkrase/phpunit-coverage-badge@v1.2.0
+        with:
+          report: ./tests/resources/logs/clover.xml
+          report_type: clover
+          coverage_badge_path: ./.github/coverage.svg
+          push_badge: true
+          repo_token: ${{ secrets.GITHUB_TOKEN }}

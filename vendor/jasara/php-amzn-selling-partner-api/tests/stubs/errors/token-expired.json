@@ -1,0 +1,9 @@
+{
+    "errors": [
+        {
+            "message": "Access to requested resource is denied.",
+            "code": "Unauthorized",
+            "details": "The access token you provided has expired."
+        }
+    ]
+}

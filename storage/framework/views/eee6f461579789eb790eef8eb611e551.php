@@ -1,0 +1,3701 @@
+
+
+<?php $__env->startSection('css'); ?>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?php echo e(asset('assets/css/styles.css')); ?>">
+    <style>
+        #image-hover-preview {
+            transition: opacity 0.2s ease;
+        }
+
+        /* Table Styling */
+        #forecast-table {
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+         
+        }
+
+        .image-preview-container {
+            width: 100px;
+            height: 100px;
+            border: 2px solid #f0f0f0;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #fff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .image-preview-container:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .image-preview-container img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: none; /* JS se toggle hoga */
+            cursor: pointer;
+        }
+
+        .channel-logo {
+        cursor: pointer;
+        transition: transform 0.2s ease;
+        }
+        .channel-logo:hover {
+        transform: scale(1.1);
+        }
+
+
+        .inventory-cell {
+            font-weight: 600;
+            background-color: #f8f9fa;
+        }
+
+      
+        .inventory-cell.low {
+            color: #dc3545;
+            background-color: rgba(220, 53, 69, 0.1);
+        }
+
+        .inventory-cell.medium {
+            color: #ffc107;
+            background-color: rgba(255, 193, 7, 0.1);
+        }
+
+        .inventory-cell.high {
+            color: #198754;
+            background-color: rgba(25, 135, 84, 0.1);
+        }
+
+        /* Tooltip styles */
+        .cell-tooltip {
+            position: absolute;
+            background: #333;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            z-index: 1000;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .cell-with-tooltip:hover .cell-tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+
+
+
+        .tabulator .tabulator-header {
+            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
+            border-bottom: 2px solid #1a56b7;
+            color: #ffffff;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .tabulator .tabulator-header .tabulator-col {
+            /* background-color: transparent; */
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px 18px;
+            vertical-align: middle;
+            color: #ffffff;
+            transition: all 0.2s ease;
+        }
+
+        .tabulator .tabulator-header .tabulator-col-content {
+            font-weight: 600;
+            color: #ffffff;
+            padding: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: 0.5px;
+        }
+
+        .tabulator .tabulator-header .tabulator-col-title {
+            color: #000;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        /* Style for header filter inputs */
+        .tabulator .tabulator-header .tabulator-col input {
+            background-color: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 4px;
+            color: #333;
+            padding: 6px 10px;
+            margin-top: 8px;
+            font-size: 12px;
+            width: 100%;
+            transition: all 0.2s;
+        }
+
+        .tabulator .tabulator-header .tabulator-col input::placeholder {
+            color: #8e9ab4;
+            font-style: italic;
+        }
+
+        .tabulator .tabulator-header .tabulator-col input:focus {
+            background-color: white;
+            box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.3);
+            outline: none;
+        }
+
+        .tabulator .tabulator-row {
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s ease;
+        }
+
+        .tabulator .tabulator-row:hover {
+            background-color: #f8f9fa !important;
+        }
+
+        .tabulator .tabulator-row.parent-row {
+            background-color: #f8f9fa;
+            font-weight: 700;
+            border-top: 2px solid #0d6efd;
+        }
+
+        .tabulator .tabulator-row.parent-row .tabulator-cell {
+            color: #0d6efd;
+        }
+
+        .tabulator .tabulator-row .tabulator-cell {
+            padding: 12px 8px;
+            border-right: 1px solid #eee;
+            position: relative;
+            overflow: visible;
+        }
+
+        /* Hover info tooltip */
+        .tabulator-cell[data-numeric='true']:hover::after {
+            content: attr(data-full-value);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+            white-space: nowrap;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Trending indicators */
+        .trend-up::after {
+            content: '↑';
+            color: #22c55e;
+            margin-left: 4px;
+        }
+
+        .trend-down::after {
+            content: '↓';
+            color: #ef4444;
+            margin-left: 4px;
+        }
+
+
+
+        /* Pagination styling */
+        .tabulator-footer {
+            background-color: #f8f9fa;
+            border-top: 2px solid #dee2e6;
+            padding: 8px;
+        }
+
+        .tabulator-paginator {
+            font-weight: 500;
+        }
+
+        .tabulator-page {
+            margin: 0 2px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            background-color: white;
+            color: #495057;
+            transition: all 0.2s ease;
+        }
+
+        .tabulator-page:hover {
+            background-color: #e9ecef;
+            border-color: #adb5bd;
+        }
+
+        .tabulator-page.active {
+            background-color: #007bff;
+            border-color: #007bff;
+            color: white;
+        }
+
+
+
+        /* Additional hover effects */
+        .hover-effect {
+            transition: transform 0.2s;
+        }
+
+        .hover-effect:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+
+
+        /* Modal enhancements */
+        .modal-xl .modal-body {
+            max-height: 95vh;
+            overflow-y: auto;
+           
+        }
+
+        .analysis-table th {
+            background-color: #f8f9fa;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        /* Enhanced Modal Styling */
+        .modal-draggable .modal-dialog {
+            cursor: move;
+            margin: 0;
+            pointer-events: all;
+            position: fixed;
+            /* left: 50%;
+            top: 50%; */
+            transform: translate(-50%, -50%);
+        }
+
+        .modal-content {
+            box-shadow: 0 5px 15px rgba(0, 0, 0, .5);
+            border: none;
+            border-radius: 8px;
+        }
+
+        /* (Removed resizable styles per request) */
+
+        .modal-header.bg-gradient {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            border-radius: 8px 8px 0 0;
+            padding: 1rem;
+            border: none;
+        }
+
+        .market-summary {
+            background-color: rgba(0, 0, 0, 0.02);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .summary-stats .badge {
+            font-size: 0.9em;
+            padding: 0.5em 1em;
+            font-weight: 500;
+        }
+
+        .view-controls .btn-group .btn {
+            padding: 0.375rem 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .view-controls .btn-group .btn.active {
+            background-color: #2a5298;
+            color: white;
+            border-color: #2a5298;
+        }
+
+        .modal-actions .btn-light-secondary {
+            color: white;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.2s;
+        }
+
+        .modal-actions .btn-light-secondary:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        #ovl30Modal .table {
+            margin-bottom: 0;
+            border-collapse: separate;
+            border-spacing: 0 0.5rem;
+        }
+
+        #ovl30Modal .table thead th {
+            background-color: #f8f9fa;
+            border: none;
+            padding: 1rem;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        #ovl30Modal .table tbody tr {
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+            transition: transform 0.2s;
+        }
+
+        #ovl30Modal .table tbody tr:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        #ovl30Modal .table tbody td {
+            padding: 1rem;
+            border: none;
+            vertical-align: middle;
+        }
+
+        /* Value indicators */
+        .value-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .value-indicator .trend {
+            font-size: 0.8em;
+        }
+
+        .value-indicator.positive {
+            color: #198754;
+        }
+
+        .value-indicator.negative {
+            color: #dc3545;
+        }
+
+        .value-indicator.neutral {
+            color: #6c757d;
+        }
+
+        .modal-title {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+            background: #ffffff;
+        }
+
+        /* Enhanced Table Styling for Modal */
+        .modal-body .table {
+            margin-bottom: 0;
+        }
+
+        .modal-body .table thead th {
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+
+        .modal-body .table tbody td {
+            vertical-align: middle;
+            padding: 0.75rem;
+            border-color: #e9ecef;
+        }
+
+        .modal-body .table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .btn-close {
+            color: white;
+            text-shadow: none;
+            opacity: 0.8;
+        }
+
+        .btn-close:hover {
+            opacity: 1;
+        }
+
+        /* Sorting styles */
+        .sortable-table th[data-sort] {
+            position: relative;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .sortable-table th[data-sort] .bi {
+            font-size: 0.8em;
+            margin-left: 5px;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+
+        .sortable-table th[data-sort]:hover .bi {
+            opacity: 1;
+        }
+
+        .sortable-table th.sort-asc .bi,
+        .sortable-table th.sort-desc .bi {
+            opacity: 1;
+            color: #0d6efd;
+        }
+
+        .sortable-table tbody tr:nth-child(even) {
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+
+        .sortable-table tbody tr:hover {
+            background-color: rgba(13, 110, 253, 0.05);
+        }
+
+        .sortable-table th.default-sort {
+            background-color: rgba(13, 110, 253, 0.1);
+        }
+
+        .sortable-table th.default-sort .bi {
+            color: #0d6efd;
+            opacity: 1;
+        }
+    </style>
+<?php $__env->stopSection(); ?>
+
+<?php $__env->startSection('content'); ?>
+    <?php echo $__env->make('layouts.shared.page-title', [
+        'page_title' => 'Pricing Masters Analysis',
+        'sub_title' => 'Pricing Masters Analysis',
+    ], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
+    <div id="image-hover-preview" style="display: none; position: fixed; z-index: 1000; pointer-events: none;">
+        <img id="preview-image"
+            style="max-width: 300px; max-height: 300px; border: 2px solid #ddd; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+    </div>
+   
+    <div style="z-index:9898" class="modal fade" id="chartModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Performance Chart</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="chartContainer" style="height:35vw;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+$(document).on('click', '.cvrTD', function() {
+    const id = $(this).data('id');
+    const prefix = $(this).data('prefix');
+    const sku = $(this).data('sku');
+    const mkt = $(this).data('mkt');
+
+    // Optional: show loader or disable clicks
+    $(this).css('opacity', '0.6');
+$.ajax({
+    url: '/get-chart-data',
+    type: 'GET',
+    data: { id, prefix, sku, mkt },
+    success: function(response) {
+        const modalEl = document.getElementById('chartModal');
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+
+        // Wait until modal DOM is ready
+        modalEl.addEventListener('shown.bs.modal', function () {
+            Highcharts.chart('chartContainer', {
+                chart: { backgroundColor: '#111' },
+                title: { 
+                    text: 'Price vs Sales Buckets (L1, L7, L30, L60, L90)', 
+                    style: { color: '#fff' } 
+                },
+                xAxis: {
+                    categories: response.dates,
+                    labels: { style: { color: '#ccc' } }
+                },
+                yAxis: [
+                    { title: { text: 'Units Sold', style: { color: '#33b5e5' } } },
+                    { title: { text: 'Price ($)', style: { color: '#ff4444' } }, opposite: true }
+                ],
+                legend: { itemStyle: { color: '#fff' } },
+                series: [
+                    { name: 'L1', type: 'line', data: response.L1, color: '#66ff99', yAxis: 0 },
+                    { name: 'L7', type: 'line', data: response.L7, color: '#33b5e5', yAxis: 0 },
+                    { name: 'L30', type: 'line', data: response.L30, color: '#9933cc', yAxis: 0 },
+                    { name: 'L60', type: 'line', data: response.L60, color: '#ffbb33', yAxis: 0 },
+                    { name: 'L90', type: 'line', data: response.L90, color: '#aa66cc', yAxis: 0 },
+                    { name: 'Price', type: 'line', data: response.price, color: '#ff4444', yAxis: 1, dashStyle: 'shortdot' },
+                ]
+            });
+        }, { once: true }); // only fire once
+    },
+    error: function() {
+        alert('Error loading chart data.');
+    },
+    complete: function() {
+        $('.value-indicator').css('opacity', '1');
+    }
+});
+
+    
+});
+</script>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="mb-3 d-flex align-items-center gap-3">
+                        <!-- Play/Pause Controls -->
+                        <div class="d-flex align-items-center me-3">
+                            <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
+                                <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-1"
+                                    style="width: 36px; height: 36px; padding: 6px;">
+                                    <i class="fas fa-step-backward"></i>
+                                </button>
+
+                                <button id="play-pause" class="btn btn-light rounded-circle shadow-sm me-1"
+                                    style="width: 36px; height: 36px; padding: 6px; display: none;">
+                                    <i class="fas fa-pause"></i>
+                                </button>
+
+                                <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm me-1"
+                                    style="width: 36px; height: 36px; padding: 6px;">
+                                    <i class="fas fa-play"></i>
+                                </button>
+
+                                <button id="play-forward" class="btn btn-light rounded-circle shadow-sm"
+                                    style="width: 36px; height: 36px; padding: 6px;">
+                                    <i class="fas fa-step-forward"></i>
+                                </button>
+                            </div>
+                        </div>
+
+
+                      <div class="d-flex align-items-center flex-wrap gap-2">
+                        <div class="dropdown">
+                            <button class="btn btn-primary dropdown-toggle d-flex align-items-center gap-1"
+                                type="button" id="hide-column-dropdown" data-bs-toggle="dropdown">
+                                <i class="bi bi-grid-3x3-gap-fill"></i>
+                                Manage Columns
+                            </button>
+                            <ul class="dropdown-menu p-3 shadow-lg border rounded-3" id="column-dropdown-menu"
+                                style="max-height: 300px; overflow-y: auto; min-width: 250px;">
+                                <li class="fw-semibold text-muted mb-2">Toggle Columns</li>
+                                <!-- Columns checkboxes dynamically append karoge -->
+                            </ul>
+                        </div>
+
+                         <div class="btn-group" id="inv-filter" role="group" aria-label="Inventory Filter">
+                        <input type="radio" class="btn-check" name="invFilter" id="filterAll" value="all" checked>
+                        <label class="btn btn-outline-secondary" for="filterAll">All</label>
+                        <input type="radio" class="btn-check" name="invFilter" id="filterZero" value="zero">
+                        <label class="btn btn-outline-danger" for="filterZero">0</label>
+                        <input type="radio" class="btn-check" name="invFilter" id="filterOther" value="other">
+                        <label class="btn btn-outline-success" for="filterOther">Other</label>
+                    </div>
+
+                    <div class="btn-group" id="dil-filter" role="group" aria-label="Dilution Filter">
+                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterAll" value="all">
+                        <label class="btn btn-outline-primary" for="dilFilterAll">All Dil</label>
+                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterVeryLow" value="verylow">
+                        <label class="btn btn-outline-danger" for="dilFilterVeryLow">Very Low Dil (≤ 10%)</label>
+                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterLow" value="low">
+                        <label class="btn btn-outline-warning" for="dilFilterLow">Low Dil (11-15%)</label>
+                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterMedium" value="medium">
+                        <label class="btn btn-outline-info" for="dilFilterMedium">Medium Dil (16-20%)</label>
+                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterHigh" value="high">
+                        <label class="btn btn-outline-success" for="dilFilterHigh">High Dil (21-40%)</label>
+                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterVeryHigh" value="veryhigh">
+                        <label class="btn btn-outline-secondary" for="dilFilterVeryHigh">Very High Dil (> 40%)</label>
+                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterClear" value="clear" checked>
+                        <label class="btn btn-outline-secondary" for="dilFilterClear">Clear</label>
+                    </div>
+
+                    <div class="btn-group" id="cvr-filter" role="group" aria-label="CVR Filter">
+                        <input type="radio" class="btn-check" name="cvrFilter" id="cvrFilterAll" value="all">
+                        <label class="btn btn-outline-primary" for="cvrFilterAll">All CVR</label>
+                        <input type="radio" class="btn-check" name="cvrFilter" id="cvrFilterHigh" value="high">
+                        <label class="btn btn-outline-success" for="cvrFilterHigh">High CVR (&gt; 5%)</label>
+                        <input type="radio" class="btn-check" name="cvrFilter" id="cvrFilterMedium" value="medium">
+                        <label class="btn btn-outline-info" for="cvrFilterMedium">Medium CVR (3-5%)</label>
+                        <input type="radio" class="btn-check" name="cvrFilter" id="cvrFilterLow" value="low">
+                        <label class="btn btn-outline-warning" for="cvrFilterLow">Low CVR (&lt; 3%)</label>
+                        <input type="radio" class="btn-check" name="cvrFilter" id="cvrFilterClear" value="clear" checked>
+                        <label class="btn btn-outline-secondary" for="cvrFilterClear">Clear</label>
+                    </div>
+
+                    <div class="btn-group" id="margin-filter" role="group" aria-label="Margin Filter">
+                        <input type="radio" class="btn-check" name="marginFilter" id="marginFilterHigh" value="high">
+                        <label class="btn btn-outline-success" for="marginFilterHigh">High Margin (&gt; 20%)</label>
+                        <input type="radio" class="btn-check" name="marginFilter" id="marginFilterClear" value="clear" checked>
+                        <label class="btn btn-outline-secondary" for="marginFilterClear">Clear</label>
+                    </div>
+
+                    <div class="btn-group" id="view-filter" role="group" aria-label="View Filter">
+                        <input type="radio" class="btn-check" name="viewFilter" id="parentFilter" value="parent" checked>
+                        <label class="btn btn-primary" for="parentFilter">Parent </label>
+                        <input type="radio" class="btn-check" name="viewFilter" id="skuFilter" value="sku">
+                        <label class="btn btn-primary" for="skuFilter">SKU </label>
+                        <input type="radio" class="btn-check" name="viewFilter" id="bothFilter" value="both">
+                        <label class="btn btn-primary" for="bothFilter">Both </label>
+                    </div>
+                    </div>
+
+                    </div>
+
+                    <div id="forecast-table"></div>
+
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OVL30 Modal -->
+    <div class="modal fade modal-draggable" id="ovl30Modal" tabindex="-1" aria-labelledby="ovl30ModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-bar-chart-line-fill me-2"></i>
+                        <span id="modalPricingTitle">OVL30 Analysis</span>
+                        <span id="ovl30SkuLabel" class="badge text-danger ms-2 animate__animated animate__fadeIn fw-bold fs-5"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Top Section: Image and Push Price -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="image-preview-container" style="width: 120px; height: 120px;">
+                                    <img id="ovl30Img" src="" alt="Preview" style="width: 100%; height: 100%; object-fit: contain; display: none;">
+                                </div>
+                                <div class="flex-grow-1">
+                                    <label class="form-label fw-bold">Push Price to All Marketplaces</label>
+                                    <div class="input-group">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="number" id="topPushPrice" class="form-control" step="any" placeholder="Enter Price">
+                                        <button class="btn btn-success" id="topSaveBtn" type="button">
+                                            <i class="fas fa-save me-1"></i> Save
+                                        </button>
+                                        <button class="btn btn-primary" id="topPushBtn" type="button">
+                                            <i class="fas fa-upload me-1"></i> Push
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- All Metrics in One Section (12 per row) -->
+                <div class="mb-3 p-3 rounded" style="background-color: #f8f9fa;">
+                    <div class="row g-2">
+                        <div class="col-md-1 col-6">
+                            <span class="text-success w-100 py-2 fw-bold" style="font-size: 17px;">INV: <span id="pricingInventory">0</span></span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-primary w-100 py-2 fw-bold" style="font-size: 17px;">OVL30: <span id="pricingOVL30">0</span></span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-dark w-100 py-2 fw-bold" style="font-size: 17px;">Price: <span id="pricingAvgPrice">$0</span></span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-warning w-100 py-2 fw-bold" style="font-size: 17px;">Dil: <span id="dilPercentage">0</span>%</span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-primary w-100 py-2 fw-bold" style="font-size: 17px;">Profit: <span id="formattedProfitPercentage">0</span>%</span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-danger w-100 py-2 fw-bold" style="font-size: 17px;">ROI: <span id="formattedRoiPercentage">0</span>%</span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-success w-100 py-2 fw-bold" style="font-size: 17px;">CVR: <span id="avgCvr">0</span></span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-secondary w-100 py-2 fw-bold" style="font-size: 17px;">Views: <span id="total_views">0</span></span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-success w-100 py-2 fw-bold" style="font-size: 17px;">L30: <span id="total_l30_count">0</span></span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-secondary w-100 py-2 fw-bold" style="font-size: 17px;">L60: <span id="total_l60_count">0</span></span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-info w-100 py-2 fw-bold" style="font-size: 17px;">L30V: <span id="total_l30_count_data">0</span></span>
+                        </div>
+                        <div class="col-md-1 col-6">
+                            <span class="text-primary w-100 py-2 fw-bold" style="font-size: 17px;">GPFT: <span id="gpft_data">0</span>%</span>
+                        </div>
+                    </div>
+                </div>
+
+
+
+
+                    <!-- Marketplace Table -->
+                    <div class="table-responsive">
+                        <div id="ovl30Content" style="color: #000000; width:100%; overflow-y: auto;">
+                         <!-- Marketplace data table will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+    
+                            <!-- LMP Data Modal -->
+                            <div class="modal fade" id="lmpDataModal" tabindex="-1" aria-labelledby="lmpDataModalLabel" aria-hidden="true">
+                                <div class="modal-dialog modal-sm modal-dialog-centered">
+                                    <div class="modal-content">
+                                        <div class="modal-header bg-gradient">
+                                            <h5 class="modal-title" id="lmpDataModalLabel">LMP History</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body" style="max-height: 300px; overflow-y: auto;">
+                                            <div id="lmpDataContent">
+                                                <!-- Rows inserted via JS -->
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+            </div>
+        </div>
+    </div>
+
+
+    
+    <div class="modal fade" id="priceComparisonModal" tabindex="-1" aria-labelledby="priceComparisonModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header cursor-move">
+                <h5 class="modal-title" id="priceComparisonModalLabel">
+                    Marketplace Price Comparison for <span id="price-comparison-sku"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <canvas id="priceComparisonChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<?php $__env->stopSection(); ?>
+<?php $__env->startSection('script'); ?>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.body.style.zoom = "95%";
+
+        function showPriceComparisonModal(row) {
+            const data = row.getData();
+            const sku = data.SKU;
+
+            document.getElementById('price-comparison-sku').textContent = sku;
+
+            const marketplaces = [
+                { label: "Amazon", prefix: "amz" },
+                { label: "eBay", prefix: "ebay" },
+                { label: "Doba", prefix: "doba" },
+                { label: "Macy", prefix: "macy" },
+                { label: "Reverb", prefix: "reverb" },
+                { label: "Temu", prefix: "temu" },
+                { label: "Walmart", prefix: "walmart" },
+                { label: "eBay2", prefix: "ebay2" },
+                { label: "eBay3", prefix: "ebay3" },
+                { label: "Shopify B2C", prefix: "shopifyb2c" },
+                { label: "Shein", prefix: "shein" },
+                { label: "Bestbuy", prefix: "bestbuy" },
+                { label: "Tiktok", prefix: "tiktok" },
+                { label: "Tiendamia", prefix: "tiendamia" },
+                { label: "Aliexpress", prefix: "aliexpress" }
+            ];
+
+            const labels = [];
+            const prices = [];
+
+            marketplaces.forEach(m => {
+                const price = data[`${m.prefix}_price`];
+                if (price !== null && price !== undefined && price > 0) {
+                    labels.push(m.label);
+                    prices.push(price);
+                }
+            });
+
+            // Chart.js setup and rendering here
+             const modalEl = document.getElementById('priceComparisonModal');
+             const chartCanvas = document.getElementById('priceComparisonChart');
+
+            // Destroy previous chart instance if it exists
+            if (window.priceChart instanceof Chart) {
+                window.priceChart.destroy();
+            }
+
+            window.priceChart = new Chart(chartCanvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Price',
+                            data: prices,
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            fill: true,
+                            tension: 0.1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'L30',
+                            data: labels.map(label => data[`${label.toLowerCase()}_l30`] || 0),
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            fill: true,
+                            tension: 0.1,
+                            yAxisID: 'y1'
+                        },
+                        {
+                            label: 'L60', 
+                            data: labels.map(label => data[`${label.toLowerCase()}_l60`] || 0),
+                            borderColor: '#2a0032',
+                            backgroundColor: 'rgba(42, 0, 50, 0.2)',
+                            fill: true,
+                            tension: 0.1,
+                            yAxisID: 'y1'
+                        },
+                      
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Price ($)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toFixed(2);
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            title: {
+                                display: true,
+                                text: 'Sales Volume'
+                            }
+                        },
+                        y2: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            title: {
+                                display: true,
+                                text: 'Percentage (%)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(0) + '%';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    let value = context.parsed.y;
+                                    
+                                    if (label === 'Price') {
+                                        return `${label}: $${value.toFixed(2)}`;
+                                    } else if (label.includes('%')) {
+                                        return `${label}: ${value.toFixed(1)}%`;
+                                    } else {
+                                        return `${label}: ${value}`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+                
+
+            const modal = new bootstrap.Modal(modalEl);
+            modal.show();
+        }
+
+        // Helper function to calculate ROI
+        function calculateROI(data) {
+            const LP = parseFloat(data.LP) || 0;
+            if (LP === 0) return 0;
+
+            // Calculate total L30
+            const totalL30 = (parseFloat(data.amz_l30) || 0) +
+                (parseFloat(data.ebay_l30) || 0) +
+                (parseFloat(data.shopifyb2c_l30) || 0) +
+                (parseFloat(data.macy_l30) || 0) +
+                (parseFloat(data.reverb_l30) || 0) +
+                (parseFloat(data.doba_l30) || 0) +
+                (parseFloat(data.temu_l30) || 0) +
+                (parseFloat(data.ebay3_l30) || 0) +
+                (parseFloat(data.ebay2_l30) || 0) +
+                (parseFloat(data.walmart_l30) || 0) +
+                (parseFloat(data.shein_l30) || 0) +
+                (parseFloat(data.bestbuy_l30) || 0) +
+                (parseFloat(data.tiktok_l30) || 0) +
+                (parseFloat(data.tiendamia_l30) || 0) +
+                (parseFloat(data.aliexpress_l30) || 0);
+
+            const SHIP = parseFloat(data.SHIP) || 0;
+            const temuship = parseFloat(data.temu_ship) || 0;
+
+            // Calculate profits
+            const amzProfit = data.amz_price ? ((parseFloat(data.amz_price) * 0.67) - LP - SHIP) * (parseFloat(data
+                .amz_l30) || 0) : 0;
+            const ebayProfit = data.ebay_price ? ((parseFloat(data.ebay_price) * 0.77) - LP - SHIP) * (parseFloat(data
+                .ebay_l30) || 0) : 0;
+            const shopifyProfit = data.shopifyb2c_price ? ((parseFloat(data.shopifyb2c_price) * 0.75) - LP - SHIP) * (
+                parseFloat(data.shopifyb2c_l30) || 0) : 0;
+            const macyProfit = data.macy_price ? ((parseFloat(data.macy_price) * 0.76) - LP - SHIP) * (parseFloat(data
+                .macy_l30) || 0) : 0;
+            const reverbProfit = data.reverb_price ? ((parseFloat(data.reverb_price) * 0.80) - LP - SHIP) * (parseFloat(data
+                .reverb_l30) || 0) : 0;
+            const dobaProfit = data.doba_price ? ((parseFloat(data.doba_price) * 0.95) - LP - SHIP) * (parseFloat(data
+                .doba_l30) || 0) : 0;
+            const temuProfit = data.temu_price ? ((parseFloat(data.temu_price) * 0.87) - LP - temuship) * (parseFloat(data
+                .temu_l30) || 0) : 0;
+       
+            const ebay3Profit = data.ebay3_price ? ((parseFloat(data.ebay3_price) * 0.78) - LP - SHIP) * (parseFloat(data
+                .ebay3_l30) || 0) : 0;
+            const ebay2Profit = data.ebay2_price ? ((parseFloat(data.ebay2_price) * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) * (parseFloat(data
+                .ebay2_l30) || 0) : 0;
+            const walmartProfit = data.walmart_price ? ((parseFloat(data.walmart_price) * 0.80) - LP - SHIP) * (parseFloat(
+                data.walmart_l30) || 0) : 0;
+            const sheinProfit = data.shein_price ? ((parseFloat(data.shein_price) * 0.89) - LP - SHIP) * (parseFloat(
+                data.shein_l30) || 0) : 0;
+            const bestbuyProfit = data.bestbuy_price ? ((parseFloat(data.bestbuy_price) * 0.80) - LP - SHIP) * (parseFloat(data
+                .bestbuy_l30) || 0) : 0;
+            const tiendamiaProfit = data.tiendamia_price ? ((parseFloat(data.tiendamia_price) * 0.83) - LP - SHIP) * (parseFloat(data
+                .tiendamia_l30) || 0) : 0;
+
+            const tiktokProfit = data.tiktok_price ? ((parseFloat(data.tiktok_price) * 0.80) - LP - SHIP) * (parseFloat(data
+                .tiktok_l30) || 0) : 0;
+
+            const aliexpressProfit = data.aliexpress_price ? ((parseFloat(data.aliexpress_price) * 0.89) - LP - SHIP) * (parseFloat(data
+                .aliexpress_l30) || 0) : 0;
+
+            const totalProfit = amzProfit + ebayProfit + shopifyProfit + macyProfit + reverbProfit +
+                dobaProfit + temuProfit  + ebay3Profit + ebay2Profit + walmartProfit + sheinProfit + bestbuyProfit + tiendamiaProfit + tiktokProfit + aliexpressProfit;
+
+            return totalL30 > 0 ? (totalProfit / totalL30) / LP * 100 : 0;
+        }
+
+        // Helper function to calculate Average Profit
+        function calculateAvgProfit(data) {
+            const LP = parseFloat(data.LP) || 0;
+            const SHIP = parseFloat(data.SHIP) || 0;
+            const temuship = parseFloat(data.temu_ship) || 0;
+
+            // Calculate profits and revenue for each marketplace
+            const marketplaces = [
+                { name: "amz", price: data.amz_price, l30: data.amz_l30, percent: 0.67 },
+                { name: "ebay", price: data.ebay_price, l30: data.ebay_l30, percent: 0.77 },
+                { name: "shopifyb2c", price: data.shopifyb2c_price, l30: data.shopifyb2c_l30, percent: 0.75 },
+                { name: "macy", price: data.macy_price, l30: data.macy_l30, percent: 0.76 },
+                { name: "reverb", price: data.reverb_price, l30: data.reverb_l30, percent: 0.80 },
+                { name: "doba", price: data.doba_price, l30: data.doba_l30, percent: 0.95 },
+                { name: "temu", price: data.temu_price, l30: data.temu_l30, percent: 0.87 },
+                { name: "ebay3", price: data.ebay3_price, l30: data.ebay3_l30, percent: 0.78 },
+                { name: "ebay2", price: data.ebay2_price, l30: data.ebay2_l30, percent: 0.79, ship: data.ebay2_ship },
+                { name: "walmart", price: data.walmart_price, l30: data.walmart_l30, percent: 0.89 },
+                { name: "shein", price: data.shein_price, l30: data.shein_l30, percent: 0.89 },
+                { name: "tiendamia", price: data.tiendamia_price, l30: data.tiendamia_l30, percent: 0.83 },
+                { name: "bestbuy", price: data.bestbuy_price, l30: data.bestbuy_l30, percent: 0.80 },
+                { name: "tiktok", price: data.tiktok_price, l30: data.tiktok_l30, percent: 0.80 },
+                { name: "aliexpress", price: data.aliexpress_price, l30: data.aliexpress_l30, percent: 0.89 }
+            ];
+
+            let totalProfit = 0;
+            let totalRevenue = 0;
+
+            marketplaces.forEach(mp => {
+                const price = parseFloat(mp.price) || 0;
+                const l30 = parseFloat(mp.l30) || 0;
+                if (price && l30) {
+                    const shippingCost = mp.name === "temu" ? temuship : (mp.ship ? parseFloat(mp.ship) : SHIP);
+
+                    totalProfit += ((price * mp.percent) - LP - shippingCost) * l30;
+                    totalRevenue += price * l30;
+                }
+            });
+
+            return totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+        }
+
+
+        // Image preview functions
+        function showImagePreview(img) {
+            const preview = document.getElementById('image-hover-preview');
+            const previewImg = document.getElementById('preview-image');
+
+            previewImg.src = img.src;
+            preview.style.display = 'block';
+
+            document.addEventListener('mousemove', moveImagePreview);
+        }
+
+        function hideImagePreview() {
+            const preview = document.getElementById('image-hover-preview');
+            preview.style.display = 'none';
+            document.removeEventListener('mousemove', moveImagePreview);
+        }
+
+        function moveImagePreview(e) {
+            const preview = document.getElementById('image-hover-preview');
+            const rect = preview.getBoundingClientRect();
+
+            // Calculate position, keeping the preview within viewport
+            let x = e.pageX + 20;
+            let y = e.pageY + 20;
+
+            // Adjust if preview would go off screen
+            if (x + rect.width > window.innerWidth) {
+                x = e.pageX - rect.width - 20;
+            }
+            if (y + rect.height > window.innerHeight) {
+                y = e.pageY - rect.height - 20;
+            }
+
+            preview.style.left = x + 'px';
+            preview.style.top = y + 'px';
+        }
+
+
+        //global variables for play btn
+        function renderGroup(parentKey) {
+        if (!groupedSkuData[parentKey]) return;
+
+            // Update current filter
+        currentParentFilter = parentKey;
+        setCombinedFilters();
+
+            // Apply Tabulator filter for the selected group
+        table.setFilter(function(data) {
+            return data.Parent === parentKey;
+        });
+        }
+
+        // Filter by Inventory radio buttons
+        
+        document.querySelectorAll("input[name='invFilter']").forEach(input => {
+            input.addEventListener("change", function() {
+                let value = this.value;
+
+                if (value === "all") {
+                    table.clearFilter();
+                } else if (value === "zero") {
+                    table.setFilter("inv", "=", 0);
+                } else if (value === "other") {
+                    table.setFilter("inv", ">", 0);
+                }
+            });
+        });
+
+
+
+
+        // Filter by CVR radio buttons for cvr 
+        document.querySelectorAll("input[name='cvrFilter']").forEach(input => {
+            input.addEventListener("change", function() {
+                let value = this.value;
+
+                if (value === "clear") {
+                    table.clearFilter("avgCvr");
+                } else if (value === "all") {
+                    table.clearFilter("avgCvr");
+                } else if (value === "high") {
+                    table.setFilter("avgCvr", ">", 5);
+                } else if (value === "medium") {
+                    table.setFilter(function(data) {
+                        const cvr = parseFloat(data.avgCvr) || 0;
+                        return cvr >= 3 && cvr <= 5;
+                    });
+                } else if (value === "low") {
+                    table.setFilter("avgCvr", "<", 3);
+                }
+            });
+        });
+
+        // Filter by View radio buttons for sku parent and both 
+        document.querySelectorAll("input[name='viewFilter']").forEach(input => {
+            input.addEventListener("change", function() {
+                let value = this.value;
+
+                if (value === "parent") {
+                    table.setFilter(function(data) {
+                        const sku = (data.SKU || "").toUpperCase();
+                        return sku.includes("PARENT");
+                    });
+                } else if (value === "sku") {
+                    table.setFilter(function(data) {
+                        const sku = (data.SKU || "").toUpperCase();
+                        return !sku.includes("PARENT");
+                    });
+                } else if (value === "both") {
+                    table.clearFilter();
+                }
+            });
+        });
+
+        // Filter by Dilution radio buttons for dil
+        document.querySelectorAll("input[name='dilFilter']").forEach(input => {
+            input.addEventListener("change", function() {
+                let value = this.value;
+
+                if (value === "clear") {
+                    table.clearFilter("Dil%");
+                } else if (value === "all") {
+                    table.clearFilter("Dil%");
+                } else if (value === "verylow") {
+                    table.setFilter("Dil%", "<=", 10);
+                } else if (value === "low") {
+                    table.setFilter(function(data) {
+                        const dil = parseFloat(data["Dil%"]) || 0;
+                        return dil >= 11 && dil <= 15;
+                    });
+                } else if (value === "medium") {
+                    table.setFilter(function(data) {
+                        const dil = parseFloat(data["Dil%"]) || 0;
+                        return dil >= 16 && dil <= 20;
+                    });
+                } else if (value === "high") {
+                    table.setFilter(function(data) {
+                        const dil = parseFloat(data["Dil%"]) || 0;
+                        return dil >= 21 && dil <= 40;
+                    });
+                } else if (value === "veryhigh") {
+                    table.setFilter("Dil%", ">", 40);
+                }
+            });
+        });
+        
+        
+
+
+
+       const table = new Tabulator("#forecast-table", {
+            ajaxURL: "/pricing-master-data-views",
+            fixedHeader: true,
+         
+            width: "100%",
+            height: "700px",
+          
+            pagination: true, 
+            paginationSize: 50,
+        
+             rowFormatter: function(row) {
+                const data = row.getData();
+                const sku = data["SKU"] || '';
+
+                if (sku.toUpperCase().includes("PARENT")) {
+                    row.getElement().classList.add("parent-row");
+                }
+            },
+            columns: [{
+                    title: "Image",
+                    field: "shopifyb2c_image",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData.SKU;
+                        const imageUrl = rowData.image_url;
+
+                        // Priority: 1) Shopify image, 2) Product Master image_url, 3) Input field
+                        if (value) {
+                            // Show Shopify image
+                            return `<img src="${value}" width="40" height="40" class="product-thumb" onmouseover="showImagePreview(this)" onmouseout="hideImagePreview()" style="cursor: pointer">`;
+                        } else if (imageUrl) {
+                            // Show Product Master image_url
+                            return `<img src="${imageUrl}" width="40" height="40" class="product-thumb" onmouseover="showImagePreview(this)" onmouseout="hideImagePreview()" style="cursor: pointer">`;
+                        } else {
+                            // Show input field for URL when no image exists
+                            return `<input type="text" class="form-control form-control-sm image-url-input"
+                                placeholder="Enter image URL" data-sku="${sku}"
+                                style="width: 120px; font-size: 11px;">`;
+                        }
+                    },
+                    headerSort: false,
+                    width: 70,
+                    hozAlign: "center"
+                },
+               
+                {
+                    title: "Parent",
+                    field: "Parent",
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search Parent...",
+                    cssClass: "text-muted",
+                    tooltip: true,
+                    frozen: true
+                },
+                {
+                    title: "SKU",
+                    field: "SKU",
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search SKU...",
+                    cssClass: "font-weight-bold",
+                    tooltip: true,
+                    frozen: true,
+                    formatter: function(cell) {
+                        let value = cell.getValue();
+                        return `
+                            <span class="sku-text">${value}</span>
+                            <i class="bi bi-clipboard ms-2 copy-icon" 
+                            style="cursor:pointer;color:#007bff;" 
+                            title="Copy SKU"></i>
+                            <span class="copied-msg" style="display:none;color:green;font-size:12px;margin-left:5px;">Copied!</span>
+                        `;
+                    },
+                    cellClick: function(e, cell) {
+                        if (e.target.classList.contains("copy-icon")) {
+                            let sku = cell.getValue();
+
+                            // copy to clipboard
+                            navigator.clipboard.writeText(sku).then(() => {
+                                let copiedMsg = cell.getElement().querySelector(".copied-msg");
+                                copiedMsg.style.display = "inline";
+
+                                setTimeout(() => {
+                                    copiedMsg.style.display = "none";
+                                }, 500);
+                            }).catch(err => {
+                                console.error("Failed to copy: ", err);
+                            });
+                        } else {
+                            showPriceComparisonModal(cell.getRow());
+                        }
+                    },
+                },
+                {
+                    title: "INV",
+                    field: "INV",
+                    hozAlign: "right",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return `<strong>${Math.round(value)}</strong>`;
+                    }
+                    
+                },
+
+
+               {
+                    title: "OVL30",
+                    field: "ovl30",
+                    hozAlign: "center",
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData();
+                        const l30 = data.shopifyb2c_l30 || 0;
+
+                        // Determine button color based on L30 value
+
+                        return `<button class="btn btn-outline-primary  rounded-pill px-3 text-primary" style="cursor:default !important; background-color: #fff !important">
+                            <i class="bi bi-eye me-1"></i>${l30}
+                        </button>`;
+                    },
+                    cellClick: function(e, cell) {
+                        showOVL30Modal(cell.getRow());
+                    }
+                },
+             
+
+
+                    {
+                        title: "DIL%",
+                        field: "Dil%",
+                        hozAlign: "right",
+                        formatter: function (cell) {
+                            const data = cell.getRow().getData();
+                            const value = cell.getValue() || 0;
+                            const element = document.createElement("div");
+                        
+                            const rounded = Math.round(value);
+                            element.textContent = rounded + "%";
+                            if (rounded >= 0 && rounded <= 10) {
+                                element.style.color = "red"; // red text
+                            } else if (rounded >= 11 && rounded <= 15) {
+                                element.style.backgroundColor = "yellow"; // yellow background
+                                element.style.color = "black";
+                                element.style.padding = "2px 4px";
+                                element.style.borderRadius = "4px";
+                            } else if (rounded >= 16 && rounded <= 20) {
+                                element.style.color = "blue"; // blue text
+                            } else if (rounded >= 21 && rounded <= 40) {
+                                element.style.color = "green"; // green text
+                            } else if (rounded >= 41) {
+                                element.style.color = "purple"; // purple text (41 and above)
+                            }
+
+                            data.dilPercentage = rounded;
+                           
+                            return element;
+                        },
+                    }
+
+                 ,
+                  {
+                    title: "PRC",
+                    field: "avgPrice",
+                    hozAlign: "center",
+                    bold: true,
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData();
+
+                        // Calculate weighted average price
+                        const calculateAvgPrice = () => {
+                            const marketplaces = [{
+                                    price: data.amz_price,
+                                    l30: data.amz_l30
+                                },
+                                {
+                                    price: data.ebay_price,
+                                    l30: data.ebay_l30
+                                },
+                                {
+                                    price: data.macy_price,
+                                    l30: data.macy_l30
+                                },
+                                {
+                                    price: data.reverb_price,
+                                    l30: data.reverb_l30
+                                },
+                                {
+                                    price: data.doba_price,
+                                    l30: data.doba_l30
+                                },
+                                {
+                                    price: data.temu_price,
+                                    l30: data.temu_l30
+                                },
+                               
+                                {
+                                    price: data.ebay3_price,
+                                    l30: data.ebay3_l30
+                                },
+                                {
+                                    price: data.ebay2_price,
+                                    l30: data.ebay2_l30
+                                },
+                                {
+                                    price: data.walmart_price,
+                                    l30: data.walmart_l30
+                                },
+                                {
+                                    price: data.shopify_price,
+                                    l30: data.shopify_l30
+                                },
+                                {
+                                    price: data.shein_price,
+                                    l30: data.shein_l30
+                                },
+                                {
+                                    price: data.bestbuy_price,
+                                    l30: data.bestbuy_l30
+                                },
+                                {
+                                    price: data.tiendamia_price,
+                                    l30: data.tiendamia_l30
+                                },
+                                {
+                                    price: data.tiktok_price,
+                                    l30: data.tiktok_l30
+                                },
+                                {
+                                    price: data.aliexpress_price,
+                                    l30: data.aliexpress_l30
+                                }
+
+                            ];
+
+                            let totalWeightedPrice = 0;
+                            let totalL30 = 0;
+
+                            marketplaces.forEach(mp => {
+                                const price = parseFloat(mp.price) || 0;
+                                const l30 = parseFloat(mp.l30) || 0;
+                                totalWeightedPrice += (price * l30);
+                                totalL30 += l30;
+                            });
+
+                            return totalL30 > 0 ? (totalWeightedPrice / totalL30).toFixed(2) : '---';
+                        };
+
+                        const avgPrice = calculateAvgPrice();
+                        const avgPriceValue = parseFloat(avgPrice);
+
+                        // Determine colors based on value
+                        let textColor, bgColor;
+                        if (!isNaN(avgPriceValue)) {
+                            if (avgPriceValue < 10) {
+                                textColor = '#dc3545'; // red
+                               
+                            } else if (avgPriceValue >= 10 && avgPriceValue < 15) {
+                                textColor = '#fd7e14'; // orange
+                             
+                            } else if (avgPriceValue >= 15 && avgPriceValue < 20) {
+                                textColor = '#0d6efd'; // blue
+                              
+                            } else if (avgPriceValue >= 20) {
+                                textColor = '#198754'; // green
+                               
+                            }
+                        } else {
+                            textColor = '#6c757d'; // gray
+                           
+                        }
+
+                        const element = document.createElement('div');
+                        element.innerHTML = avgPrice === '---' ? avgPrice : `$${avgPrice}`;
+                        element.style.color = textColor;
+                        element.style.fontWeight = '700'; // Bolder text
+                        element.style.backgroundColor = bgColor;
+                        element.style.padding = '4px 8px';
+                        element.style.borderRadius = '4px';
+                        element.style.textAlign = 'center';
+
+                        data.formattedAvgPrice = avgPrice;
+                        return element;
+                    }
+                },
+
+                
+
+                /* === OVL30 button (VISIBLE) === */
+               
+                /* === MARKETPLACE COLUMNS (HIDDEN, but kept for modal data) === */
+
+
+                    // Total avg pft= (avg price * ovl30 ) * avg pft on top add sum of all columns 
+                    // avg sales = price * Ovl30 same as above
+                    // avgpft top = (total avg pft /avg sales) * 100
+
+                    // Avg cogs = Lp * Ov l30 on back sum on top
+
+                    // Avg Roi % = avg sales / Avg COGS * 100
+
+               
+               
+
+                {
+                     title: "PFT%<br><span id='avgPftHeader' style='font-size:12px; color:#fff; '></span>",
+                    field: "avgPftPercent",
+                    hozAlign: "right",
+                    headerSort: true,
+                    sortable: true,
+                    sorterParams: {
+                        alignEmptyValues: "bottom"
+                    },
+                    sorter: function(a, b) {
+                        let rowA = this.getRow(a);
+                        let rowB = this.getRow(b);
+                        return calculateAvgProfit(rowA.getData()) - calculateAvgProfit(rowB.getData());
+                    },
+                    headerSort: true,
+                    sorter: function(a, b) {
+                        const valA = a || 0;
+                        const valB = b || 0;
+                        return valA - valB;
+                    },
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData();
+
+                        // Calculate profits per site using L30
+                        const LP = parseFloat(data.LP) || 0;
+                        const SHIP = parseFloat(data.SHIP) || 0;
+                        const ovl30 = parseFloat(data.shopifyb2c_l30) || 0;
+                        const temuship = parseFloat(data.temu_ship) || 0;
+                        const avgPrice = parseFloat(data.formattedAvgPrice) || 0;
+
+                        // Get price and L30 values for each marketplace
+                        const amzPrice = parseFloat(data.amz_price) || 0;
+                        const ebayPrice = parseFloat(data.ebay_price) || 0;
+                        const shopifyPrice = parseFloat(data.shopifyb2c_price) || 0;
+                        const macyPrice = parseFloat(data.macy_price) || 0;
+                        const reverbPrice = parseFloat(data.reverb_price) || 0;
+                        const dobaPrice = parseFloat(data.doba_price) || 0;
+                        const temuPrice = parseFloat(data.temu_price) || 0;
+                        const ebay3Price = parseFloat(data.ebay3_price) || 0;
+                        const ebay2Price = parseFloat(data.ebay2_price) || 0;
+                        const walmartPrice = parseFloat(data.walmart_price) || 0;
+                        const sheinPrice = parseFloat(data.shein_price) || 0;
+                        const bestbuyPrice = parseFloat(data.bestbuy_price) || 0;
+                        const tiendamiaPrice = parseFloat(data.tiendamia_price) || 0;
+                        const tiktokPrice = parseFloat(data.tiktok_price) || 0;
+                        const aliexpressPrice = parseFloat(data.aliexpress_price) || 0;
+
+                        const amzL30 = parseFloat(data.amz_l30) || 0;
+                        const ebayL30 = parseFloat(data.ebay_l30) || 0;
+                        const shopifyL30 = parseFloat(data.shopifyb2c_l30_data) || 0;
+                        const macyL30 = parseFloat(data.macy_l30) || 0;
+                        const reverbL30 = parseFloat(data.reverb_l30) || 0;
+                        const dobaL30 = parseFloat(data.doba_l30) || 0;
+                        const temuL30 = parseFloat(data.temu_l30) || 0;
+                        const ebay3L30 = parseFloat(data.ebay3_l30) || 0;
+                        const ebay2L30 = parseFloat(data.ebay2_l30) || 0;
+                        const walmartL30 = parseFloat(data.walmart_l30) || 0;
+                        const sheinL30 = parseFloat(data.shein_l30) || 0;
+                        const bestbuyL30 = parseFloat(data.bestbuy_l30) || 0;
+                        const tiendamiaL30 = parseFloat(data.tiendamia_l30) || 0;
+                        const tiktokL30 = parseFloat(data.tiktok_l30) || 0;
+                        const aliexpressL30 = parseFloat(data.aliexpress_l30) || 0;
+
+                        // Calculate profit for each marketplace
+                        const amzProfit = ((amzPrice * 0.67) - LP - SHIP)  ;
+                        const ebayProfit = ((ebayPrice * 0.77) - LP - SHIP) ;
+                        const shopifyProfit = ((shopifyPrice * 0.75) - LP - SHIP) ;
+                        const macyProfit = ((macyPrice * 0.76) - LP - SHIP) ;
+                        const reverbProfit = ((reverbPrice * 0.80) - LP - SHIP) ;
+                        const dobaProfit = ((dobaPrice * 0.95) - LP - SHIP) ;
+                        const temuProfit = ((temuPrice * 0.87) - LP - temuship) ;
+                        const ebay3Profit = ((ebay3Price * 0.78) - LP - SHIP);
+                        const ebay2Profit = ((ebay2Price * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) ;
+                        const walmartProfit = ((walmartPrice * 0.80) - LP - SHIP) ;
+                        const sheinProfit = ((sheinPrice * 0.89) - LP - SHIP) ;
+                        const bestbuyProfit = ((bestbuyPrice * 0.80) - LP - SHIP) ;
+                        const tiendamiaProfit = ((tiendamiaPrice * 0.83) - LP - SHIP) ;
+                        const tiktokProfit = ((tiktokPrice * 0.80) - LP - SHIP) ;
+                        const aliexpressProfit = ((aliexpressPrice * 0.89) - LP - SHIP) ;
+
+ 
+
+                        // Calculate total profit
+                        const totalProfit = amzProfit * amzL30 + ebayProfit * ebayL30 + shopifyProfit * shopifyL30 + macyProfit * macyL30 +
+                            reverbProfit * reverbL30 + dobaProfit * dobaL30 + temuProfit * temuL30 +
+                            ebay3Profit * ebay3L30 + ebay2Profit * ebay2L30 + walmartProfit * walmartL30 +
+                            sheinProfit * sheinL30 + bestbuyProfit * bestbuyL30 + tiendamiaProfit * tiendamiaL30 +
+                            tiktokProfit * tiktokL30 + aliexpressProfit * aliexpressL30;
+
+                        // Calculate total revenue
+                        const totalRevenue =
+                            (amzPrice * amzL30) +
+                            (ebayPrice * ebayL30) +
+                            (shopifyPrice * shopifyL30) +
+                            (macyPrice * macyL30) +
+                            (reverbPrice * reverbL30) +
+                            (dobaPrice * dobaL30) +
+                            (temuPrice * temuL30) +
+                            (ebay3Price * ebay3L30) +
+                            (ebay2Price * ebay2L30) +
+                            (walmartPrice * walmartL30) +
+                            (sheinPrice * sheinL30) +
+                            (bestbuyPrice * bestbuyL30) +
+                            (tiendamiaPrice * tiendamiaL30) +
+                            (tiktokPrice * tiktokL30) +
+                            (aliexpressPrice * aliexpressL30);
+
+                        // Calculate average profit percentage and round to nearest integer
+                        let avgPftPercent = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+
+                        if (!isFinite(avgPftPercent) || isNaN(avgPftPercent)) {
+                            avgPftPercent = 0;
+                        }
+
+                        avgPftPercent = Math.round(avgPftPercent);
+
+
+                        // Profit top caculation start 
+
+                        // Style based on profit percentage
+                        let bgColor, textColor;
+                        if (avgPftPercent < 11) {
+                          
+                            textColor = '#ff0000';
+                        } else if (avgPftPercent >= 10 && avgPftPercent < 15) {
+                            bgColor = 'yellow'; // orange
+                            textColor = '#000000';
+                        } else if (avgPftPercent >= 15 && avgPftPercent < 20) {
+                           
+                            textColor = '#0d6efd';
+                        } else if (avgPftPercent >= 21 && avgPftPercent < 50) {
+                            textColor = '#198754';
+                        }
+                        else{
+                            textColor = '#800080'; // purple
+                        }
+
+                        const element = document.createElement('div');
+                        element.textContent = avgPftPercent + '%';
+                        element.style.backgroundColor = bgColor;
+                        element.style.color = textColor;
+                        element.style.padding = '4px 8px';
+                        element.style.borderRadius = '4px';
+                        element.style.fontWeight = '600';
+                        element.style.textAlign = 'center';
+
+                        data.avgPftPercent = avgPftPercent;
+
+                        // console
+
+
+
+                        
+                        // Top Calculation
+      
+                        TotalAvgpft= (avgPrice * ovl30 ) * avgPftPercent / 100;
+                        TotalAvgSales = avgPrice * ovl30;
+
+
+                        TotalAvgpftForTop = (TotalAvgpft / TotalAvgSales) * 100;
+                        totalCogs = LP * ovl30;
+                        TotalAvgRoiPer = (TotalAvgpft / totalCogs) * 100;
+
+                        console.log("TotalAvgpft",TotalAvgpft);
+
+                        data.TotalAvgpft = Math.round(TotalAvgpft);
+                        data.TotalAvgSales = Math.round(TotalAvgSales);
+                        data.TotalAvgpftForTop = Math.round(TotalAvgpftForTop) ;
+                        data.totalCogs = Math.round(totalCogs);
+                        data.TotalAvgRoiPer = Math.round(TotalAvgRoiPer);
+                        console.log("TotalAvgpftForTop123",TotalAvgpftForTop);  
+
+
+                       console.log("TotalAvgSales",TotalAvgSales);
+                       console.log("TotalAvgpftForTop123",TotalAvgpftForTop);
+                       console.log("totalCogs",totalCogs);
+                       console.log("TotalAvgRoiPer",TotalAvgRoiPer);
+                       
+                        return element;
+                    }
+                },
+
+                {
+                        title: "ROI%<br><span id='avgRoiHeader' style='font-size:12px; color:#fff; '></span>",
+                        field: "avgRoi",
+                        hozAlign: "right",
+                        headerSort: true,
+                        sorter: function(a, b) {
+                            const valA = parseFloat(a) || 0;
+                            const valB = parseFloat(b) || 0;
+                            return valA - valB;
+                        },
+                        formatter: function(cell) {
+                            const data = cell.getRow().getData();
+                            const LP = parseFloat(data.LP) || 0;
+                            const ovl30 = parseFloat(data.shopifyb2c_l30) || 0;
+                            const temuship = parseFloat(data.temu_ship) || 0;
+                            const avgPrice = parseFloat(data.formattedAvgPrice) || 0;
+                             const SHIP = parseFloat(data.SHIP) || 0;
+                            
+                            if (LP === 0) return "N/A";
+
+                            // Parse all L30 values
+                            const amzL30     = parseFloat(data.amz_l30) || 0;
+                            const ebayL30    = parseFloat(data.ebay_l30) || 0;
+                            const shopifyL30 = parseFloat(data.shopifyb2c_l30) || 0;
+                            const macyL30    = parseFloat(data.macy_l30) || 0;
+                            const reverbL30  = parseFloat(data.reverb_l30) || 0;
+                            const dobaL30    = parseFloat(data.doba_l30) || 0;
+                            const temuL30    = parseFloat(data.temu_l30) || 0;
+                            const ebay3L30   = parseFloat(data.ebay3_l30) || 0;
+                            const ebay2L30   = parseFloat(data.ebay2_l30) || 0;
+                            const walmartL30 = parseFloat(data.walmart_l30) || 0;
+                            const sheinL30   = parseFloat(data.shein_l30) || 0;
+                            const bestbuyL30  = parseFloat(data.bestbuy_l30) || 0;
+                            const tiendamiaL30 = parseFloat(data.tiendamia_l30) || 0;
+                            const tiktokL30   = parseFloat(data.tiktok_l30) || 0;
+                            const aliexpressL30 = parseFloat(data.aliexpress_l30) || 0; 
+
+                            // Total L30 across marketplaces
+                            const totalL30 = amzL30 + ebayL30 + shopifyL30 + macyL30 + reverbL30 + dobaL30 + temuL30  + ebay3L30 + ebay2L30 + walmartL30 + sheinL30 + bestbuyL30 + tiendamiaL30 + tiktokL30 + aliexpressL30;
+
+                            // Profit calculations (use parsed *_L30 variables)
+                            const amzProfit     = data.amz_price        ? ((parseFloat(data.amz_price) * 0.67) - LP - SHIP) * amzL30 : 0;
+                            const ebayProfit    = data.ebay_price       ? ((parseFloat(data.ebay_price) * 0.77) - LP - SHIP) * ebayL30 : 0;
+                            const shopifyProfit = data.shopifyb2c_price ? ((parseFloat(data.shopifyb2c_price) * 0.75) - LP - SHIP) * shopifyL30 : 0;
+                            const macyProfit    = data.macy_price       ? ((parseFloat(data.macy_price) * 0.76) - LP - SHIP) * macyL30 : 0;
+                            const reverbProfit  = data.reverb_price     ? ((parseFloat(data.reverb_price) * 0.80) - LP - SHIP) * reverbL30 : 0;
+                            const dobaProfit    = data.doba_price       ? ((parseFloat(data.doba_price) * 0.95) - LP - SHIP) * dobaL30 : 0;
+                            const temuProfit    = data.temu_price       ? ((parseFloat(data.temu_price) * 0.87) - LP - temuship) * temuL30 : 0;
+                            const ebay3Profit   = data.ebay3_price      ? ((parseFloat(data.ebay3_price) * 0.78) - LP - SHIP) * ebay3L30 : 0;
+                            const ebay2Profit   = data.ebay2_price      ? ((parseFloat(data.ebay2_price) * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) * ebay2L30 : 0;
+                            const walmartProfit = data.walmart_price    ? ((parseFloat(data.walmart_price) * 0.80) - LP - SHIP) * walmartL30 : 0;
+                            const sheinProfit   = data.shein_price      ? ((parseFloat(data.shein_price) * 0.89) - LP - SHIP) * sheinL30 : 0;
+                            const bestbuyProfit  = data.bestbuy_price    ? ((parseFloat(data.bestbuy_price) * 0.80) - LP - SHIP) * bestbuyL30 : 0;
+                            const tiendamiaProfit = data.tiendamia_price ? ((parseFloat(data.tiendamia_price) * 0.83) - LP - SHIP) * tiendamiaL30 : 0;
+                            const tiktokProfit    = data.tiktok_price    ? ((parseFloat(data.tiktok_price) * 0.80) - LP - SHIP) * tiktokL30 : 0;
+                            const aliexpressProfit = data.aliexpress_price ? ((parseFloat(data.aliexpress_price) * 0.89) - LP - SHIP) * aliexpressL30 : 0;
+                            // Total profit
+                            const totalProfit = amzProfit + ebayProfit + shopifyProfit + macyProfit +
+                                                reverbProfit + dobaProfit + temuProfit  +
+                                                ebay3Profit + ebay2Profit + walmartProfit + sheinProfit + bestbuyProfit + tiendamiaProfit + tiktokProfit + aliexpressProfit;
+
+
+                            
+
+                            // ROI calculation
+                            const roi = totalL30 > 0 ? (totalProfit / totalL30) / LP * 100 : 0;
+
+                            data.TotalAvgRoiPer = Math.round(TotalAvgRoiPer);
+                            // Style based on ROI percentage
+                            let bgColor, textColor;
+                            if (roi < 11) {
+                                textColor = '#ff0000'; // red
+                            } else if (roi >= 10 && roi < 15) {
+                                bgColor = 'yellow';
+                                textColor = '#000000'; // black
+                            } else if (roi >= 15 && roi < 20) {
+                                textColor = '#0d6efd'; // blue
+                            } else if (roi >= 21 && roi < 50) {
+                                textColor = '#198754'; // green
+                            } else {
+                                textColor = '#800080'; // purple
+                            }
+
+                            // Build cell element
+                            const element = document.createElement('div');
+                            element.textContent = Math.round(roi) + '%';
+                            element.style.backgroundColor = bgColor;
+                            element.style.color = textColor;
+                            element.style.padding = '4px 8px';
+                            element.style.borderRadius = '4px';
+                            element.style.fontWeight = '600';
+                            element.style.textAlign = 'center';
+
+                            // Store for sorting
+                            data.avgRoi = Math.round(roi);
+                            return element;
+                        },
+                        visible: true
+                    }
+                    ,
+
+            {
+                title: "CVR",
+                field: "avgCvr",
+                hozAlign: "center",
+              
+                formatterParams: {
+                    decimal: 2,
+                
+            
+                },
+                formatter: function(cell) {
+                    let value = cell.getValue() || 0;
+                    // Remove % if present and parse as float
+                    if (typeof value === "string" && value.includes("%")) {
+                        value = value.replace("%", "");
+                    }
+                    value = parseFloat(value);
+                    if (isNaN(value)) value = 0;
+                    const element = document.createElement("span");
+                    // Show value with 2 decimals
+                    element.textContent = value.toFixed(1) + "%";
+                    if (value >= 0 && value <= 3) {
+                        element.style.color = "red"; // red text
+                    } else if (value > 3 && value <= 6) {
+                        element.style.backgroundColor = "yellow"; // yellow background
+                        element.style.color = "black";
+                        element.style.padding = "2px 4px";
+                        element.style.borderRadius = "4px";
+                    } else if (value > 6 && value <= 9) {
+                        element.style.color = "blue"; // blue text
+                    } else if (value > 9 && value <= 13) {
+                        element.style.color = "green"; // green text
+                    } else if (value > 41) {
+                        element.style.color = "purple"; // purple text (41 and above)
+                    }
+                    return element;
+                }
+            },
+            
+
+        {
+                    title: "Views",
+                    field: "total_views",
+                    hozAlign: "center",
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const value = cell.getValue() || 0;
+                        return `<span class="text-danger">${Math.round(value)} </span>`;
+                    }
+                    
+                },
+
+                //  {
+                //     title: "Req Views",
+                //     field: "total_req_view",
+                //     hozAlign: "center",
+                //     headerSort: false,
+                //     formatter: function(cell) {
+                //         const value = cell.getValue() || 0;
+                //         return `<span class="text-dark">${Math.round(value)} </span>`;
+                //     }
+                    
+                // },
+
+                
+
+                // {
+                //     title: "L30 Count",
+                //     field: "total_l30_count",
+                //     hozAlign: "center",
+                //     headerSort: false,
+                //     formatter: function(cell) {
+                //         const value = cell.getValue() || 0;
+                //         return `<span class="text-success">${value} </span>`;
+                //     }
+                // },
+
+                // {
+                //     title: "L60 Count",
+                //     field: "total_l60_count",
+                //     hozAlign: "center",
+                //     headerSort: false,
+                //     formatter: function(cell) {
+                //         const value = cell.getValue() || 0;
+                //         return `<span class="text-success">${value} </span>`;
+                //     }
+                // },
+
+             
+
+               
+
+                 {
+                    title: "MSRP",
+                    field: "MSRP",
+                    hozAlign: "right",
+                    formatter: "money",
+                    formatterParams: {
+                        precision: 2
+                    }
+                },
+
+                  {
+                    title: "MAP",
+                    field: "MAP",
+                    hozAlign: "right",
+                    formatter: "money",
+                    formatterParams: {
+                        precision: 2
+                    }
+                },
+
+                {
+                    title: "LP",
+                    field: "LP",
+                    hozAlign: "right",
+                    formatter: "money",
+                    formatterParams: {
+                        precision: 2
+                    }
+                },
+                {
+                    title: "SHIP",
+                    field: "SHIP",
+                    hozAlign: "right",
+                    formatter: "money",
+                    formatterParams: {
+                        precision: 2
+                    }
+                },
+             
+            ],
+                ajaxResponse: function(url, params, response) {
+                    groupedSkuData = {}; // clear previous
+
+                    // Add calculated fields + mark parent rows
+                    response.data = response.data.map((item, index) => {
+                        const sku = item.SKU || "";
+                        const isParent = item.is_parent || sku.toUpperCase().includes("PARENT");
+
+                        return {
+                            ...item,
+                            calculatedRoi: calculateROI(item),
+                            calculatedProfit: calculateAvgProfit(item),
+                            sl_no: index + 1,
+                            is_parent: isParent ? 1 : 0,
+                             isParent: isParent,
+                            isParent: isParent,
+                            raw_data: item || {}
+                        };
+                    });
+
+                    // Group by Parent
+                    let grouped = {};
+                    response.data.forEach(item => {
+                        const parentKey = item.Parent || "";
+                        if (!grouped[parentKey]) grouped[parentKey] = [];
+                        grouped[parentKey].push(item);
+
+                        // Group for play button use
+                        if (!groupedSkuData[parentKey]) {
+                            groupedSkuData[parentKey] = [];
+                        }
+                        groupedSkuData[parentKey].push(item);
+                    });
+
+
+                         // Aggregate for parent rows
+        Object.keys(grouped).forEach(parentKey => {
+            const rows = grouped[parentKey];
+            const children = rows.filter(item => !item.is_parent);
+            const parent = rows.find(item => item.is_parent);
+
+            if (!parent || children.length === 0) return;
+
+            // Additive fields to sum
+            const additiveFields = ['INV', 'total_views', 'total_req_view', 'inv_value', 'COGS'];
+            additiveFields.forEach(field => {
+                parent[field] = children.reduce((sum, c) => sum + (parseFloat(c[field]) || 0), 0).toFixed(2);
+            });
+
+            // Rate fields to average
+            const rateFields = ['Dil%', 'avgCvr', 'MSRP', 'MAP', 'LP', 'SHIP', 'temu_ship', 'avgPftPercent'];
+            rateFields.forEach(field => {
+                const values = children.map(c => parseFloat(c[field]) || 0);
+                const valid = values.filter(v => !isNaN(v) && v !== 0); // Exclude 0 to avoid skew
+                parent[field] = valid.length > 0 ? (valid.reduce((sum, v) => sum + v, 0) / valid.length).toFixed(2) :
+                    (values.length > 0 ? (values.reduce((sum, v) => sum + v, 0) / values.length).toFixed(2) : 0);
+            });
+
+            // Marketplaces for l30 sum and price weighted average
+            const mps = ['amz', 'ebay', 'macy', 'reverb', 'doba', 'temu', 'ebay3', 'ebay2', 'walmart', 'shein', 'shopifyb2c', 'aliexpress', 'tiktok', 'bestbuy' ,'tiendamia'];
+            mps.forEach(mp => {
+                const l30Field = (mp === 'shopifyb2c' ? 'shopifyb2c_l30' : `${mp}_l30`);
+                const priceField = (mp === 'shopifyb2c' ? 'shopifyb2c_price' : `${mp}_price`);
+
+                // Sum l30
+                parent[l30Field] = children.reduce((sum, c) => sum + (parseFloat(c[l30Field]) || 0), 0);
+
+                // Weighted average price by l30
+                let totalWeighted = 0;
+                let totalWeight = 0;
+                children.forEach(c => {
+                    const price = parseFloat(c[priceField]) || 0;
+                    const weight = parseFloat(c[l30Field]) || 0;
+                    totalWeighted += price * weight;
+                    totalWeight += weight;
+                });
+
+                parent[priceField] = totalWeight > 0 ? (totalWeighted / totalWeight).toFixed(2) :
+                    (children.reduce((sum, c) => sum + (parseFloat(c[priceField]) || 0), 0) / children.length).toFixed(2);
+            });
+
+            // Recalculate inv_value for parent
+            const inv = parseFloat(parent.INV) || 0;
+            const shopifyPrice = parseFloat(parent.shopifyb2c_price) || 0;
+            parent.inv_value = (inv * shopifyPrice).toFixed(2);
+
+            // Recalculate COGS for parent
+            const lp = parseFloat(parent.LP) || 0;
+            parent.COGS = (lp * inv).toFixed(2);
+
+            // Recalculate avgPftPercent for parent
+            const marketplaces = [
+                { price: parent.amz_price, l30: parent.amz_l30, factor: 0.67 },
+                { price: parent.ebay_price, l30: parent.ebay_l30, factor: 0.77 },
+                { price: parent.shopifyb2c_price, l30: parent.shopifyb2c_l30, factor: 0.75 },
+                { price: parent.macy_price, l30: parent.macy_l30, factor: 0.76 },
+                { price: parent.reverb_price, l30: parent.reverb_l30, factor: 0.80 },
+                { price: parent.doba_price, l30: parent.doba_l30, factor: 0.95 },
+                { price: parent.temu_price, l30: parent.temu_l30, factor: 0.87, ship: parent.temu_ship },
+                { price: parent.ebay3_price, l30: parent.ebay3_l30, factor: 0.78 },
+                { price: parent.ebay2_price, l30: parent.ebay2_l30, factor: 0.79, ship: parent.ebay2_ship },
+                { price: parent.walmart_price, l30: parent.walmart_l30, factor: 0.80 },
+                { price: parent.shein_price, l30: parent.shein_l30, factor: 0.89 },
+                { price: parent.tiktok_price, l30: parent.tiktok_price, factor: 0.80 },
+                { price: parent.bestbuy_price, l30: parent.bestbuy_price, factor: 0.80 },
+                { price: parent.tiendamia_price, l30: parent.tiendamia_price, factor: 0.83 },
+                { price: parent.aliexpress_price, l30: parent.aliexpress_price, factor: 0.89 }
+
+            ];
+
+            let totalProfit = 0;
+            let totalRevenue = 0;
+            marketplaces.forEach(mp => {
+                const price = parseFloat(mp.price) || 0;
+                const l30 = parseFloat(mp.l30) || 0;
+                const ship = parseFloat(mp.ship || parent.SHIP) || 0;
+                const profit = ((price * mp.factor) - lp - ship) * l30;
+                totalProfit += profit;
+                totalRevenue += price * l30;
+            });
+
+            parent.avgPftPercent = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(2) : 0;
+
+            // Set image from first child if missing
+            if (!parent.shopifyb2c_image && children[0]) {
+                parent.shopifyb2c_image = children[0].shopifyb2c_image;
+            }
+
+            // Set ovl30 if needed
+            parent.ovl30 = parent.shopifyb2c_l30;
+        });
+
+
+                    // Sort inside each group: child rows first, parent bottom
+                    let finalData = [];
+                    Object.values(grouped).forEach(rows => {
+                        rows.sort((a, b) => {
+                            if (a.is_parent !== b.is_parent) {
+                                return a.is_parent - b.is_parent; // parent last
+                            }
+                            return (a.SKU || "").localeCompare(b.SKU || "");
+                        });
+                        finalData = finalData.concat(rows);
+                    });
+
+                    setTimeout(() => {
+                        setCombinedFilters();
+                    }, 0);
+
+                    console.log("Processed Response:", finalData);
+                    return finalData;
+                },
+
+        });
+
+
+
+
+        // On Top Start 
+    //   On to Percentaeg color
+        table.on("dataProcessed", function(){
+            let data = table.getData();
+
+            // --- AVG PFT% calculation ---
+            let totalPft = 0, countPft = 0;
+            data.forEach(row => {
+                if (row.TotalAvgpftForTop) {
+                    totalPft += row.TotalAvgpftForTop;
+                    countPft++;
+                }
+            });
+            let avgPft = countPft > 0 ? (totalPft / countPft) : 0;
+
+            let pftHeader = document.getElementById("avgPftHeader");            
+            pftHeader.innerText = avgPft.toFixed(1) + "%";
+            // alert($("#avgPftHeader").html());
+                 //    send data to task-manager dashboard
+                    var avgPftHeaderVal = $("#avgPftHeader").html();
+                    const payload = {
+                         inv_route: "pricing-masters.pricing_masters",
+                         inv_value: avgPftHeaderVal,
+                     };
+                     const apiUrl = "https://new-tm.5coremanagement.com/api/save-channel-stats";
+
+                     // Send to backend
+                     fetch(apiUrl, {
+                         method: "POST",
+                         headers: {
+                             "Content-Type": "application/json",
+                             // Optional: include auth token if needed
+                             // "Authorization": "Bearer " + token
+                         },
+                         body: JSON.stringify(payload)
+                     })
+                     .then(response => response.json())
+                     .then(result => {
+                         console.log("✅ Stats saved successfully:", result);
+                     })
+                     .catch(error => {
+                         console.error("❌ Error saving stats:", error);
+                     });
+
+
+            // Style for AVG PFT%
+            let bgColorPft, textColorPft;
+            if (avgPft < 11) {
+                bgColorPft = "#ffe5e5"; textColorPft = "#ff0000";
+            } else if (avgPft >= 10 && avgPft < 15) {
+                bgColorPft = "yellow"; textColorPft = "#000000";
+            } else if (avgPft >= 15 && avgPft < 20) {
+                bgColorPft = "#e6f0ff"; textColorPft = "#0d6efd";
+            } else if (avgPft >= 21 && avgPft < 50) {
+                bgColorPft = "#e6ffe6"; textColorPft = "#198754";
+            } else {
+                bgColorPft = "#f5e6f5"; textColorPft = "#800080";
+            }
+            pftHeader.style.color = textColorPft;
+            pftHeader.style.backgroundColor = bgColorPft;
+            pftHeader.style.padding = "3px 6px";
+            pftHeader.style.borderRadius = "4px";
+            pftHeader.style.fontWeight = "600";
+
+            // --- AVG ROI% calculation ---
+            let totalRoi = 0, countRoi = 0;
+            data.forEach(row => {
+                if (row.TotalAvgRoiPer) {
+                    totalRoi += row.TotalAvgRoiPer;
+                    countRoi++;
+                }
+            });
+            let avgRoi = countRoi > 0 ? (totalRoi / countRoi) : 0;
+
+            let roiHeader = document.getElementById("avgRoiHeader");
+            roiHeader.innerText = Math.round(avgRoi) + "%";      
+            
+             //    send data to task-manager dashboard
+                    var avgROIHeaderVal = $("#avgRoiHeader").html();
+                    const ROIpayload = {
+                         inv_route: "pricing-masters.pricing_masters.roiHeader",
+                         inv_value: avgROIHeaderVal,
+                     };
+                    //  const apiUrl = "https://new-tm.5coremanagement.com/api/save-channel-stats";
+
+                     // Send to backend
+                     fetch(apiUrl, {
+                         method: "POST",
+                         headers: {
+                             "Content-Type": "application/json",
+                             // Optional: include auth token if needed
+                             // "Authorization": "Bearer " + token
+                         },
+                         body: JSON.stringify(ROIpayload)
+                     })
+                     .then(response => response.json())
+                     .then(result => {
+                         console.log("✅ Stats saved successfully:", result);
+                     })
+                     .catch(error => {
+                         console.error("❌ Error saving stats:", error);
+                     });
+
+
+            // Style for AVG ROI%
+            let bgColorRoi, textColorRoi;
+            if (avgRoi < 11) {
+                bgColorRoi = "#ffe5e5"; textColorRoi = "#ff0000";
+            } else if (avgRoi >= 10 && avgRoi < 15) {
+                bgColorRoi = "yellow"; textColorRoi = "#000000";
+            } else if (avgRoi >= 15 && avgRoi < 20) {
+                bgColorRoi = "#e6f0ff"; textColorRoi = "#0d6efd";
+            } else if (avgRoi >= 21 && avgRoi < 50) {
+                bgColorRoi = "#e6ffe6"; textColorRoi = "#198754";
+            } else {
+                bgColorRoi = "#f5e6f5"; textColorRoi = "#800080";
+            }
+            roiHeader.style.color = textColorRoi;
+            roiHeader.style.backgroundColor = bgColorRoi;
+            roiHeader.style.padding = "3px 6px";
+            roiHeader.style.borderRadius = "4px";
+            roiHeader.style.fontWeight = "600";
+        });
+
+
+
+
+    
+
+        let currentParentFilter = null;
+
+        function setCombinedFilters() {
+            table.setFilter(function(row) {
+                return true; // Show all rows by default
+            });
+        }
+
+        // Function to add trend indicators
+        function addTrendIndicators(row) {
+            const data = row.getData();
+            const cells = row.getCells();
+
+            cells.forEach(cell => {
+                const field = cell.getColumn().getField();
+                if (field.includes('l30') || field.includes('l60')) {
+                    const value = cell.getValue();
+                    const prevValue = data[field.replace('l30', 'l60')] || 0;
+
+                    if (value > prevValue) {
+                        cell.getElement().classList.add('trend-up');
+                    } else if (value < prevValue) {
+                        cell.getElement().classList.add('trend-down');
+                    }
+                }
+            });
+        }
+
+
+
+
+        // On TOp Caalculation
+
+        
+
+    </script>
+
+    <script>
+        // Helper: percent formatting
+        function fmtPct(v) {
+            if (v === null || v === undefined || v === "") return "-";
+            const num = parseFloat(v);
+            if (isNaN(num)) return "-";
+
+            
+            return Math.round(num * 100) + "%";
+        }
+
+
+        // Helper: money formatting
+        function fmtMoney(v) {
+            if (v === null || v === undefined || v === "") return "-";
+            const num = parseFloat(v);
+            if (isNaN(num)) return "-";
+            return "$" + num.toFixed(2);
+        }
+
+        // Copy SKU to clipboard function
+        function copySkuToClipboard(sku) {
+            navigator.clipboard.writeText(sku).then(() => {
+                // SKU copied to clipboard
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        }
+
+        // Marketplace table generator
+        function buildOVL30Table(data) {
+        console.log(data);
+          const rows = [
+                { label: "Amazon", prefix: "amz", logo: "<?php echo e(asset('uploads/amazon.png')); ?>" },
+                { label: "eBay", prefix: "ebay", logo:  "<?php echo e(asset('uploads/1.png')); ?>" },
+                { label: "Doba", prefix: "doba", logo: "<?php echo e(asset('uploads/doba.png')); ?>" },
+                { label: "Macy", prefix: "macy", logo: "<?php echo e(asset('uploads/macy.png')); ?>" },
+                { label: "Reverb", prefix: "reverb", logo: "<?php echo e(asset('uploads/reverb.png')); ?>" },
+                { label: "Temu", prefix: "temu", logo: "<?php echo e(asset('uploads/temu.jpeg')); ?>" },
+                { label: "Walmart", prefix: "walmart", logo: "<?php echo e(asset('uploads/walmart.png')); ?>" },
+                { label: "Wayfair", prefix: "wayfair", logo: "<?php echo e(asset('uploads/wayfair.png')); ?>" },
+                { label: "Mercari WO Ship", prefix: "mercariwoship", logo: "<?php echo e(asset('assets/5core.png')); ?>" },
+                { label: "Mercari W Ship", prefix: "mercariwship", logo: "<?php echo e(asset('assets/5core.png')); ?>" },
+                { label: "FB Marketplace", prefix: "fbmarketplace", logo: "<?php echo e(asset('assets/5core.png')); ?>" },
+                { label: "Business 5Core", prefix: "business5core", logo: "<?php echo e(asset('assets/5core.png')); ?>" },
+                { label: "PLS", prefix: "pls", logo: "<?php echo e(asset('assets/5core.png')); ?>" },
+                { label: "eBay2", prefix: "ebay2", logo: "<?php echo e(asset('uploads/2.png')); ?>" },
+                { label: "eBay3", prefix: "ebay3", logo: "<?php echo e(asset('uploads/3.png')); ?>" },
+                { label: "Shopify B2C", prefix: "shopifyb2c", logo: "<?php echo e(asset('uploads/shopify.png')); ?>" },
+                { label: "Shein", prefix: "shein", logo: "<?php echo e(asset('uploads/Shein.jpg')); ?>" },
+                { label: "Bestbuy", prefix: "bestbuy", logo: "<?php echo e(asset('uploads/bestbuy.jpeg')); ?>" },
+                { label: "Tiendamia", prefix: "tiendamia", logo: "<?php echo e(asset('uploads/ten.jpg')); ?>" },
+                { label: "TikTok", prefix: "tiktok", logo: "<?php echo e(asset('uploads/tiktok.png')); ?>" },
+                { label: "AliExpress", prefix: "aliexpress", logo: "<?php echo e(asset('uploads/aliexpress.png')); ?>" }
+            ];
+
+
+
+            let html = `
+<div class="table-responsive" style="background-color: #f8f9fa; border-radius: 8px; padding: 5px;">
+    <div class="mb-1 text-muted small">
+        <i class="bi bi-info-circle"></i> Default sorting: L30 (Highest to Lowest)
+    </div>
+    <div class="table-responsive" style="max-height: 600px; overflow-y: auto; position: relative;">
+        <table class="table table-sm table-bordered align-middle sortable-table mb-0" style="border-color: #dee2e6;">
+            <thead class="table-light position-sticky" style="top: 0; z-index: 1000;">
+                <tr>
+                    <th class="fw-bold" data-sort="string">Channel <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">L60 <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold default-sort" data-sort="number">L30 <i class="bi bi-arrow-down"></i></th>
+                    <th class="fw-bold" data-sort="number">PRC <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">GPFT% <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">ADVT% <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">PFT% <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">ROI% <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">Views L30 <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">CVR <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">LMP <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold">S Price</th>
+                    <th class="fw-bold" data-sort="number">S PFT <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">S ROI <i class="bi bi-arrow-down-up"></i></th>
+                </tr>
+            </thead>
+            <tbody class="table-striped">
+`;
+
+            
+
+            rows.forEach(r => {
+                const price = data[`${r.prefix}_price`];
+                const l30 = r.prefix === 'shopifyb2c' ? data['shopify_l30'] : data[`${r.prefix}_l30`];
+                const l60 = data[`${r.prefix}_l60`];
+                const pft = data[`${r.prefix}_pft`];
+                const roi = data[`${r.prefix}_roi`];
+                const cvr = data[`${r.prefix}_cvr`];
+                const reqCvr = data[`${r.prefix}_req_view`];
+
+                const hasAny = price != null || l30 != null || l60 != null || pft != null || roi != null;
+                if (!hasAny) return;
+
+                const getColor = (value) => {
+                    // Convert to number and handle percentage values
+                    const val = typeof value === 'string' ? parseFloat(value.replace('%', '')) : Number(value);
+                    console.log('Color value:', value, 'Parsed:', val); // Debug log
+                    
+                    // Make sure value is a finite number
+                    if (!isFinite(val) || isNaN(val)) return '#000000'; // default black
+                    
+                    // Handle percentage ranges
+                    if (val <= 0) return '#ff0000';                     // red for 0 or negative
+                    if (val > 0 && val <= 10) return '#ff0000';         // red (<=10)
+                    if (val > 10 && val <= 14) return '#fd7e14';       // orange
+                    if (val > 14 && val <= 19) return '#0d6efd';       // blue
+                    if (val > 19 && val <= 40) return '#198754';       // green
+                    if (val > 40) return '#800080';                    // purple
+                    
+                    return '#000000';                                  // default black
+                };
+
+                const pftClass = pft > 20 ? 'positive' : pft < 10 ? 'negative' : 'neutral';
+                const roiClass = roi > 30 ? 'positive' : roi < 15 ? 'negative' : 'neutral';
+                
+
+                html += `
+                 <tr>
+                    <td>
+                    <div class="d-flex flex-column align-items-center text-center">
+                        <div class="position-relative">
+                            <img src="${r.logo}" alt="${r.label}" 
+                                class="channel-logo mb-1" 
+                                style="width:30px; height:30px; object-fit:contain; cursor: pointer;"
+                                onmouseenter="showTooltip(this)"
+                                onmouseleave="hideTooltip(this)">
+                            
+                            <!-- Tooltip for links -->
+                            <div class="position-absolute bg-dark text-white p-2 rounded shadow-sm link-tooltip" 
+                                style="bottom: 0px; left: 70px; 
+                                       opacity: 0; visibility: hidden; transition: all 0.3s; 
+                                       white-space: nowrap; z-index: 1000; font-size: 11px;"
+                                onmouseenter="showTooltip(this.previousElementSibling)"
+                                onmouseleave="hideTooltip(this.previousElementSibling)">
+                                ${r.prefix === 'amz' ? `
+                                    ${data.amz_seller_link ? `<div><strong>SL:</strong> <a href="${data.amz_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.amz_buyer_link ? `<div><strong>BL:</strong> <a href="${data.amz_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'ebay' ? `
+                                    ${data.ebay_seller_link ? `<div><strong>SL:</strong> <a href="${data.ebay_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.ebay_buyer_link ? `<div><strong>BL:</strong> <a href="${data.ebay_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'ebay2' ? `
+                                    ${data.ebay2_seller_link ? `<div><strong>SL:</strong> <a href="${data.ebay2_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.ebay2_buyer_link ? `<div><strong>BL:</strong> <a href="${data.ebay2_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'ebay3' ? `
+                                    ${data.ebay3_seller_link ? `<div><strong>SL:</strong> <a href="${data.ebay3_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.ebay3_buyer_link ? `<div><strong>BL:</strong> <a href="${data.ebay3_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'macy' ? `
+                                    ${data.macy_seller_link ? `<div><strong>SL:</strong> <a href="${data.macy_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.macy_buyer_link ? `<div><strong>BL:</strong> <a href="${data.macy_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'reverb' ? `
+                                    ${data.reverb_seller_link ? `<div><strong>SL:</strong> <a href="${data.reverb_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.reverb_buyer_link ? `<div><strong>BL:</strong> <a href="${data.reverb_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'walmart' ? `
+                                    ${data.walmart_seller_link ? `<div><strong>SL:</strong> <a href="${data.walmart_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.walmart_buyer_link ? `<div><strong>BL:</strong> <a href="${data.walmart_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'doba' ? `
+                                    ${data.doba_seller_link ? `<div><strong>SL:</strong> <a href="${data.doba_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.doba_buyer_link ? `<div><strong>BL:</strong> <a href="${data.doba_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'temu' ? `
+                                    ${data.temu_seller_link ? `<div><strong>SL:</strong> <a href="${data.temu_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.temu_buyer_link ? `<div><strong>BL:</strong> <a href="${data.temu_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'shopifyb2c' ? `
+                                    ${data.shopifyb2c_seller_link ? `<div><strong>SL:</strong> <a href="${data.shopifyb2c_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.shopifyb2c_buyer_link ? `<div><strong>BL:</strong> <a href="${data.shopifyb2c_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                 ` : r.prefix === 'shein' ? `
+                                    ${data.shein_seller_link ? `<div><strong>SL:</strong> <a href="${data.shein_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.shein_buyer_link ? `<div><strong>BL:</strong> <a href="${data.shein_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'bestbuy' ? `
+                                    ${data.bestbuy_seller_link ? `<div><strong>SL:</strong> <a href="${data.bestbuy_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.bestbuy_buyer_link ? `<div><strong>BL:</strong> <a href="${data.bestbuy_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : r.prefix === 'tiendamia' ? `
+                                    ${data.tiendamia_seller_link ? `<div><strong>SL:</strong> <a href="${data.tiendamia_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.tiendamia_buyer_link ? `<div><strong>BL:</strong> <a href="${data.tiendamia_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : ''}
+                                ${r.prefix === 'tiktok' ? `
+                                    ${data.tiktok_seller_link ? `<div><strong>SL:</strong> <a href="${data.tiktok_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.tiktok_buyer_link ? `<div><strong>BL:</strong> <a href="${data.tiktok_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : ''}
+                                 ${r.prefix === 'aliexpress' ? `
+                                    ${data.aliexpress_seller_link ? `<div><strong>SL:</strong> <a href="${data.aliexpress_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.aliexpress_buyer_link ? `<div><strong>BL:</strong> <a href="${data.aliexpress_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : ''}
+                                ${r.prefix === 'wayfair' ? `
+                                    ${data.wayfair_seller_link ? `<div><strong>SL:</strong> <a href="${data.wayfair_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.wayfair_buyer_link ? `<div><strong>BL:</strong> <a href="${data.wayfair_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : ''}
+                                ${r.prefix === 'fbmarketplace' ? `
+                                    ${data.fbmarketplace_seller_link ? `<div><strong>SL:</strong> <a href="${data.fbmarketplace_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.fbmarketplace_buyer_link ? `<div><strong>BL:</strong> <a href="${data.fbmarketplace_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : ''}
+                                ${r.prefix === 'mercariwoship' ? `
+                                    ${data.mercariwoship_seller_link ? `<div><strong>SL:</strong> <a href="${data.mercariwoship_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.mercariwoship_buyer_link ? `<div><strong>BL:</strong> <a href="${data.mercariwoship_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : ''}
+                                ${r.prefix === 'mercariwship' ? `
+                                    ${data.mercariwship_seller_link ? `<div><strong>SL:</strong> <a href="${data.mercariwship_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.mercariwship_buyer_link ? `<div><strong>BL:</strong> <a href="${data.mercariwship_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : ''}
+                                ${r.prefix === 'business5core' ? `
+                                    ${data.business5core_seller_link ? `<div><strong>SL:</strong> <a href="${data.business5core_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.business5core_buyer_link ? `<div><strong>BL:</strong> <a href="${data.business5core_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : ''}
+                                ${r.prefix === 'pls' ? `
+                                    ${data.pls_seller_link ? `<div><strong>SL:</strong> <a href="${data.pls_seller_link}" target="_blank" class="text-info">Seller Link</a></div>` : ''}
+                                    ${data.pls_buyer_link ? `<div><strong>BL:</strong> <a href="${data.pls_buyer_link}" target="_blank" class="text-success">Buyer Link</a></div>` : ''}
+                                ` : ''}
+
+                            </div>
+                        </div>
+                        <span class="small fw-bold">${r.label}</span>
+                    </div>
+                    </td>
+
+                    <td>
+                        <div class="value-indicator">
+                            ${l60 ?? "-"}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="value-indicator">
+                            ${l30 ?? "-"}
+                        </div>
+                    </td>
+                
+                    <td>
+                        <div class="value-indicator">
+                            ${fmtMoney(price)}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="value-indicator">
+                            0
+                        </div>
+                    </td>
+                    <td>
+                        <div class="value-indicator">
+                            0
+                        </div>
+                    </td>
+                    <td>
+                        <div class="value-indicator ${pftClass}" style="color: ${getColor(pft * 100)};">
+                            ${fmtPct(pft)}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="value-indicator ${roiClass}" style="color: ${getColor(roi * 100)};">
+                            ${fmtPct(roi)}
+                        </div>
+                    </td>
+                
+                
+                    <td>
+                        <div class="value-indicator">
+                            ${r.prefix === 'amz' ? (data.sessions_l30 ?? "-") 
+                                : r.prefix === 'ebay' ? (data.ebay_views ?? "-") 
+                                : r.prefix === 'ebay2' ? (data.ebay2_views ?? "-") 
+                                : r.prefix === 'ebay3' ? (data.ebay3_views ?? "-") 
+                                : r.prefix === 'shein' ? (data.views_clicks ?? "-")
+                                : r.prefix === 'reverb' ? (data.reverb_views ?? "-")
+                                : r.prefix === 'temu' ? (data.temu_views ?? "-")
+                                : r.prefix === 'wayfair' ? (data.wayfair_views ?? "-")
+                                : r.prefix === 'fbmarketplace' ? (data.fbmarketplace_views ?? "-")
+                                : r.prefix === 'mercariwoship' ? (data.mercariwoship_views ?? "-")
+                                : r.prefix === 'mercariwship' ? (data.mercariwship_views ?? "-")
+                                : r.prefix === 'tiktok' ? (data.tiktok_views ?? "-")
+                                : r.prefix === 'aliexpress' ? (data.aliexpress_views ?? "-")
+                                : "-" }
+                        </div>
+                    </td>
+                    <td>
+                    <div data-mkt="`+r.label+`" data-sku="`+data.SKU+`" class="value-indicator cvrTD">
+                    ${(() => {
+                        if (cvr && ['amz','ebay','ebay3','shein','reverb','temu','tiktok','aliexpress'].includes(r.prefix)) {
+                            const val = Number(cvr.value) || 0; // convert to number safely
+                            return `<span style="color: ${cvr.color}">${val.toFixed(1)}%</span>`;
+                        }
+                        return "N/A";
+                    })()} 
+                    </div>
+
+                    </td>
+                      
+
+                    <td>
+                        <div class="value-indicator d-flex align-items-center">
+                            ${(() => {
+                                // Only show LMP for specific channels with their rightful sources
+                                if (r.prefix === 'amz') {
+                                    const priceValue = data.price_lmpa;
+                                    const link = data.link_amz;
+                                    if (priceValue && Number(priceValue) > 0) {
+                                        return `
+                                            <div>${fmtMoney(priceValue)}</div>
+                                            ${link ? `<a href="${link}" target="_blank" class="ms-1"><i class=\"bi bi-link\"></i></a>` : ''}
+                                            <button class="btn btn-link btn-sm p-0 ms-2" onclick="event.stopPropagation(); showLmpData('${data.SKU}', 'amz')" title="View LMP History"><i class="fas fa-eye"></i></button>
+                                        `;
+                                    }
+                                    return '-';
+                                }
+                                if (r.prefix === 'ebay') {
+                                    const priceValue = data.ebay_price_lmpa;
+                                    const link = data.link_ebay;
+                                    if (priceValue && Number(priceValue) > 0) {
+                                        return `
+                                            <div>${fmtMoney(priceValue)}</div>
+                                            ${link ? `<a href="${link}" target="_blank" class="ms-1"><i class=\"bi bi-link\"></i></a>` : ''}
+                                            <button class="btn btn-link btn-sm p-0 ms-2" onclick="event.stopPropagation(); showLmpData('${data.SKU}', 'ebay')" title="View LMP History"><i class="fas fa-eye"></i></button>
+                                        `;
+                                    }
+                                    return '-';
+                                }
+                                if (r.prefix === 'shein') {
+                                    const priceValue = data.lmp;
+                                    const link = data.link_shein;
+                                    if (priceValue && Number(priceValue) > 0) {
+                                        return `
+                                            <div>${fmtMoney(priceValue)}</div>
+                                            ${link ? `<a href="${link}" target="_blank" class="ms-1"><i class=\"bi bi-link\"></i></a>` : ''}
+                                        `; // No eye button for Shein (sheet-based, not repricer history)
+                                    }
+                                    return '-';
+                                }
+                                // Other channels: no LMP history shown
+                                return '-';
+                            })()}
+                        </div>
+                    </td>
+
+
+                
+
+              <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <input type="text" 
+                            class="form-control form-control-sm s-price" 
+                            value="${price}"
+                            style="width: 65px;" 
+                            step="any"
+                            data-sku="${data.SKU}" 
+                            data-lp="${data.LP}" 
+                            data-ship="${
+                                r.prefix === 'temu' ? (data.temu_ship || '') : (data.SHIP || '')
+                            }"
+                            data-type="${r.prefix}">
+
+                        <!-- Push to Marketplace -->
+                        <button class="btn btn-success btn-sm d-flex align-items-center pushPriceBtn" 
+                            type="button"
+                            data-sku="${data.SKU}" 
+                            data-type="${r.prefix}">
+                            <i class="bi bi-cloud-arrow-up"></i>
+                        </button>
+                    </div>
+                </td>
+
+
+                    <td class="spft-field">
+                        ${(() => {
+                            let value, textColor, bgColor;
+                            
+                            if (r.prefix === 'amz' && data.amz_spft) {
+                                value = Math.round(data.amz_spfst);
+                            } else if (r.prefix === 'ebay' && data.ebay_spft) {
+                                value = Math.round(data.ebay_spft);
+                            } else if (r.prefix === 'shopifyb2c' && data.shopifyb2c_spft) {
+                                value = Math.round(data.shopifyb2c_spft);
+                            } else if (r.prefix === 'ebay2' && data.ebay2_spft) {
+                                value = Math.round(data.ebay2_spft);
+                            } else if (r.prefix === 'ebay3' && data.ebay3_spft) {
+                                value = Math.round(data.ebay3_spft);
+                            } else if (r.prefix === 'doba' && data.doba_spft) {
+                                value = Math.round(data.doba_spft);
+                            } else if (r.prefix === 'temu' && data.temu_spft) {
+                                value = Math.round(data.temu_spft);
+                            } else if (r.prefix === 'macy' && data.macy_spft) {
+                                value = Math.round(data.macy_spft);
+                            } else if (r.prefix === 'reverb' && data.reverb_spft) {
+                                value = Math.round(data.reverb_spft);
+                            } else if (r.prefix === 'walmart' && data.walmart_spft) {
+                                value = Math.round(data.walmart_spft);
+                            }
+                            else if (r.prefix === 'shein' && data.shein_spft) {
+                                value = Math.round(data.shein_spft);
+                            }
+                            else if (r.prefix === 'bestbuy' && data.bestbuy_spft) {
+                                value = Math.round(data.bestbuy_spft);
+                            }
+                            else if (r.prefix === 'tiendamia' && data.tiendamia_spft) {
+                                value = Math.round(data.tiendamia_spft);
+                            } else if (r.prefix === 'tiktok' && data.tiktok_spft) {
+                                value = Math.round(data.tiktok_spft);
+                            }
+                            else if (r.prefix === 'aliexpress' && data.aliexpress_spft) {
+                                value = Math.round(data.aliexpress_spft);
+                            }
+
+                            if (value !== undefined) {
+                                if (value <= 0) {
+                                    textColor = '#ff0000';
+                                } else if (value < 11) {
+                                    textColor = '#ff0000';
+                                } else if (value >= 10 && value < 15) {
+                                    bgColor = 'yellow';
+                                    textColor = '#000000';
+                                } else if (value >= 15 && value < 20) {
+                                    textColor = '#0d6efd';
+                                } else if (value >= 21 && value < 50) {
+                                    textColor = '#198754';
+                                } else {
+                                    textColor = '#800080';
+                                }
+                                
+                                return `<span style="color: ${textColor}; ${bgColor ? `background-color: ${bgColor};` : ''}">${value}%</span>`;
+                            }
+                            
+                            return '-';
+                        })()}
+                    </td>
+
+                    <td class="sroi-field">
+                        ${(() => {
+                            let value, textColor, bgColor;
+                            
+                            if (r.prefix === 'amz' && data.amz_sroi) {
+                                value = Math.round(data.amz_sroi);
+                            } else if (r.prefix === 'ebay' && data.ebay_sroi) {
+                                value = Math.round(data.ebay_sroi);
+                            } else if (r.prefix === 'shopifyb2c' && data.shopifyb2c_sroi) {
+                                value = Math.round(data.shopifyb2c_sroi);
+                            } else if (r.prefix === 'ebay2' && data.ebay2_sroi) {
+                                value = Math.round(data.ebay2_sroi);
+                            } else if (r.prefix === 'ebay3' && data.ebay3_sroi) {
+                                value = Math.round(data.ebay3_sroi);
+                            }else if (r.prefix === 'doba' && data.doba_sroi) {
+                                value = Math.round(data.doba_sroi);
+                            } else if (r.prefix === 'temu' && data.temu_sroi) {
+                                value = Math.round(data.temu_sroi);
+                            } else if (r.prefix === 'macy' && data.macy_sroi) {
+                                value = Math.round(data.macy_sroi);
+                            } else if (r.prefix === 'reverb' && data.reverb_sroi) {
+                                value = Math.round(data.reverb_sroi);
+                            } else if (r.prefix === 'walmart' && data.walmart_sroi) {
+                                value = Math.round(data.walmart_sroi);
+                            } else if (r.prefix === 'shein' && data.shein_sroi) {
+                                value = Math.round(data.shein_sroi);
+                            } else if (r.prefix === 'bestbuy' && data.bestbuy_sroi) {
+                                value = Math.round(data.bestbuy_sroi);
+                            } else if (r.prefix === 'tiendamia' && data.tiendamia_sroi) {
+                                value = Math.round(data.tiendamia_sroi);
+                            } else if (r.prefix === 'tiktok' && data.tiktok_sroi) {
+                                value = Math.round(data.tiktok_sroi);
+                            } else if (r.prefix === 'aliexpress' && data.aliexpress_sroi) {
+                                value = Math.round(data.aliexpress_sroi);
+                            }
+
+
+
+                            if (value !== undefined) {
+                                if (value <= 0) {
+                                    textColor = '#ff0000';
+                                } else if (value < 11) {
+                                    textColor = '#ff0000';
+                                } else if (value >= 10 && value < 15) {
+                                    bgColor = 'yellow';
+                                    textColor = '#000000';
+                                } else if (value >= 15 && value < 20) {
+                                    textColor = '#0d6efd';
+                                } else if (value >= 21 && value < 50) {
+                                    textColor = '#198754';
+                                } else {
+                                    textColor = '#800080';
+                                }
+                                
+                                return `<span style="color: ${textColor}; ${bgColor ? `background-color: ${bgColor};` : ''}">${value}%</span>`;
+                            }
+                            
+                            return '-';
+                        })()}
+                    </td>
+                   
+
+                </tr>
+                `;
+            });
+
+            html += "</tbody></table></div>";
+          
+
+            return html;
+        }
+
+        // Modal open function
+        function showOVL30Modal(row) {
+            const data = row.getData();
+            
+            console.log('OVL30 Data:', data);
+            console.log('Link:', data.link);
+            
+            // Initialize top push button
+            const topPushPrice = document.getElementById('topPushPrice');
+            const topPushBtn = document.getElementById('topPushBtn');
+            const topSaveBtn = document.getElementById('topSaveBtn');
+            
+            topPushBtn.dataset.sku = data.SKU;
+            topSaveBtn.dataset.sku = data.SKU;
+            topSaveBtn.dataset.lp = data.LP || 0;
+            topSaveBtn.dataset.ship = data.SHIP || 0;
+            topSaveBtn.dataset.temuShip = data.temu_ship || 0;
+            topPushPrice.value = data.shopifyb2c_price || data.ebay_price || data.amz_price || '';
+            
+            // Update modal title with SKU
+            document.getElementById('ovl30SkuLabel').innerHTML = `${data.SKU || "0"} <button class="btn btn-sm btn-outline-light ms-2" onclick="copySkuToClipboard('${data.SKU || "0"}')"><i class="bi bi-clipboard"></i></button>`;
+            
+            // Update all badge values
+            document.getElementById('pricingInventory').textContent = data.INV ? Math.round(data.INV) : "0";
+            document.getElementById('pricingOVL30').textContent = data.shopifyb2c_l30 ? Math.round(data.shopifyb2c_l30) : "0";
+            document.getElementById('pricingAvgPrice').textContent = data.formattedAvgPrice ? `$${data.formattedAvgPrice}` : "$0.00";
+            document.getElementById('dilPercentage').textContent = data.dilPercentage ? `${data.dilPercentage}` : "0";
+            document.getElementById('formattedProfitPercentage').textContent = data.avgPftPercent ? `${data.avgPftPercent}` : "0";
+            document.getElementById('formattedRoiPercentage').textContent = data.avgRoi ? `${Math.round(data.avgRoi)}` : "0";
+            document.getElementById('avgCvr').textContent = data.avgCvr ? `${data.avgCvr}` : "0";
+            document.getElementById('total_views').textContent = data.total_views ? `${Math.round(data.total_views)}` : "0";
+            document.getElementById('total_l30_count').textContent = data.total_l30_count ? `${data.total_l30_count}` : "0";
+            document.getElementById('total_l60_count').textContent = data.total_l60_count ? `${data.total_l60_count}` : "0";
+            document.getElementById('total_l30_count_data').textContent = data.total_l30_count_data ? `${data.total_l30_count_data}` : "0";
+            document.getElementById('gpft_data').textContent = data.gpft_data || "0";
+            
+            // Handle image
+            const imgEl = document.getElementById('ovl30Img');
+            if (imgEl) {
+                if (data.shopifyb2c_image) {
+                    imgEl.src = data.shopifyb2c_image;
+                    imgEl.style.display = "block";
+                } else {
+                    imgEl.style.display = "none";
+                }
+            }
+            
+            // Apply color styling to stats cards
+            const priceElement = document.getElementById('pricingAvgPrice');
+            if (data.formattedAvgPrice) {
+                const avgPriceValue = parseFloat(data.formattedAvgPrice);
+                if (!isNaN(avgPriceValue)) {
+                    if (avgPriceValue < 10) {
+                        priceElement.style.color = '#dc3545';
+                    } else if (avgPriceValue >= 10 && avgPriceValue < 15) {
+                        priceElement.style.color = '#fd7e14';
+                    } else if (avgPriceValue >= 15 && avgPriceValue < 20) {
+                        priceElement.style.color = '#0d6efd';
+                    } else if (avgPriceValue >= 20) {
+                        priceElement.style.color = '#198754';
+                    }
+                }
+            }
+
+            // Apply dilution color styling to badge parent
+            if (data.dilPercentage) {
+                const dilElement = document.getElementById('dilPercentage');
+                const rounded = data.dilPercentage;
+                
+                if (rounded >= 0 && rounded <= 10) {
+                    dilElement.style.color = "red";
+                } else if (rounded >= 11 && rounded <= 15) {
+                    dilElement.style.backgroundColor = "yellow";
+                    dilElement.style.color = "black"; 
+                    dilElement.style.padding = "2px 4px";
+                    dilElement.style.borderRadius = "4px";
+                } else if (rounded >= 16 && rounded <= 20) {
+                    dilElement.style.color = "blue";
+                } else if (rounded >= 21 && rounded <= 40) {
+                    dilElement.style.color = "green";
+                } else if (rounded >= 41) {
+                    dilElement.style.color = "purple";
+                }
+            }
+
+            document.getElementById('ovl30Content').innerHTML = buildOVL30Table(data);
+
+            const modalEl = document.getElementById('ovl30Modal');
+            const modal = new bootstrap.Modal(modalEl);
+
+            // Automatically sort by L30 (highest to lowest) when modal opens
+            setTimeout(() => {
+                const table = modalEl.querySelector('.sortable-table');
+                const l30Header = Array.from(table.querySelectorAll('th')).find(th => th.textContent.includes('L30'));
+                if (l30Header) {
+                    // Trigger two clicks if needed to get descending order (highest to lowest)
+                    if (!l30Header.classList.contains('sort-desc')) {
+                        l30Header.click();
+                        if (!l30Header.classList.contains('sort-desc')) {
+                            l30Header.click();
+                        }
+                    }
+                }
+            }, 100);
+
+            // Make modal draggable
+            const dialogEl = modalEl.querySelector('.modal-dialog');
+            let isDragging = false;
+            let currentX;
+            let currentY;
+            let initialX;
+            let initialY;
+            let xOffset = 0;
+            let yOffset = 0;
+
+            dialogEl.addEventListener('mousedown', function dragStart(e) {
+                if (!(e.target.closest('.modal-header') && !e.target.closest('button'))) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.target.closest('.modal-header') && !e.target.closest('button')) {
+                    isDragging = true;
+                    initialX = e.clientX - xOffset;
+                    initialY = e.clientY - yOffset;
+
+                    const onMove = (me) => {
+                        if (!isDragging) return;
+                        me.preventDefault();
+                        currentX = me.clientX - initialX;
+                        currentY = me.clientY - initialY;
+                        xOffset = currentX;
+                        yOffset = currentY;
+                        dialogEl.style.transform = `translate(${currentX}px, ${currentY}px)`;
+                    };
+                    const onUp = () => {
+                        isDragging = false;
+                        document.removeEventListener('mousemove', onMove);
+                        document.removeEventListener('mouseup', onUp);
+                    };
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                }
+            });
+
+            // Reset position when modal is hidden
+            modalEl.addEventListener('hidden.bs.modal', function() {
+                dialogEl.style.transform = 'none';
+                xOffset = 0;
+                yOffset = 0;
+            });
+
+            // Initialize table sorting
+            initTableSorting(modalEl.querySelector('.sortable-table'));
+            modal.show();
+        }
+
+        
+
+        // Table sorting functionality
+        function initTableSorting(table) {
+            const headers = table.querySelectorAll('th[data-sort]');
+            headers.forEach(header => {
+                header.style.cursor = 'pointer';
+                header.addEventListener('click', () => {
+                    const sortType = header.getAttribute('data-sort');
+                    const columnIndex = Array.from(header.parentElement.children).indexOf(header);
+                    const rows = Array.from(table.querySelector('tbody').rows);
+                    const isAscending = header.classList.contains('sort-asc');
+
+                    // Remove sorting classes from all headers
+                    headers.forEach(h => {
+                        h.classList.remove('sort-asc', 'sort-desc');
+                        h.querySelector('.bi').className = 'bi bi-arrow-down-up';
+                    });
+
+                    // Sort the rows
+                    rows.sort((a, b) => {
+                        let aVal = a.cells[columnIndex].textContent.trim();
+                        let bVal = b.cells[columnIndex].textContent.trim();
+
+                        if (sortType === 'number') {
+                            // Extract numbers from strings and convert to float
+                            aVal = parseFloat(aVal.replace(/[^0-9.-]+/g, '')) || 0;
+                            bVal = parseFloat(bVal.replace(/[^0-9.-]+/g, '')) || 0;
+                        }
+
+                        if (aVal === bVal) return 0;
+                        if (isAscending) {
+                            return sortType === 'string' ? 
+                                bVal.localeCompare(aVal) : 
+                                bVal - aVal;
+                        } else {
+                            return sortType === 'string' ? 
+                                aVal.localeCompare(bVal) : 
+                                aVal - bVal;
+                        }
+                    });
+
+                    // Update sorting indicators
+                    header.classList.add(isAscending ? 'sort-desc' : 'sort-asc');
+                    header.querySelector('.bi').className = `bi bi-arrow-${isAscending ? 'down' : 'up'}`;
+
+                    // Reorder the rows in the table
+                    const tbody = table.querySelector('tbody');
+                    rows.forEach(row => tbody.appendChild(row));
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.documentElement.setAttribute("data-sidenav-size", "condensed");
+            const table = Tabulator.findTable("#forecast-table")[0];
+
+            const parentKeys = () => Object.keys(groupedSkuData);
+            let currentIndex = 0;
+            let isPlaying = false;
+
+            function renderGroup(parentKey) {
+                if (!groupedSkuData[parentKey]) return;
+
+                currentParentFilter = parentKey;
+                setCombinedFilters();
+
+                // Filter table by Parent
+                table.setFilter("Parent", "=", parentKey);
+                console.log("Showing group:", parentKey);
+            }
+
+            // ▶️ Play (activate filter mode, start at first group)
+            document.getElementById('play-auto').addEventListener('click', () => {
+                isPlaying = true;
+                currentIndex = 0;
+                renderGroup(parentKeys()[currentIndex]);
+
+                document.getElementById('play-pause').style.display = 'inline-block';
+                document.getElementById('play-auto').style.display = 'none';
+            });
+
+            // ⏸ Pause (show all data again)
+            document.getElementById('play-pause').addEventListener('click', () => {
+                isPlaying = false;
+                currentParentFilter = null; 
+                setCombinedFilters();
+                table.clearFilter();
+
+                document.getElementById('play-pause').style.display = 'none';
+                document.getElementById('play-auto').style.display = 'inline-block';
+            });
+
+            // ⏩ Forward (manual step)
+            document.getElementById('play-forward').addEventListener('click', () => {
+                if (!isPlaying) return;
+                currentIndex = (currentIndex + 1) % parentKeys().length;
+                renderGroup(parentKeys()[currentIndex]);
+            });
+
+            // ⏪ Backward (manual step)
+            document.getElementById('play-backward').addEventListener('click', () => {
+                if (!isPlaying) return;
+                currentIndex = (currentIndex - 1 + parentKeys().length) % parentKeys().length;
+                renderGroup(parentKeys()[currentIndex]);
+            });
+        });
+
+        // Draggable Modal for Chart 
+        document.addEventListener("DOMContentLoaded", function () {
+            // Toggle Fullscreen for OVL30 Modal
+            const toggleBtn = document.getElementById('toggleModalFullscreen');
+            const ovl30Modal = document.getElementById('ovl30Modal');
+            
+            if (toggleBtn && ovl30Modal) {
+                toggleBtn.addEventListener('click', function() {
+                    const ovl30Dialog = ovl30Modal.querySelector('.modal-dialog');
+                    if (ovl30Dialog.classList.contains('modal-xl')) {
+                        ovl30Dialog.classList.remove('modal-xl');
+                        ovl30Dialog.classList.add('modal-fullscreen');
+                        this.querySelector('i').classList.remove('fa-expand');
+                        this.querySelector('i').classList.add('fa-compress');
+                    } else {
+                        ovl30Dialog.classList.remove('modal-fullscreen');
+                        ovl30Dialog.classList.add('modal-xl');
+                        this.querySelector('i').classList.remove('fa-compress');
+                        this.querySelector('i').classList.add('fa-expand');
+                    }
+                });
+            }
+            
+            const modal = document.querySelector("#priceComparisonModal .modal-dialog");
+            const header = document.querySelector("#priceComparisonModal .modal-header");
+
+            let isDragging = false;
+            let offsetX, offsetY;
+
+            header.style.cursor = "move";
+
+            header.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                isDragging = true;
+                const rect = modal.getBoundingClientRect();
+                offsetX = e.clientX - rect.left;
+                offsetY = e.clientY - rect.top;
+                modal.style.position = "absolute";
+                modal.style.margin = "0";
+
+                const onMove = (me) => {
+                    if (!isDragging) return;
+                    modal.style.left = me.clientX - offsetX + "px";
+                    modal.style.top = me.clientY - offsetY + "px";
+                };
+                const onUp = () => {
+                    isDragging = false;
+                    document.removeEventListener("mousemove", onMove);
+                    document.removeEventListener("mouseup", onUp);
+                };
+                document.addEventListener("mousemove", onMove);
+                document.addEventListener("mouseup", onUp);
+            });
+
+            // Reset position when modal is closed
+            document.getElementById("priceComparisonModal").addEventListener("hidden.bs.modal", function () {
+                modal.style.position = "";
+                modal.style.left = "";
+                modal.style.top = "";
+                modal.style.margin = "";
+            });
+        });
+
+        // Draggable functionality removed from LMP Data modal to allow proper sizing
+
+
+        // Global object to track pending save operations
+        window.pendingSaves = window.pendingSaves || {};
+
+        // Push Price
+        $(document).on('blur', '.s-price', function() {
+            const $input = $(this);
+            const sprice = parseFloat($input.val()) || 0;
+            const sku = $input.data('sku');
+            const type = $input.data('type');
+            const LP = parseFloat($input.data('lp')) || 0;
+            const SHIP = parseFloat($input.data('ship')) || 0;
+            const temu_ship = parseFloat($input.data('temu_ship')) || 0;
+
+            if (!sku || !type) return;
+
+            console.log('Saving S Price for:', sku, sprice);
+            
+            // Mark this SKU as having a pending save
+            window.pendingSaves[sku] = true;
+            
+            // Disable push buttons for this SKU
+            $(`.pushPriceBtn[data-sku="${sku}"]`).prop('disabled', true).css('opacity', '0.5');
+            
+            $.ajax({
+                url: '/pricing-master/save-sprice',
+                type: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    type: type,
+                    sprice: sprice,
+                    LP: LP,
+                    SHIP: SHIP,
+                    temu_ship: temu_ship
+                },
+                beforeSend: function() {
+                    $('#savePricingBtn').html('<i class="fa fa-spinner fa-spin"></i> Saving...');
+                    $input.css('border', '2px solid orange');
+                },
+                success: function(res) {
+                    if(res.status === 200) {
+                        const $row = $input.closest('tr');
+                        const spft = Math.round(res.data.SPFT);
+                        const sroi = Math.round(res.data.SROI);
+
+                        function getColoredSpan(value) {
+                            let textColor, bgColor;
+
+                            if (value <= 0) {
+                                textColor = '#ff0000';
+                            } else if (value < 11) {
+                                textColor = '#ff0000';
+                            } else if (value >= 10 && value < 15) {
+                                bgColor = 'yellow';
+                                textColor = '#000000';
+                            } else if (value >= 15 && value < 20) {
+                                textColor = '#0d6efd';
+                            } else if (value >= 21 && value < 50) {
+                                textColor = '#198754';
+                            } else {
+                                textColor = '#800080';
+                            }
+
+                            return `<span style="color:${textColor};${bgColor ? `background-color:${bgColor};` : ''}">${value}%</span>`;
+                        }
+
+                        // Update with styled spans
+                        $row.find('.spft-field').html(getColoredSpan(spft));
+                        $row.find('.sroi-field').html(getColoredSpan(sroi));
+                        
+                        // Show success indicator
+                        $input.css('border', '2px solid green');
+                        setTimeout(() => {
+                            $input.css('border', '');
+                        }, 2000);
+                        
+                        console.log('✅ S Price saved successfully for:', sku);
+                    } else {
+                        console.error('Error saving S Price:', res.message);
+                        $input.css('border', '2px solid red');
+                    }
+                },
+                error: function(err) {
+                    console.error('Error saving S Price:', err);
+                    $input.css('border', '2px solid red');
+                },
+                complete: function() {
+                    // Mark save as complete and re-enable push buttons
+                    delete window.pendingSaves[sku];
+                    $(`.pushPriceBtn[data-sku="${sku}"]`).prop('disabled', false).css('opacity', '1');
+                }
+            });
+        });
+
+
+        // Save top price button handler
+        $(document).on('click', '#topSaveBtn', function() {
+            const sku = $(this).data('sku');
+            const price = parseFloat($('#topPushPrice').val()) || 0;
+            const LP = parseFloat($(this).data('lp')) || 0;
+            const SHIP = parseFloat($(this).data('ship')) || 0;
+            const temu_ship = parseFloat($(this).data('temuShip')) || 0;
+
+            console.log('Saving TOP price for SKU:', sku, 'Price:', price);
+
+            if (!sku || price <= 0) {
+                alert('Please enter a valid price');
+                return;
+            }
+
+            const $pushBtn = $('#topPushBtn');
+            const $saveBtn = $(this);
+            
+            // Disable both buttons during save
+            $pushBtn.prop('disabled', true).css('opacity', '0.6');
+            $saveBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Saving...');
+            
+            // Mark as pending save
+            window.pendingSaves[sku] = true;
+            
+            $.ajax({
+                url: '/pricing-master/save-sprice',
+                type: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    sku: sku,
+                    type: 'top',
+                    sprice: price,
+                    LP: LP,
+                    SHIP: SHIP,
+                    temu_ship: temu_ship
+                },
+                success: function(res) {
+                    if (res.status === 200) {
+                        $saveBtn.html('<i class="fa fa-check"></i> Saved!').css('color', 'green');
+                        
+                        // Wait 2 seconds before enabling push button
+                        setTimeout(function() {
+                            $pushBtn.prop('disabled', false).css('opacity', '1');
+                            $saveBtn.prop('disabled', false).html('Save').css('color', '');
+                        }, 2000);
+                        
+                        console.log('✅ TOP price saved successfully');
+                    } else {
+                        alert('Failed to save price: ' + (res.message || 'Unknown error'));
+                        $saveBtn.html('Save Failed').css('color', 'red');
+                        setTimeout(function() {
+                            $saveBtn.prop('disabled', false).html('Save').css('color', '');
+                        }, 2000);
+                    }
+                },
+                error: function(err) {
+                    console.error('Error saving price:', err);
+                    alert('Error saving price. Please try again.');
+                    $saveBtn.html('Error').css('color', 'red');
+                    setTimeout(function() {
+                        $saveBtn.prop('disabled', false).html('Save').css('color', '');
+                    }, 2000);
+                },
+                complete: function() {
+                    delete window.pendingSaves[sku];
+                }
+            });
+        });
+
+            $(document).on('click', '.pushPriceBtn, #topPushBtn', function() {
+            const $btn = $(this);
+            const sku = $btn.data('sku') || $('#topPushBtn').data('sku');
+            
+            // Check if there's a pending save for this SKU
+            if (window.pendingSaves && window.pendingSaves[sku]) {
+                alert('⚠️ Please wait! Price is being saved for SKU: ' + sku);
+                return;
+            }
+            
+            let price;
+            
+            if($btn.attr('id') === 'topPushBtn') {
+                price = parseFloat($('#topPushPrice').val()) || 0;
+                if(price <= 0) {
+                    alert('Please enter a valid price');
+                    return;
+                }
+                
+                // Disable button during push
+                $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Pushing...').css('opacity', '0.6');
+                
+                let errorMessages = [];
+                let successCount = 0;
+                
+                // Sequential API calls with delay to avoid rate limits
+                async function pushToAllMarketplaces() {
+                    const marketplaces = [
+                        { name: 'Amazon', url: '/update-amazon-price' },
+                        { name: 'Shopify', url: '/push-shopify-price', delay: 600 }, // 600ms delay for Shopify (2 calls/sec limit)
+                        { name: 'eBay', url: '/push-ebay-price', delay: 300 },
+                        { name: 'eBay2', url: '/push-ebay2-price', delay: 300 },
+                        { name: 'eBay3', url: '/push-ebay3-price', delay: 300 },
+                        { name: 'Walmart', url: '/push-walmart-price' },
+                        { name: 'Doba', url: '/update-doba-price' },
+                        { name: 'Temu', url: '/push-temu-price' },
+                        { name: 'Reverb', url: '/push-reverb-price' }
+                    ];
+                    
+                    for (const marketplace of marketplaces) {
+                        try {
+                            // Add delay if specified (for rate-limited APIs)
+                            if (marketplace.delay) {
+                                await new Promise(resolve => setTimeout(resolve, marketplace.delay));
+                            }
+                            
+                            const response = await $.ajax({
+                                url: marketplace.url,
+                                type: 'POST',
+                                data: { 
+                                    sku: sku, 
+                                    price: price,
+                                    _token: '<?php echo e(csrf_token()); ?>'
+                                }
+                            });
+                            
+                            if (response.success) {
+                                successCount++;
+                                console.log(`✅ ${marketplace.name} price updated`);
+                            }
+                        } catch (xhr) {
+                            const error = xhr.responseJSON?.error || `${marketplace.name} API error`;
+                            errorMessages.push(error);
+                            console.error(`❌ ${marketplace.name} update failed:`, error);
+                        }
+                    }
+                    
+                    // Show final result
+                    if (errorMessages.length > 0) {
+                        alert('⚠️ Some marketplaces failed:\n\n' + errorMessages.join('\n\n'));
+                    } else {
+                        alert('✅ Price pushed to all marketplaces successfully!');
+                    }
+                    
+                    $btn.prop('disabled', false).html('Push to All').css('opacity', '1');
+                }
+                
+                pushToAllMarketplaces();
+                
+                return;
+            }
+            
+            const type = $btn.data('type');
+
+            if(!sku || !type) return;
+
+            // Check if there's a pending save for this SKU
+            if (window.pendingSaves && window.pendingSaves[sku]) {
+                alert('⚠️ Please wait! Price is being saved for SKU: ' + sku);
+                return;
+            }
+
+            // Fetch the latest SPrice from your input field in the modal/table
+            const $input = $btn.closest('tr').find('.s-price');
+            const sprice = parseFloat($input.val()) || 0;
+
+            if(sprice <= 0) {
+                alert('Please enter a valid SPrice before pushing.');
+                return;
+            }
+
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Pushing...');
+
+            // Example: Marketplace AJAX
+            if(type === 'amz') {
+                $.ajax({
+                    url: '/update-amazon-price',
+                    type: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        price: sprice
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            console.log('✅ Amazon price updated successfully!');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.error || 'Error updating Amazon price';
+                        alert('❌ ' + errorMsg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-up"></i>');
+                    }
+                });
+            }
+             else if(type === 'ebay') {
+                $.ajax({
+                    url: '/push-ebay-price',
+                    type: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        price: sprice
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            console.log('✅ eBay price updated successfully!');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.error || 'Error updating eBay price';
+                        alert('❌ ' + errorMsg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-up"></i>');
+                    }
+                });
+            }
+
+              else if(type === 'ebay2') {
+                $.ajax({
+                    url: '/push-ebay2-price',
+                    type: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        price: sprice
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            console.log('✅ eBay2 price updated successfully!');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.error || 'Error updating eBay2 price';
+                        alert('❌ ' + errorMsg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-up"></i>');
+                    }
+                });
+            }
+              else if(type === 'ebay3') {
+                $.ajax({
+                    url: '/push-ebay3-price',
+                    type: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        price: sprice
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            console.log('✅ eBay3 price updated successfully!');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.error || 'Error updating eBay3 price';
+                        alert('❌ ' + errorMsg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-up"></i>');
+                    }
+                });
+            }
+
+            else if(type === 'shopifyb2c') {
+                $.ajax({
+                    url: '/push-shopify-price',
+                    type: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        price: sprice
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            console.log('✅ Shopify price updated successfully!');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.error || 'Error updating Shopify price';
+                        alert('❌ ' + errorMsg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-up"></i>');
+                    }
+                });
+            }  else if(type === 'temu') {
+                $.ajax({
+                    url: '/update-temu-price',
+                    type: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        price: sprice
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            console.log('✅ Temu price updated successfully!');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.error || 'Error updating Temu price';
+                        alert('❌ ' + errorMsg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-up"></i>');
+                    }
+                });
+            } else if(type === 'macy') {
+                $.ajax({
+                    url: '/update-macy-price',
+                    type: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sku: sku,
+                        price: sprice
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            console.log('✅ Macy price updated successfully!');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.error || 'Error updating Macy price';
+                        alert('❌ ' + errorMsg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-up"></i>');
+                    }
+                });
+            }
+            else if(type === 'reverb') {
+                $.ajax({
+                    url: '/update-reverb-price',
+                    type: 'POST',
+                    data: {
+                            _token: $('meta[name="csrf-token"]').attr('content'),
+                            sku: sku,
+                            price: sprice
+                        },
+                        success: function(res) {
+                        alert('Reverb price updated successfully!');
+                        },
+                        error: function(err) {
+                            alert('Error updating Reverb price: ' + err);
+                        },
+                        complete: function() {
+                            $btn.html('Push to Marketplace');
+                        }
+                    });
+                }
+                else if(type === 'walmart') {
+                    $.ajax({
+                        url: '/push-walmart-price',
+                        type: 'POST',
+                        data: {
+                            _token: $('meta[name="csrf-token"]').attr('content'),
+                            sku: sku,
+                            price: sprice
+                        },
+                        success: function(res) {
+                            alert('Walmart Price Change Requested, Will Be Completed after 10  Minutes!');
+                        },
+                        error: function(err) {
+                            alert('Error updating Walmart price: ' + err.responseText);
+                        },
+                        complete: function() {
+                            $btn.html('Push to Marketplace');
+                        }
+                    });
+                }
+
+                else if(type === 'doba') {
+                    $.ajax({
+                        url: '/update-doba-price',
+                        type: 'POST',
+                        data: {
+                            _token: $('meta[name="csrf-token"]').attr('content'),
+                            sku: sku,
+                            price: sprice
+                        },
+                        success: function(res) {
+                            alert('Doba Price Change Requested, Will Be Completed after 10  Minutes!');
+                        },
+                        error: function(err) {
+                            alert('Error updating Doba price: ' + err.responseText);
+                        },
+                        complete: function() {
+                            $btn.html('Push to Marketplace');
+                        }
+                    });
+                }
+          });
+
+       
+    </script>
+
+    <script>
+function showTooltip(img) {
+    const tooltip = img.nextElementSibling;
+    if (tooltip && tooltip.classList.contains('link-tooltip')) {
+        tooltip.style.opacity = '1';
+        tooltip.style.visibility = 'visible';
+    }
+}
+
+function hideTooltip(img) {
+    const tooltip = img.nextElementSibling;
+    if (tooltip && tooltip.classList.contains('link-tooltip')) {
+        tooltip.style.opacity = '0';
+        tooltip.style.visibility = 'hidden';
+    }
+}
+
+// Show LMP data modal for a SKU - shows all LMP values > 0 sorted desc
+function showLmpData(sku, channel) {
+    if (!sku) return;
+    // Ensure we get table instance
+    const tab = Tabulator.findTable("#forecast-table")[0];
+    if (!tab) {
+        console.warn('Tabulator table not initialized yet');
+        return;
+    }
+
+    // Fetch from backend (repricer): exclude zero, sorted asc
+    $.ajax({
+        url: '/pricing-master/lmp-history',
+        type: 'GET',
+        data: { sku: sku, channel: channel },
+        success: function(res) {
+            let html = '<div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>SKU</th><th>LMP</th><th>Link</th></tr></thead><tbody>';
+            if (!res.success || !res.data || res.data.length === 0) {
+                html += '<tr><td colspan="3" class="text-center">No LMP values found &gt; 0 for this SKU</td></tr>';
+            } else {
+                res.data.forEach(item => {
+                    const price = item.price || 0;
+                    const link = item.link || null;
+                    html += `<tr><td>${sku}</td><td>${fmtMoney(price)}</td><td>${link ? `<a href="${link}" target="_blank"><i class=\"bi bi-link\"></i></a>` : '-'}</td></tr>`;
+                });
+            }
+            html += '</tbody></table></div>';
+
+            const container = document.getElementById('lmpDataContent');
+            if (container) container.innerHTML = html;
+
+            const modalEl = document.getElementById('lmpDataModal');
+            if (modalEl) {
+                const modal = new bootstrap.Modal(modalEl);
+                modal.show();
+            }
+        },
+        error: function() {
+            const container = document.getElementById('lmpDataContent');
+            if (container) container.innerHTML = '<div class="p-2 text-danger">Failed to load LMP history.</div>';
+            const modalEl = document.getElementById('lmpDataModal');
+            if (modalEl) {
+                const modal = new bootstrap.Modal(modalEl);
+                modal.show();
+            }
+        }
+    });
+}
+
+// Handle image URL input blur event
+$(document).on('blur', '.image-url-input', function() {
+    const $input = $(this);
+    const imageUrl = $input.val().trim();
+    const sku = $input.data('sku');
+
+    if (!sku) return;
+
+    // If URL is empty, do nothing
+    if (!imageUrl) return;
+
+    // Save the image URL via AJAX
+    $.ajax({
+        url: '/pricing-master/save-image-url',
+        type: 'POST',
+        data: {
+            _token: $('meta[name="csrf-token"]').attr('content'),
+            sku: sku,
+            image_url: imageUrl
+        },
+        success: function(response) {
+            if (response.success) {
+                // Replace input field with image
+                const imageHtml = `<img src="${imageUrl}" width="40" height="40" class="product-thumb" onmouseover="showImagePreview(this)" onmouseout="hideImagePreview()" style="cursor: pointer">`;
+                $input.replaceWith(imageHtml);
+            } else {
+                alert('Failed to save image URL: ' + (response.message || 'Unknown error'));
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error saving image URL:', error);
+            alert('Error saving image URL. Please try again.');
+        }
+    });
+});
+</script>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.vertical', ['title' => 'Pricing Masters Analysis'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?><?php /**PATH /Applications/XAMPP/xamppfiles/htdocs/5core_inv/resources/views/pricing-master/pricing_masters_view.blade.php ENDPATH**/ ?>
