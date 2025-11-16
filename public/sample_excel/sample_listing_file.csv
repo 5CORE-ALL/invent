@@ -1,0 +1,2 @@
+sku,nr_req,listed,buyer_link,seller_link
+A-54,NR,Listed,http://127.0.0.1:8000/listing-ebay,http://127.0.0.1:8000/listing-ebay

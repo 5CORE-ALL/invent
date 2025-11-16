@@ -1,9 +1,0 @@
-{
-    "errors": [
-        {
-            "code": "InvalidInput",
-            "message": "Invalid partyId: 12345678",
-            "details": ""
-        }
-    ]
-}

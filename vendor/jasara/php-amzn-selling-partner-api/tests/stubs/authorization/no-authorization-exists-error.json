@@ -1,9 +1,0 @@
-{
-    "errors": [
-        {
-            "code": "InvalidInput",
-            "message": "No MWS Authorization exists",
-            "details": ""
-        }
-    ]
-}

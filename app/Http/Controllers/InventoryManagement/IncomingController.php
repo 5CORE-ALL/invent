@@ -32,8 +32,8 @@ class IncomingController extends Controller
     {
         $this->apiController = $apiController;
         $this->shopifyDomain = env('SHOPIFY_STORE_URL');
-        $this->shopifyApiKey =  env('SHOPIFY_API_KEY');  //env('SHOPIFY_API_KEY');
-        $this->shopifyPassword =  env('SHOPIFY_PASSWORD'); //env('SHOPIFY_PASSWORD');
+        $this->shopifyApiKey =  '9d5c067dd4bcaf83a72137dddab72a4d';  //env('SHOPIFY_API_KEY');
+        $this->shopifyPassword =  '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'; //env('SHOPIFY_PASSWORD');
     }
 
 

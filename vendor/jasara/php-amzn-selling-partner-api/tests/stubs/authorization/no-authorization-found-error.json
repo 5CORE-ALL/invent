@@ -1,9 +1,0 @@
-{
-    "errors": [
-        {
-            "code": "InvalidInput",
-            "message": "No MWS Authorization found for the provided Seller, Developer and Token",
-            "details": ""
-        }
-    ]
-}

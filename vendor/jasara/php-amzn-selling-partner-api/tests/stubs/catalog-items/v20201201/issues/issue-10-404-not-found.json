@@ -1,8 +1,0 @@
-{
-    "errors": [
-        {
-            "code": "NOT_FOUND",
-            "message": "Requested item, B0AABBCC, not found in marketplace(s) ATVPDKIKX0DER."
-        }
-    ]
-}
