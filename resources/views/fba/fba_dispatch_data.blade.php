@@ -195,6 +195,11 @@
                             hozAlign: "center"
                         },
 
+                        {
+                            title: "Shopify INV",
+                            field: "Shopify_INV",
+                            hozAlign: "center"
+                        },
 
                         {
                             title: "L30 Units",

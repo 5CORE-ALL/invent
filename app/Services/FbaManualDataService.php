@@ -130,14 +130,19 @@ class FbaManualDataService
     }
 
     /**
-     * Calculate FBA Ship Calculation: Fulfillment Fee + Send Cost + IN Charges
+     * Calculate FBA Ship Calculation
+     * 
+     * Logic:
+     * - If fulfillment_fee exists and > 0 in FbaReportsMaster, use only that
+     * - If fulfillment_fee is 0 or SKU doesn't exist, use manual data (fba_fee_manual + send_cost + in_charges)
      *
      * @param string $sku The FBA SKU (can be with or without 'FBA' suffix)
-     * @param float|string $sendCost Send cost value
-     * @param float|string $inCharges IN charges value
+     * @param float|string $fbaFeeManual Manual FBA fee value
+     * @param float|string $sendCost Send cost value from manual data
+     * @param float|string $inCharges IN charges value from manual data
      * @return float Calculated FBA Ship Calculation value
      */
-    public function calculateFbaShipCalculation($sku, $sendCost = 0, $inCharges = 0)
+    public function calculateFbaShipCalculation($sku, $fbaFeeManual = 0, $sendCost = 0, $inCharges = 0)
     {
         // Normalize SKU by removing FBA suffix
         $baseSku = preg_replace('/\s*FBA\s*/i', '', $sku);
@@ -153,9 +158,17 @@ class FbaManualDataService
             ->first();
 
         $fulfillmentFee = $fbaReport ? floatval($fbaReport->fulfillment_fee ?? 0) : 0;
+
+        // If fulfillment fee exists and is greater than 0, use only that
+        if ($fulfillmentFee > 0) {
+            return round($fulfillmentFee, 2);
+        }
+
+        // Otherwise, use manual data calculation: fba_fee_manual + send_cost + in_charges
+        $fbaFeeManual = floatval($fbaFeeManual);
         $sendCost = floatval($sendCost);
         $inCharges = floatval($inCharges);
 
-        return round($fulfillmentFee + $sendCost + $inCharges, 2);
+        return round($fbaFeeManual + $sendCost + $inCharges, 2);
     }
 }

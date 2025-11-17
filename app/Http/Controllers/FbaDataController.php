@@ -308,7 +308,7 @@ class FbaDataController extends Controller
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
             'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
-            'Shopify_inv' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
+            'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
             'l60_units' => $monthlySales ? ($monthlySales->l60_units ?? 0) : 0,
             'FBA_Quantity' => $fba->quantity_available,
             'Dil' => ($shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0) / max($shopifyInfo ? ($shopifyInfo->inv ?? 0) : 1, 1) * 100,
@@ -363,6 +363,7 @@ class FbaDataController extends Controller
             '365-plus-days' => $manual ? ($manual->data['365-plus-days'] ?? '') : '',
             'FBA_Ship_Calculation' => $this->fbaManualDataService->calculateFbaShipCalculation(
                $fba->seller_sku,
+               $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
                $manual ? ($manual->data['send_cost'] ?? 0) : 0,
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
@@ -485,7 +486,7 @@ class FbaDataController extends Controller
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
             'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
-            'Shopify_inv' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
+            'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
             'l60_units' => $monthlySales ? ($monthlySales->l60_units ?? 0) : 0,
             'FBA_Quantity' => $fba->quantity_available,
             'Dil' => ($shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0) / max($shopifyInfo ? ($shopifyInfo->inv ?? 0) : 1, 1) * 100,
@@ -540,6 +541,7 @@ class FbaDataController extends Controller
             '365-plus-days' => $manual ? ($manual->data['365-plus-days'] ?? '') : '',
             'FBA_Ship_Calculation' => $this->fbaManualDataService->calculateFbaShipCalculation(
                $fba->seller_sku,
+               $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
                $manual ? ($manual->data['send_cost'] ?? 0) : 0,
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
