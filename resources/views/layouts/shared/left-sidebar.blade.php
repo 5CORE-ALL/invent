@@ -1614,15 +1614,15 @@
                                         <div class="collapse" id="amazonACOS">
                                             <ul class="side-nav-fourth-level">
                                                 <li>
-                                                    <a href="{{ route('amazon.acos.kw.control') }}">Amz FBA ACOS
+                                                    <a href="{{ route('amazon.acos.kw.control') }}">Amz FBM ACOS
                                                         KW</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('amazon.acos.hl.control') }}">Amz FBA ACOS
+                                                    <a href="{{ route('amazon.acos.hl.control') }}">Amz FBM ACOS
                                                         HL</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('amazon.acos.pt.control') }}">Amz FBA ACOS
+                                                    <a href="{{ route('amazon.acos.pt.control') }}">Amz FBM ACOS
                                                         PT</a>
                                                 </li>
                                             </ul>
@@ -1637,7 +1637,7 @@
                                         <div class="collapse" id="amazonPinkDilAds">
                                             <ul class="side-nav-fourth-level">
                                                 <li>
-                                                    <a href="{{ route('amazon.pink.dil.kw.ads') }}">Amz FBA Pink
+                                                    <a href="{{ route('amazon.pink.dil.kw.ads') }}">Amz FBM Pink
                                                         KW</a>
                                                 </li>
                                                 <li>
@@ -1718,7 +1718,7 @@
                                     <li>
                                         <a data-bs-toggle="collapse" href="#amazonFbaBudget" aria-expanded="false"
                                             aria-controls="amazonFbaBudget">
-                                            <span>Amz FBM Budget</span>
+                                            <span>Amz FBA Budget</span>
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="amazonFbaBudget">
@@ -1753,7 +1753,7 @@
                                     <li>
                                         <a data-bs-toggle="collapse" href="#amazonFbaACOS" aria-expanded="false"
                                             aria-controls="amazonFbaACOS">
-                                            <span>Amazon FBM ACOS</span>
+                                            <span>Amazon FBA ACOS</span>
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="amazonFbaACOS">

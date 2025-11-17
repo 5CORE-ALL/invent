@@ -57,9 +57,7 @@ use GuzzleHttp\Client;
 
 use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
-
-
-
+use Illuminate\Support\Facades\DB;
 
 class MissingListingController extends Controller
 {
@@ -78,96 +76,95 @@ class MissingListingController extends Controller
     }
 
      
-   public function getShopifyMissingInventoryStock(Request $request)
-   {    
+   public function getShopifyMissingInventoryStock(Request $request) {    
     
-  ini_set('max_execution_time', 300);
-     
-    // Check if data is older than 1 day
-    $latestRecord = ProductStockMapping::orderBy('updated_at', 'desc')->first();    
-    // if ($latestRecord && $latestRecord->updated_at > now()->subDay()) {
-   if ($latestRecord) {
-    // Return cached data from DB
-    // $data = ProductStockMapping::all()->keyBy('sku')->unique()->groupby('sku');
-    $data = ProductStockMapping::all()
-    ->groupBy('sku')
-    ->map(function ($items) {
-        return $items->first(); // or customize how you want to handle duplicates
-    });
-
-$skusforNR = array_values(array_filter(array_map(function ($item) {
-    return $item['sku'] ?? null;
-}, $data->toArray())));
-// dd(implode(',',$skusforNR));
-
-$marketplaces = [
-    'amazon'  => [AmazonListingStatus::class,  'inventory_amazon'],
-    'walmart' => [WalmartListingStatus::class, 'inventory_walmart'],
-    'reverb'  => [ReverbListingStatus::class,  'inventory_reverb'],
-    'shein'   => [SheinListingStatus::class,   'inventory_shein'],
-    'doba'    => [DobaListingStatus::class,    'inventory_doba'],
-    'temu'    => [TemuListingStatus::class,    'inventory_temu'],
-    'macy'    => [MacysListingStatus::class,   'inventory_macy'],
-    'ebay1'   => [EbayListingStatus::class,    'inventory_ebay1'],
-    'ebay2'   => [EbayTwoListingStatus::class, 'inventory_ebay2'],
-    'ebay3'   => [EbayThreeListingStatus::class,'inventory_ebay3'],
-    'bestbuy' => [BestbuyUSAListingStatus::class,'inventory_bestbuy'],
-    'tiendamia' => [TiendamiaListingStatus::class,'inventory_tiendamia'],
-    
-];
-
-
-//  dd($data['FR 10 185 AL 4OHMS']['inventory_macy']);
-
-foreach ($marketplaces as $key => [$model, $inventoryField]) {
-    // $listingData = $model::whereIn('sku', $skusforNR)->where('value->nr_req', 'NR')->get()->unique()->keyBy('sku');
-    $listingData = $model::whereIn('sku', $skusforNR)->where('value->nr_req', 'NR')->get()->unique()->keyBy('sku');
+        ini_set('max_execution_time', 300);
             
-    foreach ($listingData as $sku => $listing) {
-          $sku = str_replace("\u{00A0}", ' ', $sku);
-            // Trim and normalize spacing
-            $sku = trim(preg_replace('/\s+/', ' ', $sku));
-            // dd($sku);
-        if (
-            isset($data[$sku]) &&
-            Arr::get($listing->value, 'nr_req') === 'NR'
-            && 
-            $data[$sku]->$inventoryField>0 
-            // && $data[$sku]->$inventoryField!="Not Listed"
-        ) {
+            // Check if data is older than 1 day
+            $latestRecord = ProductStockMapping::orderBy('updated_at', 'desc')->first();    
+            // if ($latestRecord && $latestRecord->updated_at > now()->subDay()) {
+        if ($latestRecord) {
+            // Return cached data from DB
+            // $data = ProductStockMapping::all()->keyBy('sku')->unique()->groupby('sku');
+            $data = ProductStockMapping::all()
+            ->groupBy('sku')
+            ->map(function ($items) {
+                return $items->first(); // or customize how you want to handle duplicates
+            });
 
-            $data[$sku]->$inventoryField = 'NRL';
-            // if($data[$sku]->$inventoryField != 'Not Listed'){
-            // }
-        }        
+        $skusforNR = array_values(array_filter(array_map(function ($item) {
+            return $item['sku'] ?? null;
+        }, $data->toArray())));
+        // dd(implode(',',$skusforNR));
+
+        $marketplaces = [
+            'amazon'  => [AmazonListingStatus::class,  'inventory_amazon'],
+            'walmart' => [WalmartListingStatus::class, 'inventory_walmart'],
+            'reverb'  => [ReverbListingStatus::class,  'inventory_reverb'],
+            'shein'   => [SheinListingStatus::class,   'inventory_shein'],
+            'doba'    => [DobaListingStatus::class,    'inventory_doba'],
+            'temu'    => [TemuListingStatus::class,    'inventory_temu'],
+            'macy'    => [MacysListingStatus::class,   'inventory_macy'],
+            'ebay1'   => [EbayListingStatus::class,    'inventory_ebay1'],
+            'ebay2'   => [EbayTwoListingStatus::class, 'inventory_ebay2'],
+            'ebay3'   => [EbayThreeListingStatus::class,'inventory_ebay3'],
+            'bestbuy' => [BestbuyUSAListingStatus::class,'inventory_bestbuy'],
+            'tiendamia' => [TiendamiaListingStatus::class,'inventory_tiendamia'],
+            
+        ];
+
+
+        //  dd($data['FR 10 185 AL 4OHMS']['inventory_macy']);
+
+        foreach ($marketplaces as $key => [$model, $inventoryField]) {
+            // $listingData = $model::whereIn('sku', $skusforNR)->where('value->nr_req', 'NR')->get()->unique()->keyBy('sku');
+            $listingData = $model::whereIn('sku', $skusforNR)->where('value->nr_req', 'NR')->get()->unique()->keyBy('sku');
+                    
+            foreach ($listingData as $sku => $listing) {
+                $sku = str_replace("\u{00A0}", ' ', $sku);
+                    // Trim and normalize spacing
+                    $sku = trim(preg_replace('/\s+/', ' ', $sku));
+                    // dd($sku);
+                if (
+                    isset($data[$sku]) &&
+                    Arr::get($listing->value, 'nr_req') === 'NR'
+                    && 
+                    $data[$sku]->$inventoryField>0 
+                    // && $data[$sku]->$inventoryField!="Not Listed"
+                ) {
+
+                    $data[$sku]->$inventoryField = 'NRL';
+                    // if($data[$sku]->$inventoryField != 'Not Listed'){
+                    // }
+                }        
+            }
+
+        }
+
+        // dd($data->where('inventory_ebay2','NRL')->count());
+        // dd($test);
+
+        $datainfo = $this->getDataInfo($data);
+        return response()->json([
+            'message' => 'Data fetched successfully',
+            'data' => $data,
+            'datainfo' => $datainfo,
+            'status' => 200
+        ]);
     }
 
-}
+        
+        $freshData=$this->fetchFreshDataU();   
+        $datainfo=$this->getDataInfo($freshData);
 
-// dd($data->where('inventory_ebay2','NRL')->count());
-// dd($test);
-
-    $datainfo = $this->getDataInfo($data);
-    return response()->json([
-        'message' => 'Data fetched successfully',
-        'data' => $data,
-        'datainfo' => $datainfo,
-        'status' => 200
-    ]);
-}
-
-    
-    $freshData=$this->fetchFreshDataU();   
-    $datainfo=$this->getDataInfo($freshData);
-
-    return response()->json([
-        'message' => 'Data fetched successfully',
-        'data' => $freshData,
-        'datainfo'=>$datainfo,
-        'status' => 200
-    ]);
-    
-}
+        return response()->json([
+            'message' => 'Data fetched successfully',
+            'data' => $freshData,
+            'datainfo'=>$datainfo,
+            'status' => 200
+        ]);
+        
+    }
 
 
 
@@ -819,8 +816,98 @@ protected function filterParentSKU(array $data): array
             'image'    => null,
         ];
     }
-    
 
+    public function shopifyMissingInventoryListings() {
+        $productMasters = DB::table('product_master')
+            ->where('sku', 'NOT LIKE', 'PARENT%')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $masterSKUs = $productMasters->pluck('sku')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $shopifyInventory = ShopifyInventory::whereIn('sku', $masterSKUs)
+            ->get()
+            ->keyBy('sku');
+
+        $marketplaces = [
+            'amazon'    => [AmazonListingStatus::class],
+            'walmart'   => [WalmartListingStatus::class],
+            'reverb'    => [ReverbListingStatus::class],
+            'shein'     => [SheinListingStatus::class],
+            'doba'      => [DobaListingStatus::class],
+            'temu'      => [TemuListingStatus::class],
+            'macy'      => [MacysListingStatus::class],
+            'ebay1'     => [EbayListingStatus::class],
+            'ebay2'     => [EbayTwoListingStatus::class],
+            'ebay3'     => [EbayThreeListingStatus::class],
+            'bestbuy'   => [BestbuyUSAListingStatus::class],
+            'tiendamia' => [TiendamiaListingStatus::class],
+        ];
+
+        $result = [];
+
+        foreach ($productMasters as $pm) {
+
+            $sku = $pm->sku;
+
+            $row = [];
+            $row['parent'] = $pm->parent;
+            $row['sku']    = $pm->sku;
+            $row['listing_status'] = [];
+
+            if (isset($shopifyInventory[$sku])) {
+                $row['listing_status']['shopify'] = "Listed";
+            } else {
+                $row['listing_status']['shopify'] = "Not Listed";
+            }
+
+            foreach ($marketplaces as $marketplaceName => $models) {
+
+                $status = "Not Listed";   
+                $foundListing = null;
+
+                foreach ($models as $modelClass) {
+                    $listing = $modelClass::where('sku', $sku)->first();
+                    if ($listing) {
+                        $foundListing = $listing;
+                        break;
+                    }
+                }
+
+                if ($foundListing) {
+
+                    $value = $foundListing->value;
+
+                    if (is_string($value)) {
+                        $value = json_decode($value, true);
+                    }
+
+                    $value = is_array($value) ? $value : [];
+
+                    $listed = $value['listed'] ?? null;
+                    $nr_req = $value['nr_req'] ?? null;
+
+                    if ($listed === "Listed" && $nr_req === "REQ") {
+                        $status = "NRL";
+                    } else {
+                        $status = "Listed";
+                    }
+                }
+
+                $row['listing_status'][$marketplaceName] = $status;
+            }
+
+            $result[] = (object) $row;
+        }
+
+        return response()->json([
+            'message' => 'Data fetched successfully',
+            'data'    => $result,
+            'status'  => 200,
+        ]);
     }
-
-    
+}

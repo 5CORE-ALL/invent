@@ -41,10 +41,8 @@ class AutoUpdateAmazonBgtPt extends Command
         $campaignIds = collect($campaigns)->pluck('campaign_id')->toArray();
         $newBgts = collect($campaigns)->pluck('sbgt')->toArray();
 
-        // $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
-        // $this->info("Update Result: " . json_encode($result));
-
-        Log::info("AutoUpdateAmazonBgtPt - Campaign IDs: " . json_encode($campaignIds));
+        $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
+        $this->info("Update Result: " . json_encode($result));
 
     }
 
@@ -89,9 +87,9 @@ class AutoUpdateAmazonBgtPt extends Command
             }
 
             // clicks must be >= 25
-            if (($matchedCampaignL30->clicks ?? 0) < 25) {
-                continue;
-            }
+            // if (($matchedCampaignL30->clicks ?? 0) < 25) {
+            //     continue;
+            // }
 
             // Skip if INV = 0
             if (($shopify->inv ?? 0) == 0) {
