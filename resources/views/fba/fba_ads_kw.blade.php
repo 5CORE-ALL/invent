@@ -295,7 +295,7 @@
                     },
                     {
                         title: "Shopify INV",
-                        field: "Shopify_inv",
+                        field: "Shopify_INV",
                         visible: false
                     },
                     {
@@ -1020,7 +1020,7 @@
                 if (e.target.classList.contains("toggle-cols-btn")) {
                     let btn = e.target;
 
-                    let colsToToggle = ["FBA_Quantity", "Shopify_inv", "Shopify_OV_L30", "Dil", "l30_units", "FBA_Dil"];
+                    let colsToToggle = ["FBA_Quantity", "Shopify_INV", "Shopify_OV_L30", "Dil", "l30_units", "FBA_Dil"];
 
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);
