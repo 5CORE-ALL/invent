@@ -819,15 +819,16 @@ protected function filterParentSKU(array $data): array
 
     public function shopifyMissingInventoryListings() {
         $productMasters = DB::table('product_master')
-            ->where('sku', 'NOT LIKE', 'PARENT%')
+            ->whereRaw('LOWER(sku) NOT LIKE ?', ['parent%'])
             ->orderBy('id', 'asc')
             ->get();
 
-        $masterSKUs = $productMasters->pluck('sku')
+        $masterSKUs = $productMasters
+            ->pluck('sku')
             ->filter()
             ->unique()
             ->values()
-            ->all();
+            ->toArray();
 
         $shopifyInventory = ShopifyInventory::whereIn('sku', $masterSKUs)
             ->get()
@@ -871,7 +872,9 @@ protected function filterParentSKU(array $data): array
                 $foundListing = null;
 
                 foreach ($models as $modelClass) {
-                    $listing = $modelClass::where('sku', $sku)->first();
+                    $listing = $modelClass::whereRaw('LOWER(sku) = ?', [strtolower($sku)])
+                        ->first();
+
                     if ($listing) {
                         $foundListing = $listing;
                         break;
@@ -891,7 +894,7 @@ protected function filterParentSKU(array $data): array
                     $listed = $value['listed'] ?? null;
                     $nr_req = $value['nr_req'] ?? null;
 
-                    if ($listed === "Listed" && $nr_req === "REQ") {
+                    if ($listed === "Listed" && $nr_req === "NRL") {
                         $status = "NRL";
                     } else {
                         $status = "Listed";
