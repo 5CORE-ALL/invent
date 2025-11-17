@@ -5,6 +5,8 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use App\Models\Permission;
+use App\Models\FbaManualData;
+use App\Observers\FbaManualDataObserver;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 
@@ -23,6 +25,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Register FbaManualData observer
+        FbaManualData::observe(FbaManualDataObserver::class);
+
         View::composer('*', function ($view) {
             // Only set permissions if not already set by controller
             if (!$view->offsetExists('permissions')) {
