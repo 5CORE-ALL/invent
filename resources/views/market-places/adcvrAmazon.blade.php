@@ -365,11 +365,6 @@
                         visible: false
                     },
                     {
-                        title: "A L30",
-                        field: "A_L30",
-                        visible: false
-                    },
-                    {
                         title: "A DIL %",
                         field: "A DIL %",
                         formatter: function(cell) {
@@ -475,6 +470,10 @@
                         },
                         hozAlign: "center",
                         visible: false
+                    },
+                    {
+                        title: "A L30",
+                        field: "A_L30",
                     },
                     {
                         title: "CAMPAIGN",
@@ -1134,7 +1133,7 @@
                 if (e.target.classList.contains("toggle-cols-btn")) {
                     let btn = e.target;
 
-                    let colsToToggle = ["INV", "L30", "DIL %", "A L30", "A DIL %", "NRL", "NRA", "FBA"];
+                    let colsToToggle = ["INV", "L30", "DIL %", "A DIL %", "NRL", "NRA", "FBA"];
 
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);
