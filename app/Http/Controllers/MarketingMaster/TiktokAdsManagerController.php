@@ -130,9 +130,16 @@ class TiktokAdsManagerController extends Controller
         ]);
     }
 
-    public function tiktokGMVAds()
-    {
-        return view('marketing-masters.tiktok_shop_ads.tiktok-gmv-ads');
+    public function tiktokGMVAds() {
+        $latestUpdatedAt = TiktokGmvAd::latest('updated_at')->first();
+
+        $formattedDate = $latestUpdatedAt
+            ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A')
+            : null;
+
+        return view('marketing-masters.tiktok_shop_ads.tiktok-gmv-ads', [
+            'latestUpdatedAt' => $formattedDate,
+        ]);
     }
 
     public function tiktokGMVAdsData() {

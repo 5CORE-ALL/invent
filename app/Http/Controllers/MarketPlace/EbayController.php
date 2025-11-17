@@ -315,7 +315,9 @@ class EbayController extends Controller
 
             // Profit/Sales
             $row["Total_pft"] = round(($price * $percentage - $lp - $ship) * $units_ordered_l30, 2);
+            $row["Profit"] = $row["Total_pft"]; // Add this for frontend compatibility
             $row["T_Sale_l30"] = round($price * $units_ordered_l30, 2);
+            $row["Sales L30"] = $row["T_Sale_l30"]; // Add this for frontend compatibility
             $row["PFT %"] = round(
                 $price > 0 ? (($price * $percentage - $lp - $ship) / $price) : 0,
                 2
@@ -517,14 +519,51 @@ class EbayController extends Controller
 
     public function saveSpriceToDatabase(Request $request)
     {
-        // LOG::info('Saving Shopify pricing data', $request->all());
-        $sku = $request->input('sku');
-        $spriceData = $request->only(['sprice', 'spft_percent', 'sroi_percent']);
+        Log::info('Saving eBay pricing data', $request->all());
+        $sku = strtoupper($request->input('sku'));
+        $sprice = $request->input('sprice');
 
-        if (!$sku || !$spriceData['sprice']) {
+        if (!$sku || !$sprice) {
+            Log::error('SKU or sprice missing', ['sku' => $sku, 'sprice' => $sprice]);
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
 
+        // Get current marketplace percentage
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay')->first();
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1;
+        Log::info('Using percentage', ['percentage' => $percentage]);
+
+        // Get ProductMaster for lp and ship
+        $pm = ProductMaster::where('sku', $sku)->first();
+        if (!$pm) {
+            Log::error('SKU not found in ProductMaster', ['sku' => $sku]);
+            return response()->json(['error' => 'SKU not found in ProductMaster.'], 404);
+        }
+
+        // Extract lp and ship
+        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+        $lp = 0;
+        foreach ($values as $k => $v) {
+            if (strtolower($k) === "lp") {
+                $lp = floatval($v);
+                break;
+            }
+        }
+        if ($lp === 0 && isset($pm->lp)) {
+            $lp = floatval($pm->lp);
+        }
+
+        $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+        Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship]);
+
+        // Calculate profit
+        $spriceFloat = floatval($sprice);
+        $profit = ($spriceFloat * $percentage - $lp - $ship);
+
+        // Calculate SPFT and SROI
+        $spft = $spriceFloat > 0 ? round(($profit / $spriceFloat) * 100, 2) : 0;
+        $sroi = $lp > 0 ? round(($profit / $lp) * 100, 2) : 0;
+        Log::info('Calculated values', ['sprice' => $spriceFloat, 'spft' => $spft, 'sroi' => $sroi]);
 
         $ebayDataView = EbayDataView::firstOrNew(['sku' => $sku]);
 
@@ -535,15 +574,20 @@ class EbayController extends Controller
 
         // Merge new sprice data
         $merged = array_merge($existing, [
-            'SPRICE' => $spriceData['sprice'],
-            'SPFT' => $spriceData['spft_percent'],
-            'SROI' => $spriceData['sroi_percent'],
+            'SPRICE' => $spriceFloat,
+            'SPFT' => $spft,
+            'SROI' => $sroi,
         ]);
 
         $ebayDataView->value = $merged;
         $ebayDataView->save();
+        Log::info('Data saved successfully', ['sku' => $sku]);
 
-        return response()->json(['message' => 'Data saved successfully.']);
+        return response()->json([
+            'message' => 'Data saved successfully.',
+            'spft_percent' => $spft,
+            'sroi_percent' => $sroi
+        ]);
     }
 
     public function updateListedLive(Request $request)

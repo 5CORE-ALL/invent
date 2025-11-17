@@ -1134,7 +1134,7 @@
                 if (e.target.classList.contains("toggle-cols-btn")) {
                     let btn = e.target;
 
-                    let colsToToggle = ["INV", "L30", "DIL %", "A_L30", "A DIL %", "NRL", "NRA", "FBA"];
+                    let colsToToggle = ["INV", "L30", "DIL %", "A L30", "A DIL %", "NRL", "NRA", "FBA"];
 
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);
@@ -1164,7 +1164,7 @@
                 if (e.target.classList.contains("toggle-acos-cols-btn")) {
                     let btn = e.target;
 
-                    let colsToToggle = ["acos_L30", "acos_L7"];
+                    let colsToToggle = ["acos_L7"];
 
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);
@@ -1179,7 +1179,7 @@
                 if (e.target.classList.contains("toggle-spend-cols-btn")) {
                     let btn = e.target;
 
-                    let colsToToggle = ["spend_l30", "spend_l7"];
+                    let colsToToggle = ["spend_l7"];
 
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);
@@ -1194,7 +1194,7 @@
                 if (e.target.classList.contains("toggle-sales-cols-btn")) {
                     let btn = e.target;
 
-                    let colsToToggle = ["ad_sales_l30", "ad_sales_l7"];
+                    let colsToToggle = ["ad_sales_l7"];
 
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);
@@ -1209,7 +1209,7 @@
                 if (e.target.classList.contains("toggle-clicks-cols-btn")) {
                     let btn = e.target;
 
-                    let colsToToggle = ["clicks_L30", "clicks_L7"];
+                    let colsToToggle = ["clicks_L7"];
 
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);

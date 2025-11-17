@@ -23,7 +23,7 @@
         .custom-resizable-table th,
         .custom-resizable-table td {
             padding: 12px 15px;
-            text-align: left;
+            text-align: center;
             border-bottom: 1px solid #ddd;
             position: relative;
             white-space: nowrap;
@@ -1664,6 +1664,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
     const listingStatusData = @json($listingStatus);
+    const ebayPercentage = {{ $ebayPercentage / 100 }};
     </script>
     <script>
         $(document).ready(function() {
@@ -2125,15 +2126,11 @@
                 $('#play-auto').hide();
                 $('#play-pause').show()
                     .removeClass('btn-light'); // Ensure default color is removed
-
-                // Set initial color
-                checkParentRAStatus();
             }
 
             function stopNavigation() {
                 isNavigationActive = false;
                 currentParentIndex = -1;
-
 
                 // Update button visibility and reset color
                 $('#play-pause').hide();
@@ -2180,7 +2177,6 @@
                 // Reapply column visibility
                 applyColumnVisibility();
                 updateButtonStates();
-                checkParentRAStatus(); // Add this line
             }
 
             function updateButtonStates() {
@@ -2204,48 +2200,6 @@
                 }
             }
 
-            function checkParentRAStatus() {
-                if (!isNavigationActive || currentParentIndex === -1) return;
-
-                const currentParent = uniqueParents[currentParentIndex];
-                const parentRows = tableData.filter(item => item.Parent === currentParent);
-
-                if (parentRows.length === 0) return;
-
-                let checkedCount = 0;
-                let rowsWithRAData = 0;
-
-                parentRows.forEach(row => {
-                    // Only count rows that have R&A data (not undefined/null/empty)
-                    if (row['R&A'] !== undefined && row['R&A'] !== null && row['R&A'] !== '') {
-                        rowsWithRAData++;
-                        if (row['R&A'] === true || row['R&A'] === 'true' || row['R&A'] === '1') {
-                            checkedCount++;
-                        }
-                    }
-                });
-
-                // Determine which button is currently visible
-                const $activeButton = $('#play-pause').is(':visible') ? $('#play-pause') : $('#play-auto');
-
-                // Remove all state classes first
-                $activeButton.removeClass('btn-success btn-warning btn-danger btn-light');
-
-                if (rowsWithRAData === 0) {
-                    // No rows with R&A data at all (all empty)
-                    $activeButton.addClass('btn-light');
-                } else if (checkedCount === rowsWithRAData) {
-                    // All rows with R&A data are checked (green)
-                    $activeButton.addClass('btn-success');
-                } else if (checkedCount > 0) {
-                    // Some rows with R&A data are checked (yellow)
-                    $activeButton.addClass('btn-warning');
-                } else {
-                    // No rows with R&A data are checked (red)
-                    $activeButton.addClass('btn-danger');
-                }
-            }
-
             // Initialize everything
             function initTable() {
                 loadData().then(() => {
@@ -2261,7 +2215,6 @@
                     initManualDropdowns();
                     initModalTriggers();
                     initPlaybackControls();
-                    initRAEditHandlers(); // Add this line
                     initCheckBoxEditHandlers();
                     initNRSelectChangeHandler();
 
@@ -2696,37 +2649,6 @@
                     // $skuCell.find('.sku-text').attr('title', skuValue);
                     // $row.append($skuCell);
 
-                    // Only create the checkbox cell if navigation is active
-                    if (isNavigationActive) {
-                        const $raCell = $('<td>').addClass('ra-cell');
-
-                        if (item['R&A'] !== undefined && item['R&A'] !== null && item['R&A'] !== '') {
-                            const $container = $('<div>').addClass(
-                                'ra-edit-container d-flex align-items-center');
-
-                            // Checkbox with proper boolean value
-                            const $checkbox = $('<input>', {
-                                type: 'checkbox',
-                                checked: item['R&A'] === true || item['R&A'] === 'true' || item[
-                                    'R&A'] === '1',
-                                class: 'ra-checkbox',
-                                disabled: true
-                            }).data('original-value', item['R&A']); // Store original value
-
-                            // Edit/Save icon
-                            const $editIcon = $('<i>').addClass('fas fa-pen edit-icon ml-2 text-primary')
-                                .css('cursor', 'pointer')
-                                .attr('title', 'Edit R&A');
-
-                            $container.append($checkbox, $editIcon);
-                            $raCell.append($container);
-                        } else {
-                            $raCell.html('&nbsp;');
-                        }
-
-                        $row.append($raCell);
-                    }
-
                     $row.append($('<td>').text(item.INV));
                     $row.append($('<td>').text(item.L30));
 
@@ -3009,54 +2931,7 @@
                 updateSoldCounts();
             }
 
-            function initRAEditHandlers() {
-                $(document).on('click', '.edit-icon', function(e) {
-                    e.stopPropagation();
-                    const $icon = $(this);
-                    const $checkbox = $icon.siblings('.ra-checkbox');
-                    const $row = $checkbox.closest('tr');
-                    const rowData = filteredData.find(item => item['Sl'] == $row.find('td:eq(0)')
-                        .text());
 
-                    if ($icon.hasClass('fa-pen')) {
-                        // Enter edit mode
-                        $checkbox.prop('disabled', false)
-                            .data('original-value', $checkbox.is(':checked'));
-                        $icon.removeClass('fa-pen text-primary')
-                            .addClass('fa-save text-success')
-                            .attr('title', 'Save Changes');
-                    } else {
-                        // Prepare data for saveChanges
-                        const $cell = $checkbox.closest('.ra-cell');
-                        const slNo = $row.find('td:eq(0)').text();
-                        const title = "R&A";
-                        const updatedValue = $checkbox.is(':checked') ? "true" : "false";
-
-                        // Show saving indicator
-                        $icon.html('<i class="fas fa-spinner fa-spin"></i>');
-
-                        saveChanges(
-                            $cell,
-                            title,
-                            slNo,
-                            false, // isHyperlink
-                            updatedValue,
-                            true // isCheckbox
-                        );
-
-                        // Immediately disable checkbox after save
-                        $checkbox.prop('disabled', true);
-                        $icon.removeClass('fa-save text-success')
-                            .addClass('fa-pen text-primary');
-                    }
-                });
-
-                // Handle direct checkbox changes (for keyboard accessibility)
-                $(document).on('change', '.ra-checkbox:not(:disabled)', function(e) {
-                    e.stopPropagation();
-                    $(this).siblings('.edit-icon').trigger('click');
-                });
-            }
 
             function initCheckBoxEditHandlers() {
                 // Handles both NR and Hide columns
@@ -4380,10 +4255,10 @@
                         const LP = parseFloat(item.raw_data.LP) || 0;
                         const SPRICE = parseFloat(updatedValue) || 0;
 
-                        // Calculate Spft% using formula: (SPRICE * 0.77 - LP - SH) / SPRICE
+                        // Calculate Spft% using formula: (SPRICE * percentage - LP - SH) / SPRICE
                         let Spft = 0;
                         if (SPRICE !== 0) {
-                            Spft = (SPRICE * 0.74 - LP - SH) / SPRICE;
+                            Spft = (SPRICE * ebayPercentage - LP - SH) / SPRICE;
                         }
 
                         // Update Spft% in cache and local data
@@ -4391,20 +4266,11 @@
                         filteredData[index]['Spft%'] = Spft;
                         filteredData[index].raw_data['Spft%'] = Spft;
                     }
-
-                    // If this is an R&A update, ensure the raw_data is also updated
-                    if (title === 'R&A' && filteredData[index].raw_data) {
-                        filteredData[index].raw_data[title] = cacheUpdateValue;
-                    }
                 }
 
                 // 3. Update the UI immediately
                 if (rowElement) {
-                    // For table rows (R&A column)
-                    const checkbox = rowElement.find('.ra-checkbox');
-                    if (checkbox.length) {
-                        checkbox.prop('checked', cacheUpdateValue);
-                    }
+                    // Update the row element if provided
                 } else {
                     // For modal cards
                     if (isCheckbox) {
@@ -4516,7 +4382,6 @@
                         showNotification('success', `${title} Updated Successfully`);
 
                         if (rowElement) {
-                            checkParentRAStatus();
                             renderTable();
                         }
 
@@ -4556,25 +4421,17 @@
 
                                 let Spft = 0;
                                 if (SPRICE !== 0) {
-                                    Spft = (SPRICE * 0.74 - LP - SH) / SPRICE;
+                                    Spft = (SPRICE * ebayPercentage - LP - SH) / SPRICE;
                                 }
 
                                 ebayViewDataCache.updateField(itemId, 'Spft%', Spft);
                                 filteredData[index]['Spft%'] = Spft;
                                 filteredData[index].raw_data['Spft%'] = Spft;
                             }
-
-                            if (title === 'R&A' && filteredData[index].raw_data) {
-                                filteredData[index].raw_data[title] = originalValue;
-                            }
                         }
 
                         // Revert UI
                         if (rowElement) {
-                            const checkbox = rowElement.find('.ra-checkbox');
-                            if (checkbox.length) {
-                                checkbox.prop('checked', originalValue);
-                            }
                             renderTable();
                         } else {
                             if (isCheckbox) {
@@ -5775,8 +5632,8 @@
                     const SPRICE = parseFloat(this.value) || 0;
 
                     if (SPRICE > 0) {
-                        const SPFT = ((SPRICE * 0.74) - LP - SHIP) / SPRICE;
-                        const SROI = ((SPRICE * 0.74) - LP - SHIP) / LP;
+                        const SPFT = ((SPRICE * ebayPercentage) - LP - SHIP) / SPRICE;
+                        const SROI = ((SPRICE * ebayPercentage) - LP - SHIP) / LP;
 
                         $spftInput.val((SPFT * 100).toFixed(2) + '%');
                         $sroiInput.val(isFinite(SROI) ? (SROI * 100).toFixed(2) + '%' : '∞');

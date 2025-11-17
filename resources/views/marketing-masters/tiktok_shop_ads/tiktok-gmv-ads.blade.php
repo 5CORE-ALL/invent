@@ -158,6 +158,47 @@
             width: 100%;
             padding: 3px 5px;
         }
+        .kpi-card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            transition: 0.2s ease-in-out;
+            color: #000;
+        }
+
+        .kpi-blue {
+            background-color: #DCEBFF !important;
+        }
+
+        .kpi-green {
+            background-color: #DFF5E3 !important;
+        }
+
+        .kpi-yellow {
+            background-color: #FFF1CC !important;
+        }
+
+        .kpi-red {
+            background-color: #FFE0E0 !important;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
+        
+        .kpi-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #000 !important;
+            margin-bottom: 4px;
+        }
+
+        .kpi-value {
+            font-size: 22px;
+            font-weight: 800;
+            color: #000;
+        }
     </style>
 @endsection
 @section('content')
@@ -175,6 +216,16 @@
                             <i class="fa-solid fa-chart-line me-2"></i>
                             ACOS CONTROL KW
                         </h4> --}}
+
+                        <div class="row mb-2">
+                            <div class="col-12 text-end">
+                                @if($latestUpdatedAt)
+                                    <span style="font-weight: bold; font-style: italic; font-size: 15px;">
+                                        Last Updated At: {{ $latestUpdatedAt }}
+                                    </span>
+                                @endif
+                            </div>
+                        </div>
 
                         <!-- Filters Row -->
                         <div class="row g-3 mb-3">
@@ -235,20 +286,14 @@
                             </div>
                         </div>
 
-                        <!-- Search and Controls Row -->
-                        <div class="row g-3">
+                        <div class="row g-3 align-items-center mb-3">
                             <div class="col-md-6">
                                 <div class="d-flex gap-2">
                                     <div class="input-group">
                                         <input type="text" id="global-search" class="form-control form-control-md"
                                             placeholder="Search campaign...">
                                     </div>
-                                    <!-- <select id="status-filter" class="form-select form-select-md" style="width: 140px;">
-                                        <option value="">All Status</option>
-                                        <option value="ENABLED">Enabled</option>
-                                        <option value="PAUSED">Paused</option>
-                                        <option value="ARCHIVED">Archived</option>
-                                    </select> -->
+
                                     <select id="ad-status-filter" class="form-select form-select-md" style="width: 140px;">
                                         <option value="">All Status</option>
                                         <option value="active">Active</option>
@@ -256,14 +301,68 @@
                                     </select>
                                 </div>
                             </div>
+
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-end gap-2">
+                                    <button type="button" class="btn btn-sm btn-primary" id="import-btn">Import</button>
+                                    <a href="{{ route('listing_amazon.export') }}" class="btn btn-sm btn-success">Export</a>
+                                </div>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="d-flex align-items-center mb-3 gap-2">
+                        <div class="row mt-2">
+                            <div class="col-12">
+                                <div class="row mt-2" id="kpi-container">
+                                    <div class="col-md-3 col-sm-6">
+                                        <div class="card kpi-card kpi-blue p-3">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <div class="kpi-title">AD SOLD</div>
+                                                    <div class="kpi-value" id="kpi-ad-sold">0</div>
+                                                </div>
+                                                <i class="fa fa-shopping-cart text-primary fa-lg"></i>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                        <button type="button" class="btn btn-sm btn-primary mr-2" id="import-btn">Import</button>
-                        <!-- <button type="button" class="btn btn-sm btn-success mr-3" id="export-btn">Export</button> -->
-                        <a href="{{ route('listing_amazon.export') }}" class="btn btn-sm btn-success mr-3">Export</a>
+                                    <div class="col-md-3 col-sm-6">
+                                        <div class="card kpi-card kpi-green p-3">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <div class="kpi-title">AD SALES</div>
+                                                    <div class="kpi-value" id="kpi-ad-sales">0</div>
+                                                </div>
+                                                <i class="fa fa-dollar-sign text-success fa-lg"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-3 col-sm-6">
+                                        <div class="card kpi-card kpi-yellow p-3">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <div class="kpi-title">AD SPEND</div>
+                                                    <div class="kpi-value" id="kpi-ad-spend">0</div>
+                                                </div>
+                                                <i class="fa fa-coins text-warning fa-lg"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-3 col-sm-6">
+                                        <div class="card kpi-card kpi-red p-3">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <div class="kpi-title">ACOS</div>
+                                                    <div class="kpi-value" id="kpi-acos">0%</div>
+                                                </div>
+                                                <i class="fa fa-percentage text-danger fa-lg"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
@@ -317,6 +416,26 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
+            function updateKpis(table) {
+                let data = table.getData();
+
+                let totalAdSold = 0;
+                let totalAdSales = 0;
+                let totalSpend = 0;
+
+                data.forEach(row => {
+                    totalAdSold += Number(row.ad_sold || 0);
+                    totalAdSales += Number(row.ad_sales || 0);
+                    totalSpend += Number(row.spend || 0);
+                });
+
+                let totalAcos = totalAdSales > 0 ? ((totalSpend / totalAdSales) * 100).toFixed(2) : 0;
+
+                document.getElementById("kpi-ad-sold").textContent = totalAdSold.toLocaleString();
+                document.getElementById("kpi-ad-sales").textContent = totalAdSales.toLocaleString();
+                document.getElementById("kpi-ad-spend").textContent = totalSpend.toLocaleString();
+                document.getElementById("kpi-acos").textContent = totalAcos + "%";
+            }
 
             function showNotification(type, message) {
                 const notification = $(`
@@ -355,6 +474,7 @@
                 layout: "fitDataFill",
                 pagination: "local",
                 paginationSize: 25,
+                paginationSizeSelector: [25, 50, 100, 200],
                 movableColumns: true,
                 resizableColumns: true,
                 rowFormatter: function(row) {
@@ -504,6 +624,10 @@
                     },
                 ],
                 ajaxResponse: function(url, params, response) {
+                    setTimeout(() => {
+                        updateKpis(table);
+                    }, 50);
+
                     return response.data;
                 }
             });

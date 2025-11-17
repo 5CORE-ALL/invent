@@ -333,6 +333,175 @@
             background: #e8f0fe;
             color: #1a56b7;
         }
+
+                 .time-navigation-group {
+            margin-left: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 50px;
+            overflow: hidden;
+            padding: 2px;
+            background: #f8f9fa;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .time-navigation-group button {
+            padding: 0;
+            border-radius: 50% !important;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 3px;
+            transition: all 0.2s ease;
+            border: 1px solid #dee2e6;
+            background: white;
+            cursor: pointer;
+        }
+
+        .time-navigation-group button:hover {
+            background-color: #f1f3f5 !important;
+            transform: scale(1.05);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .time-navigation-group button:active {
+            transform: scale(0.95);
+        }
+
+        .time-navigation-group button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .time-navigation-group button i {
+            font-size: 1.1rem;
+            transition: transform 0.2s ease;
+        }
+
+        /* Play button */
+        #play-auto {
+            color: #28a745;
+        }
+
+        #play-auto:hover {
+            background-color: #28a745 !important;
+            color: white !important;
+        }
+
+        /* Pause button */
+        #play-pause {
+            color: #ffc107;
+            display: none;
+        }
+
+        #play-pause:hover {
+            background-color: #ffc107 !important;
+            color: white !important;
+        }
+
+        /* Navigation buttons */
+        #play-backward,
+        #play-forward {
+            color: #007bff;
+        }
+
+        #play-backward:hover,
+        #play-forward:hover {
+            background-color: #007bff !important;
+            color: white !important;
+        }
+
+        /* Button state colors - must come after hover styles */
+        #play-auto.btn-success,
+        #play-pause.btn-success {
+            background-color: #28a745 !important;
+            color: white !important;
+        }
+
+        #play-auto.btn-warning,
+        #play-pause.btn-warning {
+            background-color: #ffc107 !important;
+            color: #212529 !important;
+        }
+
+        #play-auto.btn-danger,
+        #play-pause.btn-danger {
+            background-color: #dc3545 !important;
+            color: white !important;
+        }
+
+        #play-auto.btn-light,
+        #play-pause.btn-light {
+            background-color: #f8f9fa !important;
+            color: #212529 !important;
+        }
+
+        /* Ensure hover doesn't override state colors */
+        #play-auto.btn-success:hover,
+        #play-pause.btn-success:hover {
+            background-color: #28a745 !important;
+            color: white !important;
+        }
+
+        #play-auto.btn-warning:hover,
+        #play-pause.btn-warning:hover {
+            background-color: #ffc107 !important;
+            color: #212529 !important;
+        }
+
+        #play-auto.btn-danger:hover,
+        #play-pause.btn-danger:hover {
+            background-color: #dc3545 !important;
+            color: white !important;
+        }
+
+        /* Active state styling */
+        .time-navigation-group button:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .time-navigation-group button {
+                width: 36px;
+                height: 36px;
+            }
+
+            .time-navigation-group button i {
+                font-size: 1rem;
+            }
+        }
+
+        /* Add to your CSS file or style section */
+        .hide-column {
+            display: none !important;
+        }
+
+        .dataTables_length,
+        .dataTables_filter {
+            display: none;
+        }
+
+        #play-auto.green-btn {
+            background-color: green !important;
+            color: white;
+        }
+
+        #play-auto.red-btn {
+            background-color: red !important;
+            color: white;
+        }
+
+        th small.badge {
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
     </style>
 @endsection
 
@@ -379,6 +548,22 @@
                                         <option value="h">H</option>
                                         <option value="status">Status</option>
                                     </select>
+                                </div>
+
+                                <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
+                                    <button id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
+                                        <i class="fas fa-step-backward"></i>
+                                    </button>
+                                    <button id="play-pause" class="btn btn-light rounded-circle" title="Show all products"
+                                        style="display: none;">
+                                        <i class="fas fa-pause"></i>
+                                    </button>
+                                    <button id="play-auto" class="btn btn-light rounded-circle" title="Show all products">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                    <button id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
+                                        <i class="fas fa-step-forward"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>

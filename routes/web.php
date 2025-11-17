@@ -2303,7 +2303,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // stock missing listing
     Route::controller(MissingListingController::class)->group(function () {
         Route::get('/stock/missing/listing', 'index')->name('view.missing.listing');
-        Route::get('/stock/missing/listing/data', 'getShopifyMissingInventoryStock')->name('stock.missing.inventory');
+        // Route::get('/stock/missing/listing/data', 'getShopifyMissingInventoryStock')->name('stock.missing.inventory');
+        Route::get('/stock/missing/listing/data', 'shopifyMissingInventoryListings')->name('stock.missing.inventory');
         Route::get('/stock/missing/inventory/refetch_live_data', 'refetchLiveData')->name('stock.mapping.refetch_live_data');
         Route::post('/stock/missing/inventory/refetch_live_data_u', 'refetchLiveDataU')->name('stock.mapping.refetch_live_data');
 
@@ -2364,12 +2365,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('fba-ads-keywords', 'fbaadskw');
         Route::get('fba-ads-pt', 'fbaAdsPt');
         Route::get('fba-data-json', 'fbaDataJson');
+        Route::get('fba-ads-data-json', 'fbaAdsDataJson');
         Route::get('fba-monthly-sales/{sku}', 'getFbaMonthlySales');
         Route::get('fba-manual-export', 'exportFbaManualData');
         Route::post('fba-manual-import', 'importFbaManualData');
         Route::get('fba-manual-sample', 'downloadSampleTemplate');
     });
-
     Route::controller(FBAAnalysticsController::class)->group(function () {
 
         Route::get('fba-analytics-page', 'fbaPageView');
@@ -2419,4 +2420,5 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Route::post('/auto-stock-balance-store', [AutoStockBalanceController::class, 'store'])->name('autostock.balance.store');
     // Route::get('/auto-stock-balance-data-list', [AutoStockBalanceController::class, 'list']);
+    
 });
