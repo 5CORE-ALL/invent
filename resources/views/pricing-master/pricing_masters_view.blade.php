@@ -1762,7 +1762,8 @@ $.ajax({
                             const dobaProfit    = data.doba_price       ? ((parseFloat(data.doba_price) * 0.95) - LP - SHIP) * dobaL30 : 0;
                             const temuProfit    = data.temu_price       ? ((parseFloat(data.temu_price) * 0.87) - LP - temuship) * temuL30 : 0;
                             const ebay3Profit   = data.ebay3_price      ? ((parseFloat(data.ebay3_price) * 0.78) - LP - SHIP) * ebay3L30 : 0;
-                            const ebay2Profit   = data.ebay2_price      ? ((parseFloat(data.ebay2_price) * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) * ebay2L30 : 0;
+                            // const ebay2Profit   = data.ebay2_price      ? ((parseFloat(data.ebay2_price) * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) * ebay2L30 : 0;
+                            const ebay2Profit   = data.ebay2_price      ? ((parseFloat(data.ebay2_price) * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) / LP : 0;
                             const walmartProfit = data.walmart_price    ? ((parseFloat(data.walmart_price) * 0.80) - LP - SHIP) * walmartL30 : 0;
                             const sheinProfit   = data.shein_price      ? ((parseFloat(data.shein_price) * 0.89) - LP - SHIP) * sheinL30 : 0;
                             const bestbuyProfit  = data.bestbuy_price    ? ((parseFloat(data.bestbuy_price) * 0.80) - LP - SHIP) * bestbuyL30 : 0;

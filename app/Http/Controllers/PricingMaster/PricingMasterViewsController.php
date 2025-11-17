@@ -394,6 +394,7 @@ class PricingMasterViewsController extends Controller
         $temuMetricLookup = TemuMetric::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $amazonDataView = AmazonDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $ebayDataView = EbayDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $ebay2DataView = EbayTwoDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $shopifyb2cDataView = Shopifyb2cDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $dobaDataView = DobaDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $temuDataView = TemuDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
@@ -928,8 +929,8 @@ class PricingMasterViewsController extends Controller
                 'ebay_spft' => isset($ebayDataView[$sku]) ? (is_array($ebayDataView[$sku]->value) ? ($ebayDataView[$sku]->value['SPFT'] ?? null) : (json_decode($ebayDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
                 'ebay_sroi' => isset($ebayDataView[$sku]) ? (is_array($ebayDataView[$sku]->value) ? ($ebayDataView[$sku]->value['SROI'] ?? null) : (json_decode($ebayDataView[$sku]->value, true)['SROI'] ?? null)) : null,
                 'ebay2_sprice' => isset($ebayDataView[$sku]) ? (is_array($ebayDataView[$sku]->value) ? ($ebayDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($ebayDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
-                'ebay2_spft' => isset($ebayDataView[$sku]) ? (is_array($ebayDataView[$sku]->value) ? ($ebayDataView[$sku]->value['SPFT'] ?? null) : (json_decode($ebayDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
-                'ebay2_sroi' => isset($ebayDataView[$sku]) ? (is_array($ebayDataView[$sku]->value) ? ($ebayDataView[$sku]->value['SROI'] ?? null) : (json_decode($ebayDataView[$sku]->value, true)['SROI'] ?? null)) : null,
+                'ebay2_spft' => isset($ebay2DataView[$sku]) ? (is_array($ebay2DataView[$sku]->value) ? ($ebay2DataView[$sku]->value['SPFT'] ?? null) : (json_decode($ebay2DataView[$sku]->value, true)['SPFT'] ?? null)) : null,
+                'ebay2_sroi' => isset($ebay2DataView[$sku]) ? (is_array($ebay2DataView[$sku]->value) ? ($ebay2DataView[$sku]->value['SROI'] ?? null) : (json_decode($ebay2DataView[$sku]->value, true)['SROI'] ?? null)) : null,
                 'ebay3_sprice' => isset($ebayDataView[$sku]) ? (is_array($ebayDataView[$sku]->value) ? ($ebayDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($ebayDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
                 'ebay3_spft' => isset($ebayDataView[$sku]) ? (is_array($ebayDataView[$sku]->value) ? ($ebayDataView[$sku]->value['SPFT'] ?? null) : (json_decode($ebayDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
                 'ebay3_sroi' => isset($ebayDataView[$sku]) ? (is_array($ebayDataView[$sku]->value) ? ($ebayDataView[$sku]->value['SROI'] ?? null) : (json_decode($ebayDataView[$sku]->value, true)['SROI'] ?? null)) : null,
