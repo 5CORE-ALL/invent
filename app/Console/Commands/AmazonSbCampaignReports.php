@@ -110,7 +110,7 @@ class AmazonSbCampaignReports extends Command
         $timeoutSeconds = 7200; // 2 hours max
 
         while (now()->diffInSeconds($start) < $timeoutSeconds) {
-            sleep(120); // 2 minutes
+            sleep(240); // 2 minutes
 
             $token = $this->getAccessToken(); // 🔁 refresh token each poll
 
