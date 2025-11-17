@@ -1603,7 +1603,7 @@ $.ajax({
                         const dobaProfit = ((dobaPrice * 0.95) - LP - SHIP) ;
                         const temuProfit = ((temuPrice * 0.87) - LP - temuship) ;
                         const ebay3Profit = ((ebay3Price * 0.78) - LP - SHIP);
-                        const ebay2Profit = ((ebay2Price * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) ;
+                        const ebay2Profit = ((ebay2Price * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) / ebay2Price ;
                         const walmartProfit = ((walmartPrice * 0.80) - LP - SHIP) ;
                         const sheinProfit = ((sheinPrice * 0.89) - LP - SHIP) ;
                         const bestbuyProfit = ((bestbuyPrice * 0.80) - LP - SHIP) ;
