@@ -87,9 +87,9 @@ class AutoUpdateAmazonBgtPt extends Command
             }
 
             // clicks must be >= 25
-            if (($matchedCampaignL30->clicks ?? 0) < 25) {
-                continue;
-            }
+            // if (($matchedCampaignL30->clicks ?? 0) < 25) {
+            //     continue;
+            // }
 
             // Skip if INV = 0
             if (($shopify->inv ?? 0) == 0) {

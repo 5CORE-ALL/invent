@@ -92,9 +92,9 @@ class AutoUpdateAmazonBgtHl extends Command
             }
 
             // clicks must be >= 25
-            if (($matchedCampaignL30->clicks ?? 0) < 25) {
-                continue;
-            }
+            // if (($matchedCampaignL30->clicks ?? 0) < 25) {
+            //     continue;
+            // }
 
             $row = [];
             $row['price']  = $amazonSheet->price ?? 0;
