@@ -1061,15 +1061,12 @@
             /* Red */
             color: white;
         }
-        /* .nr-hide{
-            display: none !important;
-        } */
     </style>
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Listing Amazon', 'sub_title' => 'Amazon'])
-
+    @include('layouts.shared.page-title', ['page_title' => 'Listing Amazon', 'sub_title' => 'Amazon'])
+    
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -1210,9 +1207,6 @@
                                             <div class="metric-total" id="req-total"
                                                 style="display:inline-block; background:#43dc35; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
                                                 0</div>
-                                                <div class="metric-total" id="nrl-total"
-                                                style="display:none; background:#dc3545; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0</div>
                                         </div>
                                     </th>
                                     <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
@@ -1309,7 +1303,6 @@
         </div>
     </div>
 @endsection
-
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -1429,17 +1422,11 @@
                         // Set default value for nr_req if missing and INV > 0
                         tableData = tableData.map(item => ({
                             ...item,
-                            // nr_req: item.nr_req === 'REQ' ? 'REQ' : item.nr_req === 'NR' ? 'NR' : '',
-                            nr_req: item.nr_req === 'REQ' ? 'REQ' : item.nr_req === 'NR' ? 'NR' : '',
-                            listed: item.nr_req === 'NR' ? 'NRL' : (item.listed === 'Listed' ? 'Listed' : 'Pending')
-                        }));                        // tableData = tableData.map(item => ({
-                        //     ...item,
-                        //     nr_req: item.nr_req === 'REQ' ? 'REQ' : item.nr_req === 'NR' ? 'NR' : '',
-                        //     listed: if(item.nr_req !='NR'  && item.listed){ 'Listed'} else if(item.nr_req =='NR'){'NRL'} 
-                            
-                        //     // listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' :
-                        //     //     'Listed')
-                        // }));
+                            nr_req: item.nr_req || (parseFloat(item.INV) > 0 ? 'REQ' :
+                                'NR'),
+                            listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' :
+                                'Listed')
+                        }));
 
                         filteredData = [...tableData];
                     },
@@ -1471,10 +1458,10 @@
                 // Group data by parent
                 const groupedData = {};
                 filteredRows.forEach(item => {
-                    if (!groupedData[item.Parent]) {
-                        groupedData[item.Parent] = [];
+                    if (!groupedData[item.parent]) {
+                        groupedData[item.parent] = [];
                     }
-                    groupedData[item.Parent].push(item);
+                    groupedData[item.parent].push(item);
                 });
 
                 // Sort parents alphabetically
@@ -1508,7 +1495,7 @@
                 $('#visible-rows').text(`Showing all ${$tbody.children().length} rows`);
             }
 
-            //open modal on click import button
+             //open modal on click import button
             $('#import-btn').on('click', function () {
                 $('#importModal').modal('show');
             });
@@ -1536,14 +1523,13 @@
                         $('#importModal').modal('hide');
                         $('#importFile').val('');
                         showNotification('success', response.success);
-                        loadData(); // refresh your DataTable
+                        location.reload(); // refresh your DataTable
                     },
                     error: function (xhr) {
                         showNotification('danger', xhr.responseJSON.error || 'Import failed');
                     }
                 });
             });
-
 
             // Helper function to create a table row
             function createTableRow(item, index) {
@@ -1554,12 +1540,8 @@
                     $row.addClass('parent-row');
                 }
 
-                // if(item.nr_req === 'NR'){
-                //     $row.addClass('nr-hide');
-                // }
-
                 $row.append($('<td>').text(index)); // SL No.
-                $row.append($('<td>').text(item.Parent)); // Parent
+                $row.append($('<td>').text(item.parent)); // Parent
                 $row.append($('<td>').text(item.sku)); // SKU
                 $row.append($('<td>').text(item.INV)); // INV
 
@@ -1588,10 +1570,9 @@
                 const $linkCell = $('<td>');
 
                 // Buyer Link
-                // if (parseFloat(item.INV) > 0 && item.buyer_link) {
-                 if (!item.sku.includes('PARENT')) {
+                if (parseFloat(item.INV) > 0 && item.buyer_link) {
                     $linkCell.append(
-                        `<a href="https://www.amazon.com/dp/${item.asin}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Buyer</a>`
+                        `<a href="${item.buyer_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Buyer</a>`
                     );
                 }
 
@@ -1620,12 +1601,7 @@
 
                 // Listed/Pending dropdown only for non-parent rows
                 if (!item.sku.includes('PARENT')) {
-                    if(item.listed==='NRL'){
-                        item.listed='NRL';
-                         $row.append($('<td>').append('<span style="color: white;background: #dc3545;padding: 0.28rem 0.8rem;font-size: 0.85rem;border-radius: 0.25rem;height: 31px;min-width: 105px;display: inline-block;width: 100%;text-align: center;place-content: center;">NRL</span>'));
-                    }
-                    else{
-                              const $listedDropdown = $('<select>')
+                    const $listedDropdown = $('<select>')
                         .addClass('listed-dropdown form-control form-control-sm')
                         .append('<option value="Listed" class="listed-option">Listed</option>')
                         .append('<option value="Pending" class="pending-option">Pending</option>');
@@ -1635,15 +1611,11 @@
 
                     if (listedValue === 'Listed') {
                         $listedDropdown.css('background-color', '#28a745').css('color', 'white');
-                        $row.append($('<td>').append($listedDropdown));
                     } else if (listedValue === 'Pending') {
                         $listedDropdown.css('background-color', '#dc3545').css('color', 'white');
-                        $row.append($('<td>').append($listedDropdown));
                     }
-                    
-                    }
-              
 
+                    $row.append($('<td>').append($listedDropdown));
                 } else {
                     $row.append($('<td>').text('')); // Empty cell for parent rows
                 }
@@ -1823,27 +1795,18 @@
                     const metrics = {
                         invTotal: 0,
                         reqTotal: 0,
-                        nrlTotal: 0,
                         withoutLinkTotal: 0,
                         listedTotal: 0, // Green
                         pendingTotal: 0, // Red
-                        rowCount: 0,
-                        ttotal: 0 ,
+                        rowCount: 0
                     };
 
-                    
                     filteredData.forEach(item => {
-                        // if (parseFloat(item.INV) > 0 && !item.sku.includes('PARENT')) {
-                        if (!item.sku.includes('PARENT') && parseFloat(item.INV) > 0) {
-
-
+                        if (parseFloat(item.INV) > 0 && !item.sku.includes('PARENT')) {
                             metrics.invTotal += parseFloat(item.INV) || 0;
 
                             if (item.nr_req === 'REQ') {
                                 metrics.reqTotal++;
-                            }
-                              if (item.nr_req === 'NR'){
-                                metrics.nrlTotal ++;
                             }
                             if (!item.buyer_link && !item.seller_link) {
                                 metrics.withoutLinkTotal++;
@@ -1857,14 +1820,12 @@
                                     metrics.pendingTotal++;
                                 }
                             }
-                            metrics.ttotal++;
                         }
                     });
 
                     $('#inv-total').text(metrics.invTotal.toLocaleString());
-                    $('#req-total').html(`<span style="color:red;">${metrics.nrlTotal}</span>/<span style="color:green;">${metrics.reqTotal}</span>`);
-                    $('#nrl-total').text(metrics.nrlTotal);
-                    $('#without-link-total').css('background-color', '#43dc35').text(metrics.withoutLinkTotal);
+                    $('#req-total').text(metrics.reqTotal);
+                    $('#without-link-total').text(metrics.withoutLinkTotal);
                     $('#listed-total').text(metrics.listedTotal); // Green
                     $('#pending-total').text(metrics.pendingTotal); // Red
                 } catch (error) {
@@ -1876,7 +1837,6 @@
             function resetMetricsToZero() {
                 $('#inv-total').text('0');
                 $('#req-total').text('0');
-                $('#nrl-total').text('0');
                 $('#without-link-total').text('0');
                 $('#listed-total').text('0');
                 $('#pending-total').text('0');
@@ -2029,7 +1989,7 @@
                 let l30Total = 0;
                 filteredData.forEach(item => {
                     if (
-                        item.Parent === parentName &&
+                        item.parent === parentName &&
                         !item.is_parent // Only sum child rows
                     ) {
                         invTotal += parseFloat(item.INV) || 0;
@@ -2227,12 +2187,6 @@
                 const nr_req = $row.find('.nr-req-dropdown').val() || 'REQ';
                 const listed = $row.find('.listed-dropdown').val() || 'Pending';
 
-                if (nr_req === 'REQ') {
-                    $(this).css('background-color', '#28a745').css('color', 'white');
-                } else if (nr_req === 'NR') {
-                    $(this).css('background-color', '#dc3545').css('color', 'white');
-                }
-
                 // Optionally, get current links if you want to save them too
                 const buyer_link = $row.data('buyer-link') || '';
                 const seller_link = $row.data('seller-link') || '';
@@ -2274,7 +2228,7 @@
                             Object.assign(item, data);
                         }
                         calculateTotals(); // Recalculate totals after update
-                        renderTable(); // Optionally re-render table if needed
+                        renderTable();     // Optionally re-render table if needed
                     },
                     error: function(xhr) {
                         showNotification('danger', 'Save failed!');
@@ -2309,20 +2263,9 @@
                     // Show all rows
                     filteredData = [...tableData];
                 } else {
-                   if (selectedValue === 'REQ') {
-    $('#req-total').show();
-    $('#nrl-total').hide();
-} else if (selectedValue === 'NR') {
-    $('#nrl-total').show();
-    $('#req-total').hide();
-} else {
-    $('#req-total').hide();
-    $('#nrl-total').hide();
-}
                     // Filter rows based on NR/REQ value
                     filteredData = tableData.filter(item => item.nr_req === selectedValue);
                 }
-
 
                 currentPage = 1; // Reset to the first page
                 renderTable(); // Re-render the table

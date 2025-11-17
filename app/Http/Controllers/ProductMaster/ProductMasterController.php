@@ -243,6 +243,8 @@ class ProductMasterController extends Controller
      */
     public function store(Request $request)
     {
+        $request->headers->set('Accept', 'application/json');
+
         $validated = $request->validate([
             'parent' => 'nullable|string',
             'sku' => 'required|string',
