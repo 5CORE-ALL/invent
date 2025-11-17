@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'FBA Sales Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'FBA Dispatch Data', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -18,7 +18,7 @@
             <div class="col-12">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h4>FBA Data </h4>
+                        <h4>FBA Dispatch Data</h4>
                         <div>
                             <select id="inventory-filter" class="form-select form-select-sm me-2"
                                 style="width: auto; display: inline-block;">
@@ -195,6 +195,11 @@
                             hozAlign: "center"
                         },
 
+                        {
+                            title: "Shopify INV",
+                            field: "Shopify_INV",
+                            hozAlign: "center"
+                        },
 
                         {
                             title: "L30 Units",
