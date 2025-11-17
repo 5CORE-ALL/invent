@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\FbaManualData;
+use App\Models\FbaShipCalculation;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 
@@ -140,9 +141,10 @@ class FbaManualDataService
      * @param float|string $fbaFeeManual Manual FBA fee value
      * @param float|string $sendCost Send cost value from manual data
      * @param float|string $inCharges IN charges value from manual data
+     * @param bool $saveToDb Whether to save to database (default: true)
      * @return float Calculated FBA Ship Calculation value
      */
-    public function calculateFbaShipCalculation($sku, $fbaFeeManual = 0, $sendCost = 0, $inCharges = 0)
+    public function calculateFbaShipCalculation($sku, $fbaFeeManual = 0, $sendCost = 0, $inCharges = 0, $saveToDb = true)
     {
         // Normalize SKU by removing FBA suffix
         $baseSku = preg_replace('/\s*FBA\s*/i', '', $sku);
@@ -158,17 +160,81 @@ class FbaManualDataService
             ->first();
 
         $fulfillmentFee = $fbaReport ? floatval($fbaReport->fulfillment_fee ?? 0) : 0;
+        $fbaFeeManualValue = floatval($fbaFeeManual);
+        $sendCostValue = floatval($sendCost);
+        $inChargesValue = floatval($inCharges);
+
+        // Calculate final value
+        $finalCalculation = 0;
+        $source = '';
 
         // If fulfillment fee exists and is greater than 0, use only that
         if ($fulfillmentFee > 0) {
-            return round($fulfillmentFee, 2);
+            $finalCalculation = round($fulfillmentFee, 2);
+            $source = 'fulfillment_fee';
+        } else {
+            // Otherwise, use manual data calculation: fba_fee_manual + send_cost + in_charges
+            $finalCalculation = round($fbaFeeManualValue + $sendCostValue + $inChargesValue, 2);
+            $source = 'manual';
         }
 
-        // Otherwise, use manual data calculation: fba_fee_manual + send_cost + in_charges
-        $fbaFeeManual = floatval($fbaFeeManual);
-        $sendCost = floatval($sendCost);
-        $inCharges = floatval($inCharges);
+        // Save to database if enabled
+        if ($saveToDb) {
+            try {
+                FbaShipCalculation::updateOrCreate(
+                    ['sku' => $baseSku],
+                    [
+                        'fba_sku' => $sku,
+                        'fulfillment_fee' => $fulfillmentFee,
+                        'fba_fee_manual' => $fbaFeeManualValue,
+                        'send_cost' => $sendCostValue,
+                        'in_charges' => $inChargesValue,
+                        'fba_ship_calculation' => $finalCalculation,
+                        'calculation_source' => $source,
+                    ]
+                );
+            } catch (\Exception $e) {
+                Log::error('Failed to save FBA Ship Calculation for SKU: ' . $baseSku . ' - Error: ' . $e->getMessage());
+            }
+        }
 
-        return round($fbaFeeManual + $sendCost + $inCharges, 2);
+        return $finalCalculation;
+    }
+
+    /**
+     * Bulk update all FBA Ship Calculations
+     * This method can be called to recalculate and store all calculations
+     */
+    public function bulkUpdateCalculations()
+    {
+        try {
+            $fbaData = \App\Models\FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get();
+            $fbaManualData = FbaManualData::all()->keyBy(function ($item) {
+                return strtoupper(trim($item->sku));
+            });
+
+            $updated = 0;
+
+            foreach ($fbaData as $fba) {
+                $baseSku = preg_replace('/\s*FBA\s*/i', '', $fba->seller_sku);
+                $baseSku = strtoupper(trim($baseSku));
+                
+                $manual = $fbaManualData->get($baseSku);
+                
+                $this->calculateFbaShipCalculation(
+                    $fba->seller_sku,
+                    $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
+                    $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+                    $manual ? ($manual->data['in_charges'] ?? 0) : 0,
+                    true // Save to DB
+                );
+                
+                $updated++;
+            }
+
+            return ['success' => true, 'updated' => $updated];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 }

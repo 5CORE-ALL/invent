@@ -2366,10 +2366,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('fba-ads-pt', 'fbaAdsPt');
         Route::get('fba-data-json', 'fbaDataJson');
         Route::get('fba-ads-data-json', 'fbaAdsDataJson');
+        Route::get('fba-ads-pt-data-json', 'fbaAdsPtDataJson');
         Route::get('fba-monthly-sales/{sku}', 'getFbaMonthlySales');
         Route::get('fba-manual-export', 'exportFbaManualData');
         Route::post('fba-manual-import', 'importFbaManualData');
         Route::get('fba-manual-sample', 'downloadSampleTemplate');
+        Route::post('fba-ship-calculations-sync', 'syncFbaShipCalculations');
     });
     Route::controller(FBAAnalysticsController::class)->group(function () {
 
