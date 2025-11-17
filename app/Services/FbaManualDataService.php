@@ -168,10 +168,10 @@ class FbaManualDataService
         $finalCalculation = 0;
         $source = '';
 
-        // If fulfillment fee exists and is greater than 0, use only that
+        // If fulfillment fee exists and is greater than 0, use fulfillment_fee + send_cost + in_charges
         if ($fulfillmentFee > 0) {
-            $finalCalculation = round($fulfillmentFee, 2);
-            $source = 'fulfillment_fee';
+            $finalCalculation = round($fulfillmentFee + $sendCostValue + $inChargesValue, 2);
+            $source = 'fulfillment_fee_with_costs';
         } else {
             // Otherwise, use manual data calculation: fba_fee_manual + send_cost + in_charges
             $finalCalculation = round($fbaFeeManualValue + $sendCostValue + $inChargesValue, 2);
