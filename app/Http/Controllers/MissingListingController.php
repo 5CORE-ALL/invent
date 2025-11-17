@@ -820,19 +820,22 @@ protected function filterParentSKU(array $data): array
     public function shopifyMissingInventoryListings() {
         $productMasters = DB::table('product_master')
             ->whereRaw('LOWER(sku) NOT LIKE ?', ['parent%'])
-            ->orderBy('id', 'asc')
+            ->whereNull('deleted_at')
+            ->orderBy('id')
             ->get();
 
         $masterSKUs = $productMasters
             ->pluck('sku')
             ->filter()
             ->unique()
+            ->map(fn($s) => strtolower($s))
             ->values()
             ->toArray();
 
-        $shopifyInventory = ShopifyInventory::whereIn('sku', $masterSKUs)
+        $shopifyInventory = ShopifyInventory::select('*')
+            ->whereIn(DB::raw('LOWER(sku)'), $masterSKUs)
             ->get()
-            ->keyBy('sku');
+            ->keyBy(fn($item) => strtolower($item->sku));
 
         $marketplaces = [
             'amazon'    => [AmazonListingStatus::class],
@@ -853,28 +856,23 @@ protected function filterParentSKU(array $data): array
 
         foreach ($productMasters as $pm) {
 
-            $sku = $pm->sku;
+            $sku = strtolower($pm->sku);
 
             $row = [];
             $row['parent'] = $pm->parent;
             $row['sku']    = $pm->sku;
             $row['listing_status'] = [];
 
-            if (isset($shopifyInventory[$sku])) {
-                $row['listing_status']['shopify'] = "Listed";
-            } else {
-                $row['listing_status']['shopify'] = "Not Listed";
-            }
+            $row['listing_status']['shopify'] =
+                isset($shopifyInventory[$sku]) ? "Listed" : "Not Listed";
 
             foreach ($marketplaces as $marketplaceName => $models) {
 
-                $status = "Not Listed";   
+                $status = "Not Listed";
                 $foundListing = null;
 
                 foreach ($models as $modelClass) {
-                    $listing = $modelClass::whereRaw('LOWER(sku) = ?', [strtolower($sku)])
-                        ->first();
-
+                    $listing = $modelClass::whereRaw('LOWER(sku) = ?', [$sku])->first();
                     if ($listing) {
                         $foundListing = $listing;
                         break;
@@ -882,19 +880,16 @@ protected function filterParentSKU(array $data): array
                 }
 
                 if ($foundListing) {
-
                     $value = $foundListing->value;
-
                     if (is_string($value)) {
                         $value = json_decode($value, true);
                     }
-
                     $value = is_array($value) ? $value : [];
 
                     $listed = $value['listed'] ?? null;
-                    $nr_req = $value['nr_req'] ?? null;
+                    $nrl = $value['NRL'] ?? null;
 
-                    if ($listed === "Listed" && $nr_req === "NRL") {
+                    if ($listed === "Listed" && $nrl === "NRL") {
                         $status = "NRL";
                     } else {
                         $status = "Listed";
@@ -913,4 +908,5 @@ protected function filterParentSKU(array $data): array
             'status'  => 200,
         ]);
     }
+
 }
