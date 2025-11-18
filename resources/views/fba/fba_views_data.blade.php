@@ -195,13 +195,13 @@
 
 
                         {
-                            title: "L60 Units",
+                            title: "L60 FBA",
                             field: "l60_units",
                             hozAlign: "center"
                         },
 
                         {
-                            title: "L30 Units",
+                            title: "L30 FBA",
                             field: "l30_units",
                             hozAlign: "center"
                         },
@@ -221,6 +221,25 @@
                                 return `<span style="color:${color}; font-weight:600;">${formattedValue}</span>`;
                             },
                         },
+
+
+                         {
+                            title: "FBA_CVR",
+                            field: "FBA_CVR",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            },
+                        },
+
+                            
+
+                        {
+                            title: "Views",
+                            field: "Current_Month_Views",
+                            hozAlign: "center"
+                        },
+
 
                         {
                             title: "Inv age",
@@ -340,45 +359,31 @@
                                 return value.toFixed(2);
                             }
                         },
-                        {
-                            title: "FBA_CVR",
-                            field: "FBA_CVR",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-                        {
-                            title: "Views",
-                            field: "Current_Month_Views",
-                            hozAlign: "center"
-                        },
+                   
 
 
-
-                        {
-                            title: "Listed",
-                            field: "Listed",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-                        {
-                            title: "Live",
-                            field: "Live",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
+                        // {
+                        //     title: "Listed",
+                        //     field: "Listed",
+                        //     formatter: "tickCross",
+                        //     hozAlign: "center",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
+                        // {
+                        //     title: "Live",
+                        //     field: "Live",
+                        //     formatter: "tickCross",
+                        //     hozAlign: "center",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
                         {
                             title: "FBA Fee",
                             field: "Fulfillment_Fee",
@@ -386,7 +391,7 @@
                         },
 
                         {
-                            title: "FBA Fee Manual",
+                            title: "FBA Fee M",
                             field: "FBA_Fee_Manual",
                             hozAlign: "center",
                             editor: "input",
@@ -402,55 +407,55 @@
                             title: "ASIN",
                             field: "ASIN"
                         },
-                        {
-                            title: "Barcode",
-                            field: "Barcode",
-                            editor: "list",
-                            editorParams: {
-                                values: ["", "M", "A"],
-                                autocomplete: true,
-                                allowEmpty: true,
-                                listOnEmpty: true
-                            },
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Done",
-                            field: "Done",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
+                        // {
+                        //     title: "Barcode",
+                        //     field: "Barcode",
+                        //     editor: "list",
+                        //     editorParams: {
+                        //         values: ["", "M", "A"],
+                        //         autocomplete: true,
+                        //         allowEmpty: true,
+                        //         listOnEmpty: true
+                        //     },
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Done",
+                        //     field: "Done",
+                        //     formatter: "tickCross",
+                        //     hozAlign: "center",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
 
 
-                        {
-                            title: "Dispatch Date",
-                            field: "Dispatch_Date",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-                        {
-                            title: "Weight",
-                            field: "Weight",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-                        {
-                            title: "Quantity Box",
-                            field: "Quantity_in_each_box",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-                        {
-                            title: "Sent Quantity",
-                            field: "Total_quantity_sent",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
+                        // {
+                        //     title: "Dispatch Date",
+                        //     field: "Dispatch_Date",
+                        //     hozAlign: "center",
+                        //     editor: "input"
+                        // },
+                        // {
+                        //     title: "Weight",
+                        //     field: "Weight",
+                        //     hozAlign: "center",
+                        //     editor: "input"
+                        // },
+                        // {
+                        //     title: "Quantity Box",
+                        //     field: "Quantity_in_each_box",
+                        //     hozAlign: "center",
+                        //     editor: "input"
+                        // },
+                        // {
+                        //     title: "Sent Quantity",
+                        //     field: "Total_quantity_sent",
+                        //     hozAlign: "center",
+                        //     editor: "input"
+                        // },
                         {
                             title: "Send Cost",
                             field: "Send_Cost",
@@ -464,47 +469,53 @@
                             editor: "input"
                         },
                         {
-                            title: "Warehouse INV Reduction",
-                            field: "Warehouse_INV_Reduction",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-                        {
-                            title: "Shipping Amount",
-                            field: "Shipping_Amount",
+                            title: "Commission %",
+                            field: "Commission_Percentage",
                             hozAlign: "center",
                             editor: "input"
                         },
-                        {
-                            title: "Inbound Quantity",
-                            field: "Inbound_Quantity",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
+                        // {
+                        //     title: "Warehouse INV Reduction",
+                        //     field: "Warehouse_INV_Reduction",
+                        //     formatter: "tickCross",
+                        //     hozAlign: "center",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
+                        // {
+                        //     title: "Shipping Amount",
+                        //     field: "Shipping_Amount",
+                        //     hozAlign: "center",
+                        //     editor: "input"
+                        // },
+                        // {
+                        //     title: "Inbound Quantity",
+                        //     field: "Inbound_Quantity",
+                        //     hozAlign: "center",
+                        //     editor: "input"
+                        // },
 
-                        {
-                            title: "FBA Send",
-                            field: "FBA_Send",
-                            hozAlign: "center",
-                            formatter: "tickCross",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
+                        // {
+                        //     title: "FBA Send",
+                        //     field: "FBA_Send",
+                        //     hozAlign: "center",
+                        //     formatter: "tickCross",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
 
-                        {
-                            title: "L x W x H",
-                            field: "Dimensions",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
+                        // {
+                        //     title: "L x W x H",
+                        //     field: "Dimensions",
+                        //     hozAlign: "center",
+                        //     editor: "input"
+                        // },
                         {
                             title: "Jan",
                             field: "Jan",
@@ -579,6 +590,7 @@
                         'Quantity_in_each_box' ||
                         field === 'Total_quantity_sent' || field === 'Send_Cost' || field ===
                         'IN_Charges' ||
+                        field === 'Commission_Percentage' ||
                         field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
                         'FBA_Fee_Manual') {

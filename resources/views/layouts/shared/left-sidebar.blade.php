@@ -225,7 +225,7 @@
                 <div class="collapse" id="fbaPricingMaster">
                     <ul class="side-nav-second-level">
                         <li>
-                            <a href="{{ url('/fba-view-page') }}">FBA pricing  Data</a>
+                            <a href="{{ url('/fba-view-page') }}">FBA pricing</a>
                         </li>
 
                         <li>
