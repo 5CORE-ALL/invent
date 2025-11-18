@@ -26,11 +26,10 @@ class FbaDataController extends Controller
    protected $lmpaDataService;
 
    public function __construct(
-      FbaManualDataService $fbaManualDataService, 
-      ColorService $colorService, 
+      FbaManualDataService $fbaManualDataService,
+      ColorService $colorService,
       LmpaDataService $lmpaDataService
-   )
-   {
+   ) {
       $this->fbaManualDataService = $fbaManualDataService;
       $this->colorService = $colorService;
       $this->lmpaDataService = $lmpaDataService;
@@ -284,10 +283,10 @@ class FbaDataController extends Controller
          $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
          $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
 
-         $pftPercentage = round($pft * 100, 2);
-         $roiPercentage = round($roi * 100, 2);
-         $spftPercentage = round($spft * 100, 2);
-         $sroiPercentage = round($sroi * 100, 2);
+         $pftPercentage = round($pft * 100);
+         $roiPercentage = round($roi * 100);
+         $spftPercentage = round($spft * 100);
+         $sroiPercentage = round($sroi * 100);
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
          // Extract ads metrics
@@ -783,10 +782,10 @@ class FbaDataController extends Controller
          $roi = ($LP > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
          $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
          $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
-         $pftPercentage = round($pft * 100, 2);
-         $roiPercentage = round($roi * 100, 2);
-         $spftPercentage = round($spft * 100, 2);
-         $sroiPercentage = round($sroi * 100, 2);
+         $pftPercentage = round($pft * 100);
+         $roiPercentage = round($roi * 100);
+         $spftPercentage = round($spft * 100);
+         $sroiPercentage = round($sroi * 100);
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
          return [
@@ -830,6 +829,7 @@ class FbaDataController extends Controller
             'Quantity_in_each_box' => $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0,
             'Send_Cost' => $manual ? ($manual->data['send_cost'] ?? 0) : 0,
             'IN_Charges' => $manual ? ($manual->data['in_charges'] ?? 0) : 0,
+            'Commission_Percentage' => $manual ? ($manual->data['commission_percentage'] ?? 0) : 0,
             'Total_quantity_sent' => $manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0,
             'Done' => $manual ? ($manual->data['done'] ?? false) : false,
             'Warehouse_INV_Reduction' => $manual ? ($manual->data['warehouse_inv_reduction'] ?? false) : false,
@@ -914,6 +914,7 @@ class FbaDataController extends Controller
             'Total_quantity_sent' => round($children->sum(fn($item) => is_numeric($item['Total_quantity_sent']) ? $item['Total_quantity_sent'] : 0), 2),
             'Send_Cost' => round($children->sum(fn($item) => is_numeric($item['Send_Cost']) ? $item['Send_Cost'] : 0), 2),
             'IN_Charges' => round($children->sum(fn($item) => is_numeric($item['IN_Charges']) ? $item['IN_Charges'] : 0), 2),
+            'Commission_Percentage' => '',
             'Done' => false,
             'Warehouse_INV_Reduction' => false,
             'FBA_Send' => false,
@@ -1041,8 +1042,8 @@ class FbaDataController extends Controller
       return response()->json([
          'success' => true,
          'updatedRow' => [
-               'FBA_SHIP' => $FBA_SHIP,
-               strtoupper($field) => $value,
+            'FBA_SHIP' => $FBA_SHIP,
+            strtoupper($field) => $value,
          ]
       ]);
    }
