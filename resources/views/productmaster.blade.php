@@ -794,7 +794,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="labelQty" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Label QTY*</label>
+                                                        style="color: #4A5568;">Label QTY</label>
                                                     <input type="text" class="form-control" id="labelQty"
                                                         placeholder="Enter QTY"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -873,7 +873,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="wtAct" class="form-label fw-bold"
-                                                        style="color: #4A5568;">WT ACT*</label>
+                                                        style="color: #4A5568;">WT ACT</label>
                                                     <input type="text" class="form-control" id="wtAct"
                                                         placeholder="Enter WT ACT"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -887,7 +887,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="wtDecl" class="form-label fw-bold"
-                                                        style="color: #4A5568;">WT DECL*</label>
+                                                        style="color: #4A5568;">WT DECL</label>
                                                     <input type="text" class="form-control" id="wtDecl"
                                                         placeholder="Enter WT DECL"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -897,7 +897,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="ship" class="form-label fw-bold"
-                                                        style="color: #4A5568;">SHIP*</label>
+                                                        style="color: #4A5568;">SHIP</label>
                                                     <input type="text" class="form-control" id="ship"
                                                         placeholder="Enter SHIP"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -946,7 +946,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="w" class="form-label fw-bold"
-                                                        style="color: #4A5568;">W*</label>
+                                                        style="color: #4A5568;">W</label>
                                                     <input type="text" class="form-control" id="w"
                                                         placeholder="Enter W"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -956,7 +956,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="l" class="form-label fw-bold"
-                                                        style="color: #4A5568;">L*</label>
+                                                        style="color: #4A5568;">L</label>
                                                     <input type="text" class="form-control" id="l"
                                                         placeholder="Enter L"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -970,7 +970,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="h" class="form-label fw-bold"
-                                                        style="color: #4A5568;">H*</label>
+                                                        style="color: #4A5568;">H</label>
                                                     <input type="text" class="form-control" id="h"
                                                         placeholder="Enter H"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -1752,13 +1752,13 @@
                                     cell.innerHTML = `
                             <div class="d-inline-flex">
                                 ${hasEditPermission ? 
-                                    `<button class="btn btn-sm btn-outline-primary edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
+                                    `<button class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                                             <i class="bi bi-pencil-square"></i>
                                                         </button>` 
                                     : ''
                                 }
                                 ${hasDeletePermission ? 
-                                    `<button class="btn btn-sm btn-outline-warning delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
+                                    `<button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
                                                             <i class="bi bi-archive"></i>
                                                         </button>` 
                                     : ''
@@ -1922,13 +1922,13 @@
                                 cell.innerHTML = `
                         <div class="d-inline-flex">
                             ${hasEditPermission ? 
-                                `<button class="btn btn-sm btn-outline-primary edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
+                                `<button class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                                         <i class="bi bi-pencil-square"></i>
                                                     </button>` 
                                 : ''
                             }
                             ${hasDeletePermission ? 
-                                `<button class="btn btn-sm btn-outline-warning delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
+                                `<button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
                                                         <i class="bi bi-archive"></i>
                                                     </button>` 
                                 : ''
@@ -2228,13 +2228,13 @@
                             cell.innerHTML = `
                     <div class="d-inline-flex">
                         ${hasEditPermission ? 
-                            `<button class="btn btn-sm btn-outline-primary edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
+                            `<button class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                                                             <i class="bi bi-pencil-square"></i>
                                                                         </button>` 
                             : ''
                         }
                         ${hasDeletePermission ? 
-                            `<button class="btn btn-sm btn-outline-warning delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
+                            `<button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
                                                                             <i class="bi bi-archive"></i>
                                                                         </button>` 
                             : ''
@@ -3940,7 +3940,7 @@
                             <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
                             <div class="modal-dialog modal-dialog-centered">
                                 <div class="modal-content border-0" style="border-radius: 18px; overflow: hidden;">
-                                <div class="modal-header" style="background: linear-gradient(135deg, #facc15 0%, #eab308 100%); color: #fff;">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #fff;">
                                     <div class="d-flex align-items-center w-100">
                                     <div class="me-3" style="font-size: 2.5rem;">
                                         <i class="fas fa-exclamation-triangle fa-shake"></i>
@@ -3955,8 +3955,8 @@
                                 </div>
                                 <div class="modal-body text-center py-4">
                                     <div class="mb-3" style="font-size: 1.2rem;">
-                                    Are you sure you want to <span class="fw-bold text-warning">Archive</span> product<br>
-                                    <span class="badge bg-warning fs-6 px-3 py-2 mt-2" style="font-size:1.1rem;">SKU: ${escapeHtml(sku)}</span>?
+                                    Are you sure you want to <span class="fw-bold text-danger">Archive</span> product<br>
+                                    <span class="badge bg-danger fs-6 px-3 py-2 mt-2" style="font-size:1.1rem;">SKU: ${escapeHtml(sku)}</span>?
                                     </div>
                                     
                                 </div>
@@ -3964,7 +3964,7 @@
                                     <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
                                     <i class="fas fa-times me-1"></i>Cancel
                                     </button>
-                                    <button type="button" class="btn btn-warning px-4" id="confirmDeleteBtn">
+                                    <button type="button" class="btn btn-danger px-4" id="confirmDeleteBtn">
                                     <i class="fas fa-archive me-1"></i> Archive
                                     </button>
                                 </div>
