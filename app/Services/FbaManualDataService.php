@@ -4,41 +4,144 @@ namespace App\Services;
 
 use App\Models\FbaManualData;
 use App\Models\FbaShipCalculation;
+use App\Models\ProductMaster;
+use App\Models\FbaTable;
+use App\Models\FbaPrice;
+use App\Models\FbaReportsMaster;
+use App\Models\FbaMonthlySale;
+use App\Models\FbaOrder;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
 class FbaManualDataService
 {
     /**
-     * Export FBA manual data to CSV
+     * Export FBA data to CSV with all columns
      */
     public function exportToCSV()
     {
-        $data = FbaManualData::all();
+        // Get data
+        $productData = ProductMaster::whereNull('deleted_at')->get()->keyBy(fn($p) => strtoupper(trim($p->sku)));
+        $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get()
+            ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $item->seller_sku))));
+        $fbaPriceData = FbaPrice::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get()
+            ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $item->seller_sku))));
+        $fbaReportsData = FbaReportsMaster::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get()
+            ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $item->seller_sku))));
+        $fbaMonthlySales = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get()
+            ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', $item->seller_sku))));
+        $fbaManualData = FbaManualData::all()->keyBy(fn($item) => strtoupper(trim($item->sku)));
+        $fbaDispatchDates = FbaOrder::all()->keyBy('sku');
 
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="fba_manual_data_' . date('Y-m-d') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="fba_complete_data_' . date('Y-m-d_H-i-s') . '.csv"',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Pragma' => 'no-cache',
+            'Expires' => '0'
         ];
 
-        $callback = function () use ($data) {
+        $callback = function () use ($fbaData, $productData, $fbaPriceData, $fbaReportsData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates) {
             $file = fopen('php://output', 'w');
-            
-            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'IN Charges']);
 
-            foreach ($data as $row) {
-                $manual = $row->data ?? [];
-                fputcsv($file, [
-                    $row->sku,
-                    $manual['dimensions'] ?? '',
-                    $manual['weight'] ?? '',
-                    $manual['quantity_in_each_box'] ?? '',
-                    $manual['total_quantity_sent'] ?? '',
-                    $manual['total_send_cost'] ?? '',
-                    $manual['inbound_quantity'] ?? '',
-                    $manual['send_cost'] ?? '',
-                    $manual['in_charges'] ?? ''
-                ]);
+            // Write headers
+            $columns = [
+                'Parent', 'Child SKU', 'FBA SKU', 'FBA INV', 'L60 Units', 'L30 Units', 'FBA Dil',
+                'FBA Price', 'Pft%', 'ROI%', 'TPFT', 'S Price', 'SPft%', 'SROI%', 'LP', 'FBA Ship',
+                'CVR', 'Views', 'Listed', 'Live', 'FBA Fee', 'FBA Fee Manual', 'ASIN', 'Barcode',
+                'Done', 'Dispatch Date', 'Weight', 'Qty Box', 'Sent Qty', 'Send Cost', 'IN Charges',
+                'WH INV Red', 'Ship Amt', 'Inbound Qty', 'FBA Send', 'Dimensions',
+                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+            ];
+            fputcsv($file, $columns);
+
+            // Write data
+            foreach ($fbaData as $sku => $fba) {
+                try {
+                    $product = $productData->get($sku);
+                    $fbaPriceInfo = $fbaPriceData->get($sku);
+                    $fbaReportsInfo = $fbaReportsData->get($sku);
+                    $monthlySales = $fbaMonthlySales->get($sku);
+                    $manual = $fbaManualData->get(strtoupper(trim($fba->seller_sku)));
+                    $dispatchDate = $fbaDispatchDates->get($sku);
+
+                    $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
+                    $LP = $product ? floatval($product->lp ?? 0) : 0;
+                    $FBA_SHIP = $this->calculateFbaShipCalculation(
+                        $fba->seller_sku,
+                        $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
+                        $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+                        $manual ? ($manual->data['in_charges'] ?? 0) : 0
+                    );
+                    $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
+
+                    $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
+                    $roi = ($LP > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
+                    $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
+                    $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
+                    $fbaDil = ($monthlySales ? floatval($monthlySales->l30_units ?? 0) : 0) / ($fba->quantity_available ?: 1) * 100;
+                    $cvr = ($monthlySales ? floatval($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? floatval($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
+
+                    $rowData = [
+                        $product ? ($product->parent ?? '') : '',
+                        $sku,
+                        $fba->seller_sku,
+                        $fba->quantity_available ?? 0,
+                        $monthlySales ? ($monthlySales->l60_units ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
+                        round($fbaDil, 2),
+                        round($PRICE, 2),
+                        round($pft * 100, 2),
+                        round($roi * 100, 2),
+                        round(($PRICE * 0.66) - $LP - $FBA_SHIP, 2),
+                        round($S_PRICE, 2),
+                        round($spft * 100, 2),
+                        round($sroi * 100, 2),
+                        round($LP, 2),
+                        round($FBA_SHIP, 2),
+                        round($cvr, 2),
+                        $fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?? 0) : 0,
+                        $manual && isset($manual->data['listed']) && $manual->data['listed'] ? 'Yes' : 'No',
+                        $manual && isset($manual->data['live']) && $manual->data['live'] ? 'Yes' : 'No',
+                        $fbaReportsInfo ? round($fbaReportsInfo->fulfillment_fee ?? 0, 2) : 0,
+                        $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
+                        $fba->asin ?? '',
+                        $manual ? ($manual->data['barcode'] ?? '') : '',
+                        $manual && isset($manual->data['done']) && $manual->data['done'] ? 'Yes' : 'No',
+                        $dispatchDate ? $dispatchDate->dispatch_date : ($manual ? ($manual->data['dispatch_date'] ?? '') : ''),
+                        $manual ? ($manual->data['weight'] ?? 0) : 0,
+                        $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0,
+                        $manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0,
+                        $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+                        $manual ? ($manual->data['in_charges'] ?? 0) : 0,
+                        $manual && isset($manual->data['warehouse_inv_reduction']) && $manual->data['warehouse_inv_reduction'] ? 'Yes' : 'No',
+                        $manual ? ($manual->data['shipping_amount'] ?? 0) : 0,
+                        $manual ? ($manual->data['inbound_quantity'] ?? 0) : 0,
+                        $manual && isset($manual->data['fba_send']) && $manual->data['fba_send'] ? 'Yes' : 'No',
+                        $manual ? ($manual->data['dimensions'] ?? '') : '',
+                        $monthlySales ? ($monthlySales->jan ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->feb ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->mar ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->apr ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->may ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->jun ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->jul ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->aug ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->sep ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->oct ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->nov ?? 0) : 0,
+                        $monthlySales ? ($monthlySales->dec ?? 0) : 0
+                    ];
+
+                    fputcsv($file, $rowData);
+                } catch (\Exception $e) {
+                    Log::error("CSV export error for SKU {$sku}: " . $e->getMessage());
+                    continue;
+                }
             }
 
             fclose($file);
