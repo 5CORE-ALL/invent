@@ -276,6 +276,15 @@
                             </div>
                         </div>
 
+                        <div class="row g-3 align-items-center mb-2">
+                            <div class="col-md-6">
+                                <div id="total-notlisted-kpi"
+                                    style="font-size:18px; font-weight:bold; color:#d9534f;">
+                                    Total Not Listed: 0
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="row g-3 align-items-center mb-3">
                             <div class="col-md-6">
                                 <div class="d-flex gap-2">
@@ -283,12 +292,6 @@
                                         <input type="text" id="global-search" class="form-control form-control-md"
                                             placeholder="Search campaign...">
                                     </div>
-
-                                    <select id="ad-status-filter" class="form-select form-select-md" style="width: 140px;">
-                                        <option value="">All Status</option>
-                                        <option value="active">Active</option>
-                                        <option value="inactive">Inactive</option>
-                                    </select>
                                 </div>
                             </div>
                         </div>
@@ -322,6 +325,20 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
+            function updateTotalNotListed(data) {
+                let total = 0;
+
+                data.forEach(row => {
+                    const ls = row.listing_status || {};
+                    marketplaces.forEach(mp => {
+                        if (ls[mp] === "Not Listed") total++;
+                    });
+                });
+
+                document.getElementById("total-notlisted-kpi").innerHTML =
+                    "Total Not Listed: " + total;
+            }
+
             function updateKpis(table) {
                 let data = table.getData();
 
@@ -407,21 +424,15 @@
                 ];
 
                 const marketCols = marketplaces.map(mp => {
-                    let id = "cnt-" + mp;
-
                     return {
-                        title: formatMarketName(mp),
-                        titleFormatter: function () {
-                            return `
-                                <div style="text-align:center;">
-                                    ${formatMarketName(mp)}<br/>
-                                    <span id="${id}" style="color:red;font-weight:bold;">(0)</span>
-                                </div>
-                            `;
-                        },
+                        title: "",
                         field: `listing_status.${mp}`,
                         formatter: statusFormatter,
                         headerSort: false,
+                        headerHozAlign: "center",
+                        titleFormatter: function() {
+                            return createStatusFilterHeader(mp);
+                        },
                     };
                 });
 
@@ -475,11 +486,54 @@
 
                     setTimeout(() => {
                         updateMarketplaceCounts(response.data || []);
+                        updateTotalNotListed(response.data || []);
                     }, 50);
 
                     return response.data;
                 }
             });
+
+            function createStatusFilterHeader(mp) {
+                const wrapper = document.createElement("div");
+                wrapper.style.textAlign = "center";
+
+                const title = document.createElement("div");
+                title.innerHTML = formatMarketName(mp) + "<br/><span id='cnt-" + mp + "' style='color:red;font-weight:bold;'>(0)</span>";
+
+                const select = document.createElement("select");
+                select.style.marginTop = "4px";
+                select.style.width = "90px";
+
+                ["All", "Listed", "NRL", "Not Listed"].forEach(st => {
+                    const opt = document.createElement("option");
+                    opt.value = st;
+                    opt.textContent = st;
+                    select.appendChild(opt);
+                });
+
+                select.addEventListener("change", () => {
+                    let val = select.value;
+                    let field = "listing_status." + mp;
+
+                    if (val === "All") {
+                        let filters = table.getFilters();
+
+                        filters.forEach(f => {
+                            if (f.field === field) {
+                                table.removeFilter(f.field, f.type, f.value);
+                            }
+                        });
+
+                        return;
+                    }
+
+                    table.setFilter(field, "=", val);
+                });
+
+                wrapper.appendChild(title);
+                wrapper.appendChild(select);
+                return wrapper;
+            }
 
             table.on("rowSelectionChanged", function(data, rows) {
                 if (data.length > 0) {
