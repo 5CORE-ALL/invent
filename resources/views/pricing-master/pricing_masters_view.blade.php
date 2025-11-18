@@ -1603,7 +1603,7 @@ $.ajax({
                         const dobaProfit = ((dobaPrice * 0.95) - LP - SHIP) ;
                         const temuProfit = ((temuPrice * 0.87) - LP - temuship) ;
                         const ebay3Profit = ((ebay3Price * 0.78) - LP - SHIP);
-                        const ebay2Profit = ((ebay2Price * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) / ebay2Price ;
+                        const ebay2Profit = ((ebay2Price * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) ;
                         const walmartProfit = ((walmartPrice * 0.80) - LP - SHIP) ;
                         const sheinProfit = ((sheinPrice * 0.89) - LP - SHIP) ;
                         const bestbuyProfit = ((bestbuyPrice * 0.80) - LP - SHIP) ;
@@ -1762,8 +1762,7 @@ $.ajax({
                             const dobaProfit    = data.doba_price       ? ((parseFloat(data.doba_price) * 0.95) - LP - SHIP) * dobaL30 : 0;
                             const temuProfit    = data.temu_price       ? ((parseFloat(data.temu_price) * 0.87) - LP - temuship) * temuL30 : 0;
                             const ebay3Profit   = data.ebay3_price      ? ((parseFloat(data.ebay3_price) * 0.78) - LP - SHIP) * ebay3L30 : 0;
-                            // const ebay2Profit   = data.ebay2_price      ? ((parseFloat(data.ebay2_price) * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) * ebay2L30 : 0;
-                            const ebay2Profit   = data.ebay2_price      ? ((parseFloat(data.ebay2_price) * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) / LP : 0;
+                            const ebay2Profit   = data.ebay2_price      ? ((parseFloat(data.ebay2_price) * 0.79) - LP - (parseFloat(data.ebay2_ship) || SHIP)) * ebay2L30 : 0;
                             const walmartProfit = data.walmart_price    ? ((parseFloat(data.walmart_price) * 0.80) - LP - SHIP) * walmartL30 : 0;
                             const sheinProfit   = data.shein_price      ? ((parseFloat(data.shein_price) * 0.89) - LP - SHIP) * sheinL30 : 0;
                             const bestbuyProfit  = data.bestbuy_price    ? ((parseFloat(data.bestbuy_price) * 0.80) - LP - SHIP) * bestbuyL30 : 0;

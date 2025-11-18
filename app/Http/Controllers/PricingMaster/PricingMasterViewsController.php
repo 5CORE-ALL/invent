@@ -728,8 +728,8 @@ class PricingMasterViewsController extends Controller
                 'ebay2_l60' => $ebay2 ? ($ebay2->ebay_l60 ?? 0) : 0,
                 'ebay2_views' => $ebay2 ? ($ebay2->views ?? 0) : 0,
                 'ebay2_dil' => $ebay2 ? (float) ($ebay2->dil ?? 0) : 0,
-                'ebay2_pft' => $ebay2 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.79 - $lp - $ship) / $ebay2->ebay_price) : 0,
-                'ebay2_roi' => $ebay2 && $lp > 0 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.79 - $lp - $ship) / $lp) : 0,
+                'ebay2_pft' => $ebay2 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.79 - $lp - $ebay2ship) / $ebay2->ebay_price) : 0,
+                'ebay2_roi' => $ebay2 && $lp > 0 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.79 - $lp - $ebay2ship) / $lp) : 0,
                 'ebay2_req_view' => $ebay2 && $ebay2->views > 0 && $ebay2->ebay_l30 ? (($inv / 90) * 30) / (($ebay2->ebay_l30 / $ebay2->views)) : 0,
                 'ebay2_buyer_link' => isset($ebayTwoListingData[$sku]) ? ($ebayTwoListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'ebay2_seller_link' => isset($ebayTwoListingData[$sku]) ? ($ebayTwoListingData[$sku]->value['seller_link'] ?? null) : null,
@@ -1165,6 +1165,7 @@ class PricingMasterViewsController extends Controller
             'LP' => 'required|numeric',    // cost price
             'SHIP' => 'required|numeric',
             'temu_ship' => 'required|numeric',  // Temu shipping cost
+            'ebay2_ship' => 'required|numeric',  // eBay2 shipping cost
         ]);
 
         $sku = $data['sku'];
@@ -1173,6 +1174,7 @@ class PricingMasterViewsController extends Controller
         $lp = $data['LP'];
         $ship = $data['SHIP'];
         $temuship = $data['temu_ship'];
+        $ebay2ship = $data['ebay2_ship'];
 
         switch ($type) {
             case 'shein':
@@ -1269,8 +1271,8 @@ class PricingMasterViewsController extends Controller
                 $ebay2DataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
                 $existing = is_array($ebay2DataView->value) ? $ebay2DataView->value : (json_decode($ebay2DataView->value, true) ?: []);
 
-                $spft = $sprice > 0 ? round(((($sprice * 0.79) - $lp - $ship) / $sprice) * 100, 2) : 0;
-                $sroi = $lp > 0 ? ((($sprice * 0.79) - $lp - $ship) / $lp) * 100 : 0;
+                $spft = $sprice > 0 ? round(((($sprice * 0.79) - $lp - $ebay2ship) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? ((($sprice * 0.79) - $lp - $ebay2ship) / $lp) * 100 : 0;
 
                 $existing['SPRICE'] = number_format($sprice, 2, '.', '');
                 $existing['SPFT'] = number_format($spft, 2, '.', '');
@@ -1412,7 +1414,7 @@ class PricingMasterViewsController extends Controller
                     'tiktok' => 0.80,
                     'aliexpress' => 0.89
                 ];
-
+                
                 foreach ($marketplaces as $mp => $percent) {
                     $shipping = ($mp === 'temu') ? $temuship : $ship;
                     $spft = $sprice > 0 ? round(((($sprice * $percent) - $lp - $shipping) / $sprice) * 100, 2) : 0;

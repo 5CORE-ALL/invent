@@ -1,4 +1,4 @@
-{{-- @extends('layouts.vertical', ['title' => 'FBA ADS KW', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'FBA ADS PT', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -134,8 +134,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'FBA ADS KW',
-        'sub_title' => 'FBA Keyword Ads Data',
+        'page_title' => 'FBA ADS PT',
+        'sub_title' => 'FBA Product Targeting Ads Data',
     ])
     <div class="row">
         <div class="col-12">
@@ -144,7 +144,7 @@
                     <div class="mb-4">
                                                 <h4 class="fw-bold text-primary mb-3 d-flex align-items-center">
                             <i class="fa-solid fa-chart-line me-2"></i>
-                            FBA Ads KW
+                            FBA Ads   PT
                         </h4>
 
                         <!-- Filters & Export Row -->
@@ -1138,4 +1138,4 @@
         });
     </script>
 @endsection
- --}}
+

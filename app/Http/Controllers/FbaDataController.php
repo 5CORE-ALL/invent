@@ -25,7 +25,11 @@ class FbaDataController extends Controller
    protected $colorService;
    protected $lmpaDataService;
 
-   public function __construct(FbaManualDataService $fbaManualDataService, ColorService $colorService, LmpaDataService $lmpaDataService)
+   public function __construct(
+      FbaManualDataService $fbaManualDataService, 
+      ColorService $colorService, 
+      LmpaDataService $lmpaDataService
+   )
    {
       $this->fbaManualDataService = $fbaManualDataService;
       $this->colorService = $colorService;
@@ -270,7 +274,7 @@ class FbaDataController extends Controller
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
          $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
-         $LP = $product ? floatval($product->Values['lp'] ?? 0) : 0;
+         $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
          $FBA_SHIP = $shipCalc ? floatval($shipCalc->fba_ship_calculation ?? 0) : 0;
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
 
@@ -324,8 +328,7 @@ class FbaDataController extends Controller
             'FBA_CVR' => $this->colorService->getCvrHtml($cvr),
             'Listed' => $manual ? ($manual->data['listed'] ?? false) : false,
             'Live' => $manual ? ($manual->data['live'] ?? false) : false,
-            'Pft%' => $pftPercentage,
-            'Pft%_HTML' => $this->colorService->getValueHtml($pftPercentage),
+            'Pft%' => $this->colorService->getValueHtml($pftPercentage),
             'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
             'S_Price' => round($S_PRICE, 2),
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
@@ -372,7 +375,8 @@ class FbaDataController extends Controller
                $fba->seller_sku,
                $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
                $manual ? ($manual->data['send_cost'] ?? 0) : 0,
-               $manual ? ($manual->data['in_charges'] ?? 0) : 0
+               $manual ? ($manual->data['in_charges'] ?? 0) : 0,
+               false
             ),
 
             // Ads Data L30
@@ -555,8 +559,13 @@ class FbaDataController extends Controller
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
          $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
-         $LP = $product ? floatval($product->Values['lp'] ?? 0) : 0;
-         $FBA_SHIP = $shipCalc ? floatval($shipCalc->fba_ship_calculation ?? 0) : 0;
+         $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
+         $FBA_SHIP = $this->fbaManualDataService->calculateFbaShipCalculation(
+            $fba->seller_sku,
+            $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
+            $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+            $manual ? ($manual->data['in_charges'] ?? 0) : 0
+         );
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
 
          // Calculate profit & ROI metrics
@@ -655,7 +664,8 @@ class FbaDataController extends Controller
                $fba->seller_sku,
                $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
                $manual ? ($manual->data['send_cost'] ?? 0) : 0,
-               $manual ? ($manual->data['in_charges'] ?? 0) : 0
+               $manual ? ($manual->data['in_charges'] ?? 0) : 0,
+               false
             ),
 
             // Ads Data L30
@@ -759,15 +769,21 @@ class FbaDataController extends Controller
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
          $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
-         $LP = $product ? floatval($product->Values['lp'] ?? 0) : 0;
-         $FBA_SHIP = $shipCalc ? floatval($shipCalc->fba_ship_calculation ?? 0) : 0;
+         $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
+         $FBA_SHIP = $this->fbaManualDataService->calculateFbaShipCalculation(
+            $fba->seller_sku,
+            $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
+            $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+            $manual ? ($manual->data['in_charges'] ?? 0) : 0
+         );
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
 
-        // --- Calculate all profit & ROI metrics ---
-        $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
-        $roi = ($LP > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
-        $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
-        $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;         $pftPercentage = round($pft * 100, 2);
+         // --- Calculate all profit & ROI metrics ---
+         $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
+         $roi = ($LP > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
+         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
+         $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
+         $pftPercentage = round($pft * 100, 2);
          $roiPercentage = round($roi * 100, 2);
          $spftPercentage = round($spft * 100, 2);
          $sroiPercentage = round($sroi * 100, 2);
@@ -789,8 +805,7 @@ class FbaDataController extends Controller
             'FBA_CVR' => $this->colorService->getCvrHtml($cvr),
             'Listed' => $manual ? ($manual->data['listed'] ?? false) : false,
             'Live' => $manual ? ($manual->data['live'] ?? false) : false,
-            'Pft%' => $pftPercentage,
-            'Pft%_HTML' => $this->colorService->getValueHtml($pftPercentage),
+            'Pft%' => $this->colorService->getValueHtml($pftPercentage),
             'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
             'S_Price' => round($S_PRICE, 2),
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
@@ -990,12 +1005,14 @@ class FbaDataController extends Controller
       ]);
    }
 
-   public function updateFbaManualData(Request $request)
+   public function updateFbaSkuManualData(Request $request)
    {
       $sku = strtoupper(trim($request->input('sku')));
       $field = $request->input('field');
-      $value = $request->input('value');
+      $value = $request->input('value') ?: 0;
 
+
+      // Row find or create
       $manual = FbaManualData::where('sku', $sku)->first();
 
       if (!$manual) {
@@ -1004,24 +1021,32 @@ class FbaDataController extends Controller
          $manual->data = [];
       }
 
+      // Update JSON fields
       $data = $manual->data ?? [];
       $data[$field] = $value;
+
+      // Extract only 3 fields
+      $FBA_FEE = floatval($data['fba_fee_manual'] ?? 0);
+      $SEND_COST = floatval($data['send_cost'] ?? 0);
+      $IN_CHARGES = floatval($data['in_charges'] ?? 0);
+
+      // Calculate FBA_SHIP
+      $FBA_SHIP = $FBA_FEE + $SEND_COST + $IN_CHARGES;
+      $data['fba_ship'] = $FBA_SHIP;
+
       $manual->data = $data;
       $manual->save();
 
-      // Auto-update FBA Ship Calculation if related fields are updated
-      if (in_array($field, ['fba_fee_manual', 'send_cost', 'in_charges'])) {
-         $this->fbaManualDataService->calculateFbaShipCalculation(
-            $sku,
-            $data['fba_fee_manual'] ?? 0,
-            $data['send_cost'] ?? 0,
-            $data['in_charges'] ?? 0,
-            true // Save to DB
-         );
-      }
-
-      return response()->json(['success' => true]);
+      // Return only FBA_SHIP + updated field
+      return response()->json([
+         'success' => true,
+         'updatedRow' => [
+               'FBA_SHIP' => $FBA_SHIP,
+               strtoupper($field) => $value,
+         ]
+      ]);
    }
+
 
 
 
@@ -1125,15 +1150,10 @@ class FbaDataController extends Controller
       $request->validate(['file' => 'required|mimes:csv,txt']);
       $result = $this->fbaManualDataService->importFromCSV($request->file('file'));
 
-      // Auto-sync calculations after import
-      if ($result['success']) {
-         $this->fbaManualDataService->bulkUpdateCalculations();
-      }
-
       return response()->json([
          'success' => $result['success'],
          'message' => $result['success']
-            ? "{$result['imported']} records imported and calculations synced successfully!"
+            ? "{$result['imported']} records imported successfully!"
             : $result['message']
       ]);
    }
@@ -1147,7 +1167,7 @@ class FbaDataController extends Controller
    public function syncFbaShipCalculations()
    {
       $result = $this->fbaManualDataService->bulkUpdateCalculations();
-      
+
       return response()->json([
          'success' => $result['success'],
          'message' => $result['success']

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'FBA Sales Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'FBA Pricing Data', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -13,8 +13,8 @@
 
 @section('content')
  @include('layouts.shared.page-title', [
-        'page_title' => 'FBA Analytics Data',
-        'sub_title' => 'FBA Analytics Data',
+        'page_title' => 'FBA pricing data',
+        'sub_title' => 'FBA pricing data',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -42,6 +42,20 @@
                         <option value="21-49">21-49%</option>
                         <option value="50+">50%+</option>
                     </select>
+                    
+                    <!-- Column Visibility Dropdown -->
+                    <div class="dropdown d-inline-block me-2">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa fa-eye"></i> Columns
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu" style="max-height: 400px; overflow-y: auto;">
+                            <!-- Columns will be populated by JavaScript -->
+                        </ul>
+                    </div>
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary me-2">
+                        <i class="fa fa-eye"></i> Show All
+                    </button>
+                    
                     <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info me-2">
                         <i class="fa fa-download"></i> Sample Template
                     </a>
@@ -127,6 +141,8 @@
 
     @section('script-bottom')
         <script>
+            const COLUMN_VIS_KEY = "fba_tabulator_column_visibility";
+
             $(document).ready(function() {
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
@@ -229,9 +245,7 @@
                             field: "Pft%",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                const data = cell.getRow().getData();
-                                return data['Pft%_HTML'] ||
-                                    `${parseFloat(cell.getValue() || 0).toFixed(1)}%`;
+                                return cell.getValue();
                             },
                         },
 
@@ -569,7 +583,7 @@
                         'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
                         'FBA_Fee_Manual') {
                         $.ajax({
-                            url: '/update-fba-manual-data',
+                            url: '/update-fba-sku-manual-data',
                             method: 'POST',
                             data: {
                                 sku: data.FBA_SKU,
@@ -579,6 +593,36 @@
                             },
                             success: function(response) {
                                 console.log('Data saved successfully');
+                                if (response.updatedRow) {
+                                    row.update(response.updatedRow);
+                                }
+
+                                // Tabulator ke internal real row data ko update kar do
+                                row.update({
+                                    [field.toUpperCase()]: value,   // Tabulator display
+                                    [field]: value                 // backend JSON key
+                                });
+
+                                let d = row.getData();
+
+                                let PRICE = parseFloat(d.FBA_Price) || 0;
+                                let LP = parseFloat(d.LP) || 0;
+
+                                // Safe FBA_SHIP
+                                let FBA_SHIP = parseFloat(response.updatedRow?.FBA_SHIP ?? 0);
+
+                                let PFT = 0;
+                                if (PRICE > 0) {
+                                    PFT = (((PRICE * 0.66) - LP - FBA_SHIP) / PRICE);
+                                }
+
+
+                                let ROI = 0;
+                                if (LP > 0) {
+                                    ROI = (((PRICE * 0.66) - LP - FBA_SHIP) / LP);
+                                }
+
+                                row.update({ 'Pft%': `${(PFT*100).toFixed(2)} %`, 'ROI%': (ROI*100).toFixed(2), FBA_Ship_Calculation: FBA_SHIP });
                             },
                             error: function(xhr) {
                                 console.error('Error saving data');
@@ -586,6 +630,27 @@
                         });
                     }
                 });
+
+                function calculateRowValues(rowData) {
+                    let PRICE = parseFloat(rowData.PRICE) || 0;
+                    let LP = parseFloat(rowData.LP) || 0;
+
+                    let fbaFee = parseFloat(rowData.FBA_Fee_Manual) || 0;
+                    let sendCost = parseFloat(rowData.Send_Cost) || 0;
+                    let inCharges = parseFloat(rowData.IN_Charges) || 0;
+
+                    // FBA_SHIP calculation
+                    let FBA_SHIP = fbaFee + sendCost + inCharges;
+
+                    // PFT calculation
+                    let PFT = 0;
+                    if (PRICE > 0) {
+                        PFT = (((PRICE * 0.66) - LP - FBA_SHIP) / PRICE).toFixed(2);
+                    }
+
+                    return { FBA_SHIP, PFT };
+                }
+
 
                 // INV 0 and More than 0 Filter
                 function applyFilters() {
@@ -680,6 +745,98 @@
                                 '<i class="fa fa-upload"></i> Import');
                         }
                     });
+                });
+
+                // Build Column Visibility Dropdown
+                function buildColumnDropdown() {
+                    const menu = document.getElementById("column-dropdown-menu");
+                    menu.innerHTML = '';
+
+                    const savedVisibility = JSON.parse(localStorage.getItem(COLUMN_VIS_KEY) || '{}');
+
+                    const columns = table.getColumns().filter(col => col.getField());
+
+                    columns.forEach(col => {
+                        const field = col.getField();
+                        const title = col.getDefinition().title || field;
+                        const isVisible = savedVisibility[field] !== undefined ? savedVisibility[field] : col.isVisible();
+
+                        const li = document.createElement('li');
+                        li.classList.add('px-3', 'py-1');
+
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.classList.add('form-check-input', 'me-2');
+                        checkbox.checked = isVisible;
+                        checkbox.dataset.field = field;
+
+                        const label = document.createElement('label');
+                        label.classList.add('form-check-label');
+                        label.style.cursor = 'pointer';
+                        label.textContent = title;
+
+                        label.prepend(checkbox);
+                        li.appendChild(label);
+                        menu.appendChild(li);
+                    });
+                }
+
+                function saveColumnVisibilityToLocalStorage() {
+                    const visibility = {};
+                    table.getColumns().forEach(col => {
+                        const field = col.getField();
+                        if (field) {
+                            visibility[field] = col.isVisible();
+                        }
+                    });
+                    localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(visibility));
+                }
+
+                function applyColumnVisibilityFromLocalStorage() {
+                    const savedVisibility = JSON.parse(localStorage.getItem(COLUMN_VIS_KEY) || '{}');
+                    table.getColumns().forEach(col => {
+                        const field = col.getField();
+                        if (field && savedVisibility[field] !== undefined) {
+                            if (savedVisibility[field]) {
+                                col.show();
+                            } else {
+                                col.hide();
+                            }
+                        }
+                    });
+                }
+
+                // Wait for table to be built, then apply saved visibility and build dropdown
+                table.on('tableBuilt', function() {
+                    applyColumnVisibilityFromLocalStorage();
+                    buildColumnDropdown();
+                });
+
+                // Toggle column from dropdown
+                document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
+                    if (e.target.type === 'checkbox') {
+                        const field = e.target.dataset.field;
+                        const col = table.getColumn(field);
+                        if (col) {
+                            if (e.target.checked) {
+                                col.show();
+                            } else {
+                                col.hide();
+                            }
+                            saveColumnVisibilityToLocalStorage();
+                        }
+                    }
+                });
+
+                // Show All Columns button
+                document.getElementById("show-all-columns-btn").addEventListener("click", function() {
+                    table.getColumns().forEach(col => {
+                        if (col.getField()) {
+                            col.show();
+                        }
+                    });
+                    buildColumnDropdown();
+                    saveColumnVisibilityToLocalStorage();
                 });
             });
 
