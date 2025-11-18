@@ -183,6 +183,7 @@
                             <th>Changes</th>
                             <th>Specification</th>
                             {{-- <th>Pushed At</th> --}}
+                            <th>Pushed By</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -213,6 +214,11 @@
                                 {{ $row->specification ?? '—' }}
                             </td>
                             {{-- <td>{{ $row->created_at->format('Y-m-d H:i') }}</td> --}}
+                            <td>
+                                <span class="badge bg-success">
+                                    {{ $row->user->name ?? '—' }}
+                                </span>
+                            </td>
                         </tr>
                         @endforeach
                     </tbody>
