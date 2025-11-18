@@ -25,7 +25,11 @@ class FbaDataController extends Controller
    protected $colorService;
    protected $lmpaDataService;
 
-   public function __construct(FbaManualDataService $fbaManualDataService, ColorService $colorService, LmpaDataService $lmpaDataService)
+   public function __construct(
+      FbaManualDataService $fbaManualDataService, 
+      ColorService $colorService, 
+      LmpaDataService $lmpaDataService
+   )
    {
       $this->fbaManualDataService = $fbaManualDataService;
       $this->colorService = $colorService;
