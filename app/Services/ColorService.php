@@ -58,7 +58,7 @@ class ColorService
             $style .= 'color:#800080;'; // purple
         }
 
-        return "<span style=\"{$style}\">" . number_format($v, 1) . "%</span>";
+        return "<span style=\"{$style}\">" . $v . "%</span>";
     }
 
     /**

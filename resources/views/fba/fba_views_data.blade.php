@@ -245,9 +245,7 @@
                             field: "Pft%",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                const data = cell.getRow().getData();
-                                return data['Pft%_HTML'] ||
-                                    `${parseFloat(cell.getValue() || 0).toFixed(1)}%`;
+                                return cell.getValue();
                             },
                         },
 
@@ -585,7 +583,7 @@
                         'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
                         'FBA_Fee_Manual') {
                         $.ajax({
-                            url: '/update-fba-manual-data',
+                            url: '/update-fba-sku-manual-data',
                             method: 'POST',
                             data: {
                                 sku: data.FBA_SKU,
@@ -595,6 +593,36 @@
                             },
                             success: function(response) {
                                 console.log('Data saved successfully');
+                                if (response.updatedRow) {
+                                    row.update(response.updatedRow);
+                                }
+
+                                // Tabulator ke internal real row data ko update kar do
+                                row.update({
+                                    [field.toUpperCase()]: value,   // Tabulator display
+                                    [field]: value                 // backend JSON key
+                                });
+
+                                let d = row.getData();
+
+                                let PRICE = parseFloat(d.FBA_Price) || 0;
+                                let LP = parseFloat(d.LP) || 0;
+
+                                // Safe FBA_SHIP
+                                let FBA_SHIP = parseFloat(response.updatedRow?.FBA_SHIP ?? 0);
+
+                                let PFT = 0;
+                                if (PRICE > 0) {
+                                    PFT = (((PRICE * 0.66) - LP - FBA_SHIP) / PRICE);
+                                }
+
+
+                                let ROI = 0;
+                                if (LP > 0) {
+                                    ROI = (((PRICE * 0.66) - LP - FBA_SHIP) / LP);
+                                }
+
+                                row.update({ 'Pft%': `${(PFT*100).toFixed(2)} %`, 'ROI%': (ROI*100).toFixed(2), FBA_Ship_Calculation: FBA_SHIP });
                             },
                             error: function(xhr) {
                                 console.error('Error saving data');
@@ -602,6 +630,27 @@
                         });
                     }
                 });
+
+                function calculateRowValues(rowData) {
+                    let PRICE = parseFloat(rowData.PRICE) || 0;
+                    let LP = parseFloat(rowData.LP) || 0;
+
+                    let fbaFee = parseFloat(rowData.FBA_Fee_Manual) || 0;
+                    let sendCost = parseFloat(rowData.Send_Cost) || 0;
+                    let inCharges = parseFloat(rowData.IN_Charges) || 0;
+
+                    // FBA_SHIP calculation
+                    let FBA_SHIP = fbaFee + sendCost + inCharges;
+
+                    // PFT calculation
+                    let PFT = 0;
+                    if (PRICE > 0) {
+                        PFT = (((PRICE * 0.66) - LP - FBA_SHIP) / PRICE).toFixed(2);
+                    }
+
+                    return { FBA_SHIP, PFT };
+                }
+
 
                 // INV 0 and More than 0 Filter
                 function applyFilters() {

@@ -2372,6 +2372,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('fba-manual-import', 'importFbaManualData');
         Route::get('fba-manual-sample', 'downloadSampleTemplate');
         Route::post('fba-ship-calculations-sync', 'syncFbaShipCalculations');
+        Route::post('update-fba-sku-manual-data', 'updateFbaSkuManualData');
+
     });
     Route::controller(FBAAnalysticsController::class)->group(function () {
 
