@@ -31,56 +31,35 @@ class ListingAmazonController extends Controller
         ]);
     }
 
-    // Add getViewListingAmazonData, saveStatus, getNrReqCount methods similar to ListingEbayController
     public function getViewListingAmazonData(Request $request)
     {
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $amazonDataViewValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
-
-        // Fetch all status records for these SKUs
         $statusData = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
-        $amazonListed=ProductStockMapping::pluck('inventory_amazon_product','sku')->toArray();
-        $asins = AmazonDatasheet::pluck('asin', 'sku')->toArray();
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $amazonDataViewValues, $statusData,$amazonListed,$asins) {
+
+        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData) {
             $childSku = $item->sku;
-            $parent = $item->parent ?? '';
-            $isParent = stripos($childSku, 'PARENT') !== false;
-            $item->asin=$asins[$childSku] ?? '';
             $item->INV = $shopifyData[$childSku]->inv ?? 0;
             $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
-            $item->Parent = $parent;
-            $item->is_parent = $isParent;
-
-            // Default values
             $item->nr_req = null;
             $item->listed = null;
             $item->buyer_link = null;
             $item->seller_link = null;
-
-            // If status exists, fill values from JSON
             if (isset($statusData[$childSku])) {
                 $status = $statusData[$childSku]->value;
                 $item->nr_req = $status['nr_req'] ?? null;
-                $item->listed = null;
-                if (isset($amazonListed[$childSku])) {
-                    $normalized = strtolower(trim($amazonListed[$childSku]));
-                    $item->listed = $normalized !== '' && $normalized !== 'not listed' ? 'Listed' : 'Not Listed';
-                } else {
-                    $item->listed = $status['listed'] ?? null;
-                }
+                $item->listed = $status['listed'] ?? null;
                 $item->buyer_link = $status['buyer_link'] ?? null;
                 $item->seller_link = $status['seller_link'] ?? null;
             }
-
             return $item;
         })->values();
 
         return response()->json([
-            'data' => $processedData,
             'status' => 200,
+            'data' => $processedData
         ]);
     }
 
