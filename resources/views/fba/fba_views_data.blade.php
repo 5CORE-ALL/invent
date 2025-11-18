@@ -26,13 +26,14 @@
                         style="width: auto; display: inline-block;">
                         <option value="all">All Inventory</option>
                         <option value="zero">0 Inventory</option>
-                        <option value="more">More than 0</option>
+                        <option value="more" id="more-inventory-option" selected>More than 0</option>
                     </select>
                     <select id="parent-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
                         <option value="show">Show Parent</option>
-                        <option value="hide">Hide Parent</option>
+                        <option value="hide" selected>Hide Parent</option>
                     </select>
+                    
                     <select id="pft-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Pft%</option>
@@ -149,6 +150,9 @@
                     layout: "fitData",
                     pagination: true,
                     paginationSize: 50,
+                    initialSort: [
+                        {column: "FBA_Dil", dir: "asc"}
+                    ],
                     rowFormatter: function(row) {
                         if (row.getData().is_parent) {
                             row.getElement().classList.add("parent-row");
@@ -209,6 +213,7 @@
                         {
                             title: "FBA Dil",
                             field: "FBA_Dil",
+                            
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
@@ -888,6 +893,7 @@
                 table.on('tableBuilt', function() {
                     applyColumnVisibilityFromServer();
                     buildColumnDropdown();
+                    applyFilters(); // Apply default filters on load
                 });
 
                 // Toggle column from dropdown
