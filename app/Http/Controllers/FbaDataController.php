@@ -289,6 +289,14 @@ class FbaDataController extends Controller
          $sroiPercentage = round($sroi * 100);
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
+         // Calculate GPFT%
+         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
+         $gpft = 0;
+         if ($PRICE > 0) {
+            $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+         }
+         $gpftPercentage = round($gpft * 100);
+
          // Extract ads metrics
          $adsL30 = $ads['L30'] ?? null;
          $adsL60 = $ads['L60'] ?? null;
@@ -329,6 +337,7 @@ class FbaDataController extends Controller
             'Live' => $manual ? ($manual->data['live'] ?? false) : false,
             'Pft%' => $this->colorService->getValueHtml($pftPercentage),
             'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
+            'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
             'S_Price' => round($S_PRICE, 2),
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
             'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
@@ -579,6 +588,14 @@ class FbaDataController extends Controller
          $sroiPercentage = round($sroi * 100, 2);
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
+         // Calculate GPFT%
+         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
+         $gpft = 0;
+         if ($PRICE > 0) {
+            $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+         }
+         $gpftPercentage = round($gpft * 100, 2);
+
          // Extract ads metrics
          $adsL30 = $ads['L30'] ?? null;
          $adsL60 = $ads['L60'] ?? null;
@@ -788,6 +805,14 @@ class FbaDataController extends Controller
          $sroiPercentage = round($sroi * 100);
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
+         // Calculate GPFT%
+         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
+         $gpft = 0;
+         if ($PRICE > 0) {
+            $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+         }
+         $gpftPercentage = round($gpft * 100);
+
          return [
             'Parent' => $product ? ($product->parent ?? '') : '',
             'SKU' => $sku,
@@ -806,6 +831,7 @@ class FbaDataController extends Controller
             'Live' => $manual ? ($manual->data['live'] ?? false) : false,
             'Pft%' => $this->colorService->getValueHtml($pftPercentage),
             'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
+            'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
             'S_Price' => round($S_PRICE, 2),
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
             'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
@@ -854,6 +880,7 @@ class FbaDataController extends Controller
                $manual ? ($manual->data['send_cost'] ?? 0) : 0,
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
+            
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
             'Mar' => $monthlySales ? ($monthlySales->mar ?? 0) : 0,
@@ -947,6 +974,7 @@ class FbaDataController extends Controller
             'is_parent' => true,
             'Pft%' => '',
             'ROI%' => '',
+            'GPFT%' => '',
             'S_Price' => '',
             'SPft%' => '',
             'SROI%' => '',

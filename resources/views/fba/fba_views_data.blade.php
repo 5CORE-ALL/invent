@@ -239,6 +239,7 @@
 
                             
 
+
                         {
                             title: "Views",
                             field: "Current_Month_Views",
@@ -276,6 +277,15 @@
                         {
                             title: "ROI%",
                             field: "ROI%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            },
+                        },
+
+                        {
+                            title: "GPFT%",
+                            field: "GPFT%",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
@@ -624,9 +634,19 @@
 
                                 let PRICE = parseFloat(d.FBA_Price) || 0;
                                 let LP = parseFloat(d.LP) || 0;
+                                let COMMISSION_PERCENTAGE = parseFloat(d.Commission_Percentage) || 0;
 
-                                // Safe FBA_SHIP
-                                let FBA_SHIP = parseFloat(response.updatedRow?.FBA_SHIP ?? 0);
+                                // Get FBA_SHIP from response or existing row data
+                                let FBA_SHIP = parseFloat(response.updatedRow?.FBA_SHIP ?? d.FBA_Ship_Calculation ?? 0);
+
+                                console.log('GPFT Calculation:', {
+                                    PRICE: PRICE,
+                                    LP: LP,
+                                    COMMISSION_PERCENTAGE: COMMISSION_PERCENTAGE,
+                                    FBA_SHIP: FBA_SHIP,
+                                    from_response: response.updatedRow?.FBA_SHIP,
+                                    from_row: d.FBA_Ship_Calculation
+                                });
 
                                 let PFT = 0;
                                 if (PRICE > 0) {
@@ -639,7 +659,14 @@
                                     ROI = (((PRICE * 0.66) - LP - FBA_SHIP) / LP);
                                 }
 
-                                row.update({ 'Pft%': `${(PFT*100).toFixed(2)} %`, 'ROI%': (ROI*100).toFixed(2), FBA_Ship_Calculation: FBA_SHIP });
+                                let GPFT = 0;
+                                if (PRICE > 0) {
+                                    GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 + 0.05)) - LP - FBA_SHIP) / PRICE);
+                                }
+
+                                console.log('Calculated GPFT:', GPFT, 'Percentage:', (GPFT*100).toFixed(2));
+
+                                row.update({ 'Pft%': `${(PFT*100).toFixed(2)} %`, 'ROI%': (ROI*100).toFixed(2), 'GPFT%': `${(GPFT*100).toFixed(2)} %`, FBA_Ship_Calculation: FBA_SHIP });
                             },
                             error: function(xhr) {
                                 console.error('Error saving data');
