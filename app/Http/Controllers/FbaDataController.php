@@ -270,7 +270,7 @@ class FbaDataController extends Controller
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
          $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
-         $LP = $product ? floatval($product->Values['lp'] ?? 0) : 0;
+         $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
          $FBA_SHIP = $shipCalc ? floatval($shipCalc->fba_ship_calculation ?? 0) : 0;
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
 
@@ -555,7 +555,7 @@ class FbaDataController extends Controller
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
          $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
-         $LP = $product ? floatval($product->Values['lp'] ?? 0) : 0;
+         $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
          $FBA_SHIP = $shipCalc ? floatval($shipCalc->fba_ship_calculation ?? 0) : 0;
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
 
@@ -759,15 +759,16 @@ class FbaDataController extends Controller
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
          $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
-         $LP = $product ? floatval($product->Values['lp'] ?? 0) : 0;
+         $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
          $FBA_SHIP = $shipCalc ? floatval($shipCalc->fba_ship_calculation ?? 0) : 0;
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
 
-        // --- Calculate all profit & ROI metrics ---
-        $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
-        $roi = ($LP > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
-        $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
-        $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;         $pftPercentage = round($pft * 100, 2);
+         // --- Calculate all profit & ROI metrics ---
+         $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
+         $roi = ($LP > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
+         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
+         $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
+         $pftPercentage = round($pft * 100, 2);
          $roiPercentage = round($roi * 100, 2);
          $spftPercentage = round($spft * 100, 2);
          $sroiPercentage = round($sroi * 100, 2);
@@ -1147,7 +1148,7 @@ class FbaDataController extends Controller
    public function syncFbaShipCalculations()
    {
       $result = $this->fbaManualDataService->bulkUpdateCalculations();
-      
+
       return response()->json([
          'success' => $result['success'],
          'message' => $result['success']
