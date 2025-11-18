@@ -764,36 +764,73 @@
                     const menu = document.getElementById("column-dropdown-menu");
                     menu.innerHTML = '';
 
-                    const savedVisibility = JSON.parse(localStorage.getItem(COLUMN_VIS_KEY) || '{}');
+                    // Fetch saved visibility from server
+                    fetch('/fba-column-visibility', {
+                        method: 'GET',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(savedVisibility => {
+                        const columns = table.getColumns().filter(col => col.getField());
 
-                    const columns = table.getColumns().filter(col => col.getField());
+                        columns.forEach(col => {
+                            const field = col.getField();
+                            const title = col.getDefinition().title || field;
+                            const isVisible = savedVisibility[field] !== undefined ? savedVisibility[field] : col.isVisible();
 
-                    columns.forEach(col => {
-                        const field = col.getField();
-                        const title = col.getDefinition().title || field;
-                        const isVisible = savedVisibility[field] !== undefined ? savedVisibility[field] : col.isVisible();
+                            const li = document.createElement('li');
+                            li.classList.add('px-3', 'py-1');
 
-                        const li = document.createElement('li');
-                        li.classList.add('px-3', 'py-1');
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.classList.add('form-check-input', 'me-2');
+                            checkbox.checked = isVisible;
+                            checkbox.dataset.field = field;
 
-                        const checkbox = document.createElement('input');
-                        checkbox.type = 'checkbox';
-                        checkbox.classList.add('form-check-input', 'me-2');
-                        checkbox.checked = isVisible;
-                        checkbox.dataset.field = field;
+                            const label = document.createElement('label');
+                            label.classList.add('form-check-label');
+                            label.style.cursor = 'pointer';
+                            label.textContent = title;
 
-                        const label = document.createElement('label');
-                        label.classList.add('form-check-label');
-                        label.style.cursor = 'pointer';
-                        label.textContent = title;
+                            label.prepend(checkbox);
+                            li.appendChild(label);
+                            menu.appendChild(li);
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error fetching column visibility:', error);
+                        // Fallback to default behavior
+                        const columns = table.getColumns().filter(col => col.getField());
+                        columns.forEach(col => {
+                            const field = col.getField();
+                            const title = col.getDefinition().title || field;
+                            const isVisible = col.isVisible();
 
-                        label.prepend(checkbox);
-                        li.appendChild(label);
-                        menu.appendChild(li);
+                            const li = document.createElement('li');
+                            li.classList.add('px-3', 'py-1');
+
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.classList.add('form-check-input', 'me-2');
+                            checkbox.checked = isVisible;
+                            checkbox.dataset.field = field;
+
+                            const label = document.createElement('label');
+                            label.classList.add('form-check-label');
+                            label.style.cursor = 'pointer';
+                            label.textContent = title;
+
+                            label.prepend(checkbox);
+                            li.appendChild(label);
+                            menu.appendChild(li);
+                        });
                     });
                 }
 
-                function saveColumnVisibilityToLocalStorage() {
+                function saveColumnVisibilityToServer() {
                     const visibility = {};
                     table.getColumns().forEach(col => {
                         const field = col.getField();
@@ -801,26 +838,55 @@
                             visibility[field] = col.isVisible();
                         }
                     });
-                    localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(visibility));
+
+                    fetch('/fba-column-visibility', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ visibility: visibility })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success) {
+                            console.error('Failed to save column visibility');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error saving column visibility:', error);
+                    });
                 }
 
-                function applyColumnVisibilityFromLocalStorage() {
-                    const savedVisibility = JSON.parse(localStorage.getItem(COLUMN_VIS_KEY) || '{}');
-                    table.getColumns().forEach(col => {
-                        const field = col.getField();
-                        if (field && savedVisibility[field] !== undefined) {
-                            if (savedVisibility[field]) {
-                                col.show();
-                            } else {
-                                col.hide();
-                            }
+                function applyColumnVisibilityFromServer() {
+                    fetch('/fba-column-visibility', {
+                        method: 'GET',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Content-Type': 'application/json'
                         }
+                    })
+                    .then(response => response.json())
+                    .then(savedVisibility => {
+                        table.getColumns().forEach(col => {
+                            const field = col.getField();
+                            if (field && savedVisibility[field] !== undefined) {
+                                if (savedVisibility[field]) {
+                                    col.show();
+                                } else {
+                                    col.hide();
+                                }
+                            }
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error applying column visibility:', error);
                     });
                 }
 
                 // Wait for table to be built, then apply saved visibility and build dropdown
                 table.on('tableBuilt', function() {
-                    applyColumnVisibilityFromLocalStorage();
+                    applyColumnVisibilityFromServer();
                     buildColumnDropdown();
                 });
 
@@ -835,7 +901,7 @@
                             } else {
                                 col.hide();
                             }
-                            saveColumnVisibilityToLocalStorage();
+                            saveColumnVisibilityToServer();
                         }
                     }
                 });
@@ -848,7 +914,7 @@
                         }
                     });
                     buildColumnDropdown();
-                    saveColumnVisibilityToLocalStorage();
+                    saveColumnVisibilityToServer();
                 });
             });
 

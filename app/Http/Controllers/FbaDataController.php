@@ -1176,4 +1176,16 @@ class FbaDataController extends Controller
             : $result['message']
       ]);
    }
+
+   public function getFbaColumnVisibility()
+   {
+      return response()->json(\App\Services\ColumnVisibilityService::getFbaColumnVisibility());
+   }
+
+   public function setFbaColumnVisibility(Request $request)
+   {
+      $visibility = $request->input('visibility', []);
+      \App\Services\ColumnVisibilityService::setFbaColumnVisibility($visibility);
+      return response()->json(['success' => true]);
+   }
 }

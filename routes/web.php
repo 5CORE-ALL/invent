@@ -2373,6 +2373,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('fba-manual-sample', 'downloadSampleTemplate');
         Route::post('fba-ship-calculations-sync', 'syncFbaShipCalculations');
         Route::post('update-fba-sku-manual-data', 'updateFbaSkuManualData');
+        Route::get('fba-column-visibility', 'getFbaColumnVisibility');
+        Route::post('fba-column-visibility', 'setFbaColumnVisibility');
 
     });
     Route::controller(FBAAnalysticsController::class)->group(function () {
