@@ -865,32 +865,30 @@ class FbaDataController extends Controller
          $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
 
 
-      
 
-
-
-         $roi = ($LP > 0) ? ($PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP - $adsPercentage)  / $LP : 0;
          // $spft =  ($S_PRICE > 0) ? (($S_PRICE * ((1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)) - $adsPercentage) / $S_PRICE : 0;
          $sroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP - $adsPercentage)  / $LP : 0;
          $sgroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP )  / $LP : 0;
 
 
-   
         
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
          // Calculate GPFT%
 
 
-         
+
+         $roi = 0;
+         if ($LP > 0) {
+           $roi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP ) / $LP;
+         }
+
          $spft = 0;
          if ($S_PRICE > 0) {
             $spft = ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $S_PRICE;
          }
 
 
-
-      
          $gpft = 0;
          if ($PRICE > 0) {
             $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
@@ -985,8 +983,8 @@ class FbaDataController extends Controller
             
             // TPFT calculation (Commission % - Ads %)
             'TPFT' => round($gpftPercentage - $adsPercentage, 2),
-
             'SPFT' => round($spftPercentage - $adsPercentage),
+            'ROI' => round($roiPercentage - $adsPercentage, 2),
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
             'Mar' => $monthlySales ? ($monthlySales->mar ?? 0) : 0,
