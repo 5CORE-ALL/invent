@@ -875,6 +875,7 @@ protected function filterParentSKU(array $data): array
                     $listing = $modelClass::whereRaw('LOWER(sku) = ?', [$sku])->first();
                     if ($listing) {
                         $foundListing = $listing;
+                        $status = "Listed";
                         break;
                     }
                 }
@@ -886,13 +887,10 @@ protected function filterParentSKU(array $data): array
                     }
                     $value = is_array($value) ? $value : [];
 
-                    $listed = $value['listed'] ?? null;
                     $nrl = $value['nr_req'] ?? null;
 
-                    if ($listed == "Listed" && $nrl == "NR") {
+                    if ($nrl == "NR") {
                         $status = "NRL";
-                    } else {
-                        $status = "Listed";
                     }
                 }
 
