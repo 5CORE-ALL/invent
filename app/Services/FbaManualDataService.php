@@ -225,8 +225,8 @@ class FbaManualDataService
 
         $callback = function () {
             $file = fopen('php://output', 'w');
-            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'IN Charges']);
-            fputcsv($file, ['SAMPLE-SKU-001', '10x8x6', '2.5', '10', '100', '500', '20', '50', '25']);
+            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'IN Charges' , 'Commission']);
+            fputcsv($file, ['SAMPLE-SKU-001', '10x8x6', '2.5', '10', '100', '500', '20', '50', '25', '10']);
             fclose($file);
         };
 

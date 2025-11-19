@@ -432,7 +432,7 @@ class FbaDataController extends Controller
             'Ads_L7_Orders' => $adsL7 ? ($adsL7->purchases14d ?? 0) : 0,
 
             // TPFT calculation (Commission % + Ads %)
-            'TPFT' => round($commissionPercentage + $adsPercentage, 2),
+            'TPFT' => round($GPFT - $adsPercentage, 2),
 
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
@@ -750,9 +750,6 @@ class FbaDataController extends Controller
          ];
       })->values();
 
-      Log::info('FBA Ads PT Data JSON - Total records: ' . $tableData->count());
-      Log::info('FBA Ads PT Data JSON - Sample SKUs: ' . $tableData->take(5)->pluck('SKU')->implode(', '));
-
       return response()->json($tableData);
    }
 
@@ -857,26 +854,62 @@ class FbaDataController extends Controller
             $manual ? ($manual->data['send_cost'] ?? 0) : 0,
             $manual ? ($manual->data['in_charges'] ?? 0) : 0
          );
+
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
 
+         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
          // --- Calculate all profit & ROI metrics ---
+
+         $sgpft = ($S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP ) / $S_PRICE : 0;
+
          $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
-         $roi = ($LP > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
-         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
-         $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
-         $pftPercentage = round($pft * 100);
-         $roiPercentage = round($roi * 100);
-         $spftPercentage = round($spft * 100);
-         $sroiPercentage = round($sroi * 100);
+
+
+      
+
+
+
+         $roi = ($LP > 0) ? ($PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP - $adsPercentage)  / $LP : 0;
+         // $spft =  ($S_PRICE > 0) ? (($S_PRICE * ((1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)) - $adsPercentage) / $S_PRICE : 0;
+         $sroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP - $adsPercentage)  / $LP : 0;
+         $sgroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP )  / $LP : 0;
+
+
+   
+        
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
          // Calculate GPFT%
-         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
+
+
+         
+         $spft = 0;
+         if ($S_PRICE > 0) {
+            $spft = ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $S_PRICE;
+         }
+
+
+
+      
          $gpft = 0;
          if ($PRICE > 0) {
             $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
          }
+
+         $groi = 0;
+         if ($LP > 0) {
+            $groi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP ) / $LP;
+         }
+
+
          $gpftPercentage = round($gpft * 100);
+         $sgpftPercentage = round($sgpft * 100);
+         $groiPercentage = round($groi * 100);
+         $pftPercentage = round($pft * 100);
+         $roiPercentage = round($roi * 100); 
+         $spftPercentage = round($spft * 100);
+         $sroiPercentage = round($sroi * 100);
+         $sgroiPercentage = round($sgroi * 100);
 
          return [
             'Parent' => $product ? ($product->parent ?? '') : '',
@@ -897,9 +930,12 @@ class FbaDataController extends Controller
             'Pft%' => $this->colorService->getValueHtml($pftPercentage),
             'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
             'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
+            'SGPFT%' => $this->colorService->getValueHtml($sgpftPercentage),
+            'GROI%' => $this->colorService->getRoiHtmlForView($groiPercentage),
             'S_Price' => round($S_PRICE, 2),
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
             'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
+            'SGROI%' => $this->colorService->getRoiHtmlForView($sgroiPercentage),
             'lmp_1' => $lmpaData['lowest_price'],
             'lmp_data' => $lmpaData['data'],
             'ACTION_ACTION' => $manual ? ($manual->data['action_action'] ?? '') : '',
@@ -947,8 +983,10 @@ class FbaDataController extends Controller
             ),
             'Ads_Percentage' => $adsPercentage,
             
-            // TPFT calculation (Commission % + Ads %)
-            'TPFT' => round($commissionPercentage + $adsPercentage, 2),
+            // TPFT calculation (Commission % - Ads %)
+            'TPFT' => round($gpftPercentage - $adsPercentage, 2),
+
+            'SPFT' => round($spftPercentage - $adsPercentage),
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
             'Mar' => $monthlySales ? ($monthlySales->mar ?? 0) : 0,
@@ -1129,8 +1167,8 @@ class FbaDataController extends Controller
       $SEND_COST = floatval($data['send_cost'] ?? 0);
       $IN_CHARGES = floatval($data['in_charges'] ?? 0);
 
-      // Calculate FBA_SHIP (Fulfillment_Fee + FBA_Fee_Manual + Send_Cost + IN_Charges)
-      $FBA_SHIP = $fulfillmentFee + $FBA_FEE_MANUAL + $SEND_COST + $IN_CHARGES;
+      // Calculate FBA_SHIP (Fulfillment_Fee + FBA_Fee_Manual + Send_Cost)
+      $FBA_SHIP = $fulfillmentFee + $FBA_FEE_MANUAL + $SEND_COST;
       $data['fba_ship'] = $FBA_SHIP;
 
       $manual->data = $data;
@@ -1263,17 +1301,6 @@ class FbaDataController extends Controller
       return $this->fbaManualDataService->downloadSampleTemplate();
    }
 
-   public function syncFbaShipCalculations()
-   {
-      $result = $this->fbaManualDataService->bulkUpdateCalculations();
-
-      return response()->json([
-         'success' => $result['success'],
-         'message' => $result['success']
-            ? "Successfully updated {$result['updated']} FBA Ship Calculations!"
-            : $result['message']
-      ]);
-   }
 
    public function getFbaColumnVisibility()
    {
