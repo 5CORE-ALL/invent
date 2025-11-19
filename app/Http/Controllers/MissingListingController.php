@@ -887,9 +887,9 @@ protected function filterParentSKU(array $data): array
                     $value = is_array($value) ? $value : [];
 
                     $listed = $value['listed'] ?? null;
-                    $nrl = $value['NRL'] ?? null;
+                    $nrl = $value['nr_req'] ?? null;
 
-                    if ($listed === "Listed" && $nrl === "NRL") {
+                    if ($listed == "Listed" && $nrl == "NR") {
                         $status = "NRL";
                     } else {
                         $status = "Listed";
