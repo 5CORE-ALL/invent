@@ -12,7 +12,7 @@
 @endsection
 
 @section('content')
- @include('layouts.shared.page-title', [
+    @include('layouts.shared.page-title', [
         'page_title' => 'FBA pricing data',
         'sub_title' => 'FBA pricing data',
     ])
@@ -33,7 +33,7 @@
                         <option value="show">Show Parent</option>
                         <option value="hide" selected>Hide Parent</option>
                     </select>
-                    
+
                     <select id="pft-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Pft%</option>
@@ -43,20 +43,22 @@
                         <option value="21-49">21-49%</option>
                         <option value="50+">50%+</option>
                     </select>
-                    
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block me-2">
-                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fa fa-eye"></i> Columns
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu" style="max-height: 400px; overflow-y: auto;">
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
+                            style="max-height: 400px; overflow-y: auto;">
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
                     <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary me-2">
                         <i class="fa fa-eye"></i> Show All
                     </button>
-                    
+
                     <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info me-2">
                         <i class="fa fa-download"></i> Sample Template
                     </a>
@@ -96,6 +98,22 @@
         </div>
     </div>
 
+
+    <div class="modal fade" id="yearsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Years Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>SKU:</strong> <span id="modalSKU"></span></p>
+                    <p><strong>Year:</strong> <span id="modalYear"></span></p>
+                 
+                </div>
+            </div>
+        </div>
+    </div>
     <!-- Import Modal -->
     <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
@@ -113,7 +131,8 @@
                                 required>
                         </div>
                         <small class="text-muted">
-                            <i class="fa fa-info-circle"></i> CSV must have: SKU, Dimensions, Weight, Qty in each box, Total
+                            <i class="fa fa-info-circle"></i> CSV must have: SKU, Dimensions, Weight, Qty in each box,
+                            Total
                             qty Sent, Total Send Cost, Inbound qty, Send cost, IN Charges
                         </small>
                     </div>
@@ -150,9 +169,10 @@
                     layout: "fitData",
                     pagination: true,
                     paginationSize: 50,
-                    initialSort: [
-                        {column: "FBA_Dil", dir: "asc"}
-                    ],
+                    initialSort: [{
+                        column: "FBA_Dil",
+                        dir: "asc"
+                    }],
                     rowFormatter: function(row) {
                         if (row.getData().is_parent) {
                             row.getElement().classList.add("parent-row");
@@ -168,7 +188,7 @@
                             frozen: true
                         },
                         {
-                            title: "Child SKU",
+                            title: "Child <br> SKU",
                             field: "SKU",
                             headerFilter: "input",
                             headerFilterPlaceholder: "Search SKU...",
@@ -177,7 +197,7 @@
                             frozen: true
                         },
                         {
-                            title: "FBA SKU",
+                            title: "FBA <br>SKU",
                             field: "FBA_SKU",
                             headerFilter: "input",
                             headerFilterPlaceholder: "Search SKU...",
@@ -192,20 +212,20 @@
                         //     hozAlign: "center"
                         // },
                         {
-                            title: "FBA INV",
+                            title: "FBA <br> INV",
                             field: "FBA_Quantity",
                             hozAlign: "center"
                         },
 
 
-                        {
-                            title: "L60 FBA",
-                            field: "l60_units",
-                            hozAlign: "center"
-                        },
+                        // {
+                        //     title: "L60  FBA",
+                        //     field: "l60_units",
+                        //     hozAlign: "center"
+                        // },
 
                         {
-                            title: "L30 FBA",
+                            title: "L30 <br> FBA",
                             field: "l30_units",
                             hozAlign: "center"
                         },
@@ -213,7 +233,7 @@
                         {
                             title: "FBA Dil",
                             field: "FBA_Dil",
-                            
+
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
@@ -228,8 +248,8 @@
                         },
 
 
-                         {
-                            title: "FBA_CVR",
+                        {
+                            title: "FBA <br> CVR",
                             field: "FBA_CVR",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -237,7 +257,7 @@
                             },
                         },
 
-                            
+
 
 
                         {
@@ -248,7 +268,7 @@
 
 
                         {
-                            title: "Inv age",
+                            title: "Inv<br> age",
                             field: "Inv_age",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -258,11 +278,48 @@
                         },
 
                         {
-                            title: "FBA Price",
+                            title: "FBA<br> Price",
                             field: "FBA_Price",
                             hozAlign: "center",
                             // formatter: "dollar"
                         },
+
+
+                        {
+                            title: "LMP ",
+                            field: "lmp_1",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = cell.getValue();
+                                const rowData = cell.getRow().getData();
+                                if (value > 0) {
+                                    return `<a href="#" class="lmp-link" data-sku="${rowData.SKU}" data-lmp-data='${JSON.stringify(rowData.lmp_data)}' style="color: blue; text-decoration: underline;">${value}</a>`;
+                                } else {
+                                    return value || '';
+                                }
+                            }
+                        },
+
+                        {
+                            title: "GPFT%",
+                            field: "GPFT%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            },
+                        },
+
+                        {
+                            title: "Ads %",
+                            field: "Ads_Percentage",
+                            hozAlign: "center",
+                            editor: "input",
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue() || 0);
+                                return value > 0 ? value.toFixed(1) + '%' : '0%';
+                            }
+                        },
+
 
 
                         {
@@ -283,26 +340,19 @@
                             },
                         },
 
-                        {
-                            title: "GPFT%",
-                            field: "GPFT%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
 
                         {
-                            title: "TPFT",
+                            title: "TPFT %",
                             field: "TPFT",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                return cell.getValue();
+                                const value = parseFloat(cell.getValue() || 0);
+                                return value > 0 ? value.toFixed(1) + '%' : '0%';
                             },
                         },
 
                         {
-                            title: "S Price",
+                            title: "S <br> Price",
                             field: "S_Price",
                             hozAlign: "center",
                             editor: "input",
@@ -326,6 +376,16 @@
                                 });
                             }
                         },
+
+                                                {
+                            title: "SGPT%",
+                            field: "SGPT%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            },
+                        },
+
                         {
                             title: "SPft%",
                             field: "SPft%",
@@ -343,20 +403,8 @@
                             },
                         },
 
-                        {
-                            title: "LMP ",
-                            field: "lmp_1",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = cell.getValue();
-                                const rowData = cell.getRow().getData();
-                                if (value > 0) {
-                                    return `<a href="#" class="lmp-link" data-sku="${rowData.SKU}" data-lmp-data='${JSON.stringify(rowData.lmp_data)}' style="color: blue; text-decoration: underline;">${value}</a>`;
-                                } else {
-                                    return value || '';
-                                }
-                            }
-                        },
+
+
 
                         {
                             title: "LP",
@@ -365,7 +413,7 @@
                         },
 
                         {
-                            title: "FBA Ship",
+                            title: "FBA<br> Ship",
                             field: "FBA_Ship_Calculation",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -374,7 +422,7 @@
                                 return value.toFixed(2);
                             }
                         },
-                   
+
 
 
                         // {
@@ -400,28 +448,39 @@
                         //     }
                         // },
                         {
-                            title: "FBA Fee",
+                            title: "FBA<br> Fee",
                             field: "Fulfillment_Fee",
                             hozAlign: "center"
                         },
 
                         {
-                            title: "FBA Fee M",
+                            title: "FBA <br> Fee <br> M",
                             field: "FBA_Fee_Manual",
                             hozAlign: "center",
+                            editable: function(cell) {
+                                // Only editable if Fulfillment_Fee is 0
+                                const fulfillmentFee = parseFloat(cell.getRow().getData().Fulfillment_Fee) || 0;
+                                return fulfillmentFee === 0;
+                            },
                             editor: "input",
                             formatter: function(cell) {
-                                cell.getElement().style.color = "#a80f8b"; // dark text
+                                const fulfillmentFee = parseFloat(cell.getRow().getData().Fulfillment_Fee) || 0;
+                                if (fulfillmentFee === 0) {
+                                    cell.getElement().style.color = "#a80f8b";
+                                } else {
+                                    cell.getElement().style.color = "#999";
+                                    cell.getElement().style.cursor = "not-allowed";
+                                }
                                 return cell.getValue();
                             }
                         },
 
                         ,
 
-                        {
-                            title: "ASIN",
-                            field: "ASIN"
-                        },
+                        // {
+                        //     title: "ASIN",
+                        //     field: "ASIN"
+                        // },
                         // {
                         //     title: "Barcode",
                         //     field: "Barcode",
@@ -472,23 +531,24 @@
                         //     editor: "input"
                         // },
                         {
-                            title: "Send Cost",
+                            title: "Send <br> Cost",
                             field: "Send_Cost",
                             hozAlign: "center",
                             editor: "input"
                         },
                         {
-                            title: "IN Charges",
+                            title: "IN <br> Charges",
                             field: "IN_Charges",
                             hozAlign: "center",
                             editor: "input"
                         },
                         {
-                            title: "Commission %",
+                            title: "Comm %",
                             field: "Commission_Percentage",
                             hozAlign: "center",
                             editor: "input"
                         },
+
                         // {
                         //     title: "Warehouse INV Reduction",
                         //     field: "Warehouse_INV_Reduction",
@@ -531,66 +591,78 @@
                         //     hozAlign: "center",
                         //     editor: "input"
                         // },
-                        {
-                            title: "Jan",
-                            field: "Jan",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Feb",
-                            field: "Feb",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Mar",
-                            field: "Mar",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Apr",
-                            field: "Apr",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "May",
-                            field: "May",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Jun",
-                            field: "Jun",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Jul",
-                            field: "Jul",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Aug",
-                            field: "Aug",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Sep",
-                            field: "Sep",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Oct",
-                            field: "Oct",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Nov",
-                            field: "Nov",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Dec",
-                            field: "Dec",
-                            hozAlign: "center"
-                        }
+
+                        // {
+                        //     title: "History",
+                        //     field: "history",
+                        //     hozAlign: "center",
+                        //     formatter: function(cell) {
+                        //         const value = cell.getValue();
+                        //         return `<span>${value || ''}</span> <i class="fa fa-eye" style="cursor:pointer; color:#3b7ddd; margin-left:5px;" onclick="openYearsModal('${value || ''}', '${cell.getRow().getData().SKU}')"></i>`;
+                        //     }
+                        // },
+
+
+                        // {
+                        //     title: "Jan",
+                        //     field: "Jan",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Feb",
+                        //     field: "Feb",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Mar",
+                        //     field: "Mar",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Apr",
+                        //     field: "Apr",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "May",
+                        //     field: "May",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Jun",
+                        //     field: "Jun",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Jul",
+                        //     field: "Jul",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Aug",
+                        //     field: "Aug",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Sep",
+                        //     field: "Sep",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Oct",
+                        //     field: "Oct",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Nov",
+                        //     field: "Nov",
+                        //     hozAlign: "center"
+                        // },
+                        // {
+                        //     title: "Dec",
+                        //     field: "Dec",
+                        //     hozAlign: "center"
+                        // }
                     ]
                 });
 
@@ -605,7 +677,7 @@
                         'Quantity_in_each_box' ||
                         field === 'Total_quantity_sent' || field === 'Send_Cost' || field ===
                         'IN_Charges' ||
-                        field === 'Commission_Percentage' ||
+                        field === 'Commission_Percentage' || field === 'Ads_Percentage' ||
                         field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
                         'FBA_Fee_Manual') {
@@ -616,6 +688,7 @@
                                 sku: data.FBA_SKU,
                                 field: field.toLowerCase(),
                                 value: value,
+                                fulfillment_fee: parseFloat(data.Fulfillment_Fee) || 0,
                                 _token: '{{ csrf_token() }}'
                             },
                             success: function(response) {
@@ -626,18 +699,20 @@
 
                                 // Tabulator ke internal real row data ko update kar do
                                 row.update({
-                                    [field.toUpperCase()]: value,   // Tabulator display
-                                    [field]: value                 // backend JSON key
+                                    [field.toUpperCase()]: value, // Tabulator display
+                                    [field]: value // backend JSON key
                                 });
 
                                 let d = row.getData();
 
                                 let PRICE = parseFloat(d.FBA_Price) || 0;
                                 let LP = parseFloat(d.LP) || 0;
-                                let COMMISSION_PERCENTAGE = parseFloat(d.Commission_Percentage) || 0;
+                                let COMMISSION_PERCENTAGE = parseFloat(d.Commission_Percentage) ||
+                                    0;
 
                                 // Get FBA_SHIP from response or existing row data
-                                let FBA_SHIP = parseFloat(response.updatedRow?.FBA_SHIP ?? d.FBA_Ship_Calculation ?? 0);
+                                let FBA_SHIP = parseFloat(response.updatedRow?.FBA_SHIP ?? d
+                                    .FBA_Ship_Calculation ?? 0);
 
                                 console.log('GPFT Calculation:', {
                                     PRICE: PRICE,
@@ -648,25 +723,62 @@
                                     from_row: d.FBA_Ship_Calculation
                                 });
 
-                                let PFT = 0;
-                                if (PRICE > 0) {
-                                    PFT = (((PRICE * 0.66) - LP - FBA_SHIP) / PRICE);
+                                // Initialize update object
+                                let updateData = {
+                                    FBA_Ship_Calculation: FBA_SHIP
+                                };
+
+                                // Calculate values based on which field was edited
+                                if (field === 'Commission_Percentage') {
+                                    // Only GPFT and TPFT depend on commission
+                                    let GPFT = 0;
+                                    if (PRICE > 0) {
+                                        GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 + 0.05)) -
+                                            LP - FBA_SHIP) / PRICE);
+                                    }
+                                    let TPFT = COMMISSION_PERCENTAGE + parseFloat(d.Ads_Percentage || 0);
+
+                                    updateData['GPFT%'] = `${(GPFT*100).toFixed(2)} %`;
+                                    updateData['TPFT'] = TPFT.toFixed(2);
+
+                                    console.log('Commission edited - Updated GPFT:', GPFT, 'TPFT:', TPFT);
+
+                                } else if (field === 'Ads_Percentage') {
+                                    // Only TPFT depends on ads percentage
+                                    let TPFT = COMMISSION_PERCENTAGE + parseFloat(d.Ads_Percentage || 0);
+                                    updateData['TPFT'] = TPFT.toFixed(2);
+
+                                    console.log('Ads edited - Updated TPFT:', TPFT);
+
+                                } else {
+                                    // Other fields affect PFT, ROI, GPFT, TPFT
+                                    let PFT = 0;
+                                    if (PRICE > 0) {
+                                        PFT = (((PRICE * 0.66) - LP - FBA_SHIP) / PRICE);
+                                    }
+
+                                    let ROI = 0;
+                                    if (LP > 0) {
+                                        ROI = (((PRICE * 0.66) - LP - FBA_SHIP) / LP);
+                                    }
+
+                                    let GPFT = 0;
+                                    if (PRICE > 0) {
+                                        GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 + 0.05)) -
+                                            LP - FBA_SHIP) / PRICE);
+                                    }
+
+                                    let TPFT = COMMISSION_PERCENTAGE + parseFloat(d.Ads_Percentage || 0);
+
+                                    updateData['Pft%'] = `${(PFT*100).toFixed(2)} %`;
+                                    updateData['ROI%'] = (ROI * 100).toFixed(2);
+                                    updateData['GPFT%'] = `${(GPFT*100).toFixed(2)} %`;
+                                    updateData['TPFT'] = TPFT.toFixed(2);
+
+                                    console.log('Other field edited - Updated all calculations');
                                 }
 
-
-                                let ROI = 0;
-                                if (LP > 0) {
-                                    ROI = (((PRICE * 0.66) - LP - FBA_SHIP) / LP);
-                                }
-
-                                let GPFT = 0;
-                                if (PRICE > 0) {
-                                    GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 + 0.05)) - LP - FBA_SHIP) / PRICE);
-                                }
-
-                                console.log('Calculated GPFT:', GPFT, 'Percentage:', (GPFT*100).toFixed(2));
-
-                                row.update({ 'Pft%': `${(PFT*100).toFixed(2)} %`, 'ROI%': (ROI*100).toFixed(2), 'GPFT%': `${(GPFT*100).toFixed(2)} %`, FBA_Ship_Calculation: FBA_SHIP });
+                                row.update(updateData);
                             },
                             error: function(xhr) {
                                 console.error('Error saving data');
@@ -692,7 +804,10 @@
                         PFT = (((PRICE * 0.66) - LP - FBA_SHIP) / PRICE).toFixed(2);
                     }
 
-                    return { FBA_SHIP, PFT };
+                    return {
+                        FBA_SHIP,
+                        PFT
+                    };
                 }
 
 
@@ -798,68 +913,69 @@
 
                     // Fetch saved visibility from server
                     fetch('/fba-column-visibility', {
-                        method: 'GET',
-                        headers: {
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                            'Content-Type': 'application/json'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(savedVisibility => {
-                        const columns = table.getColumns().filter(col => col.getField());
+                            method: 'GET',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                                'Content-Type': 'application/json'
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(savedVisibility => {
+                            const columns = table.getColumns().filter(col => col.getField());
 
-                        columns.forEach(col => {
-                            const field = col.getField();
-                            const title = col.getDefinition().title || field;
-                            const isVisible = savedVisibility[field] !== undefined ? savedVisibility[field] : col.isVisible();
+                            columns.forEach(col => {
+                                const field = col.getField();
+                                const title = col.getDefinition().title || field;
+                                const isVisible = savedVisibility[field] !== undefined ? savedVisibility[
+                                    field] : col.isVisible();
 
-                            const li = document.createElement('li');
-                            li.classList.add('px-3', 'py-1');
+                                const li = document.createElement('li');
+                                li.classList.add('px-3', 'py-1');
 
-                            const checkbox = document.createElement('input');
-                            checkbox.type = 'checkbox';
-                            checkbox.classList.add('form-check-input', 'me-2');
-                            checkbox.checked = isVisible;
-                            checkbox.dataset.field = field;
+                                const checkbox = document.createElement('input');
+                                checkbox.type = 'checkbox';
+                                checkbox.classList.add('form-check-input', 'me-2');
+                                checkbox.checked = isVisible;
+                                checkbox.dataset.field = field;
 
-                            const label = document.createElement('label');
-                            label.classList.add('form-check-label');
-                            label.style.cursor = 'pointer';
-                            label.textContent = title;
+                                const label = document.createElement('label');
+                                label.classList.add('form-check-label');
+                                label.style.cursor = 'pointer';
+                                label.textContent = title;
 
-                            label.prepend(checkbox);
-                            li.appendChild(label);
-                            menu.appendChild(li);
+                                label.prepend(checkbox);
+                                li.appendChild(label);
+                                menu.appendChild(li);
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Error fetching column visibility:', error);
+                            // Fallback to default behavior
+                            const columns = table.getColumns().filter(col => col.getField());
+                            columns.forEach(col => {
+                                const field = col.getField();
+                                const title = col.getDefinition().title || field;
+                                const isVisible = col.isVisible();
+
+                                const li = document.createElement('li');
+                                li.classList.add('px-3', 'py-1');
+
+                                const checkbox = document.createElement('input');
+                                checkbox.type = 'checkbox';
+                                checkbox.classList.add('form-check-input', 'me-2');
+                                checkbox.checked = isVisible;
+                                checkbox.dataset.field = field;
+
+                                const label = document.createElement('label');
+                                label.classList.add('form-check-label');
+                                label.style.cursor = 'pointer';
+                                label.textContent = title;
+
+                                label.prepend(checkbox);
+                                li.appendChild(label);
+                                menu.appendChild(li);
+                            });
                         });
-                    })
-                    .catch(error => {
-                        console.error('Error fetching column visibility:', error);
-                        // Fallback to default behavior
-                        const columns = table.getColumns().filter(col => col.getField());
-                        columns.forEach(col => {
-                            const field = col.getField();
-                            const title = col.getDefinition().title || field;
-                            const isVisible = col.isVisible();
-
-                            const li = document.createElement('li');
-                            li.classList.add('px-3', 'py-1');
-
-                            const checkbox = document.createElement('input');
-                            checkbox.type = 'checkbox';
-                            checkbox.classList.add('form-check-input', 'me-2');
-                            checkbox.checked = isVisible;
-                            checkbox.dataset.field = field;
-
-                            const label = document.createElement('label');
-                            label.classList.add('form-check-label');
-                            label.style.cursor = 'pointer';
-                            label.textContent = title;
-
-                            label.prepend(checkbox);
-                            li.appendChild(label);
-                            menu.appendChild(li);
-                        });
-                    });
                 }
 
                 function saveColumnVisibilityToServer() {
@@ -872,48 +988,50 @@
                     });
 
                     fetch('/fba-column-visibility', {
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ visibility: visibility })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (!data.success) {
-                            console.error('Failed to save column visibility');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error saving column visibility:', error);
-                    });
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                visibility: visibility
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (!data.success) {
+                                console.error('Failed to save column visibility');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error saving column visibility:', error);
+                        });
                 }
 
                 function applyColumnVisibilityFromServer() {
                     fetch('/fba-column-visibility', {
-                        method: 'GET',
-                        headers: {
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                            'Content-Type': 'application/json'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(savedVisibility => {
-                        table.getColumns().forEach(col => {
-                            const field = col.getField();
-                            if (field && savedVisibility[field] !== undefined) {
-                                if (savedVisibility[field]) {
-                                    col.show();
-                                } else {
-                                    col.hide();
-                                }
+                            method: 'GET',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                                'Content-Type': 'application/json'
                             }
+                        })
+                        .then(response => response.json())
+                        .then(savedVisibility => {
+                            table.getColumns().forEach(col => {
+                                const field = col.getField();
+                                if (field && savedVisibility[field] !== undefined) {
+                                    if (savedVisibility[field]) {
+                                        col.show();
+                                    } else {
+                                        col.hide();
+                                    }
+                                }
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Error applying column visibility:', error);
                         });
-                    })
-                    .catch(error => {
-                        console.error('Error applying column visibility:', error);
-                    });
                 }
 
                 // Wait for table to be built, then apply saved visibility and build dropdown
@@ -989,5 +1107,7 @@
                 $('#lmpModal').appendTo('body').modal('show');
                 console.log('Modal shown');
             }
+
+
         </script>
     @endsection

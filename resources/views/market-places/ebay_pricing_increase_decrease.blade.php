@@ -945,7 +945,7 @@
             z-index: 999999;
             width: 180px;
             border-radius: 6px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
         }
 
         .sku-tooltip-container:hover .sku-tooltip {
@@ -1574,7 +1574,7 @@
                                             </div>
                                         </div>
                                     </th>
-                                      <th data-field="lmpprice"
+                                    <th data-field="lmpprice"
                                         style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
@@ -1702,8 +1702,8 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
-    const listingStatusData = @json($listingStatus);
-    const ebayPercentage = {{ $ebayPercentage / 100 }};
+        const listingStatusData = @json($listingStatus);
+        const ebayPercentage = {{ $ebayPercentage / 100 }};
     </script>
     <script>
         $(document).ready(function() {
@@ -2346,9 +2346,11 @@
                                     valueJson.Live) : 0;
 
                                 const lmpPrice = item['lmp_price'];
-                                const lmpEntries = Array.isArray(item['lmp_entries']) ? item['lmp_entries'] : [];
+                                const lmpEntries = Array.isArray(item['lmp_entries']) ? item[
+                                    'lmp_entries'] : [];
                                 const lmpLink = item['lmp_link'] || null;
-                                const lmpEntriesTotal = item['lmp_entries_total'] || lmpEntries.length;
+                                const lmpEntriesTotal = item['lmp_entries_total'] || lmpEntries
+                                    .length;
 
                                 // Calculate SCVR as eBay L30 / views
                                 let scvr = 0;
@@ -2380,7 +2382,8 @@
                                         'L30'] || 0,
                                     Roi: item['ROI%'] || 0,
                                     price: Number(item.price) || 0,
-                                    price_lmpa: (lmpPrice !== undefined && lmpPrice !== null) ? Number(lmpPrice) : null,
+                                    price_lmpa: (lmpPrice !== undefined && lmpPrice !== null) ?
+                                        Number(lmpPrice) : null,
                                     lmp_link: lmpLink,
                                     lmp_entries: lmpEntries,
                                     lmp_entries_total: lmpEntriesTotal,
@@ -2599,6 +2602,12 @@
                     // const $parentCell = $('<td>').addClass('parentColumn').html(`<span class="parent-text">${safeParent}</span>`);
                     // $parentCell.find('.parent-text').attr('title', parentValue);
                     // $row.append($parentCell);
+                    const parentValue = item.Parent || '';
+                    const safeParent = escapeHtml(parentValue);
+                    const $parentCell = $('<td>').addClass('parentColumn').html(
+                        `<span class="parent-text">${safeParent}</span>`);
+                    $parentCell.find('.parent-text').attr('title', parentValue);
+                    $row.append($parentCell);
 
                     // --- Helper: escape HTML to prevent XSS ---
                     // --- Helper: escape HTML ---
@@ -2663,9 +2672,9 @@
                                     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
                                 ">
                                     ${imageUrl ? `
-                                        <img src="${imageUrl}" 
-                                            style="max-width:120px; max-height:120px; border-radius:6px; display:block; margin:0 auto 8px auto;">
-                                    ` : ''}
+                                            <img src="${imageUrl}" 
+                                                style="max-width:120px; max-height:120px; border-radius:6px; display:block; margin:0 auto 8px auto;">
+                                        ` : ''}
                                     <div>
                                         ${buyerLink ? `<a href="${buyerLink}" target="_blank">Buyer Link</a>` : '<span style="color:#aaa">No Buyer Link</span>'}
                                     </div>
@@ -2677,8 +2686,12 @@
                         `);
 
                         $skuCell.find('.sku-tooltip-container').hover(
-                            function () { $(this).find('.sku-tooltip').fadeIn(150); },
-                            function () { $(this).find('.sku-tooltip').fadeOut(150); }
+                            function() {
+                                $(this).find('.sku-tooltip').fadeIn(150);
+                            },
+                            function() {
+                                $(this).find('.sku-tooltip').fadeOut(150);
+                            }
                         );
                     }
 
@@ -2700,15 +2713,15 @@
 
                     //     if (buyerLink || sellerLink || imageUrl) {
                     //         $skuCell.html(`
-                    //             <div class="sku-tooltip-container">
-                    //                 <span class="sku-text">${safeSku}</span>
-                    //                 <div class="sku-tooltip">
-                    //                     ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
-                    //                     ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
-                    //                     ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
-                    //                 </div>
-                    //             </div>
-                    //         `);
+                //             <div class="sku-tooltip-container">
+                //                 <span class="sku-text">${safeSku}</span>
+                //                 <div class="sku-tooltip">
+                //                     ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
+                //                     ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
+                //                     ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
+                //                 </div>
+                //             </div>
+                //         `);
                     //     } else {
                     //         $skuCell.html(`<span class="sku-text">${safeSku}</span>`);
                     //     }
@@ -2872,25 +2885,25 @@
 
                     // $row.append($('<td>').html(
                     //     `<div style="display:flex;align-items:center">
-                    //         <span class="sPriceText" data-sku="${item.raw_data['Item ID']}" style="min-width:100px; display:inline-block;">
-                    //             ` + item['eBay Price'] + `
-                    //         </span>
-                    //         <input 
-                    //             value="` + item['eBay Price'] + `" 
-                    //             data-sku="` + item.raw_data['Item ID'] + `" 
-                    //             style="min-width:100px; display:none;" 
-                    //             type="number" 
-                    //             class="sPriceInput form-control"
-                    //         >
-                    //         <span class="tooltip-container" style="margin-left:8px">
-                    //             <i class="fas fa-tag text-warning price-view-trigger" 
-                    //                style="transform:translateY(1px)"
-                    //                data-bs-toggle="tooltip" 
-                    //                data-bs-placement="top-end" 
-                    //                title="Pricing view"
-                    //                data-item='${JSON.stringify(item.raw_data)}'></i>
-                    //         </span>
-                    //     </div>`
+                //         <span class="sPriceText" data-sku="${item.raw_data['Item ID']}" style="min-width:100px; display:inline-block;">
+                //             ` + item['eBay Price'] + `
+                //         </span>
+                //         <input 
+                //             value="` + item['eBay Price'] + `" 
+                //             data-sku="` + item.raw_data['Item ID'] + `" 
+                //             style="min-width:100px; display:none;" 
+                //             type="number" 
+                //             class="sPriceInput form-control"
+                //         >
+                //         <span class="tooltip-container" style="margin-left:8px">
+                //             <i class="fas fa-tag text-warning price-view-trigger" 
+                //                style="transform:translateY(1px)"
+                //                data-bs-toggle="tooltip" 
+                //                data-bs-placement="top-end" 
+                //                title="Pricing view"
+                //                data-item='${JSON.stringify(item.raw_data)}'></i>
+                //         </span>
+                //     </div>`
                     // ));
 
 
@@ -5827,7 +5840,9 @@
             if (!Array.isArray(details) || details.length === 0) {
                 if (fallbackLink) {
                     const safeLink = escapeHtml(fallbackLink);
-                    $body.html(`<p class="mb-0">Open listing: <a href="${safeLink}" target="_blank" rel="noopener">${safeLink}</a></p>`);
+                    $body.html(
+                        `<p class="mb-0">Open listing: <a href="${safeLink}" target="_blank" rel="noopener">${safeLink}</a></p>`
+                        );
                 } else {
                     $body.html('<p class="mb-0">No additional LMP entries found for this SKU.</p>');
                 }
@@ -5835,7 +5850,9 @@
                 const rows = details.map((entry, index) => {
                     const price = Number(entry.price);
                     const priceText = Number.isFinite(price) ? `$${price.toFixed(2)}` : 'N/A';
-                    const link = entry.link ? `<a href="${escapeHtml(entry.link)}" target="_blank" rel="noopener">Open</a>` : 'N/A';
+                    const link = entry.link ?
+                        `<a href="${escapeHtml(entry.link)}" target="_blank" rel="noopener">Open</a>` :
+                        'N/A';
                     return `<tr><td>${index + 1}</td><td>${priceText}</td><td>${link}</td></tr>`;
                 }).join('');
 
@@ -5872,14 +5889,12 @@
                 {
                     title: 'PFT %',
                     content: itemData['PFT %'] ?
-                        Math.round(parseFloat(itemData['PFT %']) * 100) + ' %' :
-                        ''
+                        Math.round(parseFloat(itemData['PFT %']) * 100) + ' %' : ''
                 },
                 {
                     title: 'ROI%',
                     content: itemData['ROI%'] ?
-                        Math.round(parseFloat(itemData['ROI%']) * 100) + ' %' :
-                        ''
+                        Math.round(parseFloat(itemData['ROI%']) * 100) + ' %' : ''
                 },
 
                 {

@@ -256,6 +256,7 @@ class FbaDataController extends Controller
       }
 
       // Filter to only include SKUs that have ads data
+                   
       $tableData = $fbaData->filter(function ($fba, $sku) use ($adsDataBySku) {
          $ads = $adsDataBySku[$sku] ?? null;
          return $ads && ($ads['L60'] || $ads['L30'] || $ads['L15'] || $ads['L7'] || $ads['L1']);
@@ -430,8 +431,8 @@ class FbaDataController extends Controller
             'Ads_L15_Orders' => $adsL15 ? ($adsL15->purchases14d ?? 0) : 0,
             'Ads_L7_Orders' => $adsL7 ? ($adsL7->purchases14d ?? 0) : 0,
 
-            // TPFT calculation
-            'TPFT' => $pftPercentage,
+            // TPFT calculation (Commission % + Ads %)
+            'TPFT' => round($commissionPercentage + $adsPercentage, 2),
 
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
@@ -771,8 +772,57 @@ class FbaDataController extends Controller
          return strtoupper(trim($p->sku));
       });
 
+
+      // Fetch KW (Keyword) ads data - campaigns NOT ending with 'pt'
+      $skus = $fbaData->keys()->toArray();
+      $amazonSpCampaignReportsL30KW = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+         ->where('report_date_range', 'L30')
+         ->where(function ($q) use ($skus) {
+            foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+         })
+         ->where(function ($q) {
+            $q->where('campaignName', 'NOT LIKE', '%.pt')
+              ->where('campaignName', 'NOT LIKE', '% pt')
+              ->where('campaignName', 'NOT LIKE', '%pt%');
+         })
+         ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
+         ->where('campaignStatus', '!=', 'ARCHIVED')
+         ->get();
+
+      // Fetch PT (Product Targeting) ads data - campaigns ending with 'pt'
+      $amazonSpCampaignReportsL30PT = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+         ->where('report_date_range', 'L30')
+         ->where(function ($q) use ($skus) {
+            foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+         })
+         ->where(function ($q) {
+            $q->where('campaignName', 'LIKE', '%.pt')
+              ->orWhere('campaignName', 'LIKE', '% pt')
+              ->orWhereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) LIKE '% pt'");
+         })
+         ->where('campaignStatus', '!=', 'ARCHIVED')
+         ->get();
+
+      // Create maps for KW and PT ads data by SKU
+      $adsKWDataBySku = [];
+      $adsPTDataBySku = [];
+
+      foreach ($fbaData as $sku => $fba) {
+         // Find KW campaign for this SKU
+         $kwCampaign = $amazonSpCampaignReportsL30KW->first(function ($campaign) use ($sku) {
+            return stripos($campaign->campaignName, $sku) !== false;
+         });
+         $adsKWDataBySku[$sku] = $kwCampaign;
+
+         // Find PT campaign for this SKU
+         $ptCampaign = $amazonSpCampaignReportsL30PT->first(function ($campaign) use ($sku) {
+            return stripos($campaign->campaignName, $sku) !== false;
+         });
+         $adsPTDataBySku[$sku] = $ptCampaign;
+      }
+
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $adsKWDataBySku, $adsPTDataBySku) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -781,6 +831,21 @@ class FbaDataController extends Controller
          $manual = $fbaManualData->get(strtoupper(trim($fba->seller_sku)));
          $dispatchDate = $fbaDispatchDates->get($sku);
          $shipCalc = $fbaShipCalculations->get($sku);
+
+         // Get KW and PT ads data
+         $adsKW = $adsKWDataBySku[$sku] ?? null;
+         $adsPT = $adsPTDataBySku[$sku] ?? null;
+
+         // Calculate combined ads metrics (KW + PT)
+         $kwSpend = $adsKW ? floatval($adsKW->cost ?? 0) : 0;
+         $ptSpend = $adsPT ? floatval($adsPT->cost ?? 0) : 0;
+         $kwSales = $adsKW ? floatval($adsKW->sales14d ?? 0) : 0;
+         $ptSales = $adsPT ? floatval($adsPT->sales14d ?? 0) : 0;
+
+         // Ads Percentage = (KW Spend + PT Spend) / (KW Sales + PT Sales)
+         $totalSpend = $kwSpend + $ptSpend;
+         $totalSales = $kwSales + $ptSales;
+         $adsPercentage = $totalSales > 0 ? (($totalSpend / $totalSales) * 100) : 0;
 
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
@@ -880,7 +945,10 @@ class FbaDataController extends Controller
                $manual ? ($manual->data['send_cost'] ?? 0) : 0,
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
+            'Ads_Percentage' => $adsPercentage,
             
+            // TPFT calculation (Commission % + Ads %)
+            'TPFT' => round($commissionPercentage + $adsPercentage, 2),
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
             'Mar' => $monthlySales ? ($monthlySales->mar ?? 0) : 0,
@@ -942,6 +1010,7 @@ class FbaDataController extends Controller
             'Send_Cost' => round($children->sum(fn($item) => is_numeric($item['Send_Cost']) ? $item['Send_Cost'] : 0), 2),
             'IN_Charges' => round($children->sum(fn($item) => is_numeric($item['IN_Charges']) ? $item['IN_Charges'] : 0), 2),
             'Commission_Percentage' => '',
+            'Ads_Percentage' => '',
             'Done' => false,
             'Warehouse_INV_Reduction' => false,
             'FBA_Send' => false,
@@ -1039,6 +1108,7 @@ class FbaDataController extends Controller
       $sku = strtoupper(trim($request->input('sku')));
       $field = $request->input('field');
       $value = $request->input('value') ?: 0;
+      $fulfillmentFee = floatval($request->input('fulfillment_fee') ?? 0);
 
 
       // Row find or create
@@ -1055,12 +1125,12 @@ class FbaDataController extends Controller
       $data[$field] = $value;
 
       // Extract only 3 fields
-      $FBA_FEE = floatval($data['fba_fee_manual'] ?? 0);
+      $FBA_FEE_MANUAL = floatval($data['fba_fee_manual'] ?? 0);
       $SEND_COST = floatval($data['send_cost'] ?? 0);
       $IN_CHARGES = floatval($data['in_charges'] ?? 0);
 
-      // Calculate FBA_SHIP
-      $FBA_SHIP = $FBA_FEE + $SEND_COST + $IN_CHARGES;
+      // Calculate FBA_SHIP (Fulfillment_Fee + FBA_Fee_Manual + Send_Cost + IN_Charges)
+      $FBA_SHIP = $fulfillmentFee + $FBA_FEE_MANUAL + $SEND_COST + $IN_CHARGES;
       $data['fba_ship'] = $FBA_SHIP;
 
       $manual->data = $data;
