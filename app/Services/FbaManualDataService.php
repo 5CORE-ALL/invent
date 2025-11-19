@@ -52,7 +52,7 @@ class FbaManualDataService
             $columns = [
                 'Parent', 'Child SKU', 'FBA SKU', 'FBA INV', 'L60 Units', 'L30 Units', 'FBA Dil',
                 'FBA Price', 'Pft%', 'ROI%', 'TPFT', 'S Price', 'SPft%', 'SROI%', 'LP', 'FBA Ship',
-                'CVR', 'Views', 'Listed', 'Live', 'FBA Fee', 'FBA Fee Manual', 'ASIN', 'Barcode',
+                'CVR', 'Views', 'Listed', 'Live', 'FBA Fee', 'FBA Fee Manual', 'Commission Percentage', 'ASIN', 'Barcode',
                 'Done', 'Dispatch Date', 'Weight', 'Qty Box', 'Sent Qty', 'Send Cost', 'IN Charges',
                 'WH INV Red', 'Ship Amt', 'Inbound Qty', 'FBA Send', 'Dimensions',
                 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
@@ -109,6 +109,7 @@ class FbaManualDataService
                         $manual && isset($manual->data['live']) && $manual->data['live'] ? 'Yes' : 'No',
                         $fbaReportsInfo ? round($fbaReportsInfo->fulfillment_fee ?? 0, 2) : 0,
                         $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
+                        $manual ? ($manual->data['commission_percentage'] ?? 0) : 0,
                         $fba->asin ?? '',
                         $manual ? ($manual->data['barcode'] ?? '') : '',
                         $manual && isset($manual->data['done']) && $manual->data['done'] ? 'Yes' : 'No',
@@ -190,7 +191,8 @@ class FbaManualDataService
                     'total_send_cost' => $this->cleanText($row[5] ?? ''),
                     'inbound_quantity' => $this->cleanText($row[6] ?? ''),
                     'send_cost' => $this->cleanText($row[7] ?? ''),
-                    'in_charges' => $this->cleanText($row[8] ?? '')
+                    'in_charges' => $this->cleanText($row[8] ?? ''),
+                    'commission_percentage' => $this->cleanText($row[9] ?? '')
                 ]);
                 
                 $manual->save();
@@ -225,7 +227,7 @@ class FbaManualDataService
 
         $callback = function () {
             $file = fopen('php://output', 'w');
-            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'IN Charges' , 'Commission']);
+            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'IN Charges', 'Commission Percentage']);
             fputcsv($file, ['SAMPLE-SKU-001', '10x8x6', '2.5', '10', '100', '500', '20', '50', '25', '10']);
             fclose($file);
         };
