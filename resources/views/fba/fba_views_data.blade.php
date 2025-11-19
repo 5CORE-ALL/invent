@@ -188,7 +188,7 @@
                             frozen: true
                         },
                         {
-                            title: "Child SKU",
+                            title: "Child <br> SKU",
                             field: "SKU",
                             headerFilter: "input",
                             headerFilterPlaceholder: "Search SKU...",
@@ -197,7 +197,7 @@
                             frozen: true
                         },
                         {
-                            title: "FBA SKU",
+                            title: "FBA <br>SKU",
                             field: "FBA_SKU",
                             headerFilter: "input",
                             headerFilterPlaceholder: "Search SKU...",
@@ -212,7 +212,7 @@
                         //     hozAlign: "center"
                         // },
                         {
-                            title: "FBA INV",
+                            title: "FBA <br> INV",
                             field: "FBA_Quantity",
                             hozAlign: "center"
                         },
@@ -225,7 +225,7 @@
                         // },
 
                         {
-                            title: "L30 FBA",
+                            title: "L30 <br> FBA",
                             field: "l30_units",
                             hozAlign: "center"
                         },
@@ -249,7 +249,7 @@
 
 
                         {
-                            title: "FBA_CVR",
+                            title: "FBA <br> CVR",
                             field: "FBA_CVR",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -268,7 +268,7 @@
 
 
                         {
-                            title: "Inv age",
+                            title: "Inv<br> age",
                             field: "Inv_age",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -278,7 +278,7 @@
                         },
 
                         {
-                            title: "FBA Price",
+                            title: "FBA<br> Price",
                             field: "FBA_Price",
                             hozAlign: "center",
                             // formatter: "dollar"
@@ -352,7 +352,7 @@
                         },
 
                         {
-                            title: "S Price",
+                            title: "S <br> Price",
                             field: "S_Price",
                             hozAlign: "center",
                             editor: "input",
@@ -413,7 +413,7 @@
                         },
 
                         {
-                            title: "FBA Ship",
+                            title: "FBA<br> Ship",
                             field: "FBA_Ship_Calculation",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -448,13 +448,13 @@
                         //     }
                         // },
                         {
-                            title: "FBA Fee",
+                            title: "FBA<br> Fee",
                             field: "Fulfillment_Fee",
                             hozAlign: "center"
                         },
 
                         {
-                            title: "FBA Fee M",
+                            title: "FBA <br> Fee <br> M",
                             field: "FBA_Fee_Manual",
                             hozAlign: "center",
                             editable: function(cell) {
@@ -531,13 +531,13 @@
                         //     editor: "input"
                         // },
                         {
-                            title: "Send Cost",
+                            title: "Send <br> Cost",
                             field: "Send_Cost",
                             hozAlign: "center",
                             editor: "input"
                         },
                         {
-                            title: "IN Charges",
+                            title: "IN <br> Charges",
                             field: "IN_Charges",
                             hozAlign: "center",
                             editor: "input"
