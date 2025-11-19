@@ -83,11 +83,15 @@ class EbayPriceLessBidsAutoUpdate extends Command
             $ebay = $ebayMetricData[$pm->sku] ?? null;
 
             $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($sku) {
-                return stripos($item->campaign_name, $sku) !== false;
+                $campaignName = strtoupper(trim(rtrim($item->campaign_name, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                return $campaignName === $cleanSku;
             });
 
             $matchedCampaignL1 = $ebayCampaignReportsL1->first(function ($item) use ($sku) {
-                return stripos($item->campaign_name, $sku) !== false;
+                $campaignName = strtoupper(trim(rtrim($item->campaign_name, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                return $campaignName === $cleanSku;
             });
 
             if (!$matchedCampaignL7 && !$matchedCampaignL1) {
