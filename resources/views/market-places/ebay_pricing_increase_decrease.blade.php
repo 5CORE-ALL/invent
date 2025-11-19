@@ -2607,7 +2607,7 @@
                     const $parentCell = $('<td>').addClass('parentColumn').html(
                         `<span class="parent-text">${safeParent}</span>`);
                     $parentCell.find('.parent-text').attr('title', parentValue);
-                    $row.append($parentCell);
+                    // $row.append($parentCell);
 
                     // --- Helper: escape HTML to prevent XSS ---
                     // --- Helper: escape HTML ---
