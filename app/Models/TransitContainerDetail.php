@@ -31,7 +31,14 @@ class TransitContainerDetail extends Model
         'order_link',
         'comparison_link',
         'auth_user',
+        'created_by'
     ];
 
     protected $dates = ['deleted_at']; 
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
 }

@@ -36,6 +36,7 @@ class InventoryWarehouse extends Model
         'supplier_names',
         'pushed',
         'transit_container_id',
+        'created_by'
 
     ];
 
@@ -43,5 +44,11 @@ class InventoryWarehouse extends Model
         'supplier_names' => 'array',
         'pushed' => 'boolean',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
 
 }

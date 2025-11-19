@@ -16,11 +16,11 @@ class ArrivedContainerController extends Controller
     public function index()
     {
 
-        $allRecords = ArrivedContainer::where(function ($q) {
+        $allRecords = ArrivedContainer::with('user')->where(function ($q) {
             $q->whereNull('status')->orWhereRaw("TRIM(status) = ''");
         })->get();
 
-        $tabs = ArrivedContainer::where(function ($q) {
+        $tabs = ArrivedContainer::with('user')->where(function ($q) {
             $q->whereNull('status')->orWhereRaw("TRIM(status) = ''");
         })->distinct()->pluck('tab_name')->toArray();
 
@@ -68,6 +68,7 @@ class ArrivedContainerController extends Controller
 
             $record->image_src = $shopifyImages[$sku] ?? null;
             $record->Values = $productValuesMap[$sku] ?? null;
+            $record->created_by_name = $record->user->name ?? '—';
 
             return $record;
         });
@@ -89,6 +90,8 @@ class ArrivedContainerController extends Controller
     {
         $tabName = $request->input('tab_name');
         $rows = $request->input('data', []);
+
+        $userId = auth()->id();
 
         foreach ($rows as $row) {
             ArrivedContainer::updateOrCreate(
@@ -114,6 +117,7 @@ class ArrivedContainerController extends Controller
                     'image_src'         => $row['image_src'] ?? null,
                     'photos'            => $row['photos'] ?? null,
                     'specification'     => $row['specification'] ?? null,
+                    'created_by'        => $userId,
                 ]
             );
 

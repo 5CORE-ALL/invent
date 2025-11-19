@@ -256,6 +256,7 @@ class FbaDataController extends Controller
       }
 
       // Filter to only include SKUs that have ads data
+                   
       $tableData = $fbaData->filter(function ($fba, $sku) use ($adsDataBySku) {
          $ads = $adsDataBySku[$sku] ?? null;
          return $ads && ($ads['L60'] || $ads['L30'] || $ads['L15'] || $ads['L7'] || $ads['L1']);
@@ -288,6 +289,14 @@ class FbaDataController extends Controller
          $spftPercentage = round($spft * 100);
          $sroiPercentage = round($sroi * 100);
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
+
+         // Calculate GPFT%
+         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
+         $gpft = 0;
+         if ($PRICE > 0) {
+            $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+         }
+         $gpftPercentage = round($gpft * 100);
 
          // Extract ads metrics
          $adsL30 = $ads['L30'] ?? null;
@@ -329,6 +338,7 @@ class FbaDataController extends Controller
             'Live' => $manual ? ($manual->data['live'] ?? false) : false,
             'Pft%' => $this->colorService->getValueHtml($pftPercentage),
             'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
+            'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
             'S_Price' => round($S_PRICE, 2),
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
             'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
@@ -421,8 +431,8 @@ class FbaDataController extends Controller
             'Ads_L15_Orders' => $adsL15 ? ($adsL15->purchases14d ?? 0) : 0,
             'Ads_L7_Orders' => $adsL7 ? ($adsL7->purchases14d ?? 0) : 0,
 
-            // TPFT calculation
-            'TPFT' => $pftPercentage,
+            // TPFT calculation (Commission % + Ads %)
+            'TPFT' => round($GPFT - $adsPercentage, 2),
 
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
@@ -579,6 +589,14 @@ class FbaDataController extends Controller
          $sroiPercentage = round($sroi * 100, 2);
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
+         // Calculate GPFT%
+         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
+         $gpft = 0;
+         if ($PRICE > 0) {
+            $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+         }
+         $gpftPercentage = round($gpft * 100, 2);
+
          // Extract ads metrics
          $adsL30 = $ads['L30'] ?? null;
          $adsL60 = $ads['L60'] ?? null;
@@ -732,9 +750,6 @@ class FbaDataController extends Controller
          ];
       })->values();
 
-      Log::info('FBA Ads PT Data JSON - Total records: ' . $tableData->count());
-      Log::info('FBA Ads PT Data JSON - Sample SKUs: ' . $tableData->take(5)->pluck('SKU')->implode(', '));
-
       return response()->json($tableData);
    }
 
@@ -754,8 +769,57 @@ class FbaDataController extends Controller
          return strtoupper(trim($p->sku));
       });
 
+
+      // Fetch KW (Keyword) ads data - campaigns NOT ending with 'pt'
+      $skus = $fbaData->keys()->toArray();
+      $amazonSpCampaignReportsL30KW = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+         ->where('report_date_range', 'L30')
+         ->where(function ($q) use ($skus) {
+            foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+         })
+         ->where(function ($q) {
+            $q->where('campaignName', 'NOT LIKE', '%.pt')
+              ->where('campaignName', 'NOT LIKE', '% pt')
+              ->where('campaignName', 'NOT LIKE', '%pt%');
+         })
+         ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
+         ->where('campaignStatus', '!=', 'ARCHIVED')
+         ->get();
+
+      // Fetch PT (Product Targeting) ads data - campaigns ending with 'pt'
+      $amazonSpCampaignReportsL30PT = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+         ->where('report_date_range', 'L30')
+         ->where(function ($q) use ($skus) {
+            foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+         })
+         ->where(function ($q) {
+            $q->where('campaignName', 'LIKE', '%.pt')
+              ->orWhere('campaignName', 'LIKE', '% pt')
+              ->orWhereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) LIKE '% pt'");
+         })
+         ->where('campaignStatus', '!=', 'ARCHIVED')
+         ->get();
+
+      // Create maps for KW and PT ads data by SKU
+      $adsKWDataBySku = [];
+      $adsPTDataBySku = [];
+
+      foreach ($fbaData as $sku => $fba) {
+         // Find KW campaign for this SKU
+         $kwCampaign = $amazonSpCampaignReportsL30KW->first(function ($campaign) use ($sku) {
+            return stripos($campaign->campaignName, $sku) !== false;
+         });
+         $adsKWDataBySku[$sku] = $kwCampaign;
+
+         // Find PT campaign for this SKU
+         $ptCampaign = $amazonSpCampaignReportsL30PT->first(function ($campaign) use ($sku) {
+            return stripos($campaign->campaignName, $sku) !== false;
+         });
+         $adsPTDataBySku[$sku] = $ptCampaign;
+      }
+
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $adsKWDataBySku, $adsPTDataBySku) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -764,6 +828,21 @@ class FbaDataController extends Controller
          $manual = $fbaManualData->get(strtoupper(trim($fba->seller_sku)));
          $dispatchDate = $fbaDispatchDates->get($sku);
          $shipCalc = $fbaShipCalculations->get($sku);
+
+         // Get KW and PT ads data
+         $adsKW = $adsKWDataBySku[$sku] ?? null;
+         $adsPT = $adsPTDataBySku[$sku] ?? null;
+
+         // Calculate combined ads metrics (KW + PT)
+         $kwSpend = $adsKW ? floatval($adsKW->cost ?? 0) : 0;
+         $ptSpend = $adsPT ? floatval($adsPT->cost ?? 0) : 0;
+         $kwSales = $adsKW ? floatval($adsKW->sales14d ?? 0) : 0;
+         $ptSales = $adsPT ? floatval($adsPT->sales14d ?? 0) : 0;
+
+         // Ads Percentage = (KW Spend + PT Spend) / (KW Sales + PT Sales)
+         $totalSpend = $kwSpend + $ptSpend;
+         $totalSales = $kwSales + $ptSales;
+         $adsPercentage = $totalSales > 0 ? (($totalSpend / $totalSales) * 100) : 0;
 
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
@@ -775,18 +854,62 @@ class FbaDataController extends Controller
             $manual ? ($manual->data['send_cost'] ?? 0) : 0,
             $manual ? ($manual->data['in_charges'] ?? 0) : 0
          );
+
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
 
+         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
          // --- Calculate all profit & ROI metrics ---
+
+         $sgpft = ($S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP ) / $S_PRICE : 0;
+
          $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
-         $roi = ($LP > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
-         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
-         $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
+
+
+      
+
+
+
+         $roi = ($LP > 0) ? ($PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP - $adsPercentage)  / $LP : 0;
+         // $spft =  ($S_PRICE > 0) ? (($S_PRICE * ((1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)) - $adsPercentage) / $S_PRICE : 0;
+         $sroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP - $adsPercentage)  / $LP : 0;
+         $sgroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP )  / $LP : 0;
+
+
+   
+        
+         $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
+
+         // Calculate GPFT%
+
+
+         
+         $spft = 0;
+         if ($S_PRICE > 0) {
+            $spft = ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $S_PRICE;
+         }
+
+
+
+      
+         $gpft = 0;
+         if ($PRICE > 0) {
+            $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+         }
+
+         $groi = 0;
+         if ($LP > 0) {
+            $groi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP ) / $LP;
+         }
+
+
+         $gpftPercentage = round($gpft * 100);
+         $sgpftPercentage = round($sgpft * 100);
+         $groiPercentage = round($groi * 100);
          $pftPercentage = round($pft * 100);
-         $roiPercentage = round($roi * 100);
+         $roiPercentage = round($roi * 100); 
          $spftPercentage = round($spft * 100);
          $sroiPercentage = round($sroi * 100);
-         $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
+         $sgroiPercentage = round($sgroi * 100);
 
          return [
             'Parent' => $product ? ($product->parent ?? '') : '',
@@ -806,9 +929,13 @@ class FbaDataController extends Controller
             'Live' => $manual ? ($manual->data['live'] ?? false) : false,
             'Pft%' => $this->colorService->getValueHtml($pftPercentage),
             'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
+            'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
+            'SGPFT%' => $this->colorService->getValueHtml($sgpftPercentage),
+            'GROI%' => $this->colorService->getRoiHtmlForView($groiPercentage),
             'S_Price' => round($S_PRICE, 2),
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
             'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
+            'SGROI%' => $this->colorService->getRoiHtmlForView($sgroiPercentage),
             'lmp_1' => $lmpaData['lowest_price'],
             'lmp_data' => $lmpaData['data'],
             'ACTION_ACTION' => $manual ? ($manual->data['action_action'] ?? '') : '',
@@ -854,6 +981,12 @@ class FbaDataController extends Controller
                $manual ? ($manual->data['send_cost'] ?? 0) : 0,
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
+            'Ads_Percentage' => $adsPercentage,
+            
+            // TPFT calculation (Commission % - Ads %)
+            'TPFT' => round($gpftPercentage - $adsPercentage, 2),
+
+            'SPFT' => round($spftPercentage - $adsPercentage),
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
             'Mar' => $monthlySales ? ($monthlySales->mar ?? 0) : 0,
@@ -915,6 +1048,7 @@ class FbaDataController extends Controller
             'Send_Cost' => round($children->sum(fn($item) => is_numeric($item['Send_Cost']) ? $item['Send_Cost'] : 0), 2),
             'IN_Charges' => round($children->sum(fn($item) => is_numeric($item['IN_Charges']) ? $item['IN_Charges'] : 0), 2),
             'Commission_Percentage' => '',
+            'Ads_Percentage' => '',
             'Done' => false,
             'Warehouse_INV_Reduction' => false,
             'FBA_Send' => false,
@@ -947,6 +1081,7 @@ class FbaDataController extends Controller
             'is_parent' => true,
             'Pft%' => '',
             'ROI%' => '',
+            'GPFT%' => '',
             'S_Price' => '',
             'SPft%' => '',
             'SROI%' => '',
@@ -1011,6 +1146,7 @@ class FbaDataController extends Controller
       $sku = strtoupper(trim($request->input('sku')));
       $field = $request->input('field');
       $value = $request->input('value') ?: 0;
+      $fulfillmentFee = floatval($request->input('fulfillment_fee') ?? 0);
 
 
       // Row find or create
@@ -1027,12 +1163,12 @@ class FbaDataController extends Controller
       $data[$field] = $value;
 
       // Extract only 3 fields
-      $FBA_FEE = floatval($data['fba_fee_manual'] ?? 0);
+      $FBA_FEE_MANUAL = floatval($data['fba_fee_manual'] ?? 0);
       $SEND_COST = floatval($data['send_cost'] ?? 0);
       $IN_CHARGES = floatval($data['in_charges'] ?? 0);
 
-      // Calculate FBA_SHIP
-      $FBA_SHIP = $FBA_FEE + $SEND_COST + $IN_CHARGES;
+      // Calculate FBA_SHIP (Fulfillment_Fee + FBA_Fee_Manual + Send_Cost)
+      $FBA_SHIP = $fulfillmentFee + $FBA_FEE_MANUAL + $SEND_COST;
       $data['fba_ship'] = $FBA_SHIP;
 
       $manual->data = $data;
@@ -1165,15 +1301,16 @@ class FbaDataController extends Controller
       return $this->fbaManualDataService->downloadSampleTemplate();
    }
 
-   public function syncFbaShipCalculations()
-   {
-      $result = $this->fbaManualDataService->bulkUpdateCalculations();
 
-      return response()->json([
-         'success' => $result['success'],
-         'message' => $result['success']
-            ? "Successfully updated {$result['updated']} FBA Ship Calculations!"
-            : $result['message']
-      ]);
+   public function getFbaColumnVisibility()
+   {
+      return response()->json(\App\Services\ColumnVisibilityService::getFbaColumnVisibility());
+   }
+
+   public function setFbaColumnVisibility(Request $request)
+   {
+      $visibility = $request->input('visibility', []);
+      \App\Services\ColumnVisibilityService::setFbaColumnVisibility($visibility);
+      return response()->json(['success' => true]);
    }
 }

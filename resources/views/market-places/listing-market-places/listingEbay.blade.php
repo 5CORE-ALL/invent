@@ -1455,15 +1455,15 @@
                                 }
 
                                 // Set default value for nr_req if missing and INV > 0
-                              tableData = tableData.map(item => {
-    const updatedItem = {
-        ...item,
-        nr_req: item.nr_req === 'REQ' ? 'REQ' : item.nr_req === 'NR' ? 'NR' : '',
-        listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' : 'Listed')
-    };
-    console.log(updatedItem.nr_req + " => " + updatedItem.id);
-    return updatedItem;
-});
+                                tableData = tableData.map(item => {
+                                    const updatedItem = {
+                                        ...item,
+                                        nr_req: item.nr_req === 'REQ' ? 'REQ' : item.nr_req === 'NR' ? 'NR' : '',
+                                        listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' : 'Listed')
+                                    };
+                                    console.log(updatedItem.nr_req + " => " + updatedItem.id);
+                                    return updatedItem;
+                                });
 
                                 filteredData = [...tableData];
                             },

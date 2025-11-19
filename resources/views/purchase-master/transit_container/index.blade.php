@@ -207,7 +207,7 @@
 
 
                     <button id="add-items-btn" class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#addItemModal">
-                        <i class="fas fa-plus"></i> Add Items
+                        <i class="fas fa-plus"></i> Add Notes
                     </button>
                     <a href="{{ url('product-master') }}" class="btn btn-warning btn-sm">
                         <i class="fas fa-plus-circle"></i> Add New Product
@@ -257,18 +257,29 @@
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title fw-bold" id="addItemModalLabel">
-                    <i class="fas fa-file-invoice me-2"></i> Add Items
+                    <i class="fas fa-file-invoice me-2"></i> Add Notes
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
             <form id="purchaseOrderForm" method="POST" action="{{ url('transit-container/save') }}" enctype="multipart/form-data" autocomplete="off">
                 @csrf
+                <script>
+                    document.addEventListener("DOMContentLoaded", function() {
+                        console.log("PAGE LOADED - JS WORKING");
+
+                        $(document).on("change", ".sku-select", function () {
+                            console.log("SKU changed!");
+                        });
+                        console.log("Product Values Map:", {!! $productValuesMap !!});
+                    });
+                </script>
+
                 <div class="modal-body">
                     {{-- Product Section --}}
                     <div>
                         <h5 class="fw-semibold mb-2 text-primary">
-                            <i class="fas fa-boxes-stacked me-1"></i> Items
+                            <i class="fas fa-boxes-stacked me-1"></i> Notes
                         </h5>
                         <div class="row g-2">
                           <div class="col-md-3">
@@ -330,12 +341,16 @@
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-semibold">Unit</label>
+                                    <input type="text" class="form-control" name="unit[]" step="any">
+                                </div>
+                                {{-- <div class="col-md-3">
+                                    <label class="form-label fw-semibold">Unit</label>
                                     <select class="form-select" name="unit[]">
                                         <option value="" disabled>select unit</option>
                                         <option value="pieces">pieces</option>
                                         <option value="pair">pair</option>
                                     </select>
-                                </div>
+                                </div> --}}
                                 <div class="col-md-3">
                                     <label class="form-label fw-semibold">Changes</label>
                                     <input type="text" class="form-control" name="changes[]">
@@ -456,9 +471,6 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
             hozAlign: "center",
             headerSort: false
             },
-            { title: "Parent", field: "parent"},
-            { title: "Sku", field: "our_sku" },
-            { title: "Supplier", field: "supplier_name", editor: "input" },
             {
               title: "Images",
               field: "photos",
@@ -559,6 +571,10 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                 style="height:40px;border-radius:4px;border:1px solid #ccc;cursor:zoom-in;">`;
               }
             },
+            { title: "Parent", field: "parent"},
+            { title: "Sku", field: "our_sku" },
+            { title: "Supplier", field: "supplier_name", editor: "input" },
+           
             { title: "Rec Qty", field: "rec_qty"},
             { title: "Qty / Ctns", field: "no_of_units", editor: "input" },
             { title: "Qty Ctns", field: "total_ctn", editor: "input" },
@@ -685,6 +701,18 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                           ${value ?? ''}
                         </div>`;
               }
+            },
+            {
+                title: "Created By",
+                field: "created_by_name",
+                headerSort: false,
+                hozAlign: "center",
+                formatter: function(cell) {
+                    const value = cell.getValue();
+                    return `<span class="badge bg-secondary" style="padding: 6px 12px; font-size: 0.9rem;">
+                                ${value || '—'}
+                            </span>`;
+                }
             },
         ],
     });
@@ -1358,6 +1386,42 @@ document.body.style.zoom = "90%";
   });
 </script>
 
+<script>
+const productValues = {!! $productValuesMap !!};
+console.log(productValues,'dfdf');
+
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    $(document).on("change", ".sku-select", function () {
+
+        let selectedSku = $(this).val();
+        if (!selectedSku) return;
+
+        // Normalize EXACTLY same way as controller
+        selectedSku = selectedSku.toUpperCase().trim().replace(/\s+/g, ' ');
+        console.log("Normalized SKU:", selectedSku);
+
+        let row = $(this).closest(".product-row");
+
+        let values = productValues[selectedSku];
+        console.log("Matched Values:", values);
+
+        if (!values) {
+            row.find('input[name="cbm[]"]').val('');
+            row.find('input[name="rate[]"]').val('');
+            row.find('select[name="unit[]"]').val('');
+            return;
+        }
+
+        row.find('input[name="cbm[]"]').val(values.cbm ?? '');
+        row.find('input[name="rate[]"]').val(values.cp ?? '');
+        // row.find('select[name="unit[]"]').val(values.unit ?? '');
+        row.find('input[name="unit[]"]').val(values.unit ? values.unit.toLowerCase().trim() : '');
+
+    });
+});
+</script>
 
 
 

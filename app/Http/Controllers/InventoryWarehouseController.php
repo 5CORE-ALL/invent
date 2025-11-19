@@ -13,7 +13,7 @@ class InventoryWarehouseController extends Controller
 
     public function index()
     {
-        $warehouses = InventoryWarehouse::latest()->get();
+        $warehouses = InventoryWarehouse::with('user')->latest()->get();
 
         return view('purchase-master.transit_container.inventory_warehouse', compact('warehouses'));
     }
@@ -203,6 +203,8 @@ class InventoryWarehouseController extends Controller
         $tabName = $request->input('tab_name');
         $rows = $request->input('data', []);
 
+        $userId = auth()->id();
+
         // $alreadyPushedSkus = [];
         // $notFoundSkus = [];
         // $pushedRows = [];
@@ -301,6 +303,7 @@ class InventoryWarehouseController extends Controller
                     [   // rest are values to store
                         'our_sku' => $sku,
                         'pushed' => 1,
+                        'created_by' => $userId,
                         'supplier_name' => $row['supplier_name'] ?? null,
                         'company_name' => $row['company_name'] ?? null,
                         'no_of_units' => $units,

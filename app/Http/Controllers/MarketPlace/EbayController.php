@@ -174,6 +174,11 @@ class EbayController extends Controller
             ->orderBy("sku", "asc")
             ->get();
 
+            $productMasters = $productMasters->filter(function ($item) {
+                return stripos($item->sku, 'PARENT') === false;
+            })->values();
+
+
         // 2. SKU list
         $skus = $productMasters->pluck("sku")
             ->filter()
@@ -181,14 +186,16 @@ class EbayController extends Controller
             ->values()
             ->all();
 
-        $nonParentSkus = $productMasters->pluck("sku")
-            ->filter()
-            ->filter(function ($sku) {
-                return stripos($sku, 'PARENT') === false;
-            })
-            ->unique()
-            ->values()
-            ->all();
+            $nonParentSkus = $skus;
+
+        // $nonParentSkus = $productMasters->pluck("sku")
+        //     ->filter()
+        //     ->filter(function ($sku) {
+        //         return stripos($sku, 'PARENT') === false;
+        //     })
+        //     ->unique()
+        //     ->values()
+        //     ->all();
 
         // 3. Related Models
         $shopifyData = ShopifySku::whereIn("sku", $skus)
@@ -332,7 +339,8 @@ class EbayController extends Controller
             $row["Ship_productmaster"] = $ship;
 
             // NR & Hide
-            $row['NR'] = "";
+            $row['NR'] = null;
+            $row['NRL'] = null;
             $row['SPRICE'] = null;
             $row['SPFT'] = null;
             $row['SROI'] = null;
@@ -346,7 +354,10 @@ class EbayController extends Controller
                     $raw = json_decode($raw, true);
                 }
                 if (is_array($raw)) {
-                    $row['NR'] = $raw['NR'] ?? null;
+                    // $row['NR'] = $raw['NR'] ?? null;
+                    // $row['NRL'] = $raw['NRL'] ?? "";
+                    $row['NR'] = isset($raw['NR']) ? $raw['NR'] : null;
+                    $row['NRL'] = isset($raw['NRL']) ? $raw['NRL'] : null; 
                     $row['SPRICE'] = $raw['SPRICE'] ?? null;
                     $row['SPFT'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;

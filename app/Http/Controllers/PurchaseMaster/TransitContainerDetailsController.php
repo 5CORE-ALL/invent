@@ -15,7 +15,7 @@ class TransitContainerDetailsController extends Controller
 {
     public function index()
     {
-        $allRecords = TransitContainerDetail::where(function($q){
+        $allRecords = TransitContainerDetail::with('user')->where(function($q){
             $q->whereNull('status')->orWhereRaw("TRIM(status) = ''");
         })->get();
 
@@ -53,21 +53,7 @@ class TransitContainerDetailsController extends Controller
             return [$normSku => $value];
         })->toArray();
 
-        // $pushedMap = InventoryWarehouse::select('tab_name', 'our_sku', 'pushed', 'created_at','transit_container_id')
-        //     ->whereNotNull('transit_container_id')
-        //     ->whereNotNull('tab_name')
-        //     ->orderBy('created_at', 'desc')
-        //     ->get()
-        //     ->unique(function ($item) {
-        //         return strtoupper(trim($item->tab_name)) . '|' . (int) $item->transit_container_id;
-        //     })
-        //     ->mapWithKeys(function ($item) {
-        //         $normTab = strtoupper(trim(preg_replace('/\s+/', ' ', $item->tab_name)));
-        //         // $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $item->our_sku)));
-        //         return ["{$normTab}|{$item->row_id}" => (int) $item->pushed];
-        //     })
-        // ->toArray();
-        $pushedMap = InventoryWarehouse::select('tab_name', 'transit_container_id', 'our_sku', 'pushed', 'created_at')
+        $pushedMap = InventoryWarehouse::select('tab_name', 'transit_container_id', 'our_sku', 'pushed', 'created_at','created_by')
         ->whereNotNull('transit_container_id')
         ->whereNotNull('tab_name')
         ->orderBy('created_at', 'desc')
@@ -105,6 +91,7 @@ class TransitContainerDetailsController extends Controller
 
             $record->pushed = isset($pushedMap[$key]) ? (int) $pushedMap[$key] : 0;
             // $record->pushed = isset($pushedMap[$sku]) ? (int) $pushedMap[$sku] : 0;
+            $record->created_by_name = $record->user->name ?? '—';
             
             return $record;
         });
@@ -124,7 +111,8 @@ class TransitContainerDetailsController extends Controller
             'tabs' => $tabs,
             'groupedData' => $groupedData,
             'suppliers' => $suppliers,
-            'skus'=> $skus
+            'skus'=> $skus,
+            'productValuesMap' => json_encode($productValuesMap)
         ]);
     }
 
@@ -192,7 +180,8 @@ class TransitContainerDetailsController extends Controller
     }
 
     //save transit conatiner items
-    public function transitContainerStoreItems(Request $request){
+    public function transitContainerStoreItems(Request $request)
+    {
         $request->validate([
             'tab_name'       => 'required|string|max:255',
             'our_sku.*'       => 'required|string|max:255',
@@ -220,6 +209,7 @@ class TransitContainerDetailsController extends Controller
                 'cbm'          => $request->cbm[$index] ?? null,
                 'changes'       => $request->changes[$index] ?? null,
                 'specification' => $request->specification[$index] ?? null,
+                'created_by'    => auth()->id(),
             ];
 
             TransitContainerDetail::updateOrCreate(

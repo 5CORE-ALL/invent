@@ -794,7 +794,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="labelQty" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Label QTY*</label>
+                                                        style="color: #4A5568;">Label QTY</label>
                                                     <input type="text" class="form-control" id="labelQty"
                                                         placeholder="Enter QTY"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -873,7 +873,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="wtAct" class="form-label fw-bold"
-                                                        style="color: #4A5568;">WT ACT*</label>
+                                                        style="color: #4A5568;">WT ACT</label>
                                                     <input type="text" class="form-control" id="wtAct"
                                                         placeholder="Enter WT ACT"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -887,7 +887,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="wtDecl" class="form-label fw-bold"
-                                                        style="color: #4A5568;">WT DECL*</label>
+                                                        style="color: #4A5568;">WT DECL</label>
                                                     <input type="text" class="form-control" id="wtDecl"
                                                         placeholder="Enter WT DECL"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -897,7 +897,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="ship" class="form-label fw-bold"
-                                                        style="color: #4A5568;">SHIP*</label>
+                                                        style="color: #4A5568;">SHIP</label>
                                                     <input type="text" class="form-control" id="ship"
                                                         placeholder="Enter SHIP"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -946,7 +946,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="w" class="form-label fw-bold"
-                                                        style="color: #4A5568;">W*</label>
+                                                        style="color: #4A5568;">W</label>
                                                     <input type="text" class="form-control" id="w"
                                                         placeholder="Enter W"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -956,7 +956,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="l" class="form-label fw-bold"
-                                                        style="color: #4A5568;">L*</label>
+                                                        style="color: #4A5568;">L</label>
                                                     <input type="text" class="form-control" id="l"
                                                         placeholder="Enter L"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -970,7 +970,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="h" class="form-label fw-bold"
-                                                        style="color: #4A5568;">H*</label>
+                                                        style="color: #4A5568;">H</label>
                                                     <input type="text" class="form-control" id="h"
                                                         placeholder="Enter H"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -1500,6 +1500,11 @@
 
             // Store the loaded data globally
             let tableData = [];
+            let productUniqueParents = [];
+            let isProductNavigationActive = false;
+            let currentProductParentIndex = -1;
+            let filteredProductData = [];
+
 
             // Track selected items with both SKU and ID
             let selectedItems = {}; // Format: { sku: { id: 123, checked: true } }
@@ -1547,7 +1552,7 @@
                             tableData = response.data;
                             renderTable(tableData);
                             updateParentOptions();
-
+                            initProductPlaybackControls();
                             // Add this block to update counts
                             const parentSet = new Set();
                             let skuCount = 0;
@@ -1752,13 +1757,13 @@
                                     cell.innerHTML = `
                             <div class="d-inline-flex">
                                 ${hasEditPermission ? 
-                                    `<button class="btn btn-sm btn-outline-primary edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
+                                    `<button class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                                             <i class="bi bi-pencil-square"></i>
                                                         </button>` 
                                     : ''
                                 }
                                 ${hasDeletePermission ? 
-                                    `<button class="btn btn-sm btn-outline-warning delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
+                                    `<button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
                                                             <i class="bi bi-archive"></i>
                                                         </button>` 
                                     : ''
@@ -1922,13 +1927,13 @@
                                 cell.innerHTML = `
                         <div class="d-inline-flex">
                             ${hasEditPermission ? 
-                                `<button class="btn btn-sm btn-outline-primary edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
+                                `<button class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                                         <i class="bi bi-pencil-square"></i>
                                                     </button>` 
                                 : ''
                             }
                             ${hasDeletePermission ? 
-                                `<button class="btn btn-sm btn-outline-warning delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
+                                `<button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
                                                         <i class="bi bi-archive"></i>
                                                     </button>` 
                                 : ''
@@ -1959,6 +1964,121 @@
                 updateSelectionCount();
                 // restoreSelectAllState();
             }
+
+            //play button script
+            function initProductPlaybackControls() {
+                // Collect unique parents
+                productUniqueParents = [...new Set(tableData.map(item => item.Parent))];
+
+                // Button handlers
+                $('#play-forward').click(productNextParent);
+                $('#play-backward').click(productPreviousParent);
+                $('#play-pause').click(productStopNavigation);
+                $('#play-auto').click(productStartNavigation);
+
+                updateProductButtonStates();
+            }
+
+            // Start navigation (Play button)
+            function productStartNavigation() {
+
+                if (productUniqueParents.length === 0) return;
+
+                isProductNavigationActive = true;
+                currentProductParentIndex = 0;
+
+                showCurrentProductParent();
+
+                // Button states
+                $('#play-auto').hide();
+                $('#play-pause').show().removeClass('btn-light');
+
+                updateProductButtonStates();
+            }
+
+            // Stop navigation (Pause button)
+            function productStopNavigation() {
+                isProductNavigationActive = false;
+                currentProductParentIndex = -1;
+
+                // Reset buttons
+                $('#play-pause').hide();
+                $('#play-auto')
+                    .show()
+                    .removeClass('btn-success btn-warning btn-danger')
+                    .addClass('btn-light');
+
+                // Show all
+                filteredProductData = [...tableData];
+                renderTable(filteredProductData);
+            }
+
+            // Next parent
+            function productNextParent() {
+                if (!isProductNavigationActive) return;
+                if (currentProductParentIndex >= productUniqueParents.length - 1) return;
+
+                currentProductParentIndex++;
+                showCurrentProductParent();
+            }
+
+            // Previous parent
+            function productPreviousParent() {
+                if (!isProductNavigationActive) return;
+                if (currentProductParentIndex <= 0) return;
+
+                currentProductParentIndex--;
+                showCurrentProductParent();
+            }
+
+            // Show selected parent group
+            function showCurrentProductParent() {
+                if (!isProductNavigationActive || currentProductParentIndex === -1) return;
+
+                const currentParent = productUniqueParents[currentProductParentIndex];
+
+                filteredProductData = tableData.filter(
+                    item => item.Parent === currentParent
+                );
+
+                renderTable(filteredProductData);
+                updateProductButtonStates();
+            }
+
+            // Enable/Disable buttons
+            function updateProductButtonStates() {
+                $('#play-backward').prop(
+                    'disabled',
+                    !isProductNavigationActive || currentProductParentIndex <= 0
+                );
+
+                $('#play-forward').prop(
+                    'disabled',
+                    !isProductNavigationActive || currentProductParentIndex >= productUniqueParents.length - 1
+                );
+
+                // Tooltips
+                $('#play-auto').attr(
+                    'title',
+                    isProductNavigationActive ? 'Show all products' : 'Start parent navigation'
+                );
+
+                $('#play-pause').attr('title', 'Stop navigation and show all');
+                $('#play-forward').attr('title', 'Next parent');
+                $('#play-backward').attr('title', 'Previous parent');
+
+                // Button colors
+                if (isProductNavigationActive) {
+                    $('#play-forward, #play-backward')
+                        .removeClass('btn-light')
+                        .addClass('btn-primary');
+                } else {
+                    $('#play-forward, #play-backward')
+                        .removeClass('btn-primary')
+                        .addClass('btn-light');
+                }
+            }
+
 
 
             // Handle Missing Images / Dimensions / CP  on Button Click
@@ -2228,13 +2348,13 @@
                             cell.innerHTML = `
                     <div class="d-inline-flex">
                         ${hasEditPermission ? 
-                            `<button class="btn btn-sm btn-outline-primary edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
+                            `<button class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                                                             <i class="bi bi-pencil-square"></i>
                                                                         </button>` 
                             : ''
                         }
                         ${hasDeletePermission ? 
-                            `<button class="btn btn-sm btn-outline-warning delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
+                            `<button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
                                                                             <i class="bi bi-archive"></i>
                                                                         </button>` 
                             : ''
@@ -3940,7 +4060,7 @@
                             <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
                             <div class="modal-dialog modal-dialog-centered">
                                 <div class="modal-content border-0" style="border-radius: 18px; overflow: hidden;">
-                                <div class="modal-header" style="background: linear-gradient(135deg, #facc15 0%, #eab308 100%); color: #fff;">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #fff;">
                                     <div class="d-flex align-items-center w-100">
                                     <div class="me-3" style="font-size: 2.5rem;">
                                         <i class="fas fa-exclamation-triangle fa-shake"></i>
@@ -3955,8 +4075,8 @@
                                 </div>
                                 <div class="modal-body text-center py-4">
                                     <div class="mb-3" style="font-size: 1.2rem;">
-                                    Are you sure you want to <span class="fw-bold text-warning">Archive</span> product<br>
-                                    <span class="badge bg-warning fs-6 px-3 py-2 mt-2" style="font-size:1.1rem;">SKU: ${escapeHtml(sku)}</span>?
+                                    Are you sure you want to <span class="fw-bold text-danger">Archive</span> product<br>
+                                    <span class="badge bg-danger fs-6 px-3 py-2 mt-2" style="font-size:1.1rem;">SKU: ${escapeHtml(sku)}</span>?
                                     </div>
                                     
                                 </div>
@@ -3964,7 +4084,7 @@
                                     <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
                                     <i class="fas fa-times me-1"></i>Cancel
                                     </button>
-                                    <button type="button" class="btn btn-warning px-4" id="confirmDeleteBtn">
+                                    <button type="button" class="btn btn-danger px-4" id="confirmDeleteBtn">
                                     <i class="fas fa-archive me-1"></i> Archive
                                     </button>
                                 </div>

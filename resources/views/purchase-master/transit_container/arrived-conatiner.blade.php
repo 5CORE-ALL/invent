@@ -407,6 +407,19 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                         </div>`;
               }
             },
+            {
+                title: "Created By",
+                field: "created_by_name",
+                headerSort: false,
+                hozAlign: "center",
+                formatter: function(cell) {
+                    const value = cell.getValue();
+                    return `<span class="badge bg-secondary" style="padding: 6px 12px; font-size: 0.9rem;">
+                                ${value || '—'}
+                            </span>`;
+                }
+            },
+
         ],
     });
 
