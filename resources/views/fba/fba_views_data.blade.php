@@ -109,7 +109,7 @@
                 <div class="modal-body">
                     <p><strong>SKU:</strong> <span id="modalSKU"></span></p>
                     <p><strong>Year:</strong> <span id="modalYear"></span></p>
-                 
+
                 </div>
             </div>
         </div>
@@ -133,7 +133,7 @@
                         <small class="text-muted">
                             <i class="fa fa-info-circle"></i> CSV must have: SKU, Dimensions, Weight, Qty in each box,
                             Total
-                            qty Sent, Total Send Cost, Inbound qty, Send cost, IN Charges
+                            qty Sent, Total Send Cost, Inbound qty, Send cost
                         </small>
                     </div>
                     <div class="modal-footer">
@@ -310,24 +310,44 @@
                         },
 
                         {
+                            title: "GROI%",
+                            field: "GROI%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            },
+                        },
+
+                        {
                             title: "Ads %",
                             field: "Ads_Percentage",
                             hozAlign: "center",
                             editor: "input",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue() || 0);
-                                return value > 0 ? value.toFixed(1) + '%' : '0%';
+                                return value > 0 ? value.toFixed(0) + '%' : '0%';
                             }
                         },
 
 
 
+                        // {
+                        //     title: "Pft%",
+                        //     field: "Pft%",
+                        //     hozAlign: "center",
+                        //     formatter: function(cell) {
+                        //         return cell.getValue();
+                        //     },
+                        // },
+
+
                         {
-                            title: "Pft%",
-                            field: "Pft%",
+                            title: "PRFT<br>%",
+                            field: "TPFT",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                return cell.getValue();
+                                const value = parseFloat(cell.getValue() || 0);
+                                return value.toFixed(0) + '%';
                             },
                         },
 
@@ -341,15 +361,6 @@
                         },
 
 
-                        {
-                            title: "TPFT %",
-                            field: "TPFT",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue() || 0);
-                                return value > 0 ? value.toFixed(1) + '%' : '0%';
-                            },
-                        },
 
                         {
                             title: "S <br> Price",
@@ -377,21 +388,33 @@
                             }
                         },
 
-                                                {
-                            title: "SGPT%",
-                            field: "SGPT%",
+                        {
+                            title: "SGPFT%",
+                            field: "SGPFT%",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
                             },
                         },
 
-                        {
-                            title: "SPft%",
-                            field: "SPft%",
+                         {
+                            title: "SGROI%",
+                            field: "SGROI%",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
+                            },
+                        },
+
+
+
+                        {
+                            title: "SPft%",
+                            field: "SPFT",
+                            hozAlign: "center",
+                             formatter: function(cell) {
+                                const value = parseFloat(cell.getValue() || 0);
+                                return value.toFixed(0) + '%';
                             },
                         },
                         {
@@ -459,12 +482,14 @@
                             hozAlign: "center",
                             editable: function(cell) {
                                 // Only editable if Fulfillment_Fee is 0
-                                const fulfillmentFee = parseFloat(cell.getRow().getData().Fulfillment_Fee) || 0;
+                                const fulfillmentFee = parseFloat(cell.getRow().getData()
+                                    .Fulfillment_Fee) || 0;
                                 return fulfillmentFee === 0;
                             },
                             editor: "input",
                             formatter: function(cell) {
-                                const fulfillmentFee = parseFloat(cell.getRow().getData().Fulfillment_Fee) || 0;
+                                const fulfillmentFee = parseFloat(cell.getRow().getData()
+                                    .Fulfillment_Fee) || 0;
                                 if (fulfillmentFee === 0) {
                                     cell.getElement().style.color = "#a80f8b";
                                 } else {
@@ -533,12 +558,6 @@
                         {
                             title: "Send <br> Cost",
                             field: "Send_Cost",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-                        {
-                            title: "IN <br> Charges",
-                            field: "IN_Charges",
                             hozAlign: "center",
                             editor: "input"
                         },
@@ -675,8 +694,7 @@
                     if (field === 'Barcode' || field === 'Done' || field === 'Listed' || field === 'Live' ||
                         field === 'Dispatch_Date' || field === 'Weight' || field ===
                         'Quantity_in_each_box' ||
-                        field === 'Total_quantity_sent' || field === 'Send_Cost' || field ===
-                        'IN_Charges' ||
+                        field === 'Total_quantity_sent' || field === 'Send_Cost' ||
                         field === 'Commission_Percentage' || field === 'Ads_Percentage' ||
                         field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
@@ -733,20 +751,22 @@
                                     // Only GPFT and TPFT depend on commission
                                     let GPFT = 0;
                                     if (PRICE > 0) {
-                                        GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 + 0.05)) -
+                                        GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 +
+                                            0.05)) -
                                             LP - FBA_SHIP) / PRICE);
                                     }
-                                    let TPFT = COMMISSION_PERCENTAGE + parseFloat(d.Ads_Percentage || 0);
+                                    let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
 
                                     updateData['GPFT%'] = `${(GPFT*100).toFixed(2)} %`;
-                                    updateData['TPFT'] = TPFT.toFixed(2);
+                                    updateData['TPFT'] = TPFT.toFixed(0);
 
-                                    console.log('Commission edited - Updated GPFT:', GPFT, 'TPFT:', TPFT);
+                                    console.log('Commission edited - Updated GPFT:', GPFT, 'TPFT:',
+                                        TPFT);
 
                                 } else if (field === 'Ads_Percentage') {
                                     // Only TPFT depends on ads percentage
-                                    let TPFT = COMMISSION_PERCENTAGE + parseFloat(d.Ads_Percentage || 0);
-                                    updateData['TPFT'] = TPFT.toFixed(2);
+                                    let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
+                                    updateData['TPFT'] = TPFT.toFixed(0);
 
                                     console.log('Ads edited - Updated TPFT:', TPFT);
 
@@ -764,11 +784,12 @@
 
                                     let GPFT = 0;
                                     if (PRICE > 0) {
-                                        GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 + 0.05)) -
+                                        GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 +
+                                            0.05)) -
                                             LP - FBA_SHIP) / PRICE);
                                     }
 
-                                    let TPFT = COMMISSION_PERCENTAGE + parseFloat(d.Ads_Percentage || 0);
+                                    let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
 
                                     updateData['Pft%'] = `${(PFT*100).toFixed(2)} %`;
                                     updateData['ROI%'] = (ROI * 100).toFixed(2);
@@ -793,10 +814,9 @@
 
                     let fbaFee = parseFloat(rowData.FBA_Fee_Manual) || 0;
                     let sendCost = parseFloat(rowData.Send_Cost) || 0;
-                    let inCharges = parseFloat(rowData.IN_Charges) || 0;
 
                     // FBA_SHIP calculation
-                    let FBA_SHIP = fbaFee + sendCost + inCharges;
+                    let FBA_SHIP = fbaFee + sendCost;
 
                     // PFT calculation
                     let PFT = 0;
@@ -1107,7 +1127,5 @@
                 $('#lmpModal').appendTo('body').modal('show');
                 console.log('Modal shown');
             }
-
-
         </script>
     @endsection
