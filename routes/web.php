@@ -2303,8 +2303,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // stock missing listing
     Route::controller(MissingListingController::class)->group(function () {
         Route::get('/stock/missing/listing', 'index')->name('view.missing.listing');
-        Route::get('/stock/missing/listing/data', 'getShopifyMissingInventoryStock')->name('stock.missing.inventory');
-        // Route::get('/stock/missing/listing/data', 'shopifyMissingInventoryListings')->name('stock.missing.inventory');
+        // Route::get('/stock/missing/listing/data', 'getShopifyMissingInventoryStock')->name('stock.missing.inventory');
+        Route::get('/stock/missing/listing/data', 'shopifyMissingInventoryListings')->name('stock.missing.inventory');
         Route::get('/stock/missing/inventory/refetch_live_data', 'refetchLiveData')->name('stock.mapping.refetch_live_data');
         Route::post('/stock/missing/inventory/refetch_live_data_u', 'refetchLiveDataU')->name('stock.mapping.refetch_live_data');
 

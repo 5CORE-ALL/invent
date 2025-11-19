@@ -1500,6 +1500,11 @@
 
             // Store the loaded data globally
             let tableData = [];
+            let productUniqueParents = [];
+            let isProductNavigationActive = false;
+            let currentProductParentIndex = -1;
+            let filteredProductData = [];
+
 
             // Track selected items with both SKU and ID
             let selectedItems = {}; // Format: { sku: { id: 123, checked: true } }
@@ -1547,7 +1552,7 @@
                             tableData = response.data;
                             renderTable(tableData);
                             updateParentOptions();
-
+                            initProductPlaybackControls();
                             // Add this block to update counts
                             const parentSet = new Set();
                             let skuCount = 0;
@@ -1959,6 +1964,121 @@
                 updateSelectionCount();
                 // restoreSelectAllState();
             }
+
+            //play button script
+            function initProductPlaybackControls() {
+                // Collect unique parents
+                productUniqueParents = [...new Set(tableData.map(item => item.Parent))];
+
+                // Button handlers
+                $('#play-forward').click(productNextParent);
+                $('#play-backward').click(productPreviousParent);
+                $('#play-pause').click(productStopNavigation);
+                $('#play-auto').click(productStartNavigation);
+
+                updateProductButtonStates();
+            }
+
+            // Start navigation (Play button)
+            function productStartNavigation() {
+
+                if (productUniqueParents.length === 0) return;
+
+                isProductNavigationActive = true;
+                currentProductParentIndex = 0;
+
+                showCurrentProductParent();
+
+                // Button states
+                $('#play-auto').hide();
+                $('#play-pause').show().removeClass('btn-light');
+
+                updateProductButtonStates();
+            }
+
+            // Stop navigation (Pause button)
+            function productStopNavigation() {
+                isProductNavigationActive = false;
+                currentProductParentIndex = -1;
+
+                // Reset buttons
+                $('#play-pause').hide();
+                $('#play-auto')
+                    .show()
+                    .removeClass('btn-success btn-warning btn-danger')
+                    .addClass('btn-light');
+
+                // Show all
+                filteredProductData = [...tableData];
+                renderTable(filteredProductData);
+            }
+
+            // Next parent
+            function productNextParent() {
+                if (!isProductNavigationActive) return;
+                if (currentProductParentIndex >= productUniqueParents.length - 1) return;
+
+                currentProductParentIndex++;
+                showCurrentProductParent();
+            }
+
+            // Previous parent
+            function productPreviousParent() {
+                if (!isProductNavigationActive) return;
+                if (currentProductParentIndex <= 0) return;
+
+                currentProductParentIndex--;
+                showCurrentProductParent();
+            }
+
+            // Show selected parent group
+            function showCurrentProductParent() {
+                if (!isProductNavigationActive || currentProductParentIndex === -1) return;
+
+                const currentParent = productUniqueParents[currentProductParentIndex];
+
+                filteredProductData = tableData.filter(
+                    item => item.Parent === currentParent
+                );
+
+                renderTable(filteredProductData);
+                updateProductButtonStates();
+            }
+
+            // Enable/Disable buttons
+            function updateProductButtonStates() {
+                $('#play-backward').prop(
+                    'disabled',
+                    !isProductNavigationActive || currentProductParentIndex <= 0
+                );
+
+                $('#play-forward').prop(
+                    'disabled',
+                    !isProductNavigationActive || currentProductParentIndex >= productUniqueParents.length - 1
+                );
+
+                // Tooltips
+                $('#play-auto').attr(
+                    'title',
+                    isProductNavigationActive ? 'Show all products' : 'Start parent navigation'
+                );
+
+                $('#play-pause').attr('title', 'Stop navigation and show all');
+                $('#play-forward').attr('title', 'Next parent');
+                $('#play-backward').attr('title', 'Previous parent');
+
+                // Button colors
+                if (isProductNavigationActive) {
+                    $('#play-forward, #play-backward')
+                        .removeClass('btn-light')
+                        .addClass('btn-primary');
+                } else {
+                    $('#play-forward, #play-backward')
+                        .removeClass('btn-primary')
+                        .addClass('btn-light');
+                }
+            }
+
 
 
             // Handle Missing Images / Dimensions / CP  on Button Click

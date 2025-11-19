@@ -174,6 +174,11 @@ class EbayController extends Controller
             ->orderBy("sku", "asc")
             ->get();
 
+            $productMasters = $productMasters->filter(function ($item) {
+                return stripos($item->sku, 'PARENT') === false;
+            })->values();
+
+
         // 2. SKU list
         $skus = $productMasters->pluck("sku")
             ->filter()
@@ -181,14 +186,16 @@ class EbayController extends Controller
             ->values()
             ->all();
 
-        $nonParentSkus = $productMasters->pluck("sku")
-            ->filter()
-            ->filter(function ($sku) {
-                return stripos($sku, 'PARENT') === false;
-            })
-            ->unique()
-            ->values()
-            ->all();
+            $nonParentSkus = $skus;
+
+        // $nonParentSkus = $productMasters->pluck("sku")
+        //     ->filter()
+        //     ->filter(function ($sku) {
+        //         return stripos($sku, 'PARENT') === false;
+        //     })
+        //     ->unique()
+        //     ->values()
+        //     ->all();
 
         // 3. Related Models
         $shopifyData = ShopifySku::whereIn("sku", $skus)
