@@ -871,7 +871,7 @@ protected function filterParentSKU(array $data): array
                 $ats = (int) ($shopifyItem->available_to_sell ?? 0);
 
                 if ($ats === 0) {
-                    $row['listing_status']['shopify'] = "Not Listed";
+                    $row['listing_status']['shopify'] = "Listed";
                     $row['is_zero_inventory']['shopify'] = true;
                 } else {
                     $row['listing_status']['shopify'] = "Listed";
