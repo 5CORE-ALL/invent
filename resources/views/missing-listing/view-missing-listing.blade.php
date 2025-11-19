@@ -294,6 +294,15 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="col-md-6">
+                                <div class="d-flex gap-2">
+                                    <div class="input-group">
+                                        <button id="zeroInvToggle" class="btn btn-primary">
+                                            Without 0 Inventory
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -330,8 +339,12 @@
 
                 data.forEach(row => {
                     const ls = row.listing_status || {};
+                    const zi = row.is_zero_inventory || {};
+
                     marketplaces.forEach(mp => {
-                        if (ls[mp] === "Not Listed") total++;
+                        if (ls[mp] === "Not Listed" && !(zi[mp] === true)) {
+                            total++;
+                        }
                     });
                 });
 
@@ -447,8 +460,12 @@
 
                 data.forEach(row => {
                     const ls = row.listing_status || {};
+                    const zi = row.is_zero_inventory || {};
+
                     marketplaces.forEach(mp => {
-                        if (ls[mp] === "Not Listed") counts[mp]++;
+                        if (ls[mp] === "Not Listed" && !(zi[mp] === true)) {
+                            counts[mp]++;
+                        }
                     });
                 });
 
@@ -478,6 +495,8 @@
                     if (response && Array.isArray(response.data) && response.data.length) {
                         const detected = Object.keys(response.data[0].listing_status || {});
                         const same = detected.length === marketplaces.length && detected.every((v, i) => v === marketplaces[i]);
+                        originalDataCache = response.data || [];
+
                         if (!same) {
                             marketplaces = detected;
                             buildMarketplaceColumns();
@@ -491,6 +510,40 @@
 
                     return response.data;
                 }
+            });
+            
+            let zeroInventoryFilterEnabled = false;
+            let zeroInvFilterFunc = null;
+
+            document.getElementById("zeroInvToggle").addEventListener("click", function () {
+                zeroInventoryFilterEnabled = !zeroInventoryFilterEnabled;
+
+                if (zeroInventoryFilterEnabled) {
+                    this.classList.add("btn-danger");
+                    this.classList.remove("btn-primary");
+                    this.innerHTML = "Show All";
+
+                    zeroInvFilterFunc = function(data, filterParams, dir, val) {
+                        let z = data.is_zero_inventory;
+                        return !(z && z.shopify === true);
+                    };
+
+                    table.addFilter(zeroInvFilterFunc);
+
+                } else {
+                    this.classList.add("btn-primary");
+                    this.classList.remove("btn-danger");
+                    this.innerHTML = "Without 0 Inventory";
+
+                    if (zeroInvFilterFunc) {
+                        table.removeFilter(zeroInvFilterFunc);
+                        zeroInvFilterFunc = null;
+                    }
+                }
+
+                const filtered = table.getData("active");
+                updateMarketplaceCounts(filtered);
+                updateTotalNotListed(filtered);
             });
 
             function createStatusFilterHeader(mp) {
