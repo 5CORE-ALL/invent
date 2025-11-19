@@ -26,13 +26,14 @@
                         style="width: auto; display: inline-block;">
                         <option value="all">All Inventory</option>
                         <option value="zero">0 Inventory</option>
-                        <option value="more">More than 0</option>
+                        <option value="more" id="more-inventory-option" selected>More than 0</option>
                     </select>
                     <select id="parent-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
                         <option value="show">Show Parent</option>
-                        <option value="hide">Hide Parent</option>
+                        <option value="hide" selected>Hide Parent</option>
                     </select>
+                    
                     <select id="pft-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Pft%</option>
@@ -149,6 +150,9 @@
                     layout: "fitData",
                     pagination: true,
                     paginationSize: 50,
+                    initialSort: [
+                        {column: "FBA_Dil", dir: "asc"}
+                    ],
                     rowFormatter: function(row) {
                         if (row.getData().is_parent) {
                             row.getElement().classList.add("parent-row");
@@ -209,6 +213,7 @@
                         {
                             title: "FBA Dil",
                             field: "FBA_Dil",
+                            
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
@@ -233,6 +238,7 @@
                         },
 
                             
+
 
                         {
                             title: "Views",
@@ -271,6 +277,15 @@
                         {
                             title: "ROI%",
                             field: "ROI%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            },
+                        },
+
+                        {
+                            title: "GPFT%",
+                            field: "GPFT%",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
@@ -619,9 +634,19 @@
 
                                 let PRICE = parseFloat(d.FBA_Price) || 0;
                                 let LP = parseFloat(d.LP) || 0;
+                                let COMMISSION_PERCENTAGE = parseFloat(d.Commission_Percentage) || 0;
 
-                                // Safe FBA_SHIP
-                                let FBA_SHIP = parseFloat(response.updatedRow?.FBA_SHIP ?? 0);
+                                // Get FBA_SHIP from response or existing row data
+                                let FBA_SHIP = parseFloat(response.updatedRow?.FBA_SHIP ?? d.FBA_Ship_Calculation ?? 0);
+
+                                console.log('GPFT Calculation:', {
+                                    PRICE: PRICE,
+                                    LP: LP,
+                                    COMMISSION_PERCENTAGE: COMMISSION_PERCENTAGE,
+                                    FBA_SHIP: FBA_SHIP,
+                                    from_response: response.updatedRow?.FBA_SHIP,
+                                    from_row: d.FBA_Ship_Calculation
+                                });
 
                                 let PFT = 0;
                                 if (PRICE > 0) {
@@ -634,7 +659,14 @@
                                     ROI = (((PRICE * 0.66) - LP - FBA_SHIP) / LP);
                                 }
 
-                                row.update({ 'Pft%': `${(PFT*100).toFixed(2)} %`, 'ROI%': (ROI*100).toFixed(2), FBA_Ship_Calculation: FBA_SHIP });
+                                let GPFT = 0;
+                                if (PRICE > 0) {
+                                    GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 + 0.05)) - LP - FBA_SHIP) / PRICE);
+                                }
+
+                                console.log('Calculated GPFT:', GPFT, 'Percentage:', (GPFT*100).toFixed(2));
+
+                                row.update({ 'Pft%': `${(PFT*100).toFixed(2)} %`, 'ROI%': (ROI*100).toFixed(2), 'GPFT%': `${(GPFT*100).toFixed(2)} %`, FBA_Ship_Calculation: FBA_SHIP });
                             },
                             error: function(xhr) {
                                 console.error('Error saving data');
@@ -764,36 +796,73 @@
                     const menu = document.getElementById("column-dropdown-menu");
                     menu.innerHTML = '';
 
-                    const savedVisibility = JSON.parse(localStorage.getItem(COLUMN_VIS_KEY) || '{}');
+                    // Fetch saved visibility from server
+                    fetch('/fba-column-visibility', {
+                        method: 'GET',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(savedVisibility => {
+                        const columns = table.getColumns().filter(col => col.getField());
 
-                    const columns = table.getColumns().filter(col => col.getField());
+                        columns.forEach(col => {
+                            const field = col.getField();
+                            const title = col.getDefinition().title || field;
+                            const isVisible = savedVisibility[field] !== undefined ? savedVisibility[field] : col.isVisible();
 
-                    columns.forEach(col => {
-                        const field = col.getField();
-                        const title = col.getDefinition().title || field;
-                        const isVisible = savedVisibility[field] !== undefined ? savedVisibility[field] : col.isVisible();
+                            const li = document.createElement('li');
+                            li.classList.add('px-3', 'py-1');
 
-                        const li = document.createElement('li');
-                        li.classList.add('px-3', 'py-1');
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.classList.add('form-check-input', 'me-2');
+                            checkbox.checked = isVisible;
+                            checkbox.dataset.field = field;
 
-                        const checkbox = document.createElement('input');
-                        checkbox.type = 'checkbox';
-                        checkbox.classList.add('form-check-input', 'me-2');
-                        checkbox.checked = isVisible;
-                        checkbox.dataset.field = field;
+                            const label = document.createElement('label');
+                            label.classList.add('form-check-label');
+                            label.style.cursor = 'pointer';
+                            label.textContent = title;
 
-                        const label = document.createElement('label');
-                        label.classList.add('form-check-label');
-                        label.style.cursor = 'pointer';
-                        label.textContent = title;
+                            label.prepend(checkbox);
+                            li.appendChild(label);
+                            menu.appendChild(li);
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error fetching column visibility:', error);
+                        // Fallback to default behavior
+                        const columns = table.getColumns().filter(col => col.getField());
+                        columns.forEach(col => {
+                            const field = col.getField();
+                            const title = col.getDefinition().title || field;
+                            const isVisible = col.isVisible();
 
-                        label.prepend(checkbox);
-                        li.appendChild(label);
-                        menu.appendChild(li);
+                            const li = document.createElement('li');
+                            li.classList.add('px-3', 'py-1');
+
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.classList.add('form-check-input', 'me-2');
+                            checkbox.checked = isVisible;
+                            checkbox.dataset.field = field;
+
+                            const label = document.createElement('label');
+                            label.classList.add('form-check-label');
+                            label.style.cursor = 'pointer';
+                            label.textContent = title;
+
+                            label.prepend(checkbox);
+                            li.appendChild(label);
+                            menu.appendChild(li);
+                        });
                     });
                 }
 
-                function saveColumnVisibilityToLocalStorage() {
+                function saveColumnVisibilityToServer() {
                     const visibility = {};
                     table.getColumns().forEach(col => {
                         const field = col.getField();
@@ -801,27 +870,57 @@
                             visibility[field] = col.isVisible();
                         }
                     });
-                    localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(visibility));
+
+                    fetch('/fba-column-visibility', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ visibility: visibility })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success) {
+                            console.error('Failed to save column visibility');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error saving column visibility:', error);
+                    });
                 }
 
-                function applyColumnVisibilityFromLocalStorage() {
-                    const savedVisibility = JSON.parse(localStorage.getItem(COLUMN_VIS_KEY) || '{}');
-                    table.getColumns().forEach(col => {
-                        const field = col.getField();
-                        if (field && savedVisibility[field] !== undefined) {
-                            if (savedVisibility[field]) {
-                                col.show();
-                            } else {
-                                col.hide();
-                            }
+                function applyColumnVisibilityFromServer() {
+                    fetch('/fba-column-visibility', {
+                        method: 'GET',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Content-Type': 'application/json'
                         }
+                    })
+                    .then(response => response.json())
+                    .then(savedVisibility => {
+                        table.getColumns().forEach(col => {
+                            const field = col.getField();
+                            if (field && savedVisibility[field] !== undefined) {
+                                if (savedVisibility[field]) {
+                                    col.show();
+                                } else {
+                                    col.hide();
+                                }
+                            }
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error applying column visibility:', error);
                     });
                 }
 
                 // Wait for table to be built, then apply saved visibility and build dropdown
                 table.on('tableBuilt', function() {
-                    applyColumnVisibilityFromLocalStorage();
+                    applyColumnVisibilityFromServer();
                     buildColumnDropdown();
+                    applyFilters(); // Apply default filters on load
                 });
 
                 // Toggle column from dropdown
@@ -835,7 +934,7 @@
                             } else {
                                 col.hide();
                             }
-                            saveColumnVisibilityToLocalStorage();
+                            saveColumnVisibilityToServer();
                         }
                     }
                 });
@@ -848,7 +947,7 @@
                         }
                     });
                     buildColumnDropdown();
-                    saveColumnVisibilityToLocalStorage();
+                    saveColumnVisibilityToServer();
                 });
             });
 
