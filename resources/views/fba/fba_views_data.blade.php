@@ -233,7 +233,7 @@
                         {
                             title: "FBA Dil",
                             field: "FBA_Dil",
-
+                            sorter: "number",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
@@ -248,9 +248,17 @@
                         },
 
 
+
+                        
+
                         {
                             title: "FBA <br> CVR",
                             field: "FBA_CVR",
+                            sorter: function(a, b) {
+                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
+                                return numA - numB;
+                            },
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
