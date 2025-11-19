@@ -863,8 +863,21 @@ protected function filterParentSKU(array $data): array
             $row['sku']    = $pm->sku;
             $row['listing_status'] = [];
 
-            $row['listing_status']['shopify'] =
-                isset($shopifyInventory[$sku]) ? "Listed" : "Not Listed";
+            if (!isset($shopifyInventory[$sku])) {
+                $row['listing_status']['shopify'] = "Not Listed";
+                $row['is_zero_inventory']['shopify'] = false;
+            } else {
+                $shopifyItem = $shopifyInventory[$sku];
+                $ats = (int) ($shopifyItem->available_to_sell ?? 0);
+
+                if ($ats === 0) {
+                    $row['listing_status']['shopify'] = "Not Listed";
+                    $row['is_zero_inventory']['shopify'] = true;
+                } else {
+                    $row['listing_status']['shopify'] = "Listed";
+                    $row['is_zero_inventory']['shopify'] = false;
+                }
+            }
 
             foreach ($marketplaces as $marketplaceName => $models) {
 
