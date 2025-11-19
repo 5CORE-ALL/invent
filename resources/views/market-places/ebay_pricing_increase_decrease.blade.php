@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'eBay', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'eBay Decrease', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <div id="messageArea" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1055;"></div>
 
@@ -107,18 +107,18 @@
         }
 
         .dil-percent-value.blue {
-            background-color: #3591dc;
-            color: white;
+            /* background-color: #3591dc; */
+            color:  #3591dc;
         }
 
         .dil-percent-value.yellow {
-            background-color: #ffc107;
-            color: #212529;
+            /* background-color: #ffc107; */
+            color: #ffc107;
         }
 
         .dil-percent-value.green {
-            background-color: #28a745;
-            color: white;
+            /* background-color: #28a745; */
+            color: #28a745;
         }
 
         .dil-percent-value.pink {
@@ -127,8 +127,8 @@
         }
 
         .dil-percent-value.gray {
-            background-color: #6c757d;
-            color: white;
+            /* background-color: #6c757d; */
+            color:  #6c757d;
         }
 
         /* ========== TABLE CONTROLS ========== */
@@ -967,7 +967,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'eBay', 'sub_title' => 'eBay Analysis'])
+    @include('layouts.shared/page-title', ['page_title' => 'eBay Decrease', 'sub_title' => 'eBay Analysis'])
 
     <div class="row">
         <div class="col-12">
@@ -1513,6 +1513,17 @@
                                             <div class="metric-total" id="cvr-total">0%</div>
                                         </div>
                                     </th>
+                                    {{-- <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                NRL/REQ
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="req-total"
+                                                style="display:inline-block; background:#43dc35; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
+                                                0</div>
+                                        </div>
+                                    </th> --}}
                                     {{-- <th data-field="e_dil" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -1522,7 +1533,7 @@
                                             <div class="metric-total" id="eDil-total">0%</div>
                                         </div>
                                     </th> --}}
-                                    {{-- <th data-field="NRL">NRL</th> --}}
+                                    <th data-field="NRL">NRL</th>
 
                                     {{-- <th data-field="listed" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
@@ -1586,6 +1597,24 @@
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="pft-total">0%</div>
+                                        </div>
+                                    </th>
+                                    <th data-field="gpft" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                GPFT%<span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="gpft-total">0%</div>
+                                        </div>
+                                    </th>
+                                    <th data-field="ad" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                AD <span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="ad-total">0%</div>
                                         </div>
                                     </th>
                                     <th data-field="roi" style="vertical-align: middle; white-space: nowrap;">
@@ -2302,6 +2331,8 @@
                     type: 'GET',
                     dataType: 'json',
                     success: function(response) {
+                        console.log(response,'ff');
+                        
                         if (response && response.data) {
                             
                             tableData = response.data.map((item, index) => {
@@ -2358,7 +2389,8 @@
                                     is_parent: item['(Child) sku'] ? item['(Child) sku']
                                         .toUpperCase().includes("PARENT") : false,
                                     raw_data: item || {},
-                                    // NR: item.NR || '',
+                                    NR: item.NRL || '',
+                                    NRLn: item.NRL || '',
                                     // listed: listedVal,
                                     // live: liveVal,
                                     Hide: item.Hide !== undefined ? item.Hide : '',
@@ -2488,9 +2520,9 @@
                     if (item.is_parent) {
                         $row.addClass('parent-row');
                     }
-                    if (item.NR === 'NRA') {
-                        $row.addClass('nr-hide');
-                    }
+                        // if (item.NR === 'NRA') {
+                        //     $row.addClass('nr-hide');
+                        // }
 
                     let rawData = {};
                     if (typeof item.raw_data === 'string') {
@@ -2716,32 +2748,34 @@
                     // $row.append($('<td>').html(
                     //     `<span class="dil-percent-value ${getEDilColor(item['E Dil%'])}">${Math.round(item['E Dil%'] * 100)}%</span>`
                     // ));
-                    // if (item.is_parent) {
-                    //     $row.append($('<td>')); // Empty cell for parent
-                    // } else {
-                    //     const currentNR = (item.NR === 'RA' || item.NR === 'NRA' || item.NR === 'LATER') ?
-                    //         item.NR : 'RA';
 
-                    //     const $select = $(`
-                    //         <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                    //             <option value="NRA" ${currentNR === 'NRA' ? 'selected' : ''}>NRA</option>
-                    //             <option value="RA" ${currentNR === 'RA' ? 'selected' : ''}>RA</option>
-                    //             <option value="LATER" ${currentNR === 'LATER' ? 'selected' : ''}>LATER</option>
-                    //         </select>
-                    //     `);
+                    //NRL and REQ
+                    if (item.is_parent) {
+                        $row.append($('<td>')); // Empty cell for parent
+                    } else {
+                        // const currentNR = (item.NR === 'RA' || item.NR === 'NRA' || item.NR === 'LATER') ?
+                        //     item.NR : 'RA';
+                        const currentNR = item.NRL || "RA";
 
-                    //     // Set background color based on value
-                    //     if (currentNR === 'NRA') {
-                    //         $select.css('background-color', '#dc3545');
-                    //         $select.css('color', '#ffffff');
-                    //     } else if (currentNR === 'RA') {
-                    //         $select.css('background-color', '#28a745');
-                    //         $select.css('color', '#ffffff');
-                    //     }
+                        const $select = $(`
+                            <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
+                                <option value="NRA" ${currentNR === 'NRA' ? 'selected' : ''}>NRL</option>
+                                <option value="RA" ${currentNR === 'RA' ? 'selected' : ''}>REQ</option>
+                            </select>
+                        `);
 
-                    //     $select.data('sku', item['(Child) sku']);
-                    //     $row.append($('<td>').append($select));
-                    // }
+                        // Set background color based on value
+                        if (currentNR === 'NRA') {
+                            $select.css('background-color', '#dc3545');
+                            $select.css('color', '#ffffff');
+                        } else if (currentNR === 'RA') {
+                            $select.css('background-color', '#28a745');
+                            $select.css('color', '#ffffff');
+                        }
+
+                        $select.data('sku', item['(Child) sku']);
+                        $row.append($('<td>').append($select));
+                    }
 
                     //Listed checkbox
                     // const listedVal = rawData.Listed === true || rawData.Listed === 'true' || rawData
@@ -2861,6 +2895,20 @@
 
 
                     // PFT with color coding
+                    $row.append($('<td>').html(
+                        typeof item['PFT %'] === 'number' && !isNaN(item['PFT %']) ?
+                        `<span class="dil-percent-value ${getPftColor(item['PFT %'])}">${Math.round(item['PFT %'] * 100)}%</span>` :
+                        ''
+                    ));
+
+                     // GPFT with color coding
+                    $row.append($('<td>').html(
+                        typeof item['PFT %'] === 'number' && !isNaN(item['PFT %']) ?
+                        `<span class="dil-percent-value ${getPftColor(item['PFT %'])}">${Math.round(item['PFT %'] * 100)}%</span>` :
+                        ''
+                    ));
+
+                     // AD with color coding
                     $row.append($('<td>').html(
                         typeof item['PFT %'] === 'number' && !isNaN(item['PFT %']) ?
                         `<span class="dil-percent-value ${getPftColor(item['PFT %'])}">${Math.round(item['PFT %'] * 100)}%</span>` :
@@ -3092,6 +3140,7 @@
                         data: {
                             sku: sku,
                             nr: newValue,
+                            nrl: newValue, 
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
@@ -3100,12 +3149,12 @@
                             // Update tableData and filteredData
                             tableData.forEach(item => {
                                 if (item['(Child) sku'] === sku) {
-                                    item.NR = newValue;
+                                    item.NRL = newValue;
                                 }
                             });
                             filteredData.forEach(item => {
                                 if (item['(Child) sku'] === sku) {
-                                    item.NR = newValue;
+                                    item.NRL = newValue;
                                 }
                             });
                             calculateTotals();
