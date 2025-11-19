@@ -166,6 +166,7 @@
             $(document).ready(function() {
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
+                    ajaxSorting: true,
                     layout: "fitData",
                     pagination: true,
                     paginationSize: 50,
@@ -289,7 +290,16 @@
                             title: "FBA<br> Price",
                             field: "FBA_Price",
                             hozAlign: "center",
-                            // formatter: "dollar"
+                            formatter: function(cell) {
+                                const price = parseFloat(cell.getValue() || 0);
+                                const lmp = parseFloat(cell.getRow().getData().lmp_1 || 0);
+                                let color = '';
+                                if (lmp > 0) {
+                                    if (price > lmp) color = 'red';
+                                    else if (price < lmp) color = 'darkgreen';
+                                }
+                                return `<span style="color:${color};">${price.toFixed(2)}</span>`;
+                            }
                         },
 
 

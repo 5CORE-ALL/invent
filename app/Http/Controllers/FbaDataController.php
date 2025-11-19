@@ -753,7 +753,7 @@ class FbaDataController extends Controller
       return response()->json($tableData);
    }
 
-   public function fbaDataJson()
+   public function fbaDataJson(Request $request)
    {
       $data = $this->getFbaData();
 
@@ -1096,6 +1096,30 @@ class FbaDataController extends Controller
          return $children->push($parentRow);
       })->values();
 
+      // Handle server-side sorting
+      $sort = $request->get('sort');
+      if ($sort && is_array($sort)) {
+         $finalData = collect($finalData);
+         foreach ($sort as $s) {
+            $field = $s['field'];
+            $dir = $s['dir']; // 'asc' or 'desc'
+            if ($field === 'FBA_CVR') {
+               $finalData = $finalData->sort(function($a, $b) use ($dir, $field) {
+                  $aVal = $this->extractCvrValue($a[$field] ?? '');
+                  $bVal = $this->extractCvrValue($b[$field] ?? '');
+                  if ($dir === 'asc') {
+                     return $aVal <=> $bVal;
+                  } else {
+                     return $bVal <=> $aVal;
+                  }
+               });
+            } else {
+               $finalData = $finalData->sortBy($field, SORT_REGULAR, $dir === 'desc');
+            }
+         }
+         $finalData = $finalData->values();
+      }
+
       return response()->json($finalData);
    }
 
@@ -1310,5 +1334,13 @@ class FbaDataController extends Controller
       $visibility = $request->input('visibility', []);
       \App\Services\ColumnVisibilityService::setFbaColumnVisibility($visibility);
       return response()->json(['success' => true]);
+   }
+
+   private function extractCvrValue($html)
+   {
+      // Remove HTML tags and % symbol, then parse as float
+      $str = strip_tags($html);
+      $str = str_replace('%', '', $str);
+      return floatval($str);
    }
 }
