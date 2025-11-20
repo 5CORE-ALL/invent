@@ -2364,7 +2364,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('fba-dispatch-page', 'fbaDispatchPageView');
         Route::get('fba-ads-keywords', 'fbaadskw');
         Route::get('fba-ads-pt', 'fbaAdsPt');
-        Route::get('fba-data-json', 'fbaDataJson');
+           Route::get('fba-data-json', 'fbaDataJson');
+        Route::post('push-fba-price', 'pushFbaPrice');
         Route::get('fba-ads-data-json', 'fbaAdsDataJson');
         Route::get('fba-ads-pt-data-json', 'fbaAdsPtDataJson');
         Route::get('fba-monthly-sales/{sku}', 'getFbaMonthlySales');

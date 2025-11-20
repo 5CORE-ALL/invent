@@ -17,9 +17,9 @@ class LmpaDataService
         $rows = DB::connection('repricer')
             ->table('lmpa_data')
             ->select('price', 'link', 'image', DB::raw('NULL as created_at'))
-            ->where('sku', $sku)
+            ->whereRaw("LOWER(TRIM(sku)) = LOWER(TRIM(?))", [$sku])
             ->where('price', '>', 0)
-            ->orderBy('price', 'asc')
+            ->orderByRaw('CAST(price AS DECIMAL(10,2)) ASC')
             ->limit(50)
             ->get();
 

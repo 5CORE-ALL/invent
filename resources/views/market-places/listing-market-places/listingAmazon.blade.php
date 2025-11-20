@@ -1398,7 +1398,7 @@
                     initEnhancedDropdowns();
 
                     // Set default INV filter to "INV Only" on page load
-                    $('#inv-filter').val('inv-only').trigger('change');
+                    // $('#inv-filter').val('inv-only').trigger('change');
                 });
             }
 

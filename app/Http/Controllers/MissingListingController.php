@@ -36,6 +36,18 @@ use App\Models\EbayThreeListingStatus;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\TiendamiaListingStatus;
 
+use App\Models\AmazonDatasheet;
+use App\Models\WalmartMetrics;
+use App\Models\ReverbProduct;
+use App\Models\SheinSheetData;
+use App\Models\DobaSheetdata;
+use App\Models\TemuMetric;
+use App\Models\MacyProduct;
+use App\Models\EbayMetric;
+use App\Models\Ebay2Metric;
+use App\Models\Ebay3Metric;
+use App\Models\BestbuyUsaProduct;
+use App\Models\TiendamiaProduct;
 
 use App\Services\ShopifyApiService;
 use App\Services\AmazonSpApiService;
@@ -838,18 +850,54 @@ protected function filterParentSKU(array $data): array
             ->keyBy(fn($item) => strtolower($item->sku));
 
         $marketplaces = [
-            'amazon'    => [AmazonListingStatus::class],
-            'walmart'   => [WalmartListingStatus::class],
-            'reverb'    => [ReverbListingStatus::class],
-            'shein'     => [SheinListingStatus::class],
-            'doba'      => [DobaListingStatus::class],
-            'temu'      => [TemuListingStatus::class],
-            'macy'      => [MacysListingStatus::class],
-            'ebay1'     => [EbayListingStatus::class],
-            'ebay2'     => [EbayTwoListingStatus::class],
-            'ebay3'     => [EbayThreeListingStatus::class],
-            'bestbuy'   => [BestbuyUSAListingStatus::class],
-            'tiendamia' => [TiendamiaListingStatus::class],
+            'amazon' => [
+                'datasheet' => AmazonDatasheet::class,
+                'listing'   => [AmazonListingStatus::class],
+            ],
+            'walmart' => [
+                'datasheet' => \App\Models\WalmartMetricsApicentral::class,
+                'listing'   => [WalmartListingStatus::class],
+            ],
+            'doba' => [
+                'datasheet' => \App\Models\DobaSheetdataApicentral::class,
+                'listing'   => [DobaListingStatus::class],
+            ],
+            'ebay1' => [
+                'datasheet' => \App\Models\EbayMetricApicentral::class,
+                'listing'   => [EbayListingStatus::class],
+            ],
+            'ebay2' => [
+                'datasheet' => \App\Models\Ebay2MetricApicentral::class,
+                'listing'   => [EbayTwoListingStatus::class],
+            ],
+            'ebay3' => [
+                'datasheet' => Ebay3Metric::class,
+                'listing'   => [EbayThreeListingStatus::class],
+            ],
+            'reverb' => [
+                'datasheet' => ReverbProduct::class,
+                'listing'   => [ReverbListingStatus::class],
+            ],
+            'shein' => [
+                'datasheet' => SheinSheetData::class,
+                'listing'   => [SheinListingStatus::class],
+            ],
+            'temu' => [
+                'datasheet' => TemuMetric::class,
+                'listing'   => [TemuListingStatus::class],
+            ],
+            'macy' => [
+                'datasheet' => MacyProduct::class,
+                'listing'   => [MacysListingStatus::class],
+            ],
+            'bestbuy' => [
+                'datasheet' => BestbuyUsaProduct::class,
+                'listing'   => [BestbuyUSAListingStatus::class],
+            ],
+            'tiendamia' => [
+                'datasheet' => TiendamiaProduct::class,
+                'listing'   => [TiendamiaListingStatus::class],
+            ],
         ];
 
         $result = [];
@@ -871,7 +919,7 @@ protected function filterParentSKU(array $data): array
                 $ats = (int) ($shopifyItem->available_to_sell ?? 0);
 
                 if ($ats === 0) {
-                    $row['listing_status']['shopify'] = "Not Listed";
+                    $row['listing_status']['shopify'] = "Listed";
                     $row['is_zero_inventory']['shopify'] = true;
                 } else {
                     $row['listing_status']['shopify'] = "Listed";
@@ -879,12 +927,21 @@ protected function filterParentSKU(array $data): array
                 }
             }
 
-            foreach ($marketplaces as $marketplaceName => $models) {
+            foreach ($marketplaces as $marketplaceName => $config) {
+                $datasheetModel = $config['datasheet'];
+                $listingModels  = $config['listing'];
+
+                $datasheetRow = $datasheetModel::whereRaw('LOWER(sku) = ?', [$sku])->first();
+
+                if (!$datasheetRow) {
+                    $row['listing_status'][$marketplaceName] = "Not Listed";
+                    continue;
+                }
 
                 $status = "Not Listed";
                 $foundListing = null;
 
-                foreach ($models as $modelClass) {
+                foreach ($listingModels as $modelClass) {
                     $listing = $modelClass::whereRaw('LOWER(sku) = ?', [$sku])->first();
                     if ($listing) {
                         $foundListing = $listing;
@@ -900,9 +957,7 @@ protected function filterParentSKU(array $data): array
                     }
                     $value = is_array($value) ? $value : [];
 
-                    $nrl = $value['nr_req'] ?? null;
-
-                    if ($nrl == "NR") {
+                    if (($value['nr_req'] ?? "") === "NR") {
                         $status = "NRL";
                     }
                 }

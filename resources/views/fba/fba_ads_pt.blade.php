@@ -252,6 +252,9 @@
                     console.error("Error details:", JSON.stringify(error));
                 },
                 layout: "fitData",
+                pagination: true,
+                paginationSize: 50,
+                paginationCounter: "rows",
                 movableColumns: true,
                 resizableColumns: true,
                 height: "700px",             

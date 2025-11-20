@@ -52,8 +52,8 @@ class FbaManualDataService
             $columns = [
                 'Parent', 'Child SKU', 'FBA SKU', 'FBA INV', 'L60 Units', 'L30 Units', 'FBA Dil',
                 'FBA Price', 'Pft%', 'ROI%', 'TPFT', 'S Price', 'SPft%', 'SROI%', 'LP', 'FBA Ship',
-                'CVR', 'Views', 'Listed', 'Live', 'FBA Fee', 'FBA Fee Manual', 'ASIN', 'Barcode',
-                'Done', 'Dispatch Date', 'Weight', 'Qty Box', 'Sent Qty', 'Send Cost', 'IN Charges',
+                'CVR', 'Views', 'Listed', 'Live', 'FBA Fee', 'FBA Fee Manual', 'Commission Percentage', 'ASIN', 'Barcode',
+                'Done', 'Dispatch Date', 'Weight', 'Qty Box', 'Sent Qty', 'Send Cost',
                 'WH INV Red', 'Ship Amt', 'Inbound Qty', 'FBA Send', 'Dimensions',
                 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
             ];
@@ -109,6 +109,7 @@ class FbaManualDataService
                         $manual && isset($manual->data['live']) && $manual->data['live'] ? 'Yes' : 'No',
                         $fbaReportsInfo ? round($fbaReportsInfo->fulfillment_fee ?? 0, 2) : 0,
                         $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
+                        $manual ? ($manual->data['commission_percentage'] ?? 0) : 0,
                         $fba->asin ?? '',
                         $manual ? ($manual->data['barcode'] ?? '') : '',
                         $manual && isset($manual->data['done']) && $manual->data['done'] ? 'Yes' : 'No',
@@ -117,7 +118,6 @@ class FbaManualDataService
                         $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0,
                         $manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0,
                         $manual ? ($manual->data['send_cost'] ?? 0) : 0,
-                        $manual ? ($manual->data['in_charges'] ?? 0) : 0,
                         $manual && isset($manual->data['warehouse_inv_reduction']) && $manual->data['warehouse_inv_reduction'] ? 'Yes' : 'No',
                         $manual ? ($manual->data['shipping_amount'] ?? 0) : 0,
                         $manual ? ($manual->data['inbound_quantity'] ?? 0) : 0,
@@ -169,6 +169,28 @@ class FbaManualDataService
                 $sku = trim($row[0] ?? '');
                 if (empty($sku)) continue;
 
+                if (strtoupper($sku) === 'ALL') {
+                    // Apply to all existing FbaManualData
+                    $allManuals = FbaManualData::all();
+                    $updateData = [
+                        'dimensions' => $this->cleanText($row[1] ?? ''),
+                        'weight' => $this->cleanText($row[2] ?? ''),
+                        'quantity_in_each_box' => $this->cleanText($row[3] ?? ''),
+                        'total_quantity_sent' => $this->cleanText($row[4] ?? ''),
+                        'total_send_cost' => $this->cleanText($row[5] ?? ''),
+                        'inbound_quantity' => $this->cleanText($row[6] ?? ''),
+                        'send_cost' => $this->cleanText($row[7] ?? ''),
+                        'commission_percentage' => $this->cleanText($row[8] ?? '')
+                    ];
+                    foreach ($allManuals as $manual) {
+                        $existingData = $manual->data ?? [];
+                        $manual->data = array_merge($existingData, $updateData);
+                        $manual->save();
+                    }
+                    $imported += $allManuals->count();
+                    continue;
+                }
+
                 // Try to find by exact SKU or by FBA SKU pattern
                 $manual = FbaManualData::where('sku', strtoupper($sku))
                     ->orWhere('sku', 'LIKE', '%' . strtoupper($sku) . ' FBA%')
@@ -190,7 +212,7 @@ class FbaManualDataService
                     'total_send_cost' => $this->cleanText($row[5] ?? ''),
                     'inbound_quantity' => $this->cleanText($row[6] ?? ''),
                     'send_cost' => $this->cleanText($row[7] ?? ''),
-                    'in_charges' => $this->cleanText($row[8] ?? '')
+                    'commission_percentage' => $this->cleanText($row[8] ?? '')
                 ]);
                 
                 $manual->save();
@@ -225,8 +247,8 @@ class FbaManualDataService
 
         $callback = function () {
             $file = fopen('php://output', 'w');
-            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'IN Charges' , 'Commission']);
-            fputcsv($file, ['SAMPLE-SKU-001', '10x8x6', '2.5', '10', '100', '500', '20', '50', '25', '10']);
+            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'Commission Percentage']);
+            fputcsv($file, ['SAMPLE-SKU-001', '10x8x6', '2.5', '10', '100', '500', '20', '50', '10']);
             fclose($file);
         };
 
@@ -237,16 +259,15 @@ class FbaManualDataService
      * Calculate FBA Ship Calculation (Direct calculation only - No database save)
      * 
      * Logic:
-     * - If fulfillment_fee exists and > 0 in FbaReportsMaster, use fulfillment_fee + send_cost + in_charges
-     * - If fulfillment_fee is 0 or SKU doesn't exist, use manual data: fba_fee_manual + send_cost + in_charges
+     * - If fulfillment_fee exists and > 0 in FbaReportsMaster, use fulfillment_fee + send_cost
+     * - If fulfillment_fee is 0 or SKU doesn't exist, use manual data: fba_fee_manual + send_cost
      *
      * @param string $sku The FBA SKU (can be with or without 'FBA' suffix)
      * @param float|string $fbaFeeManual Manual FBA fee value
      * @param float|string $sendCost Send cost value from manual data
-     * @param float|string $inCharges IN charges value from manual data
      * @return float Calculated FBA Ship Calculation value
      */
-    public function calculateFbaShipCalculation($sku, $fbaFeeManual = 0, $sendCost = 0, $inCharges = 0)
+    public function calculateFbaShipCalculation($sku, $fbaFeeManual = 0, $sendCost = 0)
     {
         // Normalize SKU by removing FBA suffix
         $baseSku = preg_replace('/\s*FBA\s*/i', '', $sku);
@@ -264,17 +285,16 @@ class FbaManualDataService
         $fulfillmentFee = $fbaReport ? floatval($fbaReport->fulfillment_fee ?? 0) : 0;
         $fbaFeeManualValue = floatval($fbaFeeManual);
         $sendCostValue = floatval($sendCost);
-        $inChargesValue = floatval($inCharges);
 
         // Calculate final value
         $finalCalculation = 0;
 
-        // If fulfillment fee exists and is greater than 0, use fulfillment_fee + send_cost + in_charges
+        // If fulfillment fee exists and is greater than 0, use fulfillment_fee + send_cost
         if ($fulfillmentFee > 0) {
-            $finalCalculation = round($fulfillmentFee + $sendCostValue + $inChargesValue, 2);
+            $finalCalculation = round($fulfillmentFee + $sendCostValue, 2);
         } else {
-            // Otherwise, use manual data calculation: fba_fee_manual + send_cost + in_charges
-            $finalCalculation = round($fbaFeeManualValue + $sendCostValue + $inChargesValue, 2);
+            // Otherwise, use manual data calculation: fba_fee_manual + send_cost
+            $finalCalculation = round($fbaFeeManualValue + $sendCostValue, 2);
         }
 
         return $finalCalculation;

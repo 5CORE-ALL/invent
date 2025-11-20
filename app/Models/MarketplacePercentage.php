@@ -11,7 +11,7 @@ class MarketplacePercentage extends Model
 
     protected $table = 'marketplace_percentages';
 
-    protected $fillable = ['marketplace', 'percentage'];
+    protected $fillable = ['marketplace', 'percentage','ad_updates'];
 
     protected $dates = ['deleted_at'];
 }

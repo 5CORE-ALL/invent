@@ -70,6 +70,19 @@
                         <i class="fa fa-upload"></i>
                     </button>
                 </div>
+
+                <!-- Summary Stats -->
+                <div id="summary-stats" class="mt-3 p-3 bg-light rounded">
+                    <h5>Summary</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Total TACOS:</strong> <span id="total-tacos">0</span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Total Spend L30:</strong> <span id="total-spend-l30">0</span>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="fba-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -166,9 +179,11 @@
             $(document).ready(function() {
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
+                    ajaxSorting: true,
                     layout: "fitData",
                     pagination: true,
                     paginationSize: 50,
+                    paginationCounter: "rows",
                     initialSort: [{
                         column: "FBA_Dil",
                         dir: "asc"
@@ -233,7 +248,7 @@
                         {
                             title: "FBA Dil",
                             field: "FBA_Dil",
-
+                            sorter: "number",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
@@ -248,9 +263,17 @@
                         },
 
 
+
+
+
                         {
                             title: "FBA <br> CVR",
                             field: "FBA_CVR",
+                            sorter: function(a, b) {
+                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
+                                return numA - numB;
+                            },
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
@@ -281,7 +304,16 @@
                             title: "FBA<br> Price",
                             field: "FBA_Price",
                             hozAlign: "center",
-                            // formatter: "dollar"
+                            formatter: function(cell) {
+                                const price = parseFloat(cell.getValue() || 0);
+                                const lmp = parseFloat(cell.getRow().getData().lmp_1 || 0);
+                                let color = '';
+                                if (lmp > 0) {
+                                    if (price > lmp) color = 'red';
+                                    else if (price < lmp) color = 'darkgreen';
+                                }
+                                return `<span style="color:${color};">${price.toFixed(2)}</span>`;
+                            }
                         },
 
 
@@ -303,15 +335,39 @@
                         {
                             title: "GPFT%",
                             field: "GPFT%",
+                            sorter: function(a, b) {
+                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
+                                return numA - numB;
+                            },
                             hozAlign: "center",
                             formatter: function(cell) {
-                                return cell.getValue();
+                                const rawValue = cell.getValue();
+                                const value = parseFloat(rawValue.replace('%', '')) || 0;
+                                let style = '';
+                                if (value < 10) {
+                                    style = 'color: red;';
+                                } else if (value >= 11 && value <= 15) {
+                                    style = 'background-color: yellow; color: black;';
+                                } else if (value >= 16 && value <= 20) {
+                                    style = 'color: blue;';
+                                } else if (value >= 21 && value <= 40) {
+                                    style = 'color: green;';
+                                } else if (value > 40) {
+                                    style = 'color: purple;';
+                                }
+                                return `<span style="${style}">${rawValue}</span>`;
                             },
                         },
 
                         {
                             title: "GROI%",
                             field: "GROI%",
+                            sorter: function(a, b) {
+                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
+                                return numA - numB;
+                            },
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
@@ -319,13 +375,19 @@
                         },
 
                         {
-                            title: "Ads %",
+                            title: "TACOS",
                             field: "Ads_Percentage",
                             hozAlign: "center",
-                            editor: "input",
                             formatter: function(cell) {
-                                const value = parseFloat(cell.getValue() || 0);
-                                return value > 0 ? value.toFixed(0) + '%' : '0%';
+                                const data = cell.getRow().getData();
+                                const sales = parseFloat(data.sales || 0);
+                                const spend = parseFloat(data.ad_spend || 0);
+                                if (sales === 0 && spend !== 0) {
+                                    return '100%';
+                                } else {
+                                    const value = parseFloat(cell.getValue() || 0);
+                                    return value > 0 ? value.toFixed(0) + '%' : '100%';
+                                }
                             }
                         },
 
@@ -347,18 +409,47 @@
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue() || 0);
-                                return value.toFixed(0) + '%';
+                                let style = '';
+                                if (value < 10) {
+                                    style = 'color: red;';
+                                } else if (value >= 11 && value <= 15) {
+                                    style = 'background-color: yellow; color: black;';
+                                } else if (value >= 16 && value <= 20) {
+                                    style = 'color: blue;';
+                                } else if (value >= 21 && value <= 40) {
+                                    style = 'color: green;';
+                                } else if (value > 40) {
+                                    style = 'color: purple;';
+                                }
+                                return `<span style="${style}">${value.toFixed(0)}%</span>`;
                             },
                         },
 
                         {
                             title: "ROI%",
-                            field: "ROI%",
+                            field: "ROI",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                return cell.getValue();
+                                const value = parseFloat(cell.getValue() || 0);
+                                const el = cell.getElement();
+
+                                // remove old styles
+                                el.style.color = "";
+                                el.style.fontWeight = "bold";
+
+                                // 🎨 Text Color Conditions
+                                if (value >= 0 && value <= 50) {
+                                    el.style.color = "red"; // 0–50
+                                } else if (value >= 51 && value <= 100) {
+                                    el.style.color = "green"; // 51–100
+                                } else if (value >= 101) {
+                                    el.style.color = "magenta"; // 101+ (Pink shade)
+                                }
+
+                                return value.toFixed(0) + "%";
                             },
                         },
+
 
 
 
@@ -369,8 +460,17 @@
                             editor: "input",
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
-                                var value = cell.getValue();
+                                var value = parseFloat(cell.getValue());
 
+                                // ❌ Stop if value is 0 or < 1
+                                if (isNaN(value) || value < 1) {
+                                    alert("Price must be 1 or greater.");
+                                    // Reset previous value
+                                    cell.restoreOldValue();
+                                    return;
+                                }
+
+                                // ✔️ Update in database
                                 $.ajax({
                                     url: '/update-fba-manual-data',
                                     method: 'POST',
@@ -381,12 +481,30 @@
                                         _token: '{{ csrf_token() }}'
                                     },
                                     success: function() {
-                                        table
-                                            .replaceData();
+                                        table.replaceData();
+                                    }
+                                });
+
+                                // ✔️ Push price to Amazon
+                                $.ajax({
+                                    url: '/push-fba-price',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.FBA_SKU,
+                                        price: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function(result) {
+                                        console.log('Price pushed to Amazon', result);
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Failed to push price', xhr
+                                            .responseJSON);
                                     }
                                 });
                             }
                         },
+
 
                         {
                             title: "SGPFT%",
@@ -397,7 +515,7 @@
                             },
                         },
 
-                         {
+                        {
                             title: "SGROI%",
                             field: "SGROI%",
                             hozAlign: "center",
@@ -412,9 +530,21 @@
                             title: "SPft%",
                             field: "SPFT",
                             hozAlign: "center",
-                             formatter: function(cell) {
+                            formatter: function(cell) {
                                 const value = parseFloat(cell.getValue() || 0);
-                                return value.toFixed(0) + '%';
+                                let style = '';
+                                if (value < 10) {
+                                    style = 'color: red;';
+                                } else if (value >= 11 && value <= 15) {
+                                    style = 'background-color: yellow; color: black;';
+                                } else if (value >= 16 && value <= 20) {
+                                    style = 'color: blue;';
+                                } else if (value >= 21 && value <= 40) {
+                                    style = 'color: green;';
+                                } else if (value > 40) {
+                                    style = 'color: purple;';
+                                }
+                                return `<span style="${style}">${value.toFixed(0)}%</span>`;
                             },
                         },
                         {
@@ -752,7 +882,7 @@
                                     let GPFT = 0;
                                     if (PRICE > 0) {
                                         GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 +
-                                            0.05)) -
+                                                0.05)) -
                                             LP - FBA_SHIP) / PRICE);
                                     }
                                     let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
@@ -785,7 +915,7 @@
                                     let GPFT = 0;
                                     if (PRICE > 0) {
                                         GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 +
-                                            0.05)) -
+                                                0.05)) -
                                             LP - FBA_SHIP) / PRICE);
                                     }
 
@@ -828,6 +958,20 @@
                         FBA_SHIP,
                         PFT
                     };
+                }
+
+                function updateSummary() {
+                    const data = table.getData().filter(row => !row.is_parent); // Exclude parent rows
+                    let totalTacos = 0;
+                    let totalSpendL30 = 0;
+
+                    data.forEach(row => {
+                        totalTacos += parseFloat(row.Ads_Percentage || 0);
+                        totalSpendL30 += parseFloat(row.Total_Spend_L30 || 0);
+                    });
+
+                    $('#total-tacos').text(totalTacos.toFixed(2) + '%');
+                    $('#total-spend-l30').text('$' + totalSpendL30.toFixed(2));
                 }
 
 
@@ -876,14 +1020,17 @@
 
                 $('#inventory-filter').on('change', function() {
                     applyFilters();
+                    updateSummary();
                 });
 
                 $('#parent-filter').on('change', function() {
                     applyFilters();
+                    updateSummary();
                 });
 
                 $('#pft-filter').on('change', function() {
                     applyFilters();
+                    updateSummary();
                 });
 
                 // AJAX Import Handler
@@ -913,6 +1060,7 @@
                                 $('#importModal').modal('hide');
                                 $('#importForm')[0].reset();
                                 table.setData('/fba-data-json');
+                                updateSummary();
                             }
                         },
                         error: function(xhr) {
@@ -1059,6 +1207,11 @@
                     applyColumnVisibilityFromServer();
                     buildColumnDropdown();
                     applyFilters(); // Apply default filters on load
+                    updateSummary();
+                });
+
+                table.on('dataLoaded', function() {
+                    updateSummary();
                 });
 
                 // Toggle column from dropdown
