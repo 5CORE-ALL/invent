@@ -166,6 +166,7 @@
             $(document).ready(function() {
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
+                    ajaxSorting: true,
                     layout: "fitData",
                     pagination: true,
                     paginationSize: 50,
@@ -233,7 +234,7 @@
                         {
                             title: "FBA Dil",
                             field: "FBA_Dil",
-
+                            sorter: "number",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
@@ -248,9 +249,17 @@
                         },
 
 
+
+                        
+
                         {
                             title: "FBA <br> CVR",
                             field: "FBA_CVR",
+                            sorter: function(a, b) {
+                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
+                                return numA - numB;
+                            },
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
@@ -281,7 +290,16 @@
                             title: "FBA<br> Price",
                             field: "FBA_Price",
                             hozAlign: "center",
-                            // formatter: "dollar"
+                            formatter: function(cell) {
+                                const price = parseFloat(cell.getValue() || 0);
+                                const lmp = parseFloat(cell.getRow().getData().lmp_1 || 0);
+                                let color = '';
+                                if (lmp > 0) {
+                                    if (price > lmp) color = 'red';
+                                    else if (price < lmp) color = 'darkgreen';
+                                }
+                                return `<span style="color:${color};">${price.toFixed(2)}</span>`;
+                            }
                         },
 
 
@@ -322,7 +340,6 @@
                             title: "Ads %",
                             field: "Ads_Percentage",
                             hozAlign: "center",
-                            editor: "input",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue() || 0);
                                 return value > 0 ? value.toFixed(0) + '%' : '0%';
@@ -353,10 +370,11 @@
 
                         {
                             title: "ROI%",
-                            field: "ROI%",
+                            field: "ROI",
                             hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
+                             formatter: function(cell) {
+                                const value = parseFloat(cell.getValue() || 0);
+                                return value.toFixed(0) + '%';
                             },
                         },
 
