@@ -250,7 +250,7 @@
 
 
 
-                        
+
 
                         {
                             title: "FBA <br> CVR",
@@ -372,11 +372,27 @@
                             title: "ROI%",
                             field: "ROI",
                             hozAlign: "center",
-                             formatter: function(cell) {
+                            formatter: function(cell) {
                                 const value = parseFloat(cell.getValue() || 0);
-                                return value.toFixed(0) + '%';
+                                const el = cell.getElement();
+
+                                // remove old styles
+                                el.style.color = "";
+                                el.style.fontWeight = "bold";
+
+                                // 🎨 Text Color Conditions
+                                if (value >= 0 && value <= 50) {
+                                    el.style.color = "red"; // 0–50
+                                } else if (value >= 51 && value <= 100) {
+                                    el.style.color = "green"; // 51–100
+                                } else if (value >= 101) {
+                                    el.style.color = "magenta"; // 101+ (Pink shade)
+                                }
+
+                                return value.toFixed(0) + "%";
                             },
                         },
+
 
 
 
@@ -387,8 +403,17 @@
                             editor: "input",
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
-                                var value = cell.getValue();
+                                var value = parseFloat(cell.getValue());
 
+                                // ❌ Stop if value is 0 or < 1
+                                if (isNaN(value) || value < 1) {
+                                    alert("Price must be 1 or greater.");
+                                    // Reset previous value
+                                    cell.restoreOldValue();
+                                    return;
+                                }
+
+                                // ✔️ Update in database
                                 $.ajax({
                                     url: '/update-fba-manual-data',
                                     method: 'POST',
@@ -399,12 +424,11 @@
                                         _token: '{{ csrf_token() }}'
                                     },
                                     success: function() {
-                                        table
-                                            .replaceData();
+                                        table.replaceData();
                                     }
                                 });
 
-                                // Push price to Amazon
+                                // ✔️ Push price to Amazon
                                 $.ajax({
                                     url: '/push-fba-price',
                                     method: 'POST',
@@ -417,11 +441,13 @@
                                         console.log('Price pushed to Amazon', result);
                                     },
                                     error: function(xhr) {
-                                        console.error('Failed to push price', xhr.responseJSON);
+                                        console.error('Failed to push price', xhr
+                                            .responseJSON);
                                     }
                                 });
                             }
                         },
+
 
                         {
                             title: "SGPFT%",
@@ -432,7 +458,7 @@
                             },
                         },
 
-                         {
+                        {
                             title: "SGROI%",
                             field: "SGROI%",
                             hozAlign: "center",
@@ -447,7 +473,7 @@
                             title: "SPft%",
                             field: "SPFT",
                             hozAlign: "center",
-                             formatter: function(cell) {
+                            formatter: function(cell) {
                                 const value = parseFloat(cell.getValue() || 0);
                                 return value.toFixed(0) + '%';
                             },
@@ -787,7 +813,7 @@
                                     let GPFT = 0;
                                     if (PRICE > 0) {
                                         GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 +
-                                            0.05)) -
+                                                0.05)) -
                                             LP - FBA_SHIP) / PRICE);
                                     }
                                     let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
@@ -820,7 +846,7 @@
                                     let GPFT = 0;
                                     if (PRICE > 0) {
                                         GPFT = ((PRICE * (1 - (COMMISSION_PERCENTAGE / 100 +
-                                            0.05)) -
+                                                0.05)) -
                                             LP - FBA_SHIP) / PRICE);
                                     }
 
