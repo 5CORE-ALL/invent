@@ -1803,7 +1803,7 @@
                     }
 
                     $.ajax({
-                        url: '/update-all-ebay1-skus',
+                        url: '/update-all-ebay-one-skus',
                         type: 'POST',
                         data: {
                             type: 'percentage',
@@ -1847,7 +1847,7 @@
 
                     // Ad Updates
                     $.ajax({
-                        url: '/update-all-ebay1-skus',
+                        url: '/update-all-ebay-one-skus',
                         type: 'POST',
                         data: {
                             type: 'ad_updates',

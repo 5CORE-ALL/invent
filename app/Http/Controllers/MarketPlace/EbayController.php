@@ -103,6 +103,9 @@ class EbayController extends Controller
             }
         );
 
+        $marketplaceData = MarketplacePercentage::where("marketplace", "Ebay")->first();
+        $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
+
         $listingStatus = EbayListingStatus::select("sku", "value")->get()->keyBy("sku");
 
         return view("market-places.ebay_pricing_increase_decrease", [
@@ -110,6 +113,7 @@ class EbayController extends Controller
             "demo" => $demo,
             "ebayPercentage" => $percentage,
             "listingStatus" => $listingStatus,
+            "ebayAdUpdates" => $adUpdates,
         ]);
     }
     
@@ -206,6 +210,18 @@ class EbayController extends Controller
 
         $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
 
+        $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
+                }
+            })
+            ->get();
+
+        $ebayGeneralReportsL30 = EbayGeneralReport::where('report_range', 'L30')
+            ->whereIn('listing_id', $ebayMetrics->pluck('item_id')->toArray())
+            ->get();
+
         $lmpLowestLookup = collect();
         $lmpDetailsLookup = collect();
         try {
@@ -289,6 +305,42 @@ class EbayController extends Controller
                 ? round(($row["eBay L30"] / $row["INV"]), 2)
                 : 0;
 
+            $matchedCampaignL30 = $ebayCampaignReportsL30->first(function ($item) use ($sku) {
+                return strtoupper(trim($item->campaign_name)) === strtoupper(trim($sku));
+            });
+
+            $matchedGeneralL30 = $ebayGeneralReportsL30->first(function ($item) use ($ebayMetric) {
+                if (!$ebayMetric || empty($ebayMetric->item_id)) return false;
+                return trim((string)$item->listing_id) == trim((string)$ebayMetric->item_id);
+            });
+
+            // Keyword campaign
+            $kw_spend_l30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
+            $kw_sales_l30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0);
+            $kw_sold_l30  = (int) ($matchedCampaignL30->cpc_attributed_sales ?? 0);
+
+            // General ads
+            $pmt_spend_l30 = (float) str_replace('USD ', '', $matchedGeneralL30->ad_fees ?? 0);
+            $pmt_sales_l30 = (float) str_replace('USD ', '', $matchedGeneralL30->sale_amount ?? 0);
+            $pmt_sold_l30  = (int) ($matchedGeneralL30->sales ?? 0);
+
+            // Final AD totals
+            $AD_Spend_L30 = $kw_spend_l30 + $pmt_spend_l30;
+            $AD_Sales_L30 = $kw_sales_l30 + $pmt_sales_l30;
+            $AD_Units_L30 = $kw_sold_l30 + $pmt_sold_l30;
+
+            $row["AD_Spend_L30"] = round($AD_Spend_L30, 2);
+            $row["AD_Sales_L30"] = round($AD_Sales_L30, 2);
+            $row["AD_Units_L30"] = $AD_Units_L30;
+
+            // AD% Formula = (pt_spend + kw_spend) / (l30_ads_sales_kw + l30_ads_sales_pt)
+            $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
+
+            $row["AD%"] = $adDenominator > 0
+                ? round(($kw_spend_l30 + $pmt_spend_l30) / $adDenominator, 4)
+                : 0;
+
+
             // Initialize ad metrics with zero values since we're using EbayMetric data
             foreach (['L60', 'L30', 'L7'] as $range) {
                 foreach (['Imp', 'Clk', 'Ctr', 'Sls', 'GENERAL_SPENT', 'PRIORITY_SPENT'] as $suffix) {
@@ -329,8 +381,16 @@ class EbayController extends Controller
                 $price > 0 ? (($price * $percentage - $lp - $ship) / $price) : 0,
                 2
             );
+            $totalPercentage = $percentage + $adUpdates; 
+
             $row["ROI%"] = round(
                 $lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) : 0,
+                2
+            );
+
+
+            $row["GPFT%"] = round(
+                $price  > 0 ? (($price * $totalPercentage - $lp - $ship) / $price) : 0,
                 2
             );
             $row["percentage"] = $percentage;
@@ -339,8 +399,7 @@ class EbayController extends Controller
             $row["Ship_productmaster"] = $ship;
 
             // NR & Hide
-            $row['NR'] = null;
-            $row['NRL'] = null;
+            $row['NR'] = "";
             $row['SPRICE'] = null;
             $row['SPFT'] = null;
             $row['SROI'] = null;
@@ -354,10 +413,7 @@ class EbayController extends Controller
                     $raw = json_decode($raw, true);
                 }
                 if (is_array($raw)) {
-                    // $row['NR'] = $raw['NR'] ?? null;
-                    // $row['NRL'] = $raw['NRL'] ?? "";
-                    $row['NR'] = isset($raw['NR']) ? $raw['NR'] : null;
-                    $row['NRL'] = isset($raw['NRL']) ? $raw['NRL'] : null; 
+                    $row['NR'] = $raw['NR'] ?? null;
                     $row['SPRICE'] = $raw['SPRICE'] ?? null;
                     $row['SPFT'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;
