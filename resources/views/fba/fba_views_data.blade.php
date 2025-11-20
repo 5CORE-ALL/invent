@@ -403,6 +403,23 @@
                                             .replaceData();
                                     }
                                 });
+
+                                // Push price to Amazon
+                                $.ajax({
+                                    url: '/push-fba-price',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.FBA_SKU,
+                                        price: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function(result) {
+                                        console.log('Price pushed to Amazon', result);
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Failed to push price', xhr.responseJSON);
+                                    }
+                                });
                             }
                         },
 
