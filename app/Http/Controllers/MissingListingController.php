@@ -934,6 +934,7 @@ protected function filterParentSKU(array $data): array
                 $datasheetRow = $datasheetModel::whereRaw('LOWER(sku) = ?', [$sku])->first();
 
                 if (!$datasheetRow) {
+                    $row['listing_status'][$marketplaceName] = "Not Listed";
                     continue;
                 }
 
