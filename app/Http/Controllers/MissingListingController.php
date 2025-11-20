@@ -913,14 +913,14 @@ protected function filterParentSKU(array $data): array
 
             if (!isset($shopifyInventory[$sku])) {
                 $row['listing_status']['shopify'] = "Not Listed";
-                $row['is_zero_inventory']['shopify'] = true;
+                $row['is_zero_inventory']['shopify'] = false;
             } else {
                 $shopifyItem = $shopifyInventory[$sku];
                 $ats = (int) ($shopifyItem->available_to_sell ?? 0);
 
                 if ($ats === 0) {
                     $row['listing_status']['shopify'] = "Listed";
-                    $row['is_zero_inventory']['shopify'] = false;
+                    $row['is_zero_inventory']['shopify'] = true;
                 } else {
                     $row['listing_status']['shopify'] = "Listed";
                     $row['is_zero_inventory']['shopify'] = false;
