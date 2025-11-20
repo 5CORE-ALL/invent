@@ -55,13 +55,15 @@ class ListingEbayController extends Controller
             if (isset($statusData[$childSku])) {
                 $status = $statusData[$childSku]->value;
                 // Use stored values or calculate defaults based on INV
-                $item->nr_req = $status['nr_req'] ?? (floatval($item->INV) > 0 ? 'REQ' : 'NR');
+                // $item->nr_req = $status['nr_req'] ?? (floatval($item->INV) > 0 ? 'REQ' : 'NR');
+                $item->nr_req = $status['nr_req'] ?? '';
                 $item->listed = $status['listed'] ?? null;
                 $item->buyer_link = $status['buyer_link'] ?? null;
                 $item->seller_link = $status['seller_link'] ?? null;
             } else {
                 // No status record exists - set defaults based on INV
-                $item->nr_req = floatval($item->INV) > 0 ? 'REQ' : 'NR';
+                // $item->nr_req = floatval($item->INV) > 0 ? 'REQ' : 'NR';
+                $item->nr_req = '';
                 $item->listed = null;
                 $item->buyer_link = null;
                 $item->seller_link = null;

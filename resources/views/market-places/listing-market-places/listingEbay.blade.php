@@ -1433,7 +1433,7 @@
                             initEnhancedDropdowns();
 
                             // Set default INV filter to "INV Only" on page load
-                            $('#inv-filter').val('inv-only').trigger('change');
+                            // $('#inv-filter').val('inv-only').trigger('change');
                         });
                     }
 
@@ -1459,7 +1459,8 @@
                                     const updatedItem = {
                                         ...item,
                                         nr_req: item.nr_req === 'REQ' ? 'REQ' : item.nr_req === 'NR' ? 'NR' : '',
-                                        listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' : 'Listed')
+                                        // listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' : 'Listed')
+                                        listed: item.listed || ''
                                     };
                                     console.log(updatedItem.nr_req + " => " + updatedItem.id);
                                     return updatedItem;
@@ -1578,9 +1579,9 @@
                         if (item.sku.includes('PARENT')) {
                             $row.addClass('parent-row');
                         }
-                        if (item.nr_req === 'NR') {
-                            $row.addClass('nr-hide');
-                        }
+                        // if (item.nr_req === 'NR') {
+                        //     $row.addClass('nr-hide');
+                        // }
                         $row.append($('<td>').text(index)); // SL No.
                         $row.append($('<td>').text(item.Parent)); // Parent
                         $row.append($('<td>').text(item.sku)); // SKU
@@ -1843,7 +1844,8 @@
                             };
 
                             filteredData.forEach(item => {
-                                if (parseFloat(item.INV) > 0 && !item.sku.includes('PARENT')) {
+                                // if (parseFloat(item.INV) > 0 && !item.sku.includes('PARENT')) {
+                                if (!item.sku.includes('PARENT')) {
                                     metrics.invTotal += parseFloat(item.INV) || 0;
 
                                     if (item.nr_req === 'REQ') {
