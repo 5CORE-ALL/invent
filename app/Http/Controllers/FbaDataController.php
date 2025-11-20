@@ -467,7 +467,10 @@ class FbaDataController extends Controller
             'Parent' => $product ? ($product->parent ?? '') : '',
             'SKU' => $sku,
             'Campaign_Name' => $campaignName,
-
+            'FBA_Quantity' => $fba->quantity_available ?? 0,
+            'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
+            'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
+            'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             // Ads Data L30
             'Ads_L30_Impressions' => $adsL30 ? ($adsL30->impressions ?? 0) : 0,
             'Ads_L30_Clicks' => $adsL30 ? ($adsL30->clicks ?? 0) : 0,
@@ -752,6 +755,8 @@ class FbaDataController extends Controller
 
             'Ads_Percentage' => ($monthlySales && ($monthlySales->l30_units ?? 0) > 0) ? $adsPercentage / ($monthlySales->l30_units ?? 1) : 0,
 
+            'Total_Spend_L30' => $totalSpend,
+
             // TPFT calculation (Commission % - Ads %)
             'TPFT' => round($gpftPercentage - $adsPercentage, 2),
             'SPFT' => round($spftPercentage - $adsPercentage),
@@ -818,6 +823,7 @@ class FbaDataController extends Controller
             'IN_Charges' => round($children->sum(fn($item) => is_numeric($item['IN_Charges']) ? $item['IN_Charges'] : 0), 2),
             'Commission_Percentage' => '',
             'Ads_Percentage' => '',
+            'Total_Spend_L30' => $children->sum('Total_Spend_L30'),
             'Done' => false,
             'Warehouse_INV_Reduction' => false,
             'FBA_Send' => false,

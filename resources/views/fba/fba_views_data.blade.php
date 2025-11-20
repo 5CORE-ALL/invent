@@ -70,6 +70,19 @@
                         <i class="fa fa-upload"></i>
                     </button>
                 </div>
+
+                <!-- Summary Stats -->
+                <div id="summary-stats" class="mt-3 p-3 bg-light rounded">
+                    <h5>Summary</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Total TACOS:</strong> <span id="total-tacos">0</span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Total Spend L30:</strong> <span id="total-spend-l30">0</span>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="fba-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -170,6 +183,7 @@
                     layout: "fitData",
                     pagination: true,
                     paginationSize: 50,
+                    paginationCounter: "rows",
                     initialSort: [{
                         column: "FBA_Dil",
                         dir: "asc"
@@ -328,7 +342,21 @@
                             },
                             hozAlign: "center",
                             formatter: function(cell) {
-                                return cell.getValue();
+                                const rawValue = cell.getValue();
+                                const value = parseFloat(rawValue.replace('%', '')) || 0;
+                                let style = '';
+                                if (value < 10) {
+                                    style = 'color: red;';
+                                } else if (value >= 11 && value <= 15) {
+                                    style = 'background-color: yellow; color: black;';
+                                } else if (value >= 16 && value <= 20) {
+                                    style = 'color: blue;';
+                                } else if (value >= 21 && value <= 40) {
+                                    style = 'color: green;';
+                                } else if (value > 40) {
+                                    style = 'color: purple;';
+                                }
+                                return `<span style="${style}">${rawValue}</span>`;
                             },
                         },
 
@@ -351,8 +379,15 @@
                             field: "Ads_Percentage",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                const value = parseFloat(cell.getValue() || 0);
-                                return value > 0 ? value.toFixed(0) + '%' : '100%';
+                                const data = cell.getRow().getData();
+                                const sales = parseFloat(data.sales || 0);
+                                const spend = parseFloat(data.ad_spend || 0);
+                                if (sales === 0 && spend !== 0) {
+                                    return '100%';
+                                } else {
+                                    const value = parseFloat(cell.getValue() || 0);
+                                    return value > 0 ? value.toFixed(0) + '%' : '100%';
+                                }
                             }
                         },
 
@@ -374,7 +409,19 @@
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue() || 0);
-                                return value.toFixed(0) + '%';
+                                let style = '';
+                                if (value < 10) {
+                                    style = 'color: red;';
+                                } else if (value >= 11 && value <= 15) {
+                                    style = 'background-color: yellow; color: black;';
+                                } else if (value >= 16 && value <= 20) {
+                                    style = 'color: blue;';
+                                } else if (value >= 21 && value <= 40) {
+                                    style = 'color: green;';
+                                } else if (value > 40) {
+                                    style = 'color: purple;';
+                                }
+                                return `<span style="${style}">${value.toFixed(0)}%</span>`;
                             },
                         },
 
@@ -485,7 +532,19 @@
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue() || 0);
-                                return value.toFixed(0) + '%';
+                                let style = '';
+                                if (value < 10) {
+                                    style = 'color: red;';
+                                } else if (value >= 11 && value <= 15) {
+                                    style = 'background-color: yellow; color: black;';
+                                } else if (value >= 16 && value <= 20) {
+                                    style = 'color: blue;';
+                                } else if (value >= 21 && value <= 40) {
+                                    style = 'color: green;';
+                                } else if (value > 40) {
+                                    style = 'color: purple;';
+                                }
+                                return `<span style="${style}">${value.toFixed(0)}%</span>`;
                             },
                         },
                         {
@@ -901,6 +960,20 @@
                     };
                 }
 
+                function updateSummary() {
+                    const data = table.getData().filter(row => !row.is_parent); // Exclude parent rows
+                    let totalTacos = 0;
+                    let totalSpendL30 = 0;
+
+                    data.forEach(row => {
+                        totalTacos += parseFloat(row.Ads_Percentage || 0);
+                        totalSpendL30 += parseFloat(row.Total_Spend_L30 || 0);
+                    });
+
+                    $('#total-tacos').text(totalTacos.toFixed(2) + '%');
+                    $('#total-spend-l30').text('$' + totalSpendL30.toFixed(2));
+                }
+
 
                 // INV 0 and More than 0 Filter
                 function applyFilters() {
@@ -947,14 +1020,17 @@
 
                 $('#inventory-filter').on('change', function() {
                     applyFilters();
+                    updateSummary();
                 });
 
                 $('#parent-filter').on('change', function() {
                     applyFilters();
+                    updateSummary();
                 });
 
                 $('#pft-filter').on('change', function() {
                     applyFilters();
+                    updateSummary();
                 });
 
                 // AJAX Import Handler
@@ -984,6 +1060,7 @@
                                 $('#importModal').modal('hide');
                                 $('#importForm')[0].reset();
                                 table.setData('/fba-data-json');
+                                updateSummary();
                             }
                         },
                         error: function(xhr) {
@@ -1130,6 +1207,11 @@
                     applyColumnVisibilityFromServer();
                     buildColumnDropdown();
                     applyFilters(); // Apply default filters on load
+                    updateSummary();
+                });
+
+                table.on('dataLoaded', function() {
+                    updateSummary();
                 });
 
                 // Toggle column from dropdown
