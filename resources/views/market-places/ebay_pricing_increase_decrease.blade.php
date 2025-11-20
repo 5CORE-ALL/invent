@@ -983,6 +983,19 @@
                             <i class="fa fa-pen"></i>
                         </button>
                     </div>
+
+                    <!-- Ads Percentage Edit -->
+                    <div id="ads-edit-div" class="d-flex align-items-center ms-4">
+                        <div class="input-group" style="width: 120px;">
+                            <input type="number" id="updateAllSkusAds" class="form-control" min="0" max="1000"
+                                value="{{ $ebayAdUpdates }}" step="0.01" placeholder="Ads Percentage" disabled />
+                            <span class="input-group-text">%</span>
+                        </div>
+                        <button id="editAdsBtn" class="btn btn-outline-primary ms-2">
+                            <i class="fa fa-pen"></i>
+                        </button>
+                    </div>
+
                     <div class="d-inline-flex align-items-center ms-2">
                         <div class="badge bg-danger text-white px-3 py-2 me-2" style="font-size: 1rem; border-radius: 8px;">
                             0 SOLD - <span id="zero-sold-count">0</span>
@@ -1574,31 +1587,6 @@
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="lmpprice"
-                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                LMP <span class="sort-arrow">↓</span>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    {{-- <th data-field="sprice"
-                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                SPRICE <span class="sort-arrow">↓</span>
-                                            </div>
-                                        </div>
-                                    </th> --}}
-                                    <th data-field="pft" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                PFT <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
                                     <th data-field="gpft" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -1617,6 +1605,17 @@
                                             <div class="metric-total" id="ad-total">0%</div>
                                         </div>
                                     </th>
+
+                                    <th data-field="pft" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                PFT <span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="pft-total">0%</div>
+                                        </div>
+                                    </th>
+                                    
                                     <th data-field="roi" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -1626,6 +1625,24 @@
                                             {{-- <div class="metric-total" id="roi-total">0%</div> --}}
                                         </div>
                                     </th>
+
+                                    <th data-field="lmpprice"
+                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
+                                        <div class="d-flex flex-column align-items-center">
+                                            <div class="d-flex align-items-center">
+                                                LMP <span class="sort-arrow">↓</span>
+                                            </div>
+                                        </div>
+                                    </th>
+                                    {{-- <th data-field="sprice"
+                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
+                                        <div class="d-flex flex-column align-items-center">
+                                            <div class="d-flex align-items-center">
+                                                SPRICE <span class="sort-arrow">↓</span>
+                                            </div>
+                                        </div>
+                                    </th> --}}
+                                    
                                     <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -2331,7 +2348,8 @@
                     type: 'GET',
                     dataType: 'json',
                     success: function(response) {
-                        console.log(response,'ff');
+                        console.log(response,'fgf');
+                        
                         
                         if (response && response.data) {
                             
@@ -2405,6 +2423,9 @@
                                         .SROI))) ? parseFloat(item.SROI) : 0,
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
+                                    GPFT: item['GPFT%'] || 0,
+                                    AD: item['AD%'] || 0,
+
                                 };
                             });
                             
@@ -2853,6 +2874,38 @@
                         </span>`
                     ));
 
+                     // GPFT with color coding
+                    $row.append($('<td>').html(
+                        typeof item['GPFT'] === 'number' && !isNaN(item['GPFT']) ?
+                        `<span class="dil-percent-value ${getPftColor(item['GPFT'])}">${Math.round(item['GPFT'] * 100)}%</span>` :
+                        ''
+                    ));
+
+                     // AD with color coding
+                    const ad = item['AD'];
+                    $row.append($('<td>').html(
+                        ad != null && !isNaN(parseFloat(ad)) ?
+                        `<span class="dil-percent-value ${getPftColor(ad)}">
+                            ${Math.round(parseFloat(ad) * 100)}%
+                        </span>` : ''
+                    ));
+
+                    // PFT with color coding
+                    $row.append($('<td>').html(
+                        typeof item['PFT %'] === 'number' && !isNaN(item['PFT %']) ?
+                        `<span class="dil-percent-value ${getPftColor(item['PFT %'])}">${Math.round(item['PFT %'] * 100)}%</span>` :
+                        ''
+                    ));
+
+                    
+
+                    // ROI with color coding
+                    $row.append($('<td>').html(
+                        typeof item.Roi === 'number' && !isNaN(item.Roi) ?
+                        `<span class="dil-percent-value ${getRoiColor(item.Roi)}">${Math.round(item.Roi * 100)}%</span>` :
+                        ''
+                    ));
+
                     const $lmpCell = $('<td>');
                     const lmpValue = item.price_lmpa !== null ? parseFloat(item.price_lmpa) : NaN;
                     if (!isNaN(lmpValue) && lmpValue > 0) {
@@ -2907,33 +2960,7 @@
                     // ));
 
 
-                    // PFT with color coding
-                    $row.append($('<td>').html(
-                        typeof item['PFT %'] === 'number' && !isNaN(item['PFT %']) ?
-                        `<span class="dil-percent-value ${getPftColor(item['PFT %'])}">${Math.round(item['PFT %'] * 100)}%</span>` :
-                        ''
-                    ));
-
-                     // GPFT with color coding
-                    $row.append($('<td>').html(
-                        typeof item['PFT %'] === 'number' && !isNaN(item['PFT %']) ?
-                        `<span class="dil-percent-value ${getPftColor(item['PFT %'])}">${Math.round(item['PFT %'] * 100)}%</span>` :
-                        ''
-                    ));
-
-                     // AD with color coding
-                    $row.append($('<td>').html(
-                        typeof item['PFT %'] === 'number' && !isNaN(item['PFT %']) ?
-                        `<span class="dil-percent-value ${getPftColor(item['PFT %'])}">${Math.round(item['PFT %'] * 100)}%</span>` :
-                        ''
-                    ));
-
-                    // ROI with color coding
-                    $row.append($('<td>').html(
-                        typeof item.Roi === 'number' && !isNaN(item.Roi) ?
-                        `<span class="dil-percent-value ${getRoiColor(item.Roi)}">${Math.round(item.Roi * 100)}%</span>` :
-                        ''
-                    ));
+                    
 
                     // TACOS with color coding and tooltip
                     $row.append($('<td>').html(
@@ -3209,9 +3236,11 @@
 
 
             window.openModal = function(selectedItem, type) {
+
                 try {
                     // Handle both string and object inputs
                     let itemData;
+                    
                     if (typeof selectedItem === 'string') {
                         try {
                             itemData = JSON.parse(selectedItem);
@@ -3226,6 +3255,7 @@
                         }
                     } else {
                         itemData = selectedItem;
+                        
                     }
 
                     if (!itemData || typeof itemData !== 'object') {
