@@ -1398,7 +1398,7 @@
                     initEnhancedDropdowns();
 
                     // Set default INV filter to "INV Only" on page load
-                    $('#inv-filter').val('inv-only').trigger('change');
+                    // $('#inv-filter').val('inv-only').trigger('change');
                 });
             }
 
@@ -1422,6 +1422,7 @@
                         // Set default value for nr_req if missing and INV > 0
                         tableData = tableData.map(item => ({
                             ...item,
+                            //  nr_req: item.nr_req || '' ,
                             nr_req: item.nr_req || (parseFloat(item.INV) > 0 ? 'REQ' :
                                 'NR'),
                             // listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' :
@@ -1806,7 +1807,8 @@
                     };
 
                     filteredData.forEach(item => {
-                        if (parseFloat(item.INV) > 0 && !item.sku.includes('PARENT')) {
+                        // if (parseFloat(item.INV) > 0 && !item.sku.includes('PARENT')) {
+                        if (!item.sku.includes('PARENT')) {
                             metrics.invTotal += parseFloat(item.INV) || 0;
 
                             if (item.nr_req === 'REQ') {
