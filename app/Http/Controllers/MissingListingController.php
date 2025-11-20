@@ -38,7 +38,7 @@ use App\Models\TiendamiaListingStatus;
 
 use App\Models\AmazonDatasheet;
 use App\Models\WalmartMetrics;
-use App\Models\ReverbOrderMetric;
+use App\Models\ReverbProduct;
 use App\Models\SheinSheetData;
 use App\Models\DobaSheetdata;
 use App\Models\TemuMetric;
@@ -855,20 +855,32 @@ protected function filterParentSKU(array $data): array
                 'listing'   => [AmazonListingStatus::class],
             ],
             'walmart' => [
-                'datasheet' => WalmartMetrics::class,
+                'datasheet' => \App\Models\WalmartMetricsApicentral::class,
                 'listing'   => [WalmartListingStatus::class],
             ],
+            'doba' => [
+                'datasheet' => \App\Models\DobaSheetdataApicentral::class,
+                'listing'   => [DobaListingStatus::class],
+            ],
+            'ebay1' => [
+                'datasheet' => \App\Models\EbayMetricApicentral::class,
+                'listing'   => [EbayListingStatus::class],
+            ],
+            'ebay2' => [
+                'datasheet' => \App\Models\Ebay2MetricApicentral::class,
+                'listing'   => [EbayTwoListingStatus::class],
+            ],
+            'ebay3' => [
+                'datasheet' => Ebay3Metric::class,
+                'listing'   => [EbayThreeListingStatus::class],
+            ],
             'reverb' => [
-                'datasheet' => ReverbOrderMetric::class,
+                'datasheet' => ReverbProduct::class,
                 'listing'   => [ReverbListingStatus::class],
             ],
             'shein' => [
                 'datasheet' => SheinSheetData::class,
                 'listing'   => [SheinListingStatus::class],
-            ],
-            'doba' => [
-                'datasheet' => DobaSheetdata::class,
-                'listing'   => [DobaListingStatus::class],
             ],
             'temu' => [
                 'datasheet' => TemuMetric::class,
@@ -877,18 +889,6 @@ protected function filterParentSKU(array $data): array
             'macy' => [
                 'datasheet' => MacyProduct::class,
                 'listing'   => [MacysListingStatus::class],
-            ],
-            'ebay1' => [
-                'datasheet' => EbayMetric::class,
-                'listing'   => [EbayListingStatus::class],
-            ],
-            'ebay2' => [
-                'datasheet' => Ebay2Metric::class,
-                'listing'   => [EbayTwoListingStatus::class],
-            ],
-            'ebay3' => [
-                'datasheet' => Ebay3Metric::class,
-                'listing'   => [EbayThreeListingStatus::class],
             ],
             'bestbuy' => [
                 'datasheet' => BestbuyUsaProduct::class,
