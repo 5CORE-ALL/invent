@@ -12,27 +12,13 @@ class ColorService
      */
     public function getRoiColors($roi)
     {
-        $bgColor = null;
-        $textColor = null;
-
-        if ($roi < 11) {
-            $textColor = '#ff0000'; // red
-        } elseif ($roi >= 10 && $roi < 15) {
-            $bgColor = 'yellow';
-            $textColor = '#000000'; // black
-        } elseif ($roi >= 15 && $roi < 20) {
-            $textColor = '#0d6efd'; // blue
-        } elseif ($roi >= 21 && $roi < 50) {
-            $textColor = '#198754'; // green
-        } else {
-            $textColor = '#800080'; // purple
-        }
-
         return [
-            'bgColor' => $bgColor,
-            'textColor' => $textColor,
+            'bgColor'   => null,
+            'textColor' => ($roi >= 0 && $roi <= 50)  ? 'red'   : (($roi >= 51 && $roi <= 100) ? 'green' :
+                    'pink'),
         ];
     }
+
 
     /**
      * Get HTML string for value v.
