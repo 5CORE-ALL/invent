@@ -16,6 +16,7 @@ use App\Models\FbaShipCalculation;
 use App\Services\ColorService;
 use App\Services\FbaManualDataService;
 use App\Services\LmpaDataService;
+use App\Services\AmazonSpApiService;
 use Illuminate\Support\Facades\Log;
 
 
@@ -292,11 +293,11 @@ class FbaDataController extends Controller
 
          // Calculate GPFT%
          $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
-         $gpft = 0;
-         if ($PRICE > 0) {
-            $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
-         }
-         $gpftPercentage = round($gpft * 100);
+         // $gpft = 0;
+         // if ($PRICE > 0) {
+         //    $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+         // }
+         // $gpftPercentage = round($gpft * 100);
 
          // Extract ads metrics
          $adsL30 = $ads['L30'] ?? null;
@@ -338,7 +339,7 @@ class FbaDataController extends Controller
             'Live' => $manual ? ($manual->data['live'] ?? false) : false,
             'Pft%' => $this->colorService->getValueHtml($pftPercentage),
             'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
-            'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
+            // 'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
             'S_Price' => round($S_PRICE, 2),
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
             'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
@@ -432,7 +433,7 @@ class FbaDataController extends Controller
             'Ads_L7_Orders' => $adsL7 ? ($adsL7->purchases14d ?? 0) : 0,
 
             // TPFT calculation (Commission % + Ads %)
-            'TPFT' => round($GPFT - $adsPercentage, 2),
+            // 'TPFT' => round($GPFT - $adsPercentage, 2),
 
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
@@ -842,7 +843,7 @@ class FbaDataController extends Controller
          // Ads Percentage = (KW Spend + PT Spend) / (KW Sales + PT Sales)
          $totalSpend = $kwSpend + $ptSpend;
          $totalSales = $kwSales + $ptSales;
-         $adsPercentage = $totalSales > 0 ? (($totalSpend / $totalSales) * 100) : 0;
+         $adsPercentage = $totalSales > 0 ? (($totalSpend) * 100) : 0;
 
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
@@ -979,7 +980,8 @@ class FbaDataController extends Controller
                $manual ? ($manual->data['send_cost'] ?? 0) : 0,
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
-            'Ads_Percentage' => $adsPercentage,
+            
+            'Ads_Percentage' => ($monthlySales && ($monthlySales->l30_units ?? 0) > 0) ? $adsPercentage / ($monthlySales->l30_units ?? 1) : 0,
             
             // TPFT calculation (Commission % - Ads %)
             'TPFT' => round($gpftPercentage - $adsPercentage, 2),
@@ -1342,5 +1344,16 @@ class FbaDataController extends Controller
       $str = strip_tags($html);
       $str = str_replace('%', '', $str);
       return floatval($str);
+   }
+
+   public function pushFbaPrice(Request $request)
+   {
+      $sku = $request->input('sku');
+      $price = $request->input('price');
+
+      $service = new AmazonSpApiService();
+      $result = $service->updateAmazonPriceUS($sku, $price);
+
+      return response()->json($result);
    }
 }

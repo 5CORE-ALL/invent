@@ -337,12 +337,12 @@
                         },
 
                         {
-                            title: "Ads %",
+                            title: "TACOS",
                             field: "Ads_Percentage",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue() || 0);
-                                return value > 0 ? value.toFixed(0) + '%' : '0%';
+                                return value > 0 ? value.toFixed(0) + '%' : '100%';
                             }
                         },
 
@@ -401,6 +401,23 @@
                                     success: function() {
                                         table
                                             .replaceData();
+                                    }
+                                });
+
+                                // Push price to Amazon
+                                $.ajax({
+                                    url: '/push-fba-price',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.FBA_SKU,
+                                        price: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function(result) {
+                                        console.log('Price pushed to Amazon', result);
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Failed to push price', xhr.responseJSON);
                                     }
                                 });
                             }
