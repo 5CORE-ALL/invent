@@ -1401,7 +1401,7 @@
                     initEnhancedDropdowns();
 
                     // Set default INV filter to "INV Only" on page load
-                    $('#inv-filter').val('inv-only').trigger('change');
+                    // $('#inv-filter').val('inv-only').trigger('change');
                 });
             }
 
@@ -1431,6 +1431,8 @@
                                 'NR'),
                             listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' :
                                 'Listed')
+                            // nr_req: item.nr_req || '',
+                            // listed: item.listed || ''
                         }));
 
                         filteredData = [...tableData];
@@ -1545,9 +1547,9 @@
                 if (item.sku.includes('PARENT')) {
                     $row.addClass('parent-row');
                 }
-                if (item.nr_req === 'NR') {
-                    $row.addClass('nr-hide');
-                }
+                // if (item.nr_req === 'NR') {
+                //     $row.addClass('nr-hide');
+                // }
 
                 $row.append($('<td>').text(index)); // SL No.
                 $row.append($('<td>').text(item.parent)); // Parent
@@ -1816,7 +1818,8 @@
                         if(item.nr_req === 'NR'){
                             return;
                         }
-                        if (parseFloat(item.INV) > 0 && !item.sku.includes('PARENT')) {
+                        // if (parseFloat(item.INV) > 0 && !item.sku.includes('PARENT')) {
+                        if (!item.sku.includes('PARENT')) {
                             metrics.invTotal += parseFloat(item.INV) || 0;
 
                             if (item.nr_req === 'REQ') {
