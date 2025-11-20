@@ -321,6 +321,11 @@
                         {
                             title: "GPFT%",
                             field: "GPFT%",
+                            sorter: function(a, b) {
+                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
+                                return numA - numB;
+                            },
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
@@ -330,6 +335,11 @@
                         {
                             title: "GROI%",
                             field: "GROI%",
+                            sorter: function(a, b) {
+                                const numA = parseFloat(a.replace(/<[^>]*>/g, '').replace('%', ''));
+                                const numB = parseFloat(b.replace(/<[^>]*>/g, '').replace('%', ''));
+                                return numA - numB;
+                            },
                             hozAlign: "center",
                             formatter: function(cell) {
                                 return cell.getValue();
