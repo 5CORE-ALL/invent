@@ -337,12 +337,12 @@
                         },
 
                         {
-                            title: "Ads %",
+                            title: "TACOS",
                             field: "Ads_Percentage",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue() || 0);
-                                return value > 0 ? value.toFixed(0) + '%' : '0%';
+                                return value > 0 ? value.toFixed(0) + '%' : '100%';
                             }
                         },
 

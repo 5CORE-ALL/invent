@@ -843,7 +843,7 @@ class FbaDataController extends Controller
          // Ads Percentage = (KW Spend + PT Spend) / (KW Sales + PT Sales)
          $totalSpend = $kwSpend + $ptSpend;
          $totalSales = $kwSales + $ptSales;
-         $adsPercentage = $totalSales > 0 ? (($totalSpend / $totalSales) * 100) : 0;
+         $adsPercentage = $totalSales > 0 ? (($totalSpend) * 100) : 0;
 
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
@@ -980,7 +980,8 @@ class FbaDataController extends Controller
                $manual ? ($manual->data['send_cost'] ?? 0) : 0,
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
-            'Ads_Percentage' => $adsPercentage,
+            
+            'Ads_Percentage' => ($monthlySales && ($monthlySales->l30_units ?? 0) > 0) ? $adsPercentage / ($monthlySales->l30_units ?? 1) : 0,
             
             // TPFT calculation (Commission % - Ads %)
             'TPFT' => round($gpftPercentage - $adsPercentage, 2),
