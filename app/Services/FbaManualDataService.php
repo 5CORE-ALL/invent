@@ -66,7 +66,9 @@ class FbaManualDataService
                     $fbaPriceInfo = $fbaPriceData->get($sku);
                     $fbaReportsInfo = $fbaReportsData->get($sku);
                     $monthlySales = $fbaMonthlySales->get($sku);
-                    $manual = $fbaManualData->get(strtoupper(trim($fba->seller_sku)));
+                    
+                    // Try to find manual data by both SKU and FBA SKU
+                    $manual = $fbaManualData->get($sku) ?? $fbaManualData->get(strtoupper(trim($fba->seller_sku)));
                     $dispatchDate = $fbaDispatchDates->get($sku);
 
                     $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
@@ -191,10 +193,11 @@ class FbaManualDataService
                     continue;
                 }
 
-                // Try to find by exact SKU or by FBA SKU pattern
-                $manual = FbaManualData::where('sku', strtoupper($sku))
-                    ->orWhere('sku', 'LIKE', '%' . strtoupper($sku) . ' FBA%')
-                    ->orWhere('sku', 'LIKE', '%' . strtoupper($sku) . 'FBA%')
+                // Try to find by exact SKU or by FBA SKU pattern (more precise)
+                $upperSku = strtoupper($sku);
+                $manual = FbaManualData::where('sku', $upperSku)
+                    ->orWhere('sku', $upperSku . ' FBA')
+                    ->orWhere('sku', $upperSku . 'FBA')
                     ->first();
 
                 if (!$manual) {
@@ -204,16 +207,18 @@ class FbaManualDataService
                 
                 $existingData = $manual->data ?? [];
                 
-                $manual->data = array_merge($existingData, [
-                    'dimensions' => $this->cleanText($row[1] ?? ''),
-                    'weight' => $this->cleanText($row[2] ?? ''),
-                    'quantity_in_each_box' => $this->cleanText($row[3] ?? ''),
-                    'total_quantity_sent' => $this->cleanText($row[4] ?? ''),
-                    'total_send_cost' => $this->cleanText($row[5] ?? ''),
-                    'inbound_quantity' => $this->cleanText($row[6] ?? ''),
-                    'send_cost' => $this->cleanText($row[7] ?? ''),
-                    'commission_percentage' => $this->cleanText($row[8] ?? '')
-                ]);
+                // Only update non-empty values to prevent data loss
+                $updateData = [];
+                if (!empty($row[1])) $updateData['dimensions'] = $this->cleanText($row[1]);
+                if (!empty($row[2])) $updateData['weight'] = $this->cleanText($row[2]);
+                if (!empty($row[3])) $updateData['quantity_in_each_box'] = $this->cleanText($row[3]);
+                if (!empty($row[4])) $updateData['total_quantity_sent'] = $this->cleanText($row[4]);
+                if (!empty($row[5])) $updateData['total_send_cost'] = $this->cleanText($row[5]);
+                if (!empty($row[6])) $updateData['inbound_quantity'] = $this->cleanText($row[6]);
+                if (!empty($row[7])) $updateData['send_cost'] = $this->cleanText($row[7]);
+                if (!empty($row[8])) $updateData['commission_percentage'] = $this->cleanText($row[8]);
+                
+                $manual->data = array_merge($existingData, $updateData);
                 
                 $manual->save();
                 $imported++;
@@ -273,12 +278,13 @@ class FbaManualDataService
         $baseSku = preg_replace('/\s*FBA\s*/i', '', $sku);
         $baseSku = strtoupper(trim($baseSku));
 
-        // Get Fulfillment Fee from FbaReportsMaster
-        $fbaReport = \App\Models\FbaReportsMaster::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-            ->get()
-            ->filter(function ($item) use ($baseSku) {
-                $itemSku = preg_replace('/\s*FBA\s*/i', '', $item->seller_sku);
-                return strtoupper(trim($itemSku)) === $baseSku;
+        // Get Fulfillment Fee from FbaReportsMaster - Optimized query
+        $fbaReport = \App\Models\FbaReportsMaster::where(function($query) use ($baseSku) {
+                // Try exact match with FBA variations
+                $query->where('seller_sku', $baseSku . ' FBA')
+                      ->orWhere('seller_sku', $baseSku . 'FBA')
+                      ->orWhere('seller_sku', $baseSku . ' fba')
+                      ->orWhere('seller_sku', $baseSku);
             })
             ->first();
 
