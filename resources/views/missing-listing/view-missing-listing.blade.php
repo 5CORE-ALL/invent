@@ -295,15 +295,18 @@
                                     <input type="text" id="global-search" class="form-control form-control-md"
                                         placeholder="Search campaign...">
                                 </div>
+
+                                <button id="zeroInvToggle" class="btn btn-primary">
+                                    Without 0 Inventory
+                                </button>
                             </div>
                         </div>
+
                         <div class="col-md-6">
-                            <div class="d-flex gap-2">
-                                <div class="input-group">
-                                    <button id="zeroInvToggle" class="btn btn-primary">
-                                        Without 0 Inventory
-                                    </button>
-                                </div>
+                            <div class="d-flex justify-content-end gap-2">
+                                <button id="exportXlsBtn" class="btn btn-success">
+                                    Export XLS
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -333,33 +336,11 @@
 @endsection
 
 @section('script')
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    function updateTotalNotListed(data) {
-        if (Array.isArray(data) && data.length && typeof data[0].getData === "function") {
-            data = data.map(r => r.getData());
-        }
-
-        let total = 0;
-
-        (data || []).forEach(row => {
-            const ls = row.listing_status || {};
-            const zi = row.is_zero_inventory || {};
-
-            marketplaces.forEach(mp => {
-                if (ls[mp] === "Not Listed" && !(zi[mp] === true)) {
-                    total++;
-                }
-            });
-        });
-
-        document.getElementById("total-notlisted-kpi").innerHTML =
-            "Total Not Listed: " + total;
-    }
-
-
     function updateKpis(table) {
         let data = table.getData();
 
@@ -412,6 +393,28 @@ document.addEventListener("DOMContentLoaded", function() {
         return 'pink';
     };
 
+    function updateTotalNotListed(data) {
+        if (Array.isArray(data) && data.length && typeof data[0].getData === "function") {
+            data = data.map(r => r.getData());
+        }
+
+        let total = 0;
+
+        (data || []).forEach(row => {
+            const ls = row.listing_status || {};
+            const zi = row.is_zero_inventory || {};
+
+            marketplaces.forEach(mp => {
+                if (ls[mp] === "Not Listed" && !(zi[mp] === true)) {
+                    total++;
+                }
+            });
+        });
+
+        document.getElementById("total-notlisted-kpi").innerHTML =
+            "Total Not Listed: " + total;
+    }
+    
     function formatMarketName(mp) {
         return mp.replace(/_/g, " ").toUpperCase();
     }
@@ -451,13 +454,14 @@ document.addEventListener("DOMContentLoaded", function() {
 
         const marketCols = marketplaces.map(mp => {
             return {
-                title: "",
+                title: formatMarketName(mp), 
                 field: `listing_status.${mp}`,
                 formatter: statusFormatter,
                 headerSort: false,
                 headerHozAlign: "center",
-                titleFormatter: function() {
-                    return createStatusFilterHeader(mp);
+                titleFormatter: () => createStatusFilterHeader(mp),
+                accessorDownload: function(value, data) {
+                    return value ? value : "Not Listed";
                 },
             };
         });
@@ -989,6 +993,13 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
     });
+
+    document.getElementById("exportXlsBtn").addEventListener("click", function () {
+        table.download("xlsx", "missing-listing-data.xlsx", {
+            sheetName: "Missing Listing",
+        });
+    });
+
 });
 </script>
 @endsection

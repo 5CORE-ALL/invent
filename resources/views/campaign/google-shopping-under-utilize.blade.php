@@ -342,6 +342,16 @@
                         }
                     },
                     {
+                        title: "Spend L7",
+                        field: "spend_L7",
+                        hozAlign: "right",
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
+                            var spend_L7 = parseFloat(row.spend_L7) || 0;
+                            return spend_L7.toFixed(2);
+                        }
+                    },
+                    {
                         title: "7 UB%",
                         field: "spend_L7",
                         hozAlign: "right",
@@ -363,15 +373,7 @@
 
                             return ub7.toFixed(0) + "%";
                         },
-                        sorter: function(a, b, aRow, bRow, column, dir) {
-                            var dataA = aRow.getData();
-                            var dataB = bRow.getData();
-
-                            var ubA = dataA.campaignBudgetAmount > 0 ? (parseFloat(dataA.spend_L7) / (parseFloat(dataA.campaignBudgetAmount) * 7)) * 100 : 0;
-                            var ubB = dataB.campaignBudgetAmount > 0 ? (parseFloat(dataB.spend_L7) / (parseFloat(dataB.campaignBudgetAmount) * 7)) * 100 : 0;
-
-                            return ubA - ubB; 
-                        },
+                        
                     },
                     {
                         title: "1 UB%",

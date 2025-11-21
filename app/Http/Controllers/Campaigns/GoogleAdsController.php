@@ -243,7 +243,7 @@ class GoogleAdsController extends Controller
                     $parts = array_map('trim', explode(',', $campaign));
                     $exactMatch = in_array($skuTrimmed, $parts);
                     
-                    return ($contains || $exactMatch) && $c->campaign_status === 'ENABLED';
+                    return ($contains || $exactMatch) && $c->range_type === $range && $c->campaign_status === 'ENABLED';
                 });
 
 
@@ -341,7 +341,7 @@ class GoogleAdsController extends Controller
                     
                     $parts = array_map('trim', explode(',', $campaign));
                     $exactMatch = in_array($skuTrimmed, $parts);
-                    return $exactMatch;
+                    return ($contains || $exactMatch) && $c->range_type === $range && $c->campaign_status === 'ENABLED';
                 });
 
 

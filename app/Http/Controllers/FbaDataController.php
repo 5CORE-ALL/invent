@@ -215,13 +215,9 @@ class FbaDataController extends Controller
       $data = $this->getFbaData();
 
       $fbaData = $data['fbaData'];
-      $fbaPriceData = $data['fbaPriceData'];
-      $fbaReportsData = $data['fbaReportsData'];
       $shopifyData = $data['shopifyData'];
       $fbaMonthlySales = $data['fbaMonthlySales'];
-      $fbaManualData = $data['fbaManualData'];
-      $fbaDispatchDates = $data['fbaDispatchDates'];
-      $fbaShipCalculations = $data['fbaShipCalculations'];
+
       $productData = $data['productData']->keyBy(function ($p) {
          return strtoupper(trim($p->sku));
       });
@@ -257,49 +253,19 @@ class FbaDataController extends Controller
       }
 
       // Filter to only include SKUs that have ads data
-                   
+
       $tableData = $fbaData->filter(function ($fba, $sku) use ($adsDataBySku) {
          $ads = $adsDataBySku[$sku] ?? null;
          return $ads && ($ads['L60'] || $ads['L30'] || $ads['L15'] || $ads['L7'] || $ads['L1']);
-      })->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $adsDataBySku) {
-         $fbaPriceInfo = $fbaPriceData->get($sku);
-         $fbaReportsInfo = $fbaReportsData->get($sku);
+      })->map(function ($fba, $sku) use ($shopifyData, $productData, $fbaMonthlySales, $adsDataBySku) {
          $shopifyInfo = $shopifyData->get($sku);
          $product = $productData->get($sku);
          $monthlySales = $fbaMonthlySales->get($sku);
-         $manual = $fbaManualData->get(strtoupper(trim($fba->seller_sku)));
-         $dispatchDate = $fbaDispatchDates->get($sku);
-         $shipCalc = $fbaShipCalculations->get($sku);
+
          $ads = $adsDataBySku[$sku] ?? null;
 
-         $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
-         $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
-         $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
-         $FBA_SHIP = $shipCalc ? floatval($shipCalc->fba_ship_calculation ?? 0) : 0;
-         $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
-
-         // Calculate profit & ROI metrics
-         $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
-         $roi = ($LP > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
-         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
-         $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
-
-         $pftPercentage = round($pft * 100);
-         $roiPercentage = round($roi * 100);
-         $spftPercentage = round($spft * 100);
-         $sroiPercentage = round($sroi * 100);
-         $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
-
-         // Calculate GPFT%
-         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
-         // $gpft = 0;
-         // if ($PRICE > 0) {
-         //    $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
-         // }
-         // $gpftPercentage = round($gpft * 100);
-
-         // Extract ads metrics
+         // Calculate ads percentage
          $adsL30 = $ads['L30'] ?? null;
          $adsL60 = $ads['L60'] ?? null;
          $adsL15 = $ads['L15'] ?? null;
@@ -324,129 +290,45 @@ class FbaDataController extends Controller
             'Parent' => $product ? ($product->parent ?? '') : '',
             'SKU' => $sku,
             'Campaign_Name' => $campaignName,
-            'FBA_SKU' => $fba->seller_sku,
-            'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
-            'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
-            'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
-            'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
-            'l60_units' => $monthlySales ? ($monthlySales->l60_units ?? 0) : 0,
             'FBA_Quantity' => $fba->quantity_available,
+            'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
+            'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
             'Dil' => ($shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0) / max($shopifyInfo ? ($shopifyInfo->inv ?? 0) : 1, 1) * 100,
+            'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             'FBA_Dil' => ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fba->quantity_available ?: 1) * 100,
-            'Current_Month_Views' => $fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?? 0) : 0,
-            'FBA_CVR' => $this->colorService->getCvrHtml($cvr),
-            'Listed' => $manual ? ($manual->data['listed'] ?? false) : false,
-            'Live' => $manual ? ($manual->data['live'] ?? false) : false,
-            'Pft%' => $this->colorService->getValueHtml($pftPercentage),
-            'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
-            // 'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
-            'S_Price' => round($S_PRICE, 2),
-            'SPft%' => $this->colorService->getValueHtml($spftPercentage),
-            'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
-            'lmp_1' => $lmpaData['lowest_price'],
-            'lmp_data' => $lmpaData['data'],
-            'ACTION_ACTION' => $manual ? ($manual->data['action_action'] ?? '') : '',
-            'REV_COUNT' => $manual ? ($manual->data['rev_count'] ?? '') : '',
-            'RATING' => $manual ? ($manual->data['rating'] ?? '') : '',
-            'LP' => round($LP, 2),
-            'Fulfillment_Fee' => $fbaReportsInfo ? round(($fbaReportsInfo->fulfillment_fee ?? 0), 2) : 0,
-            'FBA_Fee_Manual' => $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-            'ASIN' => $fba->asin,
-            'Barcode' => $manual ? ($manual->data['barcode'] ?? '') : '',
-            'Dispatch_Date' => $dispatchDate ? $dispatchDate->dispatch_date : ($manual ? ($manual->data['dispatch_date'] ?? '') : ''),
-            'Weight' => $manual ? ($manual->data['weight'] ?? 0) : 0,
-            'WH_ACT' => $manual ? ($manual->data['wh_act'] ?? '') : '',
-            'UPC_Codes' => $manual ? ($manual->data['upc_codes'] ?? '') : '',
-            'Issues_at_WH' => $manual ? ($manual->data['issues_at_wh'] ?? '') : '',
-            'Issues_Remarks_Update' => $manual ? ($manual->data['issues_remarks_update'] ?? '') : '',
-            'Sent_By' => $manual ? ($manual->data['sent_by'] ?? '') : '',
-            'Quantity_in_each_box' => $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0,
-            'Send_Cost' => $manual ? ($manual->data['send_cost'] ?? 0) : 0,
-            'IN_Charges' => $manual ? ($manual->data['in_charges'] ?? 0) : 0,
-            'Total_quantity_sent' => $manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0,
-            'Done' => $manual ? ($manual->data['done'] ?? false) : false,
-            'Warehouse_INV_Reduction' => $manual ? ($manual->data['warehouse_inv_reduction'] ?? false) : false,
-            'Shipping_Amount' => $manual ? ($manual->data['shipping_amount'] ?? 0) : 0,
-            'Inbound_Quantity' => $manual ? ($manual->data['inbound_quantity'] ?? 0) : 0,
-            'FBA_Send' => $manual ? ($manual->data['fba_send'] ?? false) : false,
-            'Approval' => $manual ? ($manual->data['approval'] ?? false) : false,
-            'Profit_is_ok' => $manual ? ($manual->data['profit_is_ok'] ?? false) : false,
-            'Dimensions' => $manual ? ($manual->data['dimensions'] ?? '') : '',
-            'MSL' => $manual ? ($manual->data['msl'] ?? '') : '',
-            'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
-            'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
-            'Zero_Stock' => $manual ? ($manual->data['zero_stock'] ?? false) : false,
-            '0-to-90-days' => $manual ? ($manual->data['0-to-90-days'] ?? '') : '',
-            '91-to-180-days' => $manual ? ($manual->data['91-to-180-days'] ?? '') : '',
-            '181-to-270-days' => $manual ? ($manual->data['181-to-270-days'] ?? '') : '',
-            '271-to-365-days' => $manual ? ($manual->data['271-to-365-days'] ?? '') : '',
-            '365-plus-days' => $manual ? ($manual->data['365-plus-days'] ?? '') : '',
-            'FBA_Ship_Calculation' => $this->fbaManualDataService->calculateFbaShipCalculation(
-               $fba->seller_sku,
-               $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-               $manual ? ($manual->data['send_cost'] ?? 0) : 0,
-               $manual ? ($manual->data['in_charges'] ?? 0) : 0,
-               false
-            ),
-
-            // Ads Data L30
             'Ads_L30_Impressions' => $adsL30 ? ($adsL30->impressions ?? 0) : 0,
-            'Ads_L30_Clicks' => $adsL30 ? ($adsL30->clicks ?? 0) : 0,
-            'Ads_L30_Spend' => $adsL30 ? round(($adsL30->cost ?? 0), 2) : 0,
-            'Ads_L30_Sales' => $adsL30 ? round(($adsL30->sales14d ?? 0), 2) : 0,
-            'Ads_L30_Orders' => $adsL30 ? ($adsL30->purchases14d ?? 0) : 0,
-            'Ads_L30_ACOS' => $adsL30 && ($adsL30->sales14d ?? 0) > 0 ? round((($adsL30->cost ?? 0) / ($adsL30->sales14d ?? 1)) * 100, 2) : 0,
-            'Ads_L30_CTR' => $adsL30 && ($adsL30->impressions ?? 0) > 0 ? round((($adsL30->clicks ?? 0) / ($adsL30->impressions ?? 1)) * 100, 2) : 0,
-            'Ads_L30_CVR' => $adsL30 && ($adsL30->clicks ?? 0) > 0 ? round((($adsL30->purchases14d ?? 0) / ($adsL30->clicks ?? 1)) * 100, 2) : 0,
-
-            // Ads Data L60
             'Ads_L60_Impressions' => $adsL60 ? ($adsL60->impressions ?? 0) : 0,
-            'Ads_L60_Clicks' => $adsL60 ? ($adsL60->clicks ?? 0) : 0,
-            'Ads_L60_Spend' => $adsL60 ? round(($adsL60->cost ?? 0), 2) : 0,
-            'Ads_L60_Sales' => $adsL60 ? round(($adsL60->sales14d ?? 0), 2) : 0,
-            'Ads_L60_Orders' => $adsL60 ? ($adsL60->purchases14d ?? 0) : 0,
-            'Ads_L60_ACOS' => $adsL60 && ($adsL60->sales14d ?? 0) > 0 ? round((($adsL60->cost ?? 0) / ($adsL60->sales14d ?? 1)) * 100, 2) : 0,
-
-            // Ads Data L15
             'Ads_L15_Impressions' => $adsL15 ? ($adsL15->impressions ?? 0) : 0,
-            'Ads_L15_Clicks' => $adsL15 ? ($adsL15->clicks ?? 0) : 0,
-            'Ads_L15_Spend' => $adsL15 ? round(($adsL15->cost ?? 0), 2) : 0,
-            'Ads_L15_Sales' => $adsL15 ? round(($adsL15->sales14d ?? 0), 2) : 0,
-            'Ads_L15_ACOS' => $adsL15 && ($adsL15->sales14d ?? 0) > 0 ? round((($adsL15->cost ?? 0) / ($adsL15->sales14d ?? 1)) * 100, 2) : 0,
-
-            // Ads Data L7
             'Ads_L7_Impressions' => $adsL7 ? ($adsL7->impressions ?? 0) : 0,
+            'Ads_L30_Clicks' => $adsL30 ? ($adsL30->clicks ?? 0) : 0,
+            'Ads_L60_Clicks' => $adsL60 ? ($adsL60->clicks ?? 0) : 0,
+            'Ads_L15_Clicks' => $adsL15 ? ($adsL15->clicks ?? 0) : 0,
             'Ads_L7_Clicks' => $adsL7 ? ($adsL7->clicks ?? 0) : 0,
+            'Ads_L30_Spend' => $adsL30 ? round(($adsL30->cost ?? 0), 2) : 0,
+            'Ads_L60_Spend' => $adsL60 ? round(($adsL60->cost ?? 0), 2) : 0,
+            'Ads_L15_Spend' => $adsL15 ? round(($adsL15->cost ?? 0), 2) : 0,
             'Ads_L7_Spend' => $adsL7 ? round(($adsL7->cost ?? 0), 2) : 0,
+            'Ads_L30_Sales' => $adsL30 ? round(($adsL30->sales14d ?? 0), 2) : 0,
+            'Ads_L60_Sales' => $adsL60 ? round(($adsL60->sales14d ?? 0), 2) : 0,
+            'Ads_L15_Sales' => $adsL15 ? round(($adsL15->sales14d ?? 0), 2) : 0,
             'Ads_L7_Sales' => $adsL7 ? round(($adsL7->sales14d ?? 0), 2) : 0,
-            'Ads_L7_ACOS' => $adsL7 && ($adsL7->sales14d ?? 0) > 0 ? round((($adsL7->cost ?? 0) / ($adsL7->sales14d ?? 1)) * 100, 2) : 0,
-
-            // Ads Data L1
-            'Ads_L1_Impressions' => $adsL1 ? ($adsL1->impressions ?? 0) : 0,
-            'Ads_L1_Clicks' => $adsL1 ? ($adsL1->clicks ?? 0) : 0,
-            'Ads_L1_Spend' => $adsL1 ? round(($adsL1->cost ?? 0), 2) : 0,
-            'Ads_L1_Sales' => $adsL1 ? round(($adsL1->sales14d ?? 0), 2) : 0,
-            'Ads_L1_ACOS' => $adsL1 && ($adsL1->sales14d ?? 0) > 0 ? round((($adsL1->cost ?? 0) / ($adsL1->sales14d ?? 1)) * 100, 2) : 0,
-
-            // Add missing L15 and L7 Orders fields
+            'Ads_L30_Orders' => $adsL30 ? ($adsL30->purchases14d ?? 0) : 0,
+            'Ads_L60_Orders' => $adsL60 ? ($adsL60->purchases14d ?? 0) : 0,
             'Ads_L15_Orders' => $adsL15 ? ($adsL15->purchases14d ?? 0) : 0,
             'Ads_L7_Orders' => $adsL7 ? ($adsL7->purchases14d ?? 0) : 0,
-
-            // TPFT calculation (Commission % + Ads %)
-            // 'TPFT' => round($GPFT - $adsPercentage, 2),
-
-            'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
-            'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
-            'Mar' => $monthlySales ? ($monthlySales->mar ?? 0) : 0,
-            'Apr' => $monthlySales ? ($monthlySales->apr ?? 0) : 0,
-            'May' => $monthlySales ? ($monthlySales->may ?? 0) : 0,
-            'Jun' => $monthlySales ? ($monthlySales->jun ?? 0) : 0,
-            'Jul' => $monthlySales ? ($monthlySales->jul ?? 0) : 0,
-            'Aug' => $monthlySales ? ($monthlySales->aug ?? 0) : 0,
-            'Sep' => $monthlySales ? ($monthlySales->sep ?? 0) : 0,
-            'Oct' => $monthlySales ? ($monthlySales->oct ?? 0) : 0,
-            'Nov' => $monthlySales ? ($monthlySales->nov ?? 0) : 0,
-            'Dec' => $monthlySales ? ($monthlySales->dec ?? 0) : 0,
+            'Ads_L30_ACOS' => $adsL30 && ($adsL30->sales14d ?? 0) > 0 ? round((($adsL30->cost ?? 0) / ($adsL30->sales14d ?? 1)) * 100, 2) : 0,
+            'Ads_L60_ACOS' => $adsL60 && ($adsL60->sales14d ?? 0) > 0 ? round((($adsL60->cost ?? 0) / ($adsL60->sales14d ?? 1)) * 100, 2) : 0,
+            'Ads_L15_ACOS' => $adsL15 && ($adsL15->sales14d ?? 0) > 0 ? round((($adsL15->cost ?? 0) / ($adsL15->sales14d ?? 1)) * 100, 2) : 0,
+            'Ads_L7_ACOS' => $adsL7 && ($adsL7->sales14d ?? 0) > 0 ? round((($adsL7->cost ?? 0) / ($adsL7->sales14d ?? 1)) * 100, 2) : 0,
+            'Ads_L30_CPC' => $adsL30 && ($adsL30->clicks ?? 0) > 0 ? round(($adsL30->cost ?? 0) / ($adsL30->clicks ?? 1), 2) : 0,
+            'Ads_L60_CPC' => $adsL60 && ($adsL60->clicks ?? 0) > 0 ? round(($adsL60->cost ?? 0) / ($adsL60->clicks ?? 1), 2) : 0,
+            'Ads_L15_CPC' => $adsL15 && ($adsL15->clicks ?? 0) > 0 ? round(($adsL15->cost ?? 0) / ($adsL15->clicks ?? 1), 2) : 0,
+            'Ads_L7_CPC' => $adsL7 && ($adsL7->clicks ?? 0) > 0 ? round(($adsL7->cost ?? 0) / ($adsL7->clicks ?? 1), 2) : 0,
+            'Ads_L30_CVR' => $adsL30 && ($adsL30->clicks ?? 0) > 0 ? round((($adsL30->purchases14d ?? 0) / ($adsL30->clicks ?? 1)) * 100, 2) : 0,
+            'Ads_L60_CVR' => $adsL60 && ($adsL60->clicks ?? 0) > 0 ? round((($adsL60->purchases14d ?? 0) / ($adsL60->clicks ?? 1)) * 100, 2) : 0,
+            'Ads_L15_CVR' => $adsL15 && ($adsL15->clicks ?? 0) > 0 ? round((($adsL15->purchases14d ?? 0) / ($adsL15->clicks ?? 1)) * 100, 2) : 0,
+            'Ads_L7_CVR' => $adsL7 && ($adsL7->clicks ?? 0) > 0 ? round((($adsL7->purchases14d ?? 0) / ($adsL7->clicks ?? 1)) * 100, 2) : 0,
+            'TPFT' => 0, // Placeholder, since profit calculations removed
          ];
       })->values();
 
@@ -461,16 +343,13 @@ class FbaDataController extends Controller
       $data = $this->getFbaData();
 
       $fbaData = $data['fbaData'];
-      $fbaPriceData = $data['fbaPriceData'];
-      $fbaReportsData = $data['fbaReportsData'];
       $shopifyData = $data['shopifyData'];
       $fbaMonthlySales = $data['fbaMonthlySales'];
-      $fbaManualData = $data['fbaManualData'];
-      $fbaDispatchDates = $data['fbaDispatchDates'];
-      $fbaShipCalculations = $data['fbaShipCalculations'];
+
       $productData = $data['productData']->keyBy(function ($p) {
          return strtoupper(trim($p->sku));
       });
+
 
       // Get all ads campaign reports for PT (Product Targeting)
       $amazonSpCampaignReportsL60 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
@@ -555,48 +434,13 @@ class FbaDataController extends Controller
       $tableData = $fbaData->filter(function ($fba, $sku) use ($adsDataBySku) {
          $ads = $adsDataBySku[$sku] ?? null;
          return $ads && ($ads['L60'] || $ads['L30'] || $ads['L15'] || $ads['L7'] || $ads['L1']);
-      })->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $adsDataBySku) {
-         $fbaPriceInfo = $fbaPriceData->get($sku);
-         $fbaReportsInfo = $fbaReportsData->get($sku);
+      })->map(function ($fba, $sku) use ($shopifyData, $productData, $fbaMonthlySales, $adsDataBySku) {
          $shopifyInfo = $shopifyData->get($sku);
          $product = $productData->get($sku);
          $monthlySales = $fbaMonthlySales->get($sku);
-         $manual = $fbaManualData->get(strtoupper(trim($fba->seller_sku)));
-         $dispatchDate = $fbaDispatchDates->get($sku);
-         $shipCalc = $fbaShipCalculations->get($sku);
+
+
          $ads = $adsDataBySku[$sku] ?? null;
-
-         $lmpaData = $this->lmpaDataService->getLmpaData($sku);
-
-         $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
-         $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
-         $FBA_SHIP = $this->fbaManualDataService->calculateFbaShipCalculation(
-            $fba->seller_sku,
-            $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-            $manual ? ($manual->data['send_cost'] ?? 0) : 0,
-            $manual ? ($manual->data['in_charges'] ?? 0) : 0
-         );
-         $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
-
-         // Calculate profit & ROI metrics
-         $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
-         $roi = ($LP > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
-         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $S_PRICE : 0;
-         $sroi = ($LP > 0) ? (($S_PRICE * 0.66) - $LP - $FBA_SHIP) / $LP : 0;
-
-         $pftPercentage = round($pft * 100, 2);
-         $roiPercentage = round($roi * 100, 2);
-         $spftPercentage = round($spft * 100, 2);
-         $sroiPercentage = round($sroi * 100, 2);
-         $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
-
-         // Calculate GPFT%
-         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
-         $gpft = 0;
-         if ($PRICE > 0) {
-            $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
-         }
-         $gpftPercentage = round($gpft * 100, 2);
 
          // Extract ads metrics
          $adsL30 = $ads['L30'] ?? null;
@@ -623,69 +467,10 @@ class FbaDataController extends Controller
             'Parent' => $product ? ($product->parent ?? '') : '',
             'SKU' => $sku,
             'Campaign_Name' => $campaignName,
-            'FBA_SKU' => $fba->seller_sku,
-            'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
-            'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
-            'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
+            'FBA_Quantity' => $fba->quantity_available ?? 0,
             'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
-            'l60_units' => $monthlySales ? ($monthlySales->l60_units ?? 0) : 0,
-            'FBA_Quantity' => $fba->quantity_available,
-            'Dil' => ($shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0) / max($shopifyInfo ? ($shopifyInfo->inv ?? 0) : 1, 1) * 100,
-            'FBA_Dil' => ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fba->quantity_available ?: 1) * 100,
-            'Current_Month_Views' => $fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?? 0) : 0,
-            'FBA_CVR' => $this->colorService->getCvrHtml($cvr),
-            'Listed' => $manual ? ($manual->data['listed'] ?? false) : false,
-            'Live' => $manual ? ($manual->data['live'] ?? false) : false,
-            'Pft%' => $pftPercentage,
-            'Pft%_HTML' => $this->colorService->getValueHtml($pftPercentage),
-            'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
-            'S_Price' => round($S_PRICE, 2),
-            'SPft%' => $this->colorService->getValueHtml($spftPercentage),
-            'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
-            'lmp_1' => $lmpaData['lowest_price'],
-            'lmp_data' => $lmpaData['data'],
-            'ACTION_ACTION' => $manual ? ($manual->data['action_action'] ?? '') : '',
-            'REV_COUNT' => $manual ? ($manual->data['rev_count'] ?? '') : '',
-            'RATING' => $manual ? ($manual->data['rating'] ?? '') : '',
-            'LP' => round($LP, 2),
-            'Fulfillment_Fee' => $fbaReportsInfo ? round(($fbaReportsInfo->fulfillment_fee ?? 0), 2) : 0,
-            'FBA_Fee_Manual' => $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-            'ASIN' => $fba->asin,
-            'Barcode' => $manual ? ($manual->data['barcode'] ?? '') : '',
-            'Dispatch_Date' => $dispatchDate ? $dispatchDate->dispatch_date : ($manual ? ($manual->data['dispatch_date'] ?? '') : ''),
-            'Weight' => $manual ? ($manual->data['weight'] ?? 0) : 0,
-            'WH_ACT' => $manual ? ($manual->data['wh_act'] ?? '') : '',
-            'UPC_Codes' => $manual ? ($manual->data['upc_codes'] ?? '') : '',
-            'Issues_at_WH' => $manual ? ($manual->data['issues_at_wh'] ?? '') : '',
-            'Issues_Remarks_Update' => $manual ? ($manual->data['issues_remarks_update'] ?? '') : '',
-            'Sent_By' => $manual ? ($manual->data['sent_by'] ?? '') : '',
-            'Quantity_in_each_box' => $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0,
-            'Send_Cost' => $manual ? ($manual->data['send_cost'] ?? 0) : 0,
-            'IN_Charges' => $manual ? ($manual->data['in_charges'] ?? 0) : 0,
-            'Total_quantity_sent' => $manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0,
-            'Total_Send_Cost' => $manual ? ($manual->data['total_send_cost'] ?? 0) : 0,
-            'Inbound_Quantity' => $manual ? ($manual->data['inbound_quantity'] ?? 0) : 0,
-            'FBA_Send' => $manual ? ($manual->data['fba_send'] ?? false) : false,
-            'Approval' => $manual ? ($manual->data['approval'] ?? false) : false,
-            'Profit_is_ok' => $manual ? ($manual->data['profit_is_ok'] ?? false) : false,
-            'Dimensions' => $manual ? ($manual->data['dimensions'] ?? '') : '',
-            'MSL' => $manual ? ($manual->data['msl'] ?? '') : '',
-            'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
-            'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
-            'Zero_Stock' => $manual ? ($manual->data['zero_stock'] ?? false) : false,
-            '0-to-90-days' => $manual ? ($manual->data['0-to-90-days'] ?? '') : '',
-            '91-to-180-days' => $manual ? ($manual->data['91-to-180-days'] ?? '') : '',
-            '181-to-270-days' => $manual ? ($manual->data['181-to-270-days'] ?? '') : '',
-            '271-to-365-days' => $manual ? ($manual->data['271-to-365-days'] ?? '') : '',
-            '365-plus-days' => $manual ? ($manual->data['365-plus-days'] ?? '') : '',
-            'FBA_Ship_Calculation' => $this->fbaManualDataService->calculateFbaShipCalculation(
-               $fba->seller_sku,
-               $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-               $manual ? ($manual->data['send_cost'] ?? 0) : 0,
-               $manual ? ($manual->data['in_charges'] ?? 0) : 0,
-               false
-            ),
-
+            'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
+            'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             // Ads Data L30
             'Ads_L30_Impressions' => $adsL30 ? ($adsL30->impressions ?? 0) : 0,
             'Ads_L30_Clicks' => $adsL30 ? ($adsL30->clicks ?? 0) : 0,
@@ -736,18 +521,6 @@ class FbaDataController extends Controller
             'Ads_L1_CPC' => $adsL1 && ($adsL1->clicks ?? 0) > 0 ? round(($adsL1->cost ?? 0) / ($adsL1->clicks ?? 1), 2) : 0,
             'Ads_L1_CVR' => $adsL1 && ($adsL1->clicks ?? 0) > 0 ? round((($adsL1->purchases14d ?? 0) / ($adsL1->clicks ?? 1)) * 100, 2) : 0,
 
-            'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
-            'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
-            'Mar' => $monthlySales ? ($monthlySales->mar ?? 0) : 0,
-            'Apr' => $monthlySales ? ($monthlySales->apr ?? 0) : 0,
-            'May' => $monthlySales ? ($monthlySales->may ?? 0) : 0,
-            'Jun' => $monthlySales ? ($monthlySales->jun ?? 0) : 0,
-            'Jul' => $monthlySales ? ($monthlySales->jul ?? 0) : 0,
-            'Aug' => $monthlySales ? ($monthlySales->aug ?? 0) : 0,
-            'Sep' => $monthlySales ? ($monthlySales->sep ?? 0) : 0,
-            'Oct' => $monthlySales ? ($monthlySales->oct ?? 0) : 0,
-            'Nov' => $monthlySales ? ($monthlySales->nov ?? 0) : 0,
-            'Dec' => $monthlySales ? ($monthlySales->dec ?? 0) : 0,
          ];
       })->values();
 
@@ -780,8 +553,8 @@ class FbaDataController extends Controller
          })
          ->where(function ($q) {
             $q->where('campaignName', 'NOT LIKE', '%.pt')
-              ->where('campaignName', 'NOT LIKE', '% pt')
-              ->where('campaignName', 'NOT LIKE', '%pt%');
+               ->where('campaignName', 'NOT LIKE', '% pt')
+               ->where('campaignName', 'NOT LIKE', '%pt%');
          })
          ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
          ->where('campaignStatus', '!=', 'ARCHIVED')
@@ -795,8 +568,8 @@ class FbaDataController extends Controller
          })
          ->where(function ($q) {
             $q->where('campaignName', 'LIKE', '%.pt')
-              ->orWhere('campaignName', 'LIKE', '% pt')
-              ->orWhereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) LIKE '% pt'");
+               ->orWhere('campaignName', 'LIKE', '% pt')
+               ->orWhereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) LIKE '% pt'");
          })
          ->where('campaignStatus', '!=', 'ARCHIVED')
          ->get();
@@ -852,8 +625,7 @@ class FbaDataController extends Controller
          $FBA_SHIP = $this->fbaManualDataService->calculateFbaShipCalculation(
             $fba->seller_sku,
             $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-            $manual ? ($manual->data['send_cost'] ?? 0) : 0,
-            $manual ? ($manual->data['in_charges'] ?? 0) : 0
+            $manual ? ($manual->data['send_cost'] ?? 0) : 0
          );
 
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
@@ -861,7 +633,7 @@ class FbaDataController extends Controller
          $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
          // --- Calculate all profit & ROI metrics ---
 
-         $sgpft = ($S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP ) / $S_PRICE : 0;
+         $sgpft = ($S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $S_PRICE : 0;
 
          $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
 
@@ -869,10 +641,10 @@ class FbaDataController extends Controller
 
          // $spft =  ($S_PRICE > 0) ? (($S_PRICE * ((1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)) - $adsPercentage) / $S_PRICE : 0;
          $sroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP - $adsPercentage)  / $LP : 0;
-         $sgroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP )  / $LP : 0;
+         $sgroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)  / $LP : 0;
 
 
-        
+
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
          // Calculate GPFT%
@@ -881,7 +653,7 @@ class FbaDataController extends Controller
 
          $roi = 0;
          if ($LP > 0) {
-           $roi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP ) / $LP;
+            $roi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $LP;
          }
 
          $spft = 0;
@@ -897,7 +669,7 @@ class FbaDataController extends Controller
 
          $groi = 0;
          if ($LP > 0) {
-            $groi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP ) / $LP;
+            $groi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $LP;
          }
 
 
@@ -905,7 +677,7 @@ class FbaDataController extends Controller
          $sgpftPercentage = round($sgpft * 100);
          $groiPercentage = round($groi * 100);
          $pftPercentage = round($pft * 100);
-         $roiPercentage = round($roi * 100); 
+         $roiPercentage = round($roi * 100);
          $spftPercentage = round($spft * 100);
          $sroiPercentage = round($sroi * 100);
          $sgroiPercentage = round($sgroi * 100);
@@ -980,9 +752,11 @@ class FbaDataController extends Controller
                $manual ? ($manual->data['send_cost'] ?? 0) : 0,
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
-            
+
             'Ads_Percentage' => ($monthlySales && ($monthlySales->l30_units ?? 0) > 0) ? $adsPercentage / ($monthlySales->l30_units ?? 1) : 0,
-            
+
+            'Total_Spend_L30' => $totalSpend,
+
             // TPFT calculation (Commission % - Ads %)
             'TPFT' => round($gpftPercentage - $adsPercentage, 2),
             'SPFT' => round($spftPercentage - $adsPercentage),
@@ -1049,6 +823,7 @@ class FbaDataController extends Controller
             'IN_Charges' => round($children->sum(fn($item) => is_numeric($item['IN_Charges']) ? $item['IN_Charges'] : 0), 2),
             'Commission_Percentage' => '',
             'Ads_Percentage' => '',
+            'Total_Spend_L30' => $children->sum('Total_Spend_L30'),
             'Done' => false,
             'Warehouse_INV_Reduction' => false,
             'FBA_Send' => false,
@@ -1106,7 +881,7 @@ class FbaDataController extends Controller
             $field = $s['field'];
             $dir = $s['dir']; // 'asc' or 'desc'
             if ($field === 'FBA_CVR') {
-               $finalData = $finalData->sort(function($a, $b) use ($dir, $field) {
+               $finalData = $finalData->sort(function ($a, $b) use ($dir, $field) {
                   $aVal = $this->extractCvrValue($a[$field] ?? '');
                   $bVal = $this->extractCvrValue($b[$field] ?? '');
                   if ($dir === 'asc') {
@@ -1189,7 +964,6 @@ class FbaDataController extends Controller
       // Extract only 3 fields
       $FBA_FEE_MANUAL = floatval($data['fba_fee_manual'] ?? 0);
       $SEND_COST = floatval($data['send_cost'] ?? 0);
-      $IN_CHARGES = floatval($data['in_charges'] ?? 0);
 
       // Calculate FBA_SHIP (Fulfillment_Fee + FBA_Fee_Manual + Send_Cost)
       $FBA_SHIP = $fulfillmentFee + $FBA_FEE_MANUAL + $SEND_COST;

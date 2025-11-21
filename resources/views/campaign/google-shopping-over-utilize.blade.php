@@ -341,6 +341,16 @@
                         }
                     },
                     {
+                        title: "Spend L7",
+                        field: "spend_L7",
+                        hozAlign: "right",
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
+                            var spend_L7 = parseFloat(row.spend_L7) || 0;
+                            return spend_L7.toFixed(2);
+                        }
+                    },
+                    {
                         title: "7 UB%",
                         field: "spend_L7",
                         hozAlign: "right",
