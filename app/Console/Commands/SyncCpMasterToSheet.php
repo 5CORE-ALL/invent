@@ -21,7 +21,7 @@ class SyncCpMasterToSheet extends Command
         $batchSize = 400;
         $batches = ceil($total / $batchSize);
 
-        Log::info("✅ Starting sync: {$total} rows → {$batches} batches");
+        $this->info("✅ Starting sync: {$total} rows → {$batches} batches");
 
         $inserted = 0;
 
@@ -92,10 +92,12 @@ class SyncCpMasterToSheet extends Command
                         "batch" => $index + 1,
                         "raw"   => $response->body()
                     ]);
+                    $this->error("❌ Batch " . ($index + 1) . " - Invalid JSON received");
                 }
 
                 if ($response->successful() && ($body['success'] ?? false)) {
 
+                    $this->info("✅ Batch " . ($index + 1) . " / $batches success - Updated: " . ($body["updated"] ?? 0) . ", Inserted: " . ($body["inserted"] ?? 0));
                     Log::info("✅ Batch " . ($index + 1) . " / $batches success", [
                         "received" => $body["received"] ?? 0,
                         "updated" => $body["updated"] ?? 0,
@@ -105,6 +107,7 @@ class SyncCpMasterToSheet extends Command
                     $inserted += count($formatted);
 
                 } else {
+                    $this->error("❌ Batch " . ($index + 1) . " FAILED - Status: " . $response->status());
                     Log::error("❌ Batch " . ($index + 1) . " FAILED", [
                         "status" => $response->status(),
                         "json"   => $body,
@@ -115,6 +118,7 @@ class SyncCpMasterToSheet extends Command
                 sleep(1);
 
             } catch (\Throwable $e) {
+                $this->error("❌ Batch " . ($index + 1) . " Exception: " . $e->getMessage());
                 Log::error("❌ Batch Exception", [
                     "batch" => $index + 1,
                     "msg" => $e->getMessage(),
@@ -122,6 +126,11 @@ class SyncCpMasterToSheet extends Command
             }
         }
 
-        Log::info("✅ Final Result: {$inserted} / {$total} uploaded.");
+        $this->info("✅ Final Result: {$inserted} / {$total} uploaded.");
+        Log::info("✅ Sync Complete", [
+            "total" => $total,
+            "inserted" => $inserted,
+            "batches" => $batches
+        ]);
     }
 }
