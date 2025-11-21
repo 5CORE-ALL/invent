@@ -76,7 +76,7 @@
                     <h5>Summary</h5>
                     <div class="row">
                         <div class="col-md-6">
-                            <strong>Total TACOS:</strong> <span id="total-tacos">0</span>
+                            <strong>Total TCOS:</strong> <span id="total-tcos">0%</span>
                         </div>
                         <div class="col-md-6">
                             <strong>Total Spend L30:</strong> <span id="total-spend-l30">0</span>
@@ -376,7 +376,7 @@
 
                         {
                             title: "TACOS",
-                            field: "Ads_Percentage",
+                            field: "TCOS_Percentage",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const data = cell.getRow().getData();
@@ -390,18 +390,6 @@
                                 }
                             }
                         },
-
-
-
-                        // {
-                        //     title: "Pft%",
-                        //     field: "Pft%",
-                        //     hozAlign: "center",
-                        //     formatter: function(cell) {
-                        //         return cell.getValue();
-                        //     },
-                        // },
-
 
                         {
                             title: "PRFT<br>%",
@@ -825,7 +813,7 @@
                         field === 'Dispatch_Date' || field === 'Weight' || field ===
                         'Quantity_in_each_box' ||
                         field === 'Total_quantity_sent' || field === 'Send_Cost' ||
-                        field === 'Commission_Percentage' || field === 'Ads_Percentage' ||
+                        field === 'Commission_Percentage' || field === 'TCOS_Percentage' ||
                         field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
                         'FBA_Fee_Manual') {
@@ -962,15 +950,15 @@
 
                 function updateSummary() {
                     const data = table.getData().filter(row => !row.is_parent); // Exclude parent rows
-                    let totalTacos = 0;
+                    let totalTcos = 0;
                     let totalSpendL30 = 0;
 
                     data.forEach(row => {
-                        totalTacos += parseFloat(row.Ads_Percentage || 0);
+                        totalTcos += parseFloat(row.TCOS_Percentage || 0);
                         totalSpendL30 += parseFloat(row.Total_Spend_L30 || 0);
                     });
 
-                    $('#total-tacos').text(totalTacos.toFixed(2) + '%');
+                    $('#total-tcos').text(totalTcos.toFixed(2) + '%');
                     $('#total-spend-l30').text('$' + totalSpendL30.toFixed(2));
                 }
 
