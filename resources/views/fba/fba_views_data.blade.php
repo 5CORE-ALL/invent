@@ -873,7 +873,7 @@
                                                 0.05)) -
                                             LP - FBA_SHIP) / PRICE);
                                     }
-                                    let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
+                                    let TPFT = GPFT - parseFloat(d.TCOS_Percentage || 0);
 
                                     updateData['GPFT%'] = `${(GPFT*100).toFixed(2)} %`;
                                     updateData['TPFT'] = TPFT.toFixed(0);
@@ -881,12 +881,12 @@
                                     console.log('Commission edited - Updated GPFT:', GPFT, 'TPFT:',
                                         TPFT);
 
-                                } else if (field === 'Ads_Percentage') {
-                                    // Only TPFT depends on ads percentage
-                                    let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
+                                } else if (field === 'TCOS_Percentage') {
+                                    // Only TPFT depends on TCOS percentage
+                                    let TPFT = GPFT - parseFloat(d.TCOS_Percentage || 0);
                                     updateData['TPFT'] = TPFT.toFixed(0);
 
-                                    console.log('Ads edited - Updated TPFT:', TPFT);
+                                    console.log('TCOS edited - Updated TPFT:', TPFT);
 
                                 } else {
                                     // Other fields affect PFT, ROI, GPFT, TPFT
@@ -907,7 +907,7 @@
                                             LP - FBA_SHIP) / PRICE);
                                     }
 
-                                    let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
+                                    let TPFT = GPFT - parseFloat(d.TCOS_Percentage || 0);
 
                                     updateData['Pft%'] = `${(PFT*100).toFixed(2)} %`;
                                     updateData['ROI%'] = (ROI * 100).toFixed(2);

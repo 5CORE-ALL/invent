@@ -617,10 +617,8 @@ class FbaDataController extends Controller
          $kwSales = $adsKW ? floatval($adsKW->sales14d ?? 0) : 0;
          $ptSales = $adsPT ? floatval($adsPT->sales14d ?? 0) : 0;
 
-         // Ads Percentage = (KW Spend + PT Spend) / (KW Sales + PT Sales)
+         // Calculate total spend for Total_Spend_L30 field
          $totalSpend = $kwSpend + $ptSpend;
-         $totalSales = $kwSales + $ptSales;
-         $adsPercentage = $totalSales > 0 ? (($totalSpend) * 100) : 0;
 
          // Calculate price_l30 (FBA_Price * l30_units)
          $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
@@ -652,10 +650,10 @@ class FbaDataController extends Controller
 
          $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
 
-
-
-         // $spft =  ($S_PRICE > 0) ? (($S_PRICE * ((1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)) - $adsPercentage) / $S_PRICE : 0;
-         $sroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP - $adsPercentage)  / $LP : 0;
+         // SROI: Calculate ROI percentage first, then subtract TCOS percentage
+         $sroiBase = ($LP > 0 && $S_PRICE > 0) ? (($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP) / $LP) * 100 : 0;
+         $sroi = $sroiBase - $tcosPercentage;
+         
          $sgroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)  / $LP : 0;
 
 
@@ -694,7 +692,7 @@ class FbaDataController extends Controller
          $pftPercentage = round($pft * 100);
          $roiPercentage = round($roi * 100);
          $spftPercentage = round($spft * 100);
-         $sroiPercentage = round($sroi * 100);
+         $sroiPercentage = round($sroi);
          $sgroiPercentage = round($sgroi * 100);
 
          return [
