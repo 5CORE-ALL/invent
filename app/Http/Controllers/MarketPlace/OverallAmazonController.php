@@ -365,7 +365,7 @@ class OverallAmazonController extends Controller
             $row['SHIP'] = $ship;
             $row['LP'] = $lp;
             
-            $price = $amazonSheet->price ? $amazonSheet->price : 0;
+            $price = isset($row['price']) ? floatval($row['price']) : 0;
             
             $row['PFT_percentage'] = round($price > 0 ? ((($price * $percentage) - $lp - $ship) / $price) : 0, 2);
 
@@ -1731,11 +1731,6 @@ class OverallAmazonController extends Controller
 
         if (!$sku || !$spriceData['sprice']) {
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
-        }
-
-        // ✅ Validate sprice is a valid positive number
-        if (!is_numeric($spriceData['sprice']) || $spriceData['sprice'] <= 0) {
-            return response()->json(['error' => 'Invalid sprice. Price must be greater than 0.'], 400);
         }
 
         $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
