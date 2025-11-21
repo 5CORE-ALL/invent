@@ -367,7 +367,7 @@ class OverallAmazonController extends Controller
             
             $price = isset($row['price']) ? floatval($row['price']) : 0;
             
-            $row['PFT_percentage'] = round($price > 0 ? ((($price * $percentage) - $lp - $ship) / $price) : 0, 2);
+            $row['PFT_percentage'] = $price > 0 ? ((($price * $percentage) - $lp - $ship) / $price) : 0;
 
             $sales90 = $matchedCampaignL90->sales30d ?? 0;
             $spend90 = $matchedCampaignL90->spend ?? 0;
