@@ -452,8 +452,15 @@
 
                                 // ❌ Stop if value is 0 or < 1
                                 if (isNaN(value) || value < 1) {
-                                    alert("Price must be 1 or greater.");
+                                    alert("Price must be 1 or greater. Cannot push 0 or invalid prices.");
                                     // Reset previous value
+                                    cell.restoreOldValue();
+                                    return;
+                                }
+
+                                // ✅ Additional safety check - prevent empty or 0 from being saved
+                                if (!value || value === 0) {
+                                    alert("Cannot save or push 0 price.");
                                     cell.restoreOldValue();
                                     return;
                                 }
@@ -468,29 +475,45 @@
                                         value: value,
                                         _token: '{{ csrf_token() }}'
                                     },
-                                    success: function() {
-                                        table.replaceData();
+                                    success: function(response) {
+                                        if (response.success === false) {
+                                            alert('Failed to save: ' + (response.error || 'Unknown error'));
+                                            cell.restoreOldValue();
+                                        } else {
+                                            table.replaceData();
+                                        }
+                                    },
+                                    error: function(xhr) {
+                                        alert('Error saving price: ' + (xhr.responseJSON?.error || 'Network error'));
+                                        cell.restoreOldValue();
                                     }
                                 });
 
-                                // ✔️ Push price to Amazon
-                                $.ajax({
-                                    url: '/push-fba-price',
-                                    method: 'POST',
-                                    data: {
-                                        sku: data.FBA_SKU,
-                                        price: value,
-                                        _token: '{{ csrf_token() }}'
-                                    },
-                                    success: function(result) {
-                                        console.log('Price pushed to Amazon', result);
-                                    },
-                                    error: function(xhr) {
-                                        console.error('Failed to push price', xhr
-                                            .responseJSON);
-                                    }
-                                });
-                            }
+                                // ✔️ Push price to Amazon (only if valid)
+                                if (value > 0) {
+                                    $.ajax({
+                                        url: '/push-fba-price',
+                                        method: 'POST',
+                                        data: {
+                                            sku: data.FBA_SKU,
+                                            price: value,
+                                            _token: '{{ csrf_token() }}'
+                                        },
+                                        success: function(result) {
+                                            console.log('Price pushed to Amazon', result);
+                                            if (result.success === false) {
+                                                alert('Failed to push price: ' + (result.error || 'Unknown error'));
+                                                cell.restoreOldValue();
+                                            }
+                                        },
+                                        error: function(xhr) {
+                                            console.error('Failed to push price', xhr.responseJSON);
+                                            alert('Error pushing price: ' + (xhr.responseJSON?.error || 'Network error'));
+                                            cell.restoreOldValue();
+                                        }
+                                    });
+                                }
+                            },
                         },
 
 

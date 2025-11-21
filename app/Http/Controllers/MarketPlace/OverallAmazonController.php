@@ -1733,6 +1733,11 @@ class OverallAmazonController extends Controller
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
 
+        // ✅ Validate sprice is a valid positive number
+        if (!is_numeric($spriceData['sprice']) || $spriceData['sprice'] <= 0) {
+            return response()->json(['error' => 'Invalid sprice. Price must be greater than 0.'], 400);
+        }
+
         $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
 
         // Decode value column safely

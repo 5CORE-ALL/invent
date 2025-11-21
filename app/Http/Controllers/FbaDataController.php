@@ -641,7 +641,11 @@ class FbaDataController extends Controller
             $manual ? ($manual->data['send_cost'] ?? 0) : 0
          );
 
+         // ✅ Validate s_price from database - prevent 0 values from being used
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
+         if ($S_PRICE < 0) {
+            $S_PRICE = 0; // Sanitize negative values
+         }
 
          $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
          // --- Calculate all profit & ROI metrics ---
@@ -716,7 +720,7 @@ class FbaDataController extends Controller
             'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
             'SGPFT%' => $this->colorService->getValueHtml($sgpftPercentage),
             'GROI%' => $this->colorService->getRoiHtmlForView($groiPercentage),
-            'S_Price' => round($S_PRICE, 2),
+            'S_Price' => $S_PRICE > 0 ? round($S_PRICE, 2) : '', // ✅ Show empty if 0 to prevent confusion
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
             'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
             'SGROI%' => $this->colorService->getRoiHtmlForView($sgroiPercentage),
@@ -1138,6 +1142,14 @@ class FbaDataController extends Controller
    {
       $sku = $request->input('sku');
       $price = $request->input('price');
+
+      // ✅ Validate price before pushing to Amazon
+      if (!$price || $price <= 0 || !is_numeric($price)) {
+         return response()->json([
+            'success' => false,
+            'error' => 'Invalid price. Price must be greater than 0.'
+         ], 400);
+      }
 
       $service = new AmazonSpApiService();
       $result = $service->updateAmazonPriceUS($sku, $price);
