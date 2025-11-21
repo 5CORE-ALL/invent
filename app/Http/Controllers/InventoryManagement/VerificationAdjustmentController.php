@@ -214,7 +214,13 @@ class VerificationAdjustmentController extends Controller
 
     public function getViewVerificationAdjustmentData(Request $request)
     {
-        $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', $sku)));
+        // $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', $sku)));
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse spaces
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace
+            return $sku;
+        };
 
         // Fetch product master
         $productMasterData = ProductMaster::all();
@@ -264,6 +270,27 @@ class VerificationAdjustmentController extends Controller
 
                 $adjustedQty = isset($item->TO_ADJUST) && is_numeric($item->TO_ADJUST) ? floatval($item->TO_ADJUST) : 0;
                 $item->LOSS_GAIN = round($adjustedQty * $lp, 2);
+
+                if ($sku === $normalizeSku('SS HD 2PK ORG WOB')) {
+                    Log::info("=== DEBUG SKU SS HD 2PK ORG WOB ===", [
+                        'Normalized_SKU' => $sku,
+                        'Shopify Record Exists' => isset($shopify),
+                        'Shopify Raw' => $shopify ? $shopify->toArray() : null,
+                        'Shopify_INV' => $shopify->inv ?? null,
+                        'Shopify_ON_HAND' => $shopify->on_hand ?? null,
+                        'Shopify_COMMITTED' => $shopify->committed ?? null,
+                        'Shopify_AVAILABLE_TO_SELL' => $shopify->available_to_sell ?? null,
+                        'Shopify_QUANTITY' => $shopify->quantity ?? null,
+
+                        'Inventory Record Exists' => isset($inv),
+                        'Inventory Raw' => $inv ? $inv->toArray() : null,
+
+                        'Final INV Sent' => $item->INV,
+                        'Final ON_HAND Sent' => $item->ON_HAND,
+                        'Final AVAILABLE_TO_SELL' => $item->AVAILABLE_TO_SELL,
+                    ]);
+                }
+
             }
 
             return $item;

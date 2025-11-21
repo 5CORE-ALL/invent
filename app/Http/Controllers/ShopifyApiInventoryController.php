@@ -33,6 +33,85 @@ class ShopifyApiInventoryController extends Controller
         $this->shopifyAccessToken = env('SHOPIFY_PASSWORD');
     }
 
+    /**
+     * Helper for Shopify GET requests with retry/backoff on 429 and 5xx.
+     */
+    private function shopifyGet(string $url, array $params = [])
+    {
+        $maxAttempts = 12;
+        $attempt = 0;
+        $delayMs = 2000; // starting backoff
+
+        while ($attempt < $maxAttempts) {
+            $attempt++;
+
+            try {
+                $response = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $this->shopifyAccessToken,
+                    'Content-Type' => 'application/json'
+                ])->timeout(120)->get($url, $params);
+
+                if ($response->successful()) {
+                    if ($attempt > 1) {
+                        Log::info('shopifyGet: success after retries', ['url' => $url, 'attempt' => $attempt]);
+                    }
+                    // Log rate headers on success for visibility
+                    $limitHeader = $response->header('X-Shopify-Shop-Api-Call-Limit');
+                    if ($limitHeader) {
+                        Log::info('shopifyGet: rate header', ['url' => $url, 'limit' => $limitHeader]);
+                    }
+                    return $response;
+                }
+
+                $status = $response->status();
+
+                // If rate-limited or server error, back off and retry
+                if ($status === 429 || $status >= 500) {
+                    $retryAfter = $response->header('Retry-After');
+                    $limitHeader = $response->header('X-Shopify-Shop-Api-Call-Limit');
+                    Log::warning('shopifyGet: received rate/server status, will retry', ['url' => $url, 'status' => $status, 'attempt' => $attempt, 'limit' => $limitHeader, 'retry_after' => $retryAfter]);
+
+                    // If server provided Retry-After, respect it (seconds)
+                    if ($retryAfter !== null && is_numeric($retryAfter)) {
+                        $sleepSec = (float) $retryAfter + (rand(100, 500) / 1000); // add 100-500ms jitter
+                        usleep((int)($sleepSec * 1000000));
+                    } else {
+                        // Sleep with exponential backoff + jitter (convert ms to microseconds)
+                        $jitter = rand(100, 500); // ms
+                        usleep(($delayMs + $jitter) * 1000);
+                        $delayMs *= 2;
+                    }
+
+                    continue;
+                }
+
+                // For other 4xx errors, don't retry
+                Log::error('shopifyGet: non-retriable response', ['url' => $url, 'status' => $status, 'body' => $response->body()]);
+                return $response;
+
+            } catch (\Exception $e) {
+                // Network/timeout exceptions: log and backoff with jitter
+                Log::warning('shopifyGet exception, will retry', ['url' => $url, 'err' => $e->getMessage(), 'attempt' => $attempt]);
+                $jitter = rand(100, 500);
+                usleep(($delayMs + $jitter) * 1000);
+                $delayMs *= 2;
+                continue;
+            }
+        }
+
+        Log::error('shopifyGet: exhausted retries', ['url' => $url]);
+        // Final attempt without swallowing exception — return last response or throw
+        try {
+            return Http::withHeaders([
+                'X-Shopify-Access-Token' => $this->shopifyAccessToken,
+                'Content-Type' => 'application/json'
+            ])->timeout(120)->get($url, $params);
+        } catch (\Exception $e) {
+            Log::error('shopifyGet final attempt failed', ['url' => $url, 'err' => $e->getMessage()]);
+            throw $e;
+        }
+    }
+
     public function saveDailyInventory()
     {
         try {
@@ -54,21 +133,40 @@ class ShopifyApiInventoryController extends Controller
             $simplifiedData = $this->processSimplifiedData($ordersData['orders'], $inventoryData);
             $this->saveSkus($simplifiedData);
 
-            $liveInventory = $this->fetchInventoryWithCommitment();
-            if (!empty($liveInventory)) {
-                DB::transaction(function () use ($liveInventory) {
-                    foreach ($liveInventory as $sku => $data) {
-                        ShopifySku::where('sku', $sku)->update([
-                            'available_to_sell' => $data['available_to_sell'] ?? 0,
-                            'committed'        => $data['committed'] ?? 0,
-                            'on_hand'          => $data['on_hand'] ?? 0,
-                            'updated_at'       => now(),
-                        ]);
-                    }
+            // Update on_hand directly from products API data (inventoryData)
+            if (!empty($inventoryData)) {
+                DB::transaction(function () use ($inventoryData) {
+                    foreach ($inventoryData as $rawSku => $data) {
+                            // Normalize key and update by normalized comparison to avoid mismatches
+                            $normSku = strtoupper(preg_replace('/\s+/u', ' ', trim($rawSku)));
+
+                            // Debug specific SKU
+                            if ($normSku === 'SS HD 2PK ORG WOB') {
+                                Log::info('=== saveDailyInventory: Updating SS HD 2PK ORG WOB from products API ===', [
+                                    'raw_sku' => $rawSku,
+                                    'normalized_sku' => $normSku,
+                                    'on_hand_from_products' => $data['on_hand'] ?? 0,
+                                    'available_to_sell' => $data['available_to_sell'] ?? 0,
+                                    'image_src' => $data['image_src'] ?? null,
+                                    'image_url' => $data['image_url'] ?? null,
+                                ]);
+                            }
+
+                            $affected = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normSku])->update([
+                                'on_hand'          => $data['on_hand'] ?? 0,
+                                'available_to_sell' => $data['available_to_sell'] ?? 0,
+                                'image_src'        => $data['image_src'] ?? null,
+                                'updated_at'       => now(),
+                            ]);
+
+                            if ($normSku === 'SS HD 2PK ORG WOB') {
+                                Log::info('=== saveDailyInventory: DB rows updated ===', ['affected_rows' => $affected]);
+                            }
+                        }
                 });
                 Cache::forget('shopify_skus_list');
             } else {
-                Log::warning('No live inventory returned from Shopify to update live values.');
+                Log::warning('No inventory data from products API to update.');
             }
 
             $duration = round(microtime(true) - $startTime, 2);
@@ -96,13 +194,8 @@ class ShopifyApiInventoryController extends Controller
                 $queryParams['page_info'] = $pageInfo;
             }
 
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $this->shopifyAccessToken,
-                'Content-Type' => 'application/json'
-            ])
-                ->timeout(120)
-                ->retry(3, 500)
-                ->get("https://{$this->shopifyStoreUrl}/admin/api/2025-01/products.json", $queryParams);
+            $url = "https://{$this->shopifyStoreUrl}/admin/api/2025-01/products.json";
+            $response = $this->shopifyGet($url, $queryParams);
 
             if (!$response->successful()) {
                 Log::error("Failed to fetch products (Page {$pageCount}): " . $response->body());
@@ -161,10 +254,10 @@ class ShopifyApiInventoryController extends Controller
             $pageInfo = $this->getNextPageInfo($response);
             $hasMore = (bool) $pageInfo;
 
-            // Avoid rate limiting - increased delay to 1 second
+            // Avoid rate limiting - increased delay to 4 seconds
             if ($hasMore) {
-                Log::info("Waiting 1s before next page...");
-                usleep(1000000); // 1s delay
+                Log::info("Waiting 4s before next page...");
+                usleep(6000000); // 4s delay
             }
         }
 
@@ -199,9 +292,7 @@ class ShopifyApiInventoryController extends Controller
 
         // Step 1: Get Ohio Location ID
         $locationId = null;
-        $locationResponse = Http::withHeaders([
-            'X-Shopify-Access-Token' => $token,
-        ])->get("$shopUrl/admin/api/2025-01/locations.json");
+        $locationResponse = $this->shopifyGet("$shopUrl/admin/api/2025-01/locations.json");
 
         if ($locationResponse->successful()) {
             foreach ($locationResponse->json('locations') as $loc) {
@@ -214,7 +305,7 @@ class ShopifyApiInventoryController extends Controller
         }
 
         // Rate limiting delay
-        usleep(1000000); // 1s delay
+        usleep(6000000); // 4s delay
 
         if (!$locationId) {
             Log::error('Ohio location not found.');
@@ -227,9 +318,7 @@ class ShopifyApiInventoryController extends Controller
         $nextPageUrl = "$shopUrl/admin/api/2025-01/products.json?limit=250&fields=variants,image,title,id";
 
         do {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->get($nextPageUrl);
+            $response = $this->shopifyGet($nextPageUrl);
 
             if (!$response->successful()) {
                 Log::error('Failed to fetch products', ['url' => $nextPageUrl]);
@@ -250,15 +339,17 @@ class ShopifyApiInventoryController extends Controller
                         $skuMap[$sku] = $iid;
                         $imageMap[$sku] = $mainImage;
 
-                        // Log every SKU for debugging
-                        Log::info('Fetched Shopify SKU', [
-                            'raw_sku' => $rawSku,
-                            'normalized_sku' => $sku,
-                            'inventory_item_id' => $iid,
-                            'product_id' => $product['id'],
-                            'product_title' => $product['title'] ?? null,
-                            'image_url' => $mainImage,
-                        ]);
+                        // Log specific SKU for debugging
+                        if ($sku === 'SS HD 2PK ORG WOB') {
+                            Log::info('=== fetchInventoryWithCommitment: Found SS HD 2PK ORG WOB ===', [
+                                'raw_sku' => $rawSku,
+                                'normalized_sku' => $sku,
+                                'inventory_item_id' => $iid,
+                                'product_id' => $product['id'],
+                                'product_title' => $product['title'] ?? null,
+                                'image_url' => $mainImage,
+                            ]);
+                        }
                     }
                 }
             }
@@ -271,7 +362,7 @@ class ShopifyApiInventoryController extends Controller
 
             // Rate limiting delay between product pages
             if ($nextPageUrl) {
-                usleep(1000000); // 1s delay
+                usleep(6000000); // 4s delay
             }
         } while ($nextPageUrl);
 
@@ -280,9 +371,7 @@ class ShopifyApiInventoryController extends Controller
         $chunks = array_chunk(array_values($skuMap), 50);
 
         foreach ($chunks as $chunk) {
-            $invResponse = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->get("$shopUrl/admin/api/2024-01/inventory_levels.json", [
+            $invResponse = $this->shopifyGet("$shopUrl/admin/api/2024-01/inventory_levels.json", [
                 'inventory_item_ids' => implode(',', $chunk),
                 'location_ids' => $locationId,
             ]);
@@ -298,14 +387,12 @@ class ShopifyApiInventoryController extends Controller
             }
 
             // Rate limiting delay between inventory chunks
-            usleep(1000000); // 1s delay
+            usleep(6000000); // 4s delay
         }
 
         // Step 4: Fetch Committed Quantities from Orders
         $committedBySku = [];
-        $orderResponse = Http::withHeaders([
-            'X-Shopify-Access-Token' => $token,
-        ])->get("$shopUrl/admin/api/2024-01/orders.json", [
+        $orderResponse = $this->shopifyGet("$shopUrl/admin/api/2024-01/orders.json", [
             'status' => 'open',
             'fulfillment_status' => 'unfulfilled',
             'limit' => 250,
@@ -327,7 +414,7 @@ class ShopifyApiInventoryController extends Controller
         }
 
         // Rate limiting delay before final processing
-        usleep(1000000); // 1s delay
+        usleep(6000000); // 6s delay
 
         // Step 5: Merge Final Inventory
         $final = [];
@@ -342,6 +429,17 @@ class ShopifyApiInventoryController extends Controller
                 'on_hand' => $onHand,
                 'image_url' => $imageMap[$sku] ?? null,
             ];
+
+            if ($sku === 'SS HD 2PK ORG WOB') {
+                Log::info('=== fetchInventoryWithCommitment: Final inventory for SS HD 2PK ORG WOB ===', [
+                    'sku' => $sku,
+                    'inventory_item_id' => $iid,
+                    'available_from_levels' => $available,
+                    'committed_from_orders' => $committed,
+                    'calculated_on_hand' => $onHand,
+                    'image_url' => $imageMap[$sku] ?? null,
+                ]);
+            }
         }
 
 
@@ -367,24 +465,34 @@ class ShopifyApiInventoryController extends Controller
 
         while ($hasMore && $attempts < 3) {
             $pageCount++;
-            $response = $this->makeApiRequest($startDate, $endDate, $sku, $pageInfo);
+            
+            try {
+                $response = $this->makeApiRequest($startDate, $endDate, $sku, $pageInfo);
 
-            if ($response->successful()) {
-                $orders = $response->json()['orders'] ?? [];
-                $filteredOrders = $this->filterOrders($orders, $sku);
-                $allOrders = array_merge($allOrders, $filteredOrders);
+                if ($response->successful()) {
+                    $orders = $response->json()['orders'] ?? [];
+                    $filteredOrders = $this->filterOrders($orders, $sku);
+                    $allOrders = array_merge($allOrders, $filteredOrders);
 
-                $pageInfo = $this->getNextPageInfo($response);
-                $hasMore = (bool) $pageInfo;
-                $attempts = 0;
+                    $pageInfo = $this->getNextPageInfo($response);
+                    $hasMore = (bool) $pageInfo;
+                    $attempts = 0;
 
-                if ($hasMore) {
-                    usleep(1000000); // 1s delay
+                    if ($hasMore) {
+                        usleep(6000000); // 4s delay
+                    }
+                } else {
+                    $attempts++;
+                    Log::warning("Order fetch attempt {$attempts} failed: " . $response->body());
+                    sleep(2);
                 }
-            } else {
+            } catch (\Exception $e) {
                 $attempts++;
-                Log::warning("Order fetch attempt {$attempts} failed: " . $response->body());
-                sleep(1);
+                Log::error("Order fetch exception on attempt {$attempts}: " . $e->getMessage());
+                if ($attempts >= 3) {
+                    break;
+                }
+                sleep(3);
             }
         }
 
@@ -416,13 +524,8 @@ class ShopifyApiInventoryController extends Controller
             }
         }
 
-        return Http::withHeaders([
-            'X-Shopify-Access-Token' => $this->shopifyAccessToken,
-            'Content-Type' => 'application/json'
-        ])
-            ->timeout(120)
-            ->retry(3, 500)
-            ->get("https://{$this->shopifyStoreUrl}/admin/api/2025-01/orders.json", $queryParams);
+        $url = "https://{$this->shopifyStoreUrl}/admin/api/2025-01/orders.json";
+        return $this->shopifyGet($url, $queryParams);
     }
 
     protected function filterOrders(array $orders, ?string $sku): array
@@ -505,9 +608,25 @@ class ShopifyApiInventoryController extends Controller
             // Batch processing for better performance
             foreach (array_chunk($simplifiedData, 1000) as $chunk) {
                 foreach ($chunk as $item) {
+                    // Normalize SKU before saving to ensure consistency across updates
+                    $normSku = strtoupper(preg_replace('/\s+/u', ' ', trim($item['sku'] ?? '')));
+
+                    if ($normSku === 'SS HD 2PK ORG WOB') {
+                        Log::info('=== saveSkus: Saving SS HD 2PK ORG WOB ===', [
+                            'raw_sku' => $item['sku'] ?? '',
+                            'normalized_sku' => $normSku,
+                            'variant_id' => $item['variant_id'],
+                            'quantity_L30' => $item['quantity'],
+                            'inv' => $item['inventory'],
+                            'price' => $item['price'],
+                            'image_src' => $item['image_src'],
+                        ]);
+                    }
+
                     ShopifySku::updateOrCreate(
-                        ['sku' => $item['sku']],
+                        ['sku' => $normSku],
                         [
+                            'sku' => $normSku,
                             'quantity' => $item['quantity'],
                             'variant_id' => $item['variant_id'],
                             'inv' => $item['inventory'],
