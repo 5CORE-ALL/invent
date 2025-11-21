@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
+use App\Models\OnSeaTransit;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
 use App\Models\UpcomingContainer;
@@ -79,23 +80,36 @@ class UpComingContainerController extends Controller
             ->orderBy('id', 'desc')
             ->get();
 
-        $data = $upcomingContainers->map(function ($upContainers) {
+        $onSeaTransit = OnSeaTransit::select('container_sl_no', 'etd', 'eta_date_ohio')
+            ->get()
+            ->keyBy('container_sl_no'); 
+        $data = $upcomingContainers->map(function ($upContainers) use ($onSeaTransit) {
+
+            preg_match('/\d+$/', $upContainers->container_number, $match);
+            $containerNo = $match[0] ?? null;
+
+            $onSea = $containerNo ? $onSeaTransit->get($containerNo) : null;
+
             return [
-                'id'              => $upContainers->id,
-                'container_number'=> $upContainers->container_number,
-                'supplier_id'     => $upContainers->supplier_id,
-                'supplier_name'   => $upContainers->supplier->name ?? '',
-                'area'            => $upContainers->area,
-                'order_link'      => $upContainers->order_link,
-                'invoice_value'   => $upContainers->invoice_value,
-                'paid'            => $upContainers->paid,
-                'balance'         => $upContainers->balance,
-                'payment_terms'        => $upContainers->payment_terms
+                'id'               => $upContainers->id,
+                'container_number' => $upContainers->container_number,
+                'supplier_id'      => $upContainers->supplier_id,
+                'supplier_name'    => $upContainers->supplier->name ?? '',
+                'area'             => $upContainers->area,
+                'order_link'       => $upContainers->order_link,
+                'invoice_value'    => $upContainers->invoice_value,
+                'paid'             => $upContainers->paid,
+                'balance'          => $upContainers->balance,
+                'payment_terms'    => $upContainers->payment_terms,
+
+                'etd'              => $onSea->etd ?? null,
+                'eta_date_ohio'    => $onSea->eta_date_ohio ?? null,
             ];
         });
 
         return response()->json($data);
     }
+
 
     public function deleteUpcomingContainer(Request $request)
     {
