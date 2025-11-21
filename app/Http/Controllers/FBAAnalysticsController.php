@@ -295,6 +295,14 @@ class FBAAnalysticsController extends Controller
       $field = $request->input('field');
       $value = $request->input('value');
 
+      // ✅ Validate s_price field to prevent 0 or negative prices
+      if ($field === 's_price' && (!$value || $value <= 0 || !is_numeric($value))) {
+         return response()->json([
+            'success' => false,
+            'error' => 'Invalid price. S_Price must be greater than 0.'
+         ], 400);
+      }
+
       $manual = FbaManualData::where('sku', $sku)->first();
 
       if (!$manual) {

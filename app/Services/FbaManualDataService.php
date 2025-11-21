@@ -218,6 +218,16 @@ class FbaManualDataService
                 if (!empty($row[7])) $updateData['send_cost'] = $this->cleanText($row[7]);
                 if (!empty($row[8])) $updateData['commission_percentage'] = $this->cleanText($row[8]);
                 
+                // ✅ Validate s_price if provided in CSV (column 9)
+                if (isset($row[9]) && !empty($row[9])) {
+                    $sPrice = floatval($this->cleanText($row[9]));
+                    if ($sPrice > 0) {
+                        $updateData['s_price'] = $sPrice;
+                    } else {
+                        Log::warning("Invalid s_price rejected for SKU: {$sku}", ['s_price' => $row[9]]);
+                    }
+                }
+                
                 $manual->data = array_merge($existingData, $updateData);
                 
                 $manual->save();
@@ -252,8 +262,8 @@ class FbaManualDataService
 
         $callback = function () {
             $file = fopen('php://output', 'w');
-            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'Commission Percentage']);
-            fputcsv($file, ['SAMPLE-SKU-001', '10x8x6', '2.5', '10', '100', '500', '20', '50', '10']);
+            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'Commission Percentage', 'S Price']);
+            fputcsv($file, ['SAMPLE-SKU-001', '10x8x6', '2.5', '10', '100', '500', '20', '50', '10', '29.99']);
             fclose($file);
         };
 
