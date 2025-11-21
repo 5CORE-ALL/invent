@@ -365,7 +365,7 @@ class OverallAmazonController extends Controller
             $row['SHIP'] = $ship;
             $row['LP'] = $lp;
             
-            $price = isset($row['price']) ? floatval($row['price']) : 0;
+            $price = $amazonSheet->price ? $amazonSheet->price : 0;
             
             $row['PFT_percentage'] = round($price > 0 ? ((($price * $percentage) - $lp - $ship) / $price) : 0, 2);
 
