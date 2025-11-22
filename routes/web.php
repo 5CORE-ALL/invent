@@ -2133,12 +2133,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/amazon/fba/kw/ads/data', 'getAmazonFbaKwAdsData');
         Route::get('/amazon/fba/pt/ads/data', 'getAmazonFbaPtAdsData');
+        Route::post('/update-amazon-nr-nrl-fba-data', 'updateNrNRLFbaData');
     });
 
     Route::controller(AmazonMissingAdsController::class)->group(function () {
         Route::get('/amazon/missing/ads', 'index')->name('amazon.missing.ads');
         Route::get('/amazon/missing/ads/data', 'getAmazonMissingAdsData');
         Route::get('adv-amazon/missing/save-data', 'getAmzonAdvSaveMissingData')->name('adv-amazon.missing.save-data');
+
+        //FBA
+        Route::get('/amazon/fba/missing/ads', 'fbaMissingAdsView')->name('amazon.fba.missing.ads');
+        Route::get('/amazon/fba/missing/ads/data', 'getAmazonFbaMissingAdsData');
     });
     // ebay ads section
     Route::controller(EbayOverUtilizedBgtController::class)->group(function () {

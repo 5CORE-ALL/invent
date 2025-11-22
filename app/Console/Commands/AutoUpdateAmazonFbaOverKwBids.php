@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use Illuminate\Console\Command;
 use App\Models\AmazonSpCampaignReport;
-use App\Models\ProductMaster;
+use App\Models\FbaTable;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Log;
 
@@ -44,43 +44,39 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
 
     public function getAutomateAmzUtilizedBgtKw()
     {
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
+        // Get all FBA records
+        $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+            ->orderBy('seller_sku', 'asc')
             ->get();
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        // Extract seller SKUs for campaigns matching
+        $sellerSkus = $fbaData->pluck('seller_sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        // Get base SKUs (without FBA) for Shopify data
+        $baseSkus = $fbaData->map(function ($item) {
+            $sku = $item->seller_sku;
+            $base = preg_replace('/\s*FBA\s*/i', '', $sku);
+            return strtoupper(trim($base));
+        })->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $baseSkus)->get()->keyBy('sku');
 
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
+            ->where(function ($q) use ($sellerSkus) {
+                foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
                 }
-            })
-            ->where(function ($q) {
-                $q->where('campaignName', 'LIKE', '%FBA%')
-                ->orWhere('campaignName', 'LIKE', '%fba%')
-                ->orWhere('campaignName', 'LIKE', '%FBA.%')
-                ->orWhere('campaignName', 'LIKE', '%fba.%');
             })
             ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
             ->get();
 
         $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L1')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
+            ->where(function ($q) use ($sellerSkus) {
+                foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
                 }
-            })
-            ->where(function ($q) {
-                $q->where('campaignName', 'LIKE', '%FBA%')
-                ->orWhere('campaignName', 'LIKE', '%fba%')
-                ->orWhere('campaignName', 'LIKE', '%FBA.%')
-                ->orWhere('campaignName', 'LIKE', '%fba.%');
             })
             ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
             ->get();
@@ -88,28 +84,33 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
 
         $result = [];
 
-        foreach ($productMasters as $pm) {
-            $sku = strtoupper($pm->sku);
+        foreach ($fbaData as $fba) {
+            $sellerSku = $fba->seller_sku;
+            $sellerSkuUpper = strtoupper(trim($sellerSku));
+            
+            // Get base SKU (without FBA)
+            $baseSku = preg_replace('/\s*FBA\s*/i', '', $sellerSku);
+            $baseSkuUpper = strtoupper(trim($baseSku));
 
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData[$baseSkuUpper] ?? null;
 
-            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
+            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
 
                 return (
-                    (str_ends_with($cleanName, $sku . ' FBA') || str_ends_with($cleanName, $sku . ' FBA.'))
-                    && !str_ends_with($cleanName, $sku . ' PT')
-                    && !str_ends_with($cleanName, $sku . ' PT.')
+                    str_contains($cleanName, $sellerSkuUpper)
+                    && !str_ends_with($cleanName, ' PT')
+                    && !str_ends_with($cleanName, ' PT.')
                 );
             });
 
-            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
+            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
 
                 return (
-                    (str_ends_with($cleanName, $sku . ' FBA') || str_ends_with($cleanName, $sku . ' FBA.'))
-                    && !str_ends_with($cleanName, $sku . ' PT')
-                    && !str_ends_with($cleanName, $sku . ' PT.')
+                    str_contains($cleanName, $sellerSkuUpper)
+                    && !str_ends_with($cleanName, ' PT')
+                    && !str_ends_with($cleanName, ' PT.')
                 );
             });
 

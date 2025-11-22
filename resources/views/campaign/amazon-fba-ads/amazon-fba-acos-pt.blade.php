@@ -290,7 +290,8 @@
                     },
                     {
                         title: "Parent",
-                        field: "parent"
+                        field: "parent",
+                        visible: false
                     },
                     {
                         title: "SKU",
