@@ -24,89 +24,7 @@ class FetchPlsData extends Command
      */
     protected $description = 'Command description';
 
-    /**
-     * Execute the console command.
-     */
-    // public function handle()
-    // {
-    //     $shopUrl  = env('PROLIGHTSOUNDS_SHOPIFY_DOMAIN');
-    //     $apiKey   = env('PROLIGHTSOUNDS_SHOPIFY_API_KEY');
-    //     $password = env('PROLIGHTSOUNDS_SHOPIFY_PASSWORD');
-    //     $version  = "2025-07";
-
-    //     $createdAtMin = Carbon::now('America/New_York')->subDays(60)->toIso8601String();
-    //     $url = "https://{$apiKey}:{$password}@{$shopUrl}/admin/api/{$version}/orders.json?status=any&limit=250&created_at_min={$createdAtMin}";
-
-    //     $sales = []; // sku => [pls_l30, pls_l60, price]
-
-    //     do {
-    //         $response = Http::get($url);
-
-    //         if ($response->failed()) {
-    //             $this->error("Shopify API Error: " . $response->body());
-    //             Log::error("ProLightSounds Shopify API Error: " . $response->body());
-    //             return;
-    //         }
-
-    //         $orders = $response->json()['orders'] ?? [];
-
-    //         foreach ($orders as $o) {
-    //             $created = Carbon::parse($o['created_at'], 'America/New_York');
-
-    //             foreach ($o['line_items'] ?? [] as $item) {
-    //                 $sku = $item['sku'] ?? null;
-    //                 $qty = $item['quantity'] ?? 0;
-    //                 $price = $item['price'] ?? 0;
-
-    //                 if (!$sku) continue;
-
-    //                 if (!isset($sales[$sku])) {
-    //                     $sales[$sku] = ['pls_l30' => 0, 'pls_l60' => 0, 'price' => $price];
-    //                 }
-
-    //                 // Update price (latest one wins)
-    //                 $sales[$sku]['price'] = $price;
-
-    //                 if ($created->greaterThanOrEqualTo(now('America/New_York')->subDays(30))) {
-    //                     $sales[$sku]['pls_l30'] += $qty;
-    //                 } else {
-    //                     $sales[$sku]['pls_l60'] += $qty;
-    //                 }
-    //             }
-    //         }
-
-    //         // Pagination handling
-    //         $linkHeader = $response->header('Link');
-    //         $nextPageUrl = null;
-
-    //         if ($linkHeader) {
-    //             preg_match('/<([^>]+)>; rel="next"/', $linkHeader, $matches);
-    //             if (!empty($matches[1])) {
-    //                 $nextPageUrl = $matches[1];
-    //             }
-    //         }
-
-    //         $url = $nextPageUrl;
-
-    //     } while ($url);
-
-    //     // Store into pls_products table
-    //     foreach ($sales as $sku => $data) {
-    //         PLSProduct::updateOrCreate(
-    //             ['sku' => $sku],
-    //             [
-    //                 'price'   => $data['price'],
-    //                 'pls_l30' => $data['pls_l30'],
-    //                 'pls_l60' => $data['pls_l60'],
-    //             ]
-    //         );
-    //     }
-
-    //     $this->info("PLS products synced successfully into pls_products table!");
-    // }
-
-
-     public function handle()
+    public function handle()
     {
         $shopUrl  = env('PROLIGHTSOUNDS_SHOPIFY_DOMAIN');
         $apiKey   = env('PROLIGHTSOUNDS_SHOPIFY_API_KEY');
@@ -173,7 +91,6 @@ class FetchPlsData extends Command
                 }
             }
             $url = $nextPageUrl;
-
         } while ($url);
 
         // Store into pls_products table
@@ -190,5 +107,4 @@ class FetchPlsData extends Command
 
         $this->info("ProLightSounds products synced into pls_products table!");
     }
-    
 }

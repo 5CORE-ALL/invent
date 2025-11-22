@@ -2620,6 +2620,8 @@ $.ajax({
                             data-ship="${
                                 r.prefix === 'temu' ? (data.temu_ship || '') : (data.SHIP || '')
                             }"
+                            data-temu_ship="${data.temu_ship || 0}"
+                            data-ebay2_ship="${data.ebay2_ship || 0}"
                             data-type="${r.prefix}">
 
                         <!-- Push to Marketplace -->
@@ -2638,7 +2640,7 @@ $.ajax({
                             let value, textColor, bgColor;
                             
                             if (r.prefix === 'amz' && data.amz_spft) {
-                                value = Math.round(data.amz_spfst);
+                                value = Math.round(data.amz_spft);
                             } else if (r.prefix === 'ebay' && data.ebay_spft) {
                                 value = Math.round(data.ebay_spft);
                             } else if (r.prefix === 'shopifyb2c' && data.shopifyb2c_spft) {
@@ -2657,6 +2659,18 @@ $.ajax({
                                 value = Math.round(data.reverb_spft);
                             } else if (r.prefix === 'walmart' && data.walmart_spft) {
                                 value = Math.round(data.walmart_spft);
+                            } else if (r.prefix === 'wayfair' && data.wayfair_spft) {
+                                value = Math.round(data.wayfair_spft);
+                            } else if (r.prefix === 'mercariwoship' && data.mercariwoship_spft) {
+                                value = Math.round(data.mercariwoship_spft);
+                            } else if (r.prefix === 'mercariwship' && data.mercariwship_spft) {
+                                value = Math.round(data.mercariwship_spft);
+                            } else if (r.prefix === 'fbmarketplace' && data.fbmarketplace_spft) {
+                                value = Math.round(data.fbmarketplace_spft);
+                            } else if (r.prefix === 'business5core' && data.business5core_spft) {
+                                value = Math.round(data.business5core_spft);
+                            } else if (r.prefix === 'pls' && data.pls_spft) {
+                                value = Math.round(data.pls_spft);
                             }
                             else if (r.prefix === 'shein' && data.shein_spft) {
                                 value = Math.round(data.shein_spft);
@@ -2720,6 +2734,18 @@ $.ajax({
                                 value = Math.round(data.reverb_sroi);
                             } else if (r.prefix === 'walmart' && data.walmart_sroi) {
                                 value = Math.round(data.walmart_sroi);
+                            } else if (r.prefix === 'wayfair' && data.wayfair_sroi) {
+                                value = Math.round(data.wayfair_sroi);
+                            } else if (r.prefix === 'mercariwoship' && data.mercariwoship_sroi) {
+                                value = Math.round(data.mercariwoship_sroi);
+                            } else if (r.prefix === 'mercariwship' && data.mercariwship_sroi) {
+                                value = Math.round(data.mercariwship_sroi);
+                            } else if (r.prefix === 'fbmarketplace' && data.fbmarketplace_sroi) {
+                                value = Math.round(data.fbmarketplace_sroi);
+                            } else if (r.prefix === 'business5core' && data.business5core_sroi) {
+                                value = Math.round(data.business5core_sroi);
+                            } else if (r.prefix === 'pls' && data.pls_sroi) {
+                                value = Math.round(data.pls_sroi);
                             } else if (r.prefix === 'shein' && data.shein_sroi) {
                                 value = Math.round(data.shein_sroi);
                             } else if (r.prefix === 'bestbuy' && data.bestbuy_sroi) {
@@ -2731,8 +2757,6 @@ $.ajax({
                             } else if (r.prefix === 'aliexpress' && data.aliexpress_sroi) {
                                 value = Math.round(data.aliexpress_sroi);
                             }
-
-
 
                             if (value !== undefined) {
                                 if (value <= 0) {
@@ -2785,6 +2809,7 @@ $.ajax({
             topSaveBtn.dataset.lp = data.LP || 0;
             topSaveBtn.dataset.ship = data.SHIP || 0;
             topSaveBtn.dataset.temuShip = data.temu_ship || 0;
+            topSaveBtn.dataset.ebay2Ship = data.ebay2_ship || 0;
             topPushPrice.value = data.shopifyb2c_price || data.ebay_price || data.amz_price || '';
             
             // Update modal title with SKU
@@ -3110,6 +3135,7 @@ $.ajax({
             const LP = parseFloat($input.data('lp')) || 0;
             const SHIP = parseFloat($input.data('ship')) || 0;
             const temu_ship = parseFloat($input.data('temu_ship')) || 0;
+            const ebay2_ship = parseFloat($input.data('ebay2_ship')) || 0;
 
             if (!sku || !type) return;
 
@@ -3131,7 +3157,8 @@ $.ajax({
                     sprice: sprice,
                     LP: LP,
                     SHIP: SHIP,
-                    temu_ship: temu_ship
+                    temu_ship: temu_ship,
+                    ebay2_ship: ebay2_ship
                 },
                 beforeSend: function() {
                     $('#savePricingBtn').html('<i class="fa fa-spinner fa-spin"></i> Saving...');
@@ -3200,6 +3227,7 @@ $.ajax({
             const LP = parseFloat($(this).data('lp')) || 0;
             const SHIP = parseFloat($(this).data('ship')) || 0;
             const temu_ship = parseFloat($(this).data('temuShip')) || 0;
+            const ebay2_ship = parseFloat($(this).data('ebay2Ship')) || 0;
 
             console.log('Saving TOP price for SKU:', sku, 'Price:', price);
 
@@ -3228,7 +3256,8 @@ $.ajax({
                     sprice: price,
                     LP: LP,
                     SHIP: SHIP,
-                    temu_ship: temu_ship
+                    temu_ship: temu_ship,
+                    ebay2_ship: ebay2_ship
                 },
                 success: function(res) {
                     if (res.status === 200) {
