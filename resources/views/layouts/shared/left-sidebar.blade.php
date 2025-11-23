@@ -1772,6 +1772,9 @@
                                     <li>
                                         <a href="{{ route('amazon.missing.ads') }}">Amz FBM Missing Ads</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('amazon.fba.missing.ads') }}">Amz FBA Missing Ads</a>
+                                    </li>
                                     {{-- Add EXtra For Amazon Pricing --}}
                                 </ul>
                             </div>

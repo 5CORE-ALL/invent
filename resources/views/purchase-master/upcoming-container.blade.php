@@ -230,6 +230,31 @@
                         field: "container_number"
                     },
                     {
+                        title: "ETD",
+                        field: "etd",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return `
+                                <input type="date" 
+                                    class="form-control form-control-sm auto-save" 
+                                    data-column="etd" 
+                                    value="${value ?? ''}"
+                                    style="width: 88px;"
+                                    onfocus="this.showPicker()"
+                                    placeholder="YYYY">
+                            `;
+                        }
+                    },
+                    { 
+                        title: "ETA Date<br>Ohio", 
+                        field: "eta_date_ohio", 
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<input type="date" class="form-control form-control-sm auto-save" data-column="eta_date_ohio" value="${value ?? ''}" style="width: 88px;">`;
+                        } 
+                    },
+                    {
                         title: "Supplier",
                         field: "supplier_name"
                     },

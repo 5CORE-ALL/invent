@@ -277,7 +277,8 @@
                 columns: [
                     {
                         title: "Parent",
-                        field: "parent"
+                        field: "parent",
+                        visible: false
                     },
                     {
                         title: "SKU",
@@ -320,12 +321,12 @@
                         visible: false
                     },
                     {
-                        title: "AL 30",
+                        title: "FL 30",
                         field: "A_L30",
                         visible: false
                     },
                     {
-                        title: "A DIL %",
+                        title: "F DIL %",
                         field: "A DIL %",
                         formatter: function(cell) {
                             const data = cell.getData();
@@ -693,7 +694,7 @@
                     let field = e.target.getAttribute("data-field");
                     let value = e.target.value;
 
-                    fetch('/update-amazon-nr-nrl-fba', {
+                    fetch('/update-amazon-nr-nrl-fba-data', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
