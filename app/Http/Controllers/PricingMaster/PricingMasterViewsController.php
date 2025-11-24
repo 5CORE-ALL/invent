@@ -36,7 +36,7 @@ use App\Models\MercariWoShipDataView;
 use App\Models\MercariWShipDataView;
 use App\Models\Business5CoreDataView;
 use App\Models\PlsDataView;
-use App\Models\FbMarketplaceDataView;
+use App\Models\FBMarketplaceDataView;
 use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
 use App\Services\DobaApiService;
@@ -1650,7 +1650,7 @@ class PricingMasterViewsController extends Controller
 
             case 'fbmarketplace':
                 // FB Marketplace logic
-                $fbMarketplaceDataView = FbMarketplaceDataView::firstOrNew(['sku' => $sku]);
+                $fbMarketplaceDataView = FBMarketplaceDataView::firstOrNew(['sku' => $sku]);
                 $existing = is_array($fbMarketplaceDataView->value) ? $fbMarketplaceDataView->value : (json_decode($fbMarketplaceDataView->value, true) ?: []);
 
                 $spft = $sprice > 0 ? round(((($sprice * 0.80) - $lp - $ship) / $sprice) * 100, 2) : 0;
