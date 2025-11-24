@@ -35,7 +35,7 @@ use App\Models\WayfairDataView;
 use App\Models\MercariWoShipDataView;
 use App\Models\MercariWShipDataView;
 use App\Models\Business5CoreDataView;
-use App\Models\PlsDataView;
+use App\Models\PLSDataView;
 use App\Models\FBMarketplaceDataView;
 use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
@@ -78,6 +78,7 @@ use Illuminate\Contracts\Session\Session;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Http\Controllers\UpdatePriceApiController;
+use App\Models\PLSDataView as ModelsPLSDataView;
 
 class PricingMasterViewsController extends Controller
 {
@@ -421,7 +422,7 @@ class PricingMasterViewsController extends Controller
         $mercariWShipDataView = MercariWShipDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $fbMarketplaceDataView = FBMarketplaceDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $business5CoreDataView = Business5CoreDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
-        $plsDataView = PlsDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $plsDataView = PLSDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $walmartProductSheetLookup = DB::table('walmart_product_sheet')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $dobaProductSheetLookup = DB::table('doba_sheet_data')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         // Wayfair sheet lookup
@@ -1682,7 +1683,7 @@ class PricingMasterViewsController extends Controller
 
             case 'pls':
                 // PLS logic
-                $plsDataView = PlsDataView::firstOrNew(['sku' => $sku]);
+                $plsDataView = PLSDataView::firstOrNew(['sku' => $sku]);
                 $existing = is_array($plsDataView->value) ? $plsDataView->value : (json_decode($plsDataView->value, true) ?: []);
 
                 $spft = $sprice > 0 ? round(((($sprice * 0.80) - $lp - $ship) / $sprice) * 100, 2) : 0;
