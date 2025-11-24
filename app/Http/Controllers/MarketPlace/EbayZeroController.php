@@ -8,6 +8,7 @@ use App\Models\AmazonDataView;
 use App\Models\EbayDataView;
 use App\Models\EbayListingStatus;
 use App\Models\EbayMetric;
+use App\Models\EbayGeneralReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\MarketplacePercentage;
@@ -15,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use App\Models\EbayPriorityReport;
+use Illuminate\Support\Facades\Log;
 
 class EbayZeroController extends Controller
 {
@@ -40,33 +42,50 @@ class EbayZeroController extends Controller
     public function adcvrEbayData() {
         ini_set('max_execution_time', 600);
 
+        $normalize = fn($s) => strtoupper(trim((string)$s));
+
         $productMasters = ProductMaster::orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values();
+        $skus = $productMasters->pluck('sku')->filter()->map($normalize)->unique()->values()->all();
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay')->first();
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1;
 
-        $ebayDatasheetsBySku = DB::connection('apicentral')
+        // external ebay metrics (apicentral) - fetch and key by normalized SKU
+        $rawEbayDatasheets = DB::connection('apicentral')
             ->table('ebay_one_metrics')
             ->whereIn('sku', $skus)
-            ->get()
-            ->map(fn($item) => (object)(array)$item)
-            ->keyBy(fn($item) => strtoupper($item->sku));
+            ->get();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        $ebayDatasheetsBySku = collect($rawEbayDatasheets)->mapWithKeys(function ($item) use ($normalize) {
+            $skuKey = $normalize($item->sku ?? $item->SKU ?? '');
+            return [$skuKey => (object) ((array) $item)];
+        });
 
-        $allCampaigns = EbayPriorityReport::whereIn('report_range', ['L90', 'L30', 'L7'])->get();
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($i) => $normalize($i->sku));
+        $nrValuesRaw = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        $nrValues = [];
+        foreach ($nrValuesRaw as $k => $v) {
+            $nrValues[$normalize($k)] = $v;
+        }
 
+        // Priority reports (keyword/SP campaigns)
+        $allPriority = EbayPriorityReport::whereIn('report_range', ['L90', 'L30', 'L7'])->get();
         $campaignsByRange = [
-            'L90' => $allCampaigns->where('report_range', 'L90')->keyBy(fn($r) => strtoupper(trim(rtrim($r->campaign_name, '.')))),
-            'L30' => $allCampaigns->where('report_range', 'L30')->keyBy(fn($r) => strtoupper(trim(rtrim($r->campaign_name, '.')))),
-            'L7'  => $allCampaigns->where('report_range', 'L7')->keyBy(fn($r) => strtoupper(trim(rtrim($r->campaign_name, '.')))),
+            'L90' => $allPriority->where('report_range', 'L90')->keyBy(fn($r) => $normalize(trim(rtrim($r->campaign_name ?? $r->campaignName ?? '', '.')))),
+            'L30' => $allPriority->where('report_range', 'L30')->keyBy(fn($r) => $normalize(trim(rtrim($r->campaign_name ?? $r->campaignName ?? '', '.')))),
+            'L7'  => $allPriority->where('report_range', 'L7')->keyBy(fn($r) => $normalize(trim(rtrim($r->campaign_name ?? $r->campaignName ?? '', '.')))),
         ];
+
+        // HL / Sponsored Brands like reports
+        // $ebayHl = EbayGeneralReport::whereIn('report_range', ['L90', 'L30', 'L7'])
+        //     ->get()
+        //     ->groupBy('report_range');
+
+        $result = [];
 
         $lmpData = DB::connection('repricer')
             ->table('lmp_data')
@@ -76,115 +95,191 @@ class EbayZeroController extends Controller
             ->get()
             ->groupBy('sku');
 
-        $result = [];
-
         foreach ($productMasters as $pm) {
-            $sku = strtoupper($pm->sku);
+            $sku = $normalize($pm->sku);
             $parent = $pm->parent;
 
             $ebaySheet = $ebayDatasheetsBySku[$sku] ?? null;
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData[$sku] ?? null;
+            // fallback: local EbayMetric if apicentral row missing
+            $localEbayMetric = null;
+            if (!$ebaySheet) {
+                $localEbayMetric = EbayMetric::where('sku', $pm->sku)->first();
+            }
 
-            $matchedCampaignL90 = $campaignsByRange['L90'][$sku] ?? null;
-            $matchedCampaignL30 = $campaignsByRange['L30'][$sku] ?? null;
-            $matchedCampaignL7  = $campaignsByRange['L7'][$sku] ?? null;
+            $matchedKwL90 = $campaignsByRange['L90'][$sku] ?? null;
+            $matchedKwL30 = $campaignsByRange['L30'][$sku] ?? null;
+            $matchedKwL7  = $campaignsByRange['L7'][$sku] ?? null;
+
+            // $hlL90 = $ebayHl['L90'] ?? collect();
+            // $hlL30 = $ebayHl['L30'] ?? collect();
+            // $hlL7  = $ebayHl['L7']  ?? collect();
+
+            // $matchedHlL90 = $hlL90->first(function ($item) use ($sku) {
+            //     $cleanName = strtoupper(trim(preg_replace('/\.+$/', '', $item->campaignName ?? $item->campaign_name ?? '')));
+            //     return (str_contains($cleanName, $sku) || $cleanName === $sku || $cleanName === $sku . ' HEAD') && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
+            // });
+            // $matchedHlL30 = $hlL30->first(function ($item) use ($sku) {
+            //     $cleanName = strtoupper(trim(preg_replace('/\.+$/', '', $item->campaignName ?? $item->campaign_name ?? '')));
+            //     return (str_contains($cleanName, $sku) || $cleanName === $sku || $cleanName === $sku . ' HEAD') && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
+            // });
+            // $matchedHlL7 = $hlL7->first(function ($item) use ($sku) {
+            //     $cleanName = strtoupper(trim(preg_replace('/\.+$/', '', $item->campaignName ?? $item->campaign_name ?? '')));
+            //     return (str_contains($cleanName, $sku) || $cleanName === $sku || $cleanName === $sku . ' HEAD') && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
+            // });
 
             $row = [];
             $row['parent'] = $parent;
-            $row['sku']    = $pm->sku;
-            $row['INV']    = $shopify->inv ?? 0;
-            $row['L30']    = $shopify->quantity ?? 0;
-            $row['fba']    = $pm->fba ?? null;
-            $row['A_L90']  = $ebaySheet->ebay_l90 ?? 0;
-            $row['A_L30']  = $ebaySheet->ebay_l30 ?? 0;
-            $row['A_L7']   = $ebaySheet->ebay_l7 ?? 0;
+            $row['sku'] = $pm->sku;
+            $row['INV'] = $shopify->inv ?? 0;
+            $row['L30'] = $shopify->quantity ?? 0;
+            $row['fba'] = $pm->fba ?? null;
 
-            $row['campaign_id']         = $matchedCampaignL90->campaign_id ?? '';
-            $row['campaignName']        = $matchedCampaignL90->campaign_name ?? '';
-            $row['campaignStatus']      = $matchedCampaignL90->campaignStatus ?? '';
-            $row['campaignBudgetAmount']= $matchedCampaignL90->campaignBudgetAmount ?? 0;
-            $row['spend_l90']           = $matchedCampaignL90->cpc_return_on_ad_spend ?? 0;
-            $row['ad_sales_l90']        = $matchedCampaignL90->cpc_attributed_sales ?? 0;
-            $row['spend_30']            = $matchedCampaignL30->cpc_return_on_ad_spend ?? 0;
-            $row['ad_sales_l30']        = $matchedCampaignL30->cpc_attributed_sales ?? 0;
-            $row['spend_l7']            = $matchedCampaignL7->cpc_return_on_ad_spend ?? 0;
-            $row['ad_sales_l7']         = $matchedCampaignL7->cpc_attributed_sales ?? 0;
+            // KW / SP fields (L90/L30/L7)
+            // $row['kw_impr_L90'] = (int) ($matchedKwL90->impressions ?? $matchedKwL90->cpc_impressions ?? 0);
+            // $row['kw_impr_L30'] = (int) ($matchedKwL30->impressions ?? $matchedKwL30->cpc_impressions ?? 0);
+            // $row['kw_impr_L7']  = (int) ($matchedKwL7->impressions ?? $matchedKwL7->cpc_impressions ?? 0);
 
-            if ($ebaySheet) {
-                $row['Sess30'] = $ebaySheet->views ?? 0;
-                $row['price'] = $ebaySheet->ebay_price ?? 0;
-                $row['sessions_l60'] = $ebaySheet->views ?? 0;
-                $row['units_ordered_l60'] = $ebaySheet->ebay_l60 ?? 0;
-            }
+            // $row['kw_clicks_L90'] = (int) ($matchedKwL90->clicks ?? $matchedKwL90->cpc_clicks ?? 0);
+            // $row['kw_clicks_L30'] = (int) ($matchedKwL30->clicks ?? $matchedKwL30->cpc_clicks ?? 0);
+            // $row['kw_clicks_L7']  = (int) ($matchedKwL7->clicks ?? $matchedKwL7->cpc_clicks ?? 0);
 
-            $values = is_array($pm->Values)
-                ? $pm->Values
-                : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+            // $row['kw_spend_L90']  = (float) str_replace('USD ', '', ($matchedKwL90->spend ?? $matchedKwL90->cpc_ad_fees_payout_currency ?? 0));
+            // $row['kw_spend_L30']  = (float) str_replace('USD ', '', ($matchedKwL30->spend ?? $matchedKwL30->cpc_ad_fees_payout_currency ?? 0));
+            // $row['kw_spend_L7']   = (float) str_replace('USD ', '', ($matchedKwL7->spend ?? $matchedKwL7->cpc_ad_fees_payout_currency ?? 0));
 
+            // $row['kw_sales_L90']  = (float) str_replace('USD ', '', ($matchedKwL90->sales ?? $matchedKwL90->cpc_sale_amount_payout_currency ?? 0));
+            // $row['kw_sales_L30']  = (float) str_replace('USD ', '', ($matchedKwL30->sales ?? $matchedKwL30->cpc_sale_amount_payout_currency ?? 0));
+            // $row['kw_sales_L7']   = (float) str_replace('USD ', '', ($matchedKwL7->sales ?? $matchedKwL7->cpc_sale_amount_payout_currency ?? 0));
+
+            // $row['kw_sold_L90']  = (int) ($matchedKwL90->unitsSoldSameSku30d ?? $matchedKwL90->cpc_attributed_sales ?? 0);
+            // $row['kw_sold_L30']  = (int) ($matchedKwL30->unitsSoldSameSku30d ?? $matchedKwL30->cpc_attributed_sales ?? 0);
+            // $row['kw_sold_L7']   = (int) ($matchedKwL7->unitsSoldSameSku7d ?? $matchedKwL7->cpc_attributed_sales ?? 0);
+
+            // // HL fields
+            // $row['hl_impr_L90'] = (int) ($matchedHlL90->impressions ?? 0);
+            // $row['hl_impr_L30'] = (int) ($matchedHlL30->impressions ?? 0);
+            // $row['hl_impr_L7']  = (int) ($matchedHlL7->impressions ?? 0);
+
+            // $row['hl_clicks_L90'] = (int) ($matchedHlL90->clicks ?? 0);
+            // $row['hl_clicks_L30'] = (int) ($matchedHlL30->clicks ?? 0);
+            // $row['hl_clicks_L7']  = (int) ($matchedHlL7->clicks ?? 0);
+
+            // $row['hl_sales_L90']  = (float) ($matchedHlL90->sale_amount ?? $matchedHlL90->sales ?? 0);
+            // $row['hl_sales_L30']  = (float) ($matchedHlL30->sale_amount ?? $matchedHlL30->sales ?? 0);
+            // $row['hl_sales_L7']   = (float) ($matchedHlL7->sale_amount ?? $matchedHlL7->sales ?? 0);
+
+            // // HL spend (ad fees) if present in general reports
+            // $row['hl_spend_L90'] = (float) str_replace('USD ', '', ($matchedHlL90->ad_fees ?? $matchedHlL90->adFees ?? 0));
+            // $row['hl_spend_L30'] = (float) str_replace('USD ', '', ($matchedHlL30->ad_fees ?? $matchedHlL30->adFees ?? 0));
+            // $row['hl_spend_L7']  = (float) str_replace('USD ', '', ($matchedHlL7->ad_fees ?? $matchedHlL7->adFees ?? 0));
+
+            // $row['hl_sold_L90']  = (int) ($matchedHlL90->unitsSold ?? 0);
+            // $row['hl_sold_L30']  = (int) ($matchedHlL30->unitsSold ?? 0);
+            // $row['hl_sold_L7']   = (int) ($matchedHlL7->unitsSold ?? 0);
+
+            // totals & derived - prefer direct metrics from apicentral/local metric when available
+            // Prefer explicit eBay metric columns if available (avoid using KW/HL sums)
+            $row['A_L30'] = (int) (
+                $ebaySheet?->ebay_l30
+                ?? ($localEbayMetric ? ($localEbayMetric->ebay_l30 ?? 0) : 0)
+                ?? 0
+            );
+
+            $row['total_review_count'] = $ebaySheet->total_review_count ?? 0;
+            $row['average_star_rating'] = $ebaySheet->average_star_rating ?? 0;
+
+            // price/values
+            $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
             $lp = 0;
-            foreach ($values as $k => $v) {
-                if (strtolower($k) === 'lp') {
-                    $lp = floatval($v);
-                    break;
+            if (is_array($values)) {
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === 'lp') { $lp = floatval($v); break; }
                 }
             }
-
-            if ($lp === 0 && isset($pm->lp)) {
-                $lp = floatval($pm->lp);
-            }
-
-            $ship = isset($values['ship'])
-                ? floatval($values['ship'])
-                : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            if ($lp === 0 && isset($pm->lp)) $lp = floatval($pm->lp);
+            $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
 
             $row['SHIP'] = $ship;
             $row['LP'] = $lp;
 
-            $price = isset($row['price']) ? floatval($row['price']) : 0;
-
+            // determine price: prefer apicentral ebay_one_metrics, fallback to local EbayMetric
+            $price = 0;
+            if ($ebaySheet) {
+                $price = $ebaySheet->ebay_price ?? $ebaySheet->price ?? 0;
+            } elseif ($localEbayMetric) {
+                $price = $localEbayMetric->ebay_price ?? ($localEbayMetric->price ?? 0);
+            }
+            $row['price'] = $price;
             $row['PFT_percentage'] = round($price > 0 ? ((($price * $percentage) - $lp - $ship) / $price) * 100 : 0, 2);
+            // Campaign meta
+            $row['campaign_id'] = $matchedKwL90->campaign_id ?? $matchedKwL30->campaign_id ?? $matchedKwL7->campaign_id ?? '';
+            $row['campaignName'] = $matchedKwL90->campaign_name ?? $matchedKwL30->campaign_name ?? $matchedKwL7->campaign_name ?? ($matchedHlL30->campaign_name ?? '');
+            $row['campaignStatus'] = $matchedKwL90->campaignStatus ?? $matchedKwL30->campaignStatus ?? $matchedKwL7->campaignStatus ?? ($matchedHlL30->campaignStatus ?? '');
+            $row['campaignBudgetAmount'] = $matchedKwL90->campaignBudgetAmount ?? $matchedKwL30->campaignBudgetAmount ?? 0;
+            $row['l7_cpc'] = $matchedKwL7->costPerClick ?? 0;
 
-            $sales90 = $matchedCampaignL90->cpc_attributed_sales ?? 0;
-            $spend90 = $matchedCampaignL90->cpc_return_on_ad_spend ?? 0;
+            $row['spend_l90'] = (float) str_replace('USD ', '', ($matchedKwL90->spend ?? $matchedKwL90->cpc_ad_fees_payout_currency ?? 0));
+            $row['spend_l30'] = (float) str_replace('USD ', '', ($matchedKwL30->spend ?? $matchedKwL30->cpc_ad_fees_payout_currency ?? 0));
+            $row['spend_l7']  = (float) str_replace('USD ', '', ($matchedKwL7->spend ?? $matchedKwL7->cpc_ad_fees_payout_currency ?? 0));
 
-            $sales30 = $matchedCampaignL30->cpc_attributed_sales ?? 0;
-            $spend30 = $matchedCampaignL30->cpc_return_on_ad_spend ?? 0;
+            $row['ad_sales_l90'] = (float) str_replace('USD ', '', ($matchedKwL90->sales ?? $matchedKwL90->cpc_sale_amount_payout_currency ?? 0));
+            $row['ad_sales_l30'] = (float) str_replace('USD ', '', ($matchedKwL30->sales ?? $matchedKwL30->cpc_sale_amount_payout_currency ?? 0));
+            $row['ad_sales_l7']  = (float) str_replace('USD ', '', ($matchedKwL7->sales ?? $matchedKwL7->cpc_sale_amount_payout_currency ?? 0));
 
-            $sales7 = $matchedCampaignL7->cpc_attributed_sales ?? 0;
-            $spend7 = $matchedCampaignL7->cpc_return_on_ad_spend ?? 0;
+            $row['clicks_L90'] = (int) ($matchedKwL90->cpc_clicks ?? 0);
+            $row['clicks_L30'] = (int) ($matchedKwL30->cpc_clicks ?? 0);
+            $row['clicks_L7']  = (int) ($matchedKwL7->cpc_clicks ?? 0);
 
-            $row['acos_L90'] = $sales90 > 0 ? round(($spend90 / $sales90) * 100, 2) : ($spend90 > 0 ? 100 : 0);
-            $row['acos_L30'] = $sales30 > 0 ? round(($spend30 / $sales30) * 100, 2) : ($spend30 > 0 ? 100 : 0);
-            $row['acos_L7']  = $sales7 > 0  ? round(($spend7 / $sales7) * 100, 2)  : ($spend7 > 0 ? 100 : 0);
+            // A_L90/A_L7 - prefer direct metrics from apicentral/local metric when available
+            $row['A_L90'] = (int) (
+                $ebaySheet?->ebay_l90
+                ?? ($localEbayMetric ? ($localEbayMetric->ebay_l90 ?? 0) : 0)
+                ?? 0
+            );
+            $row['A_L7'] = (int) (
+                $ebaySheet?->ebay_l7
+                ?? ($localEbayMetric ? ($localEbayMetric->ebay_l7 ?? 0) : 0)
+                ?? 0
+            );
 
-            $row['clicks_L90'] = $matchedCampaignL90->cpc_clicks ?? 0;
-            $row['clicks_L30'] = $matchedCampaignL30->cpc_clicks ?? 0;
-            $row['clicks_L7']  = $matchedCampaignL7->cpc_clicks ?? 0;
+            // ACOS calculations
+            $sales90 = $row['ad_sales_l90'] ?? 0; $spend90 = $row['spend_l90'] ?? 0;
+            $sales30 = $row['ad_sales_l30'] ?? 0; $spend30 = $row['spend_l30'] ?? 0;
+            $sales7  = $row['ad_sales_l7'] ?? 0;  $spend7  = $row['spend_l7'] ?? 0;
 
-            $row['cvr_l90'] = ($row['clicks_L90'] == 0) ? null : number_format(($row['A_L90'] / $row['clicks_L90']) * 100, 2);
+            $row['acos_L90'] = $sales90 > 0 ? round(($spend90 / $sales90) * 100, 2) : (($spend90 > 0 && $sales90 == 0) ? 100 : 0);
+            $row['acos_L30'] = $sales30 > 0 ? round(($spend30 / $sales30) * 100, 2) : (($spend30 > 0 && $sales30 == 0) ? 100 : 0);
+            $row['acos_L7']  = $sales7  > 0 ? round(($spend7  / $sales7)  * 100, 2) : (($spend7  > 0 && $sales7  == 0) ? 100 : 0);
 
-            $row['NRL'] = $row['NRA'] = $row['FBA'] = $row['TPFT'] = '';
+            // CVR
+            $row['cvr_l90'] = ($row['clicks_L90'] == 0) ? NULL : number_format((($row['A_L90'] ?? 0) / $row['clicks_L90']) * 100, 2);
+            $row['cvr_l30'] = ($row['clicks_L30'] == 0) ? NULL : number_format((($row['A_L30'] ?? 0) / $row['clicks_L30']) * 100, 2);
+            $row['cvr_l7']  = ($row['clicks_L7']  == 0) ? NULL : number_format((($row['A_L7'] ?? 0) / $row['clicks_L7']) * 100, 2);
 
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
+            // NRL/NRA/FBA/TPFT from EbayDataView
+            $row['NRL']  = '';
+            $row['NRA'] = '';
+            $row['FBA'] = '';
+            $row['TPFT'] = null;
+                if (isset($nrValues[$sku])) {
+                    $raw = $nrValues[$sku];
+                if (!is_array($raw)) $raw = json_decode($raw, true) ?: [];
                 if (is_array($raw)) {
-                    $row['NRL']  = $raw['NRL'] ?? null;
-                    $row['NRA']  = $raw['NRA'] ?? null;
-                    $row['FBA']  = $raw['FBA'] ?? null;
+                    $row['NRL']  = $raw['NRL'] ?? $raw['NR'] ?? '';
+                    $row['NRA']  = $raw['NRA'] ?? '';
+                    $row['FBA']  = $raw['FBA'] ?? '';
                     $row['TPFT'] = $raw['TPFT'] ?? null;
                 }
             }
 
-            $row['ebay_price'] = $ebaySheet ? ($ebaySheet->price ?? 0) : 0;
-            $row['ebay_pft'] = $ebaySheet && ($ebaySheet->price ?? 0) > 0
-                ? (($ebaySheet->price * 0.70 - $lp - $ship) / $ebaySheet->price)
-                : 0;
-            $row['ebay_roi'] = $ebaySheet && $lp > 0 && ($ebaySheet->price ?? 0) > 0
-                ? (($ebaySheet->price * 0.70 - $lp - $ship) / $lp)
-                : 0;
+            $row['ebay_price'] = $price;
+            $row['ebay_pft'] = $price > 0 ? ((($price * $percentage) - $lp - $ship) / $price) : 0;
+            $row['ebay_roi'] = ($lp > 0 && $price > 0) ? ((($price * 0.70) - $lp - $ship) / $lp) : 0;
+
+            // DIL fields (decimal form)
+            $row['DIL %'] = ($row['INV'] > 0) ? round(($row['L30'] ?? 0) / $row['INV'], 4) : 0;
+            $row['A DIL %'] = ($row['INV'] > 0) ? round(($row['A_L30'] ?? 0) / $row['INV'], 4) : 0;
 
             $prices = isset($lmpData[$sku])
                 ? $lmpData[$sku]->pluck('price')->toArray()
@@ -198,13 +293,13 @@ class EbayZeroController extends Controller
                 }
             }
 
-            $result[] = (object)$row;
+            $result[] = (object) $row;
         }
 
         return response()->json([
-            'message' => 'Data fetched successfully',
-            'data'    => $result,
-            'status'  => 200,
+            'message' => 'Ebay ADCVR data fetched',
+            'data' => $result,
+            'status' => 200,
         ]);
     }
 
@@ -267,7 +362,7 @@ class EbayZeroController extends Controller
         return view('market-places.ebayZeroView', [
             'mode' => $mode,
             'demo' => $demo,
-            'amazonPercentage' => $percentage
+            'ebayPercentage' => $percentage
         ]);
     }
 
