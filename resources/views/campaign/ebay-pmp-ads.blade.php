@@ -1337,14 +1337,6 @@
                         <div class="d-flex flex-column" style="gap: 8px;">
                             <div class="d-flex" style="gap: 16px;">
                                 <div class="form-group mb-2">
-                                    <label for="row-data-type" class="mr-2">Data Type:</label>
-                                    <select id="row-data-type" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="sku">SKU (Child)</option>
-                                        <option value="parent">Parent</option>
-                                    </select>
-                                </div>
-                                <div class="form-group mb-2">
                                     <label for="ovl30-filter" class="mr-2">OV L30:</label>
                                     <select id="ovl30-filter" class="form-control form-control-sm">
                                         <option value="all">All</option>
@@ -1360,14 +1352,6 @@
                                 </div>
                             </div>
                             <div class="d-flex" style="gap: 16px;">
-                                <div class="form-group mb-2">
-                                    <label for="inv-filter" class="mr-2">INV:</label>
-                                    <select id="inv-filter" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="0">0</option>
-                                        <option value="1-100+" selected>1-100+</option>
-                                    </select>
-                                </div>
                                 <div class="form-group mb-2">
                                     <label for="el30-filter" class="mr-2">EL 30:</label>
                                     <select id="el30-filter" class="form-control form-control-sm">
@@ -1899,8 +1883,7 @@
                     'PFT %': 'all',
                     'Roi': 'all',
                     'Tacos30': 'all',
-                    'SCVR': 'all',
-                    'entryType': 'all'
+                    'SCVR': 'all'
                 }
             };
 
@@ -2639,9 +2622,9 @@
 
                     $row.append($('<td class="el_30_col">').text(item['eBay L30']));
                     
-                    $row.append($('<td>').text(item.CBID));
+                    $row.append($('<td data-field="cbid">').text(item.CBID));
 
-                    $row.append($('<td>').text(item.ESBID));
+                    $row.append($('<td data-field="esbid">').text(item.ESBID));
                     
                     let sbid = 0;
                     let sbidColor = "";
@@ -4815,22 +4798,10 @@
                     $this.closest('.dropdown-menu').removeClass('show');
                     applyColumnFilters();
                 });
-
-                // Entry type filter
-                $('.entry-type-filter').on('click', function(e) {
-                    e.preventDefault();
-                    const value = $(this).data('value');
-                    const text = $(this).text();
-
-                    $('#entryTypeFilter').html(`Entry Type: ${text}`);
-                    state.filters.entryType = value;
-                    $('.dropdown-menu').removeClass('show');
-                    applyColumnFilters();
-                });
             }
 
             // Add this script after your other filter initializations:
-            $('#inv-filter, #ovl30-filter, #el30-filter, #nra-filter').on('change', function() {
+            $('#ovl30-filter, #el30-filter, #nra-filter').on('change', function() {
                 applyColumnFilters();
             });
 
@@ -4847,15 +4818,10 @@
                     filteredData = filteredData.filter(item => !item.is_parent);
                 }
 
-                // Apply INV filter
-                let invFilter = $('#inv-filter').val() || '1-100+'; 
+                // Filter out INV = 0 data
                 filteredData = filteredData.filter(item => {
                     const inv = Number(item.INV) || 0;
-
-                    if (invFilter === '0') return inv === 0;
-                    if (invFilter === '1-100+') return inv >= 1;
-                    if (invFilter === 'all') return true; 
-                    return true;
+                    return inv > 0;
                 });
 
 
@@ -4896,12 +4862,6 @@
                     if (filterValue === 'all') return;
 
                     filteredData = filteredData.filter(item => {
-                        if (column === 'entryType') {
-                            if (filterValue === 'parent') return item.is_parent;
-                            if (filterValue === 'child') return !item.is_parent;
-                            return true;
-                        }
-
                         const color = getColorForColumn(column, item);
                         return color === filterValue;
                     });
@@ -4923,12 +4883,18 @@
 
                 // Table ke rows loop karke sbid lete hain
                 $("#ebay-table tbody tr").each(function (index) {
+                    let cbid = $(this).find('td[data-field="cbid"]').text().trim();
+                    let esbid = $(this).find('td[data-field="esbid"]').text().trim();
                     let sbid = $(this).find('td[data-field="sbid"]').text().trim();
                     let ovDil = $(this).find('td[data-field="ov_dil"]').data("value");
+                    let inv = $(this).find('td.inv_col').text().trim();
 
                     if (filteredData[index]) {
                         exportData.push({
                             SKU: filteredData[index]['(Child) sku'] || "",
+                            INV: inv || "",
+                            CBID: cbid || "",
+                            ESBID: esbid || "",
                             SBID: sbid || "",
                             'Dil%': ovDil || ""
                         });
