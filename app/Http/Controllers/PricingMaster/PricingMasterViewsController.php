@@ -419,7 +419,7 @@ class PricingMasterViewsController extends Controller
         $wayfairDataView = WayfairDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $mercariWoShipDataView = MercariWoShipDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $mercariWShipDataView = MercariWShipDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
-        $fbMarketplaceDataView = FbMarketplaceDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $fbMarketplaceDataView = FBMarketplaceDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $business5CoreDataView = Business5CoreDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $plsDataView = PlsDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $walmartProductSheetLookup = DB::table('walmart_product_sheet')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
