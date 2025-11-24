@@ -71,61 +71,132 @@ class OutgoingController extends Controller
 
         $sku = trim($request->sku);
         $outgoingQty = (int) $request->qty;
+        $normalizedSku = strtoupper(preg_replace('/\s+/u', ' ', $sku));
 
+        $inventoryItemId = null;
+        $pageInfo = null;
+
+        // Fast path: try local shopify_skus table for variant_id
         try {
+            $shopifyRow = ShopifySku::whereRaw('LOWER(sku) = ?', [strtolower($normalizedSku)])->first();
 
-            $normalizedSku = strtoupper(preg_replace('/\s+/u', ' ', $sku));
-            // 1. Fetch inventory item ID from Shopify
-            $inventoryItemId = null;
-            $pageInfo = null;
+            if ($shopifyRow && !empty($shopifyRow->variant_id)) {
+                $variantResp = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                    ->timeout(30)
+                    ->retry(3, 2000)
+                    ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$shopifyRow->variant_id}.json");
 
-            do {
-                $queryParams = ['limit' => 250];
-                if ($pageInfo) $queryParams['page_info'] = $pageInfo;
+                if ($variantResp->successful()) {
+                    $inventoryItemId = $variantResp->json('variant.inventory_item_id') ?? null;
+                    Log::info('Outgoing: Found inventory_item_id from variant', [
+                        'sku' => $normalizedSku,
+                        'variant_id' => $shopifyRow->variant_id,
+                        'inventory_item_id' => $inventoryItemId
+                    ]);
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning('Outgoing: Error fetching variant, will search products', ['error' => $e->getMessage()]);
+        }
 
-                $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                    ->get("https://{$this->shopifyDomain}/admin/api/2025-01/products.json", $queryParams);
+        // Fallback: search all products if inventory_item_id not found
+        if (!$inventoryItemId) {
+            Log::info('Outgoing: Starting product search for inventory_item_id', ['sku' => $normalizedSku]);
+            
+            try {
+                do {
+                    $queryParams = ['limit' => 250, 'fields' => 'variants'];
+                    if ($pageInfo) $queryParams['page_info'] = $pageInfo;
 
-                $products = $response->json('products');
+                    $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                        ->timeout(30)
+                        ->retry(3, 2000)
+                        ->get("https://{$this->shopifyDomain}/admin/api/2025-01/products.json", $queryParams);
 
-                foreach ($products as $product) {
-                    foreach ($product['variants'] as $variant) {
-                        $variantSku = strtoupper(preg_replace('/\s+/u', ' ', trim($variant['sku'] ?? '')));
-                        if ($variantSku === $normalizedSku) {
-                            $inventoryItemId = $variant['inventory_item_id'];
-                            break 2;
+                    if (!$response->successful()) {
+                        Log::error('Outgoing: Failed to fetch products from Shopify', [
+                            'status' => $response->status(),
+                            'response' => $response->body()
+                        ]);
+                        return response()->json(['error' => 'Failed to fetch products from Shopify'], 500);
+                    }
+
+                    $products = $response->json('products');
+
+                    foreach ($products as $product) {
+                        foreach ($product['variants'] as $variant) {
+                            $variantSku = strtoupper(preg_replace('/\s+/u', ' ', trim($variant['sku'] ?? '')));
+                            if ($variantSku === $normalizedSku) {
+                                $inventoryItemId = $variant['inventory_item_id'];
+                                Log::info('Outgoing: Found inventory_item_id via product search', [
+                                    'sku' => $normalizedSku,
+                                    'inventory_item_id' => $inventoryItemId
+                                ]);
+                                break 2;
+                            }
                         }
                     }
-                }
 
-                $linkHeader = $response->header('Link');
-                $pageInfo = null;
-                if ($linkHeader && preg_match('/<([^>]+page_info=([^&>]+)[^>]*)>; rel="next"/', $linkHeader, $matches)) {
-                    $pageInfo = $matches[2];
-                }
-            } while (!$inventoryItemId && $pageInfo);
-
-            if (!$inventoryItemId) {
-                Log::error("Inventory Item ID not found for SKU: $sku");
-                return response()->json(['error' => 'SKU not found in Shopify'], 404);
+                    $linkHeader = $response->header('Link');
+                    $pageInfo = null;
+                    if ($linkHeader && preg_match('/<([^>]+page_info=([^&>]+)[^>]*)>; rel="next"/', $linkHeader, $matches)) {
+                        $pageInfo = $matches[2];
+                    }
+                } while (!$inventoryItemId && $pageInfo);
+            } catch (\Exception $e) {
+                Log::error('Outgoing: Exception during product search', [
+                    'sku' => $normalizedSku,
+                    'error' => $e->getMessage()
+                ]);
+                return response()->json(['error' => 'Error searching for SKU: ' . $e->getMessage()], 500);
             }
+        }
 
-            // 2. Get location ID
+        if (!$inventoryItemId) {
+            Log::error('Outgoing: Inventory Item ID not found for SKU', ['sku' => $normalizedSku]);
+            return response()->json(['error' => 'SKU not found in Shopify. Please sync inventory first.'], 404);
+        }
+
+        // Get location ID
+        try {
             $invLevelResponse = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                ->timeout(30)
+                ->retry(3, 2000)
                 ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
                     'inventory_item_ids' => $inventoryItemId,
                 ]);
+
+            if (!$invLevelResponse->successful()) {
+                Log::error('Outgoing: Failed to fetch inventory levels', [
+                    'inventory_item_id' => $inventoryItemId,
+                    'status' => $invLevelResponse->status(),
+                    'response' => $invLevelResponse->body()
+                ]);
+                return response()->json(['error' => 'Failed to fetch inventory levels from Shopify'], 500);
+            }
 
             $levels = $invLevelResponse->json('inventory_levels');
             $locationId = $levels[0]['location_id'] ?? null;
 
             if (!$locationId) {
-                Log::error("Location ID not found for inventory item: $inventoryItemId");
-                return response()->json(['error' => 'Location ID not found'], 404);
+                Log::error('Outgoing: Location ID not found', [
+                    'inventory_item_id' => $inventoryItemId,
+                    'levels_response' => $levels
+                ]);
+                return response()->json(['error' => 'Shopify location not found for this SKU'], 404);
             }
 
-            // 3. Decrease inventory by sending negative qty
+            Log::info('Outgoing: Attempting to adjust Shopify inventory', [
+                'sku' => $normalizedSku,
+                'inventory_item_id' => $inventoryItemId,
+                'location_id' => $locationId,
+                'adjustment' => -$outgoingQty
+            ]);
+
+            // Adjust inventory (decrease for outgoing)
             $adjustResponse = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                ->timeout(30)
+                ->retry(3, 2000)
                 ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
                     'inventory_item_id' => $inventoryItemId,
                     'location_id' => $locationId,
@@ -133,15 +204,35 @@ class OutgoingController extends Controller
                 ]);
 
             if (!$adjustResponse->successful()) {
-                Log::error("Failed to update Shopify for SKU $sku", $adjustResponse->json());
-                return response()->json(['error' => 'Failed to update Shopify inventory'], 500);
+                Log::error('Outgoing: Failed to update Shopify inventory', [
+                    'sku' => $normalizedSku,
+                    'status' => $adjustResponse->status(),
+                    'response' => $adjustResponse->body()
+                ]);
+                return response()->json(['error' => 'Failed to update Shopify inventory: ' . $adjustResponse->body()], 500);
             }
 
-            // 4. Store in local DB
+            Log::info('Outgoing: Successfully updated Shopify inventory', [
+                'sku' => $normalizedSku,
+                'adjustment' => -$outgoingQty,
+                'response' => $adjustResponse->json()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Outgoing: Exception during Shopify update', [
+                'sku' => $normalizedSku,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Error updating Shopify: ' . $e->getMessage()], 500);
+        }
+
+        // Only save to DB if Shopify update succeeded
+        try {
             Inventory::create([
                 'sku' => $sku,
                 'verified_stock' => $outgoingQty,
-                'to_adjust' => -$outgoingQty, // minus for outgoing
+                'to_adjust' => -$outgoingQty,
                 'reason' => $request->reason,
                 'is_approved' => true,
                 'approved_by' => Auth::user()->name ?? 'N/A',
@@ -150,13 +241,14 @@ class OutgoingController extends Controller
                 'warehouse_id' => $request->warehouse_id,
             ]);
 
-            return response()->json(['message' => 'Outgoing inventory deducted from Shopify successfully']);
+            return response()->json(['success' => true, 'message' => 'Outgoing inventory deducted from Shopify successfully']);
 
         } catch (\Exception $e) {
-            Log::error("Outgoing store failed for SKU $sku: " . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+            Log::error('Outgoing: Failed to save to database after Shopify update', [
+                'sku' => $normalizedSku,
+                'error' => $e->getMessage()
             ]);
-            return response()->json(['error' => 'Something went wrong.'], 500);
+            return response()->json(['error' => 'Shopify updated but failed to save to database: ' . $e->getMessage()], 500);
         }
     }
 

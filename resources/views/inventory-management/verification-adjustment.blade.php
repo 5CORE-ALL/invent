@@ -2495,7 +2495,11 @@
                                 // .addClass('bg-primary')
                                 .text(`$ ${Math.trunc(totalLossGain)}`);
 
-                            showNotification('success', isApproved ? 'Approved successfully' : 'Approval removed');
+                            // Show success message
+                            let message = isApproved ? 'Approved and Shopify inventory updated successfully!' : 'Approval removed';
+                            let alertType = 'success';
+                            
+                            showNotification(alertType, message);
                         } else {
                             $checkbox.prop('checked', !isApproved);
                             showNotification('danger', res.message || 'Something went wrong.');
@@ -2766,13 +2770,25 @@
                 //search by sku
             $('#activityLogSearch').on('keyup', function () {
                 const value = $(this).val().toLowerCase();
+                let visibleLossGainTotal = 0;
 
                 $('#activityLogTable tbody tr').filter(function () {
-                const rowText = $(this).text().toLowerCase();
-                $(this).toggle(rowText.indexOf(value) > -1);
-                    // const sku = $(this).find('td:first').text().toLowerCase();
-                    // $(this).toggle(sku.indexOf(value) > -1);
+                    const rowText = $(this).text().toLowerCase();
+                    const isVisible = rowText.indexOf(value) > -1;
+                    $(this).toggle(isVisible);
+                    
+                    // Calculate total for visible rows only
+                    if (isVisible) {
+                        const lossGainText = $(this).find('td:eq(4)').text().trim(); // Loss/Gain column (5th column, index 4)
+                        const lossGainValue = parseFloat(lossGainText);
+                        if (!isNaN(lossGainValue)) {
+                            visibleLossGainTotal += lossGainValue;
+                        }
+                    }
                 });
+
+                // Update the total badge with filtered total
+                $('#activityLossGainTotal').text(`${Math.trunc(visibleLossGainTotal)}`);
             });
 
 
