@@ -54,6 +54,24 @@ class EbayController extends Controller
         ]);
     }
 
+    public function ebayTabulatorView(Request $request)
+    {
+        return view("market-places.ebay_tabulator_view");
+    }
+
+    public function ebayDataJson(Request $request)
+    {
+        try {
+            $response = $this->getViewEbayData($request);
+            $data = json_decode($response->getContent(), true);
+            
+            return response()->json($data['data'] ?? []);
+        } catch (\Exception $e) {
+            Log::error('Error fetching eBay data for Tabulator: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
+
     public function getAdvEbayTotalSaveData(Request $request)
     {
         return ADVMastersData::getAdvEbayTotalSaveDataProceed($request);
@@ -206,7 +224,26 @@ class EbayController extends Controller
             ->get()
             ->keyBy("sku");
 
-        $ebayMetrics = DB::connection('apicentral')->table('ebay_one_metrics')->whereIn('sku', $skus)->get()->keyBy('sku');
+        $ebayMetrics = DB::connection('apicentral')
+            ->table('ebay_one_metrics')
+            ->select(
+                'sku',
+                'ebay_l30',
+                'ebay_l60',
+                'ebay_price',
+                'views',
+                'item_id'
+            )
+            ->whereIn('sku', $skus)
+            ->get()
+            ->keyBy('sku');
+
+        $campaignListings = DB::connection('apicentral')
+            ->table('ebay_campaign_ads_listings')
+            ->select('listing_id', 'bid_percentage', 'suggested_bid')
+            ->get()
+            ->keyBy('listing_id')
+            ->toArray();
 
         $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
 
@@ -275,6 +312,15 @@ class EbayController extends Controller
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['views'] = $ebayMetric->views ?? 0;
+
+            // Get bid percentage from campaign listings
+            if ($ebayMetric && isset($campaignListings[$ebayMetric->item_id])) {
+                $row['bid_percentage'] = $campaignListings[$ebayMetric->item_id]->bid_percentage ?? null;
+                $row['suggested_bid'] = $campaignListings[$ebayMetric->item_id]->suggested_bid ?? null;
+            } else {
+                $row['bid_percentage'] = null;
+                $row['suggested_bid'] = null;
+            }
 
             // LMP data - lowest entry plus top entries
             $lmpEntries = $lmpDetailsLookup->get($pm->sku);
@@ -384,13 +430,13 @@ class EbayController extends Controller
             $totalPercentage = $percentage + $adUpdates; 
 
             $row["ROI%"] = round(
-                $lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) : 0,
+                $lp > 0 ? (($price * 0.86 - $ship - $lp) / $lp) : 0,
                 2
             );
 
 
             $row["GPFT%"] = round(
-                $price  > 0 ? (($price * $totalPercentage - $lp - $ship) / $price) : 0,
+                $price  > 0 ? (($price * 0.86 - $ship - $lp) / $price) : 0,
                 2
             );
             $row["percentage"] = $percentage;
@@ -414,6 +460,7 @@ class EbayController extends Controller
                 }
                 if (is_array($raw)) {
                     $row['NR'] = $raw['NR'] ?? null;
+                    $row['NRL'] = $raw['NRL'] ?? null;
                     $row['SPRICE'] = $raw['SPRICE'] ?? null;
                     $row['SPFT'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;
@@ -507,7 +554,6 @@ class EbayController extends Controller
         $hideValues = $request->input("hideValues"); // <-- add this
         $sku = $request->input("sku");
         $nr = $request->input("nr");
-        $nrl = $request->input("nrl");
         $hide = $request->input("hide");
 
         // Decode hideValues if it's a JSON string
@@ -556,7 +602,7 @@ class EbayController extends Controller
         }
 
         // Single update (existing logic)
-        if (!$sku || ($nr === null && $nrl === null && $hide === null)) {
+        if (!$sku || ($nr === null && $hide === null)) {
             return response()->json(
                 ["error" => "SKU and at least one of NR or Hide is required."],
                 400
@@ -573,8 +619,8 @@ class EbayController extends Controller
             $value["NR"] = $nr;
         }
 
-        if ($nrl !== null) {
-            $value["NRL"] = $nrl;
+        if ($hide !== null) {
+            $value["Hide"] = filter_var($hide, FILTER_VALIDATE_BOOLEAN);
         }
 
         $ebayDataView->value = $value;
@@ -857,5 +903,27 @@ class EbayController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    public function getEbayColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "ebay_tabulator_column_visibility_{$userId}";
+        
+        $visibility = Cache::get($key, []);
+        
+        return response()->json($visibility);
+    }
+
+    public function setEbayColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "ebay_tabulator_column_visibility_{$userId}";
+        
+        $visibility = $request->input('visibility', []);
+        
+        Cache::put($key, $visibility, now()->addDays(365));
+        
+        return response()->json(['success' => true]);
     }
 }
