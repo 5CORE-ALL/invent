@@ -76,7 +76,7 @@
                     <h5>Summary</h5>
                     <div class="row">
                         <div class="col-md-6">
-                            <strong>Total TACOS:</strong> <span id="total-tacos">0</span>
+                            <strong>Total TCOS:</strong> <span id="total-tcos">0%</span>
                         </div>
                         <div class="col-md-6">
                             <strong>Total Spend L30:</strong> <span id="total-spend-l30">0</span>
@@ -376,7 +376,7 @@
 
                         {
                             title: "TACOS",
-                            field: "Ads_Percentage",
+                            field: "TCOS_Percentage",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const data = cell.getRow().getData();
@@ -390,18 +390,6 @@
                                 }
                             }
                         },
-
-
-
-                        // {
-                        //     title: "Pft%",
-                        //     field: "Pft%",
-                        //     hozAlign: "center",
-                        //     formatter: function(cell) {
-                        //         return cell.getValue();
-                        //     },
-                        // },
-
 
                         {
                             title: "PRFT<br>%",
@@ -464,8 +452,15 @@
 
                                 // ❌ Stop if value is 0 or < 1
                                 if (isNaN(value) || value < 1) {
-                                    alert("Price must be 1 or greater.");
+                                    alert("Price must be 1 or greater. Cannot push 0 or invalid prices.");
                                     // Reset previous value
+                                    cell.restoreOldValue();
+                                    return;
+                                }
+
+                                // ✅ Additional safety check - prevent empty or 0 from being saved
+                                if (!value || value === 0) {
+                                    alert("Cannot save or push 0 price.");
                                     cell.restoreOldValue();
                                     return;
                                 }
@@ -480,29 +475,45 @@
                                         value: value,
                                         _token: '{{ csrf_token() }}'
                                     },
-                                    success: function() {
-                                        table.replaceData();
+                                    success: function(response) {
+                                        if (response.success === false) {
+                                            alert('Failed to save: ' + (response.error || 'Unknown error'));
+                                            cell.restoreOldValue();
+                                        } else {
+                                            table.replaceData();
+                                        }
+                                    },
+                                    error: function(xhr) {
+                                        alert('Error saving price: ' + (xhr.responseJSON?.error || 'Network error'));
+                                        cell.restoreOldValue();
                                     }
                                 });
 
-                                // ✔️ Push price to Amazon
-                                $.ajax({
-                                    url: '/push-fba-price',
-                                    method: 'POST',
-                                    data: {
-                                        sku: data.FBA_SKU,
-                                        price: value,
-                                        _token: '{{ csrf_token() }}'
-                                    },
-                                    success: function(result) {
-                                        console.log('Price pushed to Amazon', result);
-                                    },
-                                    error: function(xhr) {
-                                        console.error('Failed to push price', xhr
-                                            .responseJSON);
-                                    }
-                                });
-                            }
+                                // ✔️ Push price to Amazon (only if valid)
+                                if (value > 0) {
+                                    $.ajax({
+                                        url: '/push-fba-price',
+                                        method: 'POST',
+                                        data: {
+                                            sku: data.FBA_SKU,
+                                            price: value,
+                                            _token: '{{ csrf_token() }}'
+                                        },
+                                        success: function(result) {
+                                            console.log('Price pushed to Amazon', result);
+                                            if (result.success === false) {
+                                                alert('Failed to push price: ' + (result.error || 'Unknown error'));
+                                                cell.restoreOldValue();
+                                            }
+                                        },
+                                        error: function(xhr) {
+                                            console.error('Failed to push price', xhr.responseJSON);
+                                            alert('Error pushing price: ' + (xhr.responseJSON?.error || 'Network error'));
+                                            cell.restoreOldValue();
+                                        }
+                                    });
+                                }
+                            },
                         },
 
 
@@ -825,7 +836,7 @@
                         field === 'Dispatch_Date' || field === 'Weight' || field ===
                         'Quantity_in_each_box' ||
                         field === 'Total_quantity_sent' || field === 'Send_Cost' ||
-                        field === 'Commission_Percentage' || field === 'Ads_Percentage' ||
+                        field === 'Commission_Percentage' || field === 'TCOS_Percentage' ||
                         field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
                         'FBA_Fee_Manual') {
@@ -885,7 +896,7 @@
                                                 0.05)) -
                                             LP - FBA_SHIP) / PRICE);
                                     }
-                                    let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
+                                    let TPFT = GPFT - parseFloat(d.TCOS_Percentage || 0);
 
                                     updateData['GPFT%'] = `${(GPFT*100).toFixed(2)} %`;
                                     updateData['TPFT'] = TPFT.toFixed(0);
@@ -893,12 +904,12 @@
                                     console.log('Commission edited - Updated GPFT:', GPFT, 'TPFT:',
                                         TPFT);
 
-                                } else if (field === 'Ads_Percentage') {
-                                    // Only TPFT depends on ads percentage
-                                    let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
+                                } else if (field === 'TCOS_Percentage') {
+                                    // Only TPFT depends on TCOS percentage
+                                    let TPFT = GPFT - parseFloat(d.TCOS_Percentage || 0);
                                     updateData['TPFT'] = TPFT.toFixed(0);
 
-                                    console.log('Ads edited - Updated TPFT:', TPFT);
+                                    console.log('TCOS edited - Updated TPFT:', TPFT);
 
                                 } else {
                                     // Other fields affect PFT, ROI, GPFT, TPFT
@@ -919,7 +930,7 @@
                                             LP - FBA_SHIP) / PRICE);
                                     }
 
-                                    let TPFT = GPFT - parseFloat(d.Ads_Percentage || 0);
+                                    let TPFT = GPFT - parseFloat(d.TCOS_Percentage || 0);
 
                                     updateData['Pft%'] = `${(PFT*100).toFixed(2)} %`;
                                     updateData['ROI%'] = (ROI * 100).toFixed(2);
@@ -962,15 +973,15 @@
 
                 function updateSummary() {
                     const data = table.getData().filter(row => !row.is_parent); // Exclude parent rows
-                    let totalTacos = 0;
+                    let totalTcos = 0;
                     let totalSpendL30 = 0;
 
                     data.forEach(row => {
-                        totalTacos += parseFloat(row.Ads_Percentage || 0);
+                        totalTcos += parseFloat(row.TCOS_Percentage || 0);
                         totalSpendL30 += parseFloat(row.Total_Spend_L30 || 0);
                     });
 
-                    $('#total-tacos').text(totalTacos.toFixed(2) + '%');
+                    $('#total-tcos').text(totalTcos.toFixed(2) + '%');
                     $('#total-spend-l30').text('$' + totalSpendL30.toFixed(2));
                 }
 

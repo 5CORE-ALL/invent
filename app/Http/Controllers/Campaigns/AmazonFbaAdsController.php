@@ -6,9 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\FbaManualData;
+use App\Models\FbaMonthlySale;
+use App\Models\FbaTable;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class AmazonFbaAdsController extends Controller
 {
@@ -43,81 +47,71 @@ class AmazonFbaAdsController extends Controller
     }
 
     public function getAmazonFbaKwAdsData(){
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
+        // Get all FBA records
+        $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+            ->orderBy('seller_sku', 'asc')
             ->get();
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        // Extract seller SKUs for campaigns matching
+        $sellerSkus = $fbaData->pluck('seller_sku')->unique()->toArray();
 
-        $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+        // Get base SKUs (without FBA) for Shopify data
+        $baseSkus = $fbaData->map(function ($item) {
+            $sku = $item->seller_sku;
+            $base = preg_replace('/\s*FBA\s*/i', '', $sku);
+            return strtoupper(trim($base));
+        })->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::whereIn('sku', $baseSkus)
+            ->get()
+            ->keyBy(function ($item) {
+                return trim(strtoupper($item->sku));
+            });
 
-        $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        $fbaMonthlySales = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+         ->get()
+         ->keyBy(function ($item) {
+            return strtoupper(trim($item->seller_sku));
+         });
+
+        $nrValues = FbaManualData::whereIn('sku', $sellerSkus)->pluck('data', 'sku');
 
         $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
+            ->where(function ($q) use ($sellerSkus) {
+                foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
                 }
-            })
-            ->where(function ($q) {
-                $q->where('campaignName', 'LIKE', '%FBA%')
-                ->orWhere('campaignName', 'LIKE', '%fba%')
-                ->orWhere('campaignName', 'LIKE', '%FBA.%')
-                ->orWhere('campaignName', 'LIKE', '%fba.%');
             })
             ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
             ->get();
 
         $amazonSpCampaignReportsL15 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L15')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
+            ->where(function ($q) use ($sellerSkus) {
+                foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
                 }
-            })
-            ->where(function ($q) {
-                $q->where('campaignName', 'LIKE', '%FBA%')
-                ->orWhere('campaignName', 'LIKE', '%fba%')
-                ->orWhere('campaignName', 'LIKE', '%FBA.%')
-                ->orWhere('campaignName', 'LIKE', '%fba.%');
             })
             ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
             ->get();
 
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
+            ->where(function ($q) use ($sellerSkus) {
+                foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
                 }
-            })
-            ->where(function ($q) {
-                $q->where('campaignName', 'LIKE', '%FBA%')
-                ->orWhere('campaignName', 'LIKE', '%fba%')
-                ->orWhere('campaignName', 'LIKE', '%FBA.%')
-                ->orWhere('campaignName', 'LIKE', '%fba.%');
             })
             ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
             ->get();
 
         $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L1')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
+            ->where(function ($q) use ($sellerSkus) {
+                foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
                 }
-            })
-            ->where(function ($q) {
-                $q->where('campaignName', 'LIKE', '%FBA%')
-                ->orWhere('campaignName', 'LIKE', '%fba%')
-                ->orWhere('campaignName', 'LIKE', '%FBA.%')
-                ->orWhere('campaignName', 'LIKE', '%fba.%');
             })
             ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
             ->get();
@@ -125,69 +119,73 @@ class AmazonFbaAdsController extends Controller
 
         $result = [];
 
-        foreach ($productMasters as $pm) {
-            $sku = strtoupper($pm->sku);
-            $parent = $pm->parent;
+        foreach ($fbaData as $fba) {
+            $sellerSku = $fba->seller_sku;
+            $sellerSkuUpper = strtoupper(trim($sellerSku));
+            
+            // Get base SKU (without FBA)
+            $baseSku = preg_replace('/\s*FBA\s*/i', '', $sellerSku);
+            $baseSkuUpper = strtoupper(trim($baseSku));
 
-            $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData[$baseSkuUpper] ?? null;
+            $monthlySales = $fbaMonthlySales->get($sellerSkuUpper);
 
-            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
+            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
 
                 return (
-                    (str_ends_with($cleanName, $sku . ' FBA') || str_ends_with($cleanName, $sku . ' FBA.'))
-                    && !str_ends_with($cleanName, $sku . ' PT')
-                    && !str_ends_with($cleanName, $sku . ' PT.')
+                    str_contains($cleanName, $sellerSkuUpper)
+                    && !str_ends_with($cleanName, ' PT')
+                    && !str_ends_with($cleanName, ' PT.')
                 );
             });
 
-            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
+            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
 
                 return (
-                    (str_ends_with($cleanName, $sku . ' FBA') || str_ends_with($cleanName, $sku . ' FBA.'))
-                    && !str_ends_with($cleanName, $sku . ' PT')
-                    && !str_ends_with($cleanName, $sku . ' PT.')
+                    str_contains($cleanName, $sellerSkuUpper)
+                    && !str_ends_with($cleanName, ' PT')
+                    && !str_ends_with($cleanName, ' PT.')
+                );
+            });
+
+            $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sellerSkuUpper) {
+                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
+
+                return (
+                    str_contains($cleanName, $sellerSkuUpper)
+                    && !str_ends_with($cleanName, ' PT')
+                    && !str_ends_with($cleanName, ' PT.')
+                );            
+            });
+
+            $matchedCampaign15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sellerSkuUpper) {
+                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
+
+                return (
+                    str_contains($cleanName, $sellerSkuUpper)
+                    && !str_ends_with($cleanName, ' PT')
+                    && !str_ends_with($cleanName, ' PT.')
                 );
             });
 
             $row = [];
-            $row['parent'] = $parent;
-            $row['sku']    = $pm->sku;
-            $row['INV']    = $shopify->inv ?? 0;
+            $row['parent'] = '';
+            $row['sku']    = $sellerSku;
+            $row['INV']    = $fba->quantity_available ?? 0;
+            $row['A_L30']    = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
             $row['L30']    = $shopify->quantity ?? 0;
-            $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
-            $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
-            $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
-            $row['sbid'] = $matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '');
-            $row['crnt_bid'] = $matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '');
+            $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? ($matchedCampaign15->campaign_id ?? ($matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '')));
+            $row['campaignName'] = $matchedCampaignL30->campaignName ?? ($matchedCampaign15->campaignName ?? ($matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '')));
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaign15->campaignStatus ?? ($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '')));
+            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaign15->campaignBudgetAmount ?? ($matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '')));
+            $row['sbid'] = $matchedCampaignL30->sbid ?? ($matchedCampaign15->sbid ?? ($matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '')));
+            $row['crnt_bid'] = $matchedCampaignL30->currentSpBidPrice ?? ($matchedCampaign15->currentSpBidPrice ?? ($matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '')));
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
-
-            $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
-
-                return (
-                    (str_ends_with($cleanName, $sku . ' FBA') || str_ends_with($cleanName, $sku . ' FBA.'))
-                    && !str_ends_with($cleanName, $sku . ' PT')
-                    && !str_ends_with($cleanName, $sku . ' PT.')
-                );            
-            });
-
-            $matchedCampaign15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
-
-                return (
-                    (str_ends_with($cleanName, $sku . ' FBA') || str_ends_with($cleanName, $sku . ' FBA.'))
-                    && !str_ends_with($cleanName, $sku . ' PT')
-                    && !str_ends_with($cleanName, $sku . ' PT.')
-                );
-            });
             
             $sales30 = $matchedCampaignL30->sales30d ?? 0;
             $spend30 = $matchedCampaignL30->spend ?? 0;
@@ -231,8 +229,10 @@ class AmazonFbaAdsController extends Controller
             $row['NRL']  = '';
             $row['NRA'] = '';
             $row['FBA'] = '';
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
+            // Use seller_sku (with FBA) for manual data lookup
+            $sellerSku = $fba->seller_sku ?? '';
+            if ($sellerSku && isset($nrValues[$sellerSku])) {
+                $raw = $nrValues[$sellerSku];
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true);
                 }
@@ -259,25 +259,39 @@ class AmazonFbaAdsController extends Controller
     }
 
     public function getAmazonFbaPtAdsData(){
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
+        // Get all FBA records
+        $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+            ->orderBy('seller_sku', 'asc')
             ->get();
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        // Extract seller SKUs for campaigns matching
+        $sellerSkus = $fbaData->pluck('seller_sku')->unique()->toArray();
 
-        $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+        // Get base SKUs (without FBA) for Shopify data
+        $baseSkus = $fbaData->map(function ($item) {
+            $sku = $item->seller_sku;
+            $base = preg_replace('/\s*FBA\s*/i', '', $sku);
+            return strtoupper(trim($base));
+        })->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::whereIn('sku', $baseSkus)
+            ->get()
+            ->keyBy(function ($item) {
+                return trim(strtoupper($item->sku));
+            });
 
-        $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        $fbaMonthlySales = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+         ->get()
+         ->keyBy(function ($item) {
+            return strtoupper(trim($item->seller_sku));
+         });
+
+        $nrValues = FbaManualData::whereIn('sku', $sellerSkus)->pluck('data', 'sku');
 
         $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
+            ->where(function ($q) use ($sellerSkus) {
+                foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
                 }
             })
@@ -289,8 +303,8 @@ class AmazonFbaAdsController extends Controller
 
         $amazonSpCampaignReportsL15 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L15')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
+            ->where(function ($q) use ($sellerSkus) {
+                foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
                 }
             })
@@ -302,8 +316,8 @@ class AmazonFbaAdsController extends Controller
 
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
+            ->where(function ($q) use ($sellerSkus) {
+                foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
                 }
             })
@@ -315,8 +329,8 @@ class AmazonFbaAdsController extends Controller
 
         $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L1')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
+            ->where(function ($q) use ($sellerSkus) {
+                foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
                 }
             })
@@ -329,61 +343,57 @@ class AmazonFbaAdsController extends Controller
 
         $result = [];
 
-        foreach ($productMasters as $pm) {
-            $sku = strtoupper($pm->sku);
-            $parent = $pm->parent;
+        foreach ($fbaData as $fba) {
+            $sellerSku = $fba->seller_sku;
+            $sellerSkuUpper = strtoupper(trim($sellerSku));
+            
+            // Get base SKU (without FBA)
+            $baseSku = preg_replace('/\s*FBA\s*/i', '', $sellerSku);
+            $baseSkuUpper = strtoupper(trim($baseSku));
 
-            $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData[$baseSkuUpper] ?? null;
+            $monthlySales = $fbaMonthlySales->get($sellerSkuUpper);
 
-            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
+            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
 
-                return (
-                    (str_ends_with($cleanName, $sku . ' FBA PT') || str_ends_with($cleanName, $sku . ' FBA PT.'))
-                );  
+                return str_contains($cleanName, $sellerSkuUpper);
             });
 
-            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
+            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
 
-                return (
-                    (str_ends_with($cleanName, $sku . ' FBA PT') || str_ends_with($cleanName, $sku . ' FBA PT.'))
-                ); 
+                return str_contains($cleanName, $sellerSkuUpper);
+            });
+
+            $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sellerSkuUpper) {
+                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
+
+                return str_contains($cleanName, $sellerSkuUpper);
+           });
+
+            $matchedCampaign15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sellerSkuUpper) {
+                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
+
+                return str_contains($cleanName, $sellerSkuUpper);
             });
 
             $row = [];
-            $row['parent'] = $parent;
-            $row['sku']    = $pm->sku;
-            $row['INV']    = $shopify->inv ?? 0;
+            $row['parent'] = '';
+            $row['sku']    = $sellerSku;
+            $row['INV']    = $fba->quantity_available ?? 0;
+            $row['A_L30']    = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
             $row['L30']    = $shopify->quantity ?? 0;
-            $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
-            $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
-            $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
-            $row['sbid'] = $matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '');
-            $row['crnt_bid'] = $matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '');
+            $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? ($matchedCampaign15->campaign_id ?? ($matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '')));
+            $row['campaignName'] = $matchedCampaignL30->campaignName ?? ($matchedCampaign15->campaignName ?? ($matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '')));
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaign15->campaignStatus ?? ($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '')));
+            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaign15->campaignBudgetAmount ?? ($matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '')));
+            $row['sbid'] = $matchedCampaignL30->sbid ?? ($matchedCampaign15->sbid ?? ($matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '')));
+            $row['crnt_bid'] = $matchedCampaignL30->currentSpBidPrice ?? ($matchedCampaign15->currentSpBidPrice ?? ($matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '')));
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
-
-            $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
-
-                return (
-                    (str_ends_with($cleanName, $sku . ' FBA PT') || str_ends_with($cleanName, $sku . ' FBA PT.'))
-                ); 
-           });
-
-            $matchedCampaign15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
-
-                return (
-                    (str_ends_with($cleanName, $sku . ' FBA PT') || str_ends_with($cleanName, $sku . ' FBA PT.'))
-                ); 
-            });
             
             $row['acos_L30'] = ($matchedCampaignL30 && ($matchedCampaignL30->sales30d ?? 0) > 0)
                 ? round(($matchedCampaignL30->spend / $matchedCampaignL30->sales30d) * 100, 2)
@@ -405,8 +415,10 @@ class AmazonFbaAdsController extends Controller
             $row['NRL']  = '';
             $row['NRA'] = '';
             $row['FBA'] = '';
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
+            // Use seller_sku (with FBA) for manual data lookup
+            $sellerSku = $fba->seller_sku ?? '';
+            if ($sellerSku && isset($nrValues[$sellerSku])) {
+                $raw = $nrValues[$sellerSku];
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true);
                 }
@@ -430,5 +442,30 @@ class AmazonFbaAdsController extends Controller
             'data'    => $uniqueResult,
             'status'  => 200,
         ]);
+    }
+
+    public function updateNrNRLFbaData(Request $request)
+    {
+        $sku   = $request->input('sku');
+        $field = $request->input('field');
+        $value = $request->input('value');
+
+        $amazonDataView = FbaManualData::where('sku', $sku)->first();
+
+        $jsonData = $amazonDataView && $amazonDataView->value ? $amazonDataView->value : [];
+
+        $jsonData[$field] = $value;
+
+        $amazonDataView = FbaManualData::updateOrCreate(
+            ['sku' => $sku],
+            ['data' => $jsonData]
+        );
+
+        return response()->json([
+            'status' => 200,
+            'message' => "...",
+            'updated_json' => $jsonData
+        ]);
+
     }
 }

@@ -579,16 +579,20 @@ class FbaDataController extends Controller
       $adsPTDataBySku = [];
 
       foreach ($fbaData as $sku => $fba) {
-         // Find KW campaign for this SKU
-         $kwCampaign = $amazonSpCampaignReportsL30KW->first(function ($campaign) use ($sku) {
+         // Find KW campaign for this SKU - prioritize FBA campaigns
+         $kwCampaign = $amazonSpCampaignReportsL30KW->filter(function ($campaign) use ($sku) {
             return stripos($campaign->campaignName, $sku) !== false;
-         });
+         })->sortByDesc(function ($campaign) {
+            return stripos($campaign->campaignName, 'FBA') !== false ? 1 : 0;
+         })->first();
          $adsKWDataBySku[$sku] = $kwCampaign;
 
-         // Find PT campaign for this SKU
-         $ptCampaign = $amazonSpCampaignReportsL30PT->first(function ($campaign) use ($sku) {
+         // Find PT campaign for this SKU - prioritize FBA PT campaigns
+         $ptCampaign = $amazonSpCampaignReportsL30PT->filter(function ($campaign) use ($sku) {
             return stripos($campaign->campaignName, $sku) !== false;
-         });
+         })->sortByDesc(function ($campaign) {
+            return stripos($campaign->campaignName, 'FBA') !== false ? 1 : 0;
+         })->first();
          $adsPTDataBySku[$sku] = $ptCampaign;
       }
 
@@ -613,10 +617,19 @@ class FbaDataController extends Controller
          $kwSales = $adsKW ? floatval($adsKW->sales14d ?? 0) : 0;
          $ptSales = $adsPT ? floatval($adsPT->sales14d ?? 0) : 0;
 
-         // Ads Percentage = (KW Spend + PT Spend) / (KW Sales + PT Sales)
+         // Calculate total spend for Total_Spend_L30 field
          $totalSpend = $kwSpend + $ptSpend;
-         $totalSales = $kwSales + $ptSales;
-         $adsPercentage = $totalSales > 0 ? (($totalSpend) * 100) : 0;
+
+         // Calculate price_l30 (FBA_Price * l30_units)
+         $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
+         $l30Units = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
+         $priceL30 = $PRICE * $l30Units;
+
+         // Calculate total_spend_sum (KW + PT spend)
+         $totalSpendSum = $kwSpend + $ptSpend;
+
+         // Calculate TCOS percentage (total_spend_sum / price_l30)
+         $tcosPercentage = $priceL30 > 0 ? round(($totalSpendSum / $priceL30) * 100, 2) : 0;
 
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
 
@@ -628,7 +641,11 @@ class FbaDataController extends Controller
             $manual ? ($manual->data['send_cost'] ?? 0) : 0
          );
 
+         // ✅ Validate s_price from database - prevent 0 values from being used
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
+         if ($S_PRICE < 0) {
+            $S_PRICE = 0; // Sanitize negative values
+         }
 
          $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
          // --- Calculate all profit & ROI metrics ---
@@ -637,10 +654,10 @@ class FbaDataController extends Controller
 
          $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
 
-
-
-         // $spft =  ($S_PRICE > 0) ? (($S_PRICE * ((1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)) - $adsPercentage) / $S_PRICE : 0;
-         $sroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP - $adsPercentage)  / $LP : 0;
+         // SROI: Calculate ROI percentage first, then subtract TCOS percentage
+         $sroiBase = ($LP > 0 && $S_PRICE > 0) ? (($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP) / $LP) * 100 : 0;
+         $sroi = $sroiBase - $tcosPercentage;
+         
          $sgroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)  / $LP : 0;
 
 
@@ -679,7 +696,7 @@ class FbaDataController extends Controller
          $pftPercentage = round($pft * 100);
          $roiPercentage = round($roi * 100);
          $spftPercentage = round($spft * 100);
-         $sroiPercentage = round($sroi * 100);
+         $sroiPercentage = round($sroi);
          $sgroiPercentage = round($sgroi * 100);
 
          return [
@@ -703,7 +720,7 @@ class FbaDataController extends Controller
             'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
             'SGPFT%' => $this->colorService->getValueHtml($sgpftPercentage),
             'GROI%' => $this->colorService->getRoiHtmlForView($groiPercentage),
-            'S_Price' => round($S_PRICE, 2),
+            'S_Price' => $S_PRICE > 0 ? round($S_PRICE, 2) : '', // ✅ Show empty if 0 to prevent confusion
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
             'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
             'SGROI%' => $this->colorService->getRoiHtmlForView($sgroiPercentage),
@@ -753,14 +770,15 @@ class FbaDataController extends Controller
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
 
-            'Ads_Percentage' => ($monthlySales && ($monthlySales->l30_units ?? 0) > 0) ? $adsPercentage / ($monthlySales->l30_units ?? 1) : 0,
-
             'Total_Spend_L30' => $totalSpend,
 
-            // TPFT calculation (Commission % - Ads %)
-            'TPFT' => round($gpftPercentage - $adsPercentage, 2),
-            'SPFT' => round($spftPercentage - $adsPercentage),
-            'ROI' => round($roiPercentage - $adsPercentage, 2),
+            // TCOS calculation (total_spend_sum / price_l30 * 100)
+            'TCOS_Percentage' => $tcosPercentage,
+
+            // TPFT calculation (GPFT% - TCOS%)
+            'TPFT' => round($gpftPercentage - $tcosPercentage, 2),
+            'SPFT' => round($spftPercentage - $tcosPercentage, 2),
+            'ROI' => round($roiPercentage - $tcosPercentage, 2),
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
             'Mar' => $monthlySales ? ($monthlySales->mar ?? 0) : 0,
@@ -822,8 +840,8 @@ class FbaDataController extends Controller
             'Send_Cost' => round($children->sum(fn($item) => is_numeric($item['Send_Cost']) ? $item['Send_Cost'] : 0), 2),
             'IN_Charges' => round($children->sum(fn($item) => is_numeric($item['IN_Charges']) ? $item['IN_Charges'] : 0), 2),
             'Commission_Percentage' => '',
-            'Ads_Percentage' => '',
             'Total_Spend_L30' => $children->sum('Total_Spend_L30'),
+            'TCOS_Percentage' => '',
             'Done' => false,
             'Warehouse_INV_Reduction' => false,
             'FBA_Send' => false,
@@ -1124,6 +1142,14 @@ class FbaDataController extends Controller
    {
       $sku = $request->input('sku');
       $price = $request->input('price');
+
+      // ✅ Validate price before pushing to Amazon
+      if (!$price || $price <= 0 || !is_numeric($price)) {
+         return response()->json([
+            'success' => false,
+            'error' => 'Invalid price. Price must be greater than 0.'
+         ], 400);
+      }
 
       $service = new AmazonSpApiService();
       $result = $service->updateAmazonPriceUS($sku, $price);

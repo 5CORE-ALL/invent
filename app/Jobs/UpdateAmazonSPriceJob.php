@@ -24,6 +24,15 @@ class UpdateAmazonSPriceJob implements ShouldQueue
      */
     public function __construct($sku, $price)
     {
+        // ✅ Validate price before queuing the job
+        if (!$price || $price <= 0 || !is_numeric($price)) {
+            Log::warning("Invalid price rejected for SKU: {$sku}", [
+                'price' => $price,
+                'type' => gettype($price)
+            ]);
+            throw new \InvalidArgumentException('Price must be a positive number greater than 0');
+        }
+
         $this->sku = $sku;
         $this->price = $price;
     }

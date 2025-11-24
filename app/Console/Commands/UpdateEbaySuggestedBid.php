@@ -150,7 +150,7 @@ class UpdateEbaySuggestedBid extends Command
                     "sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
                     ['json' => ['requests' => $requests]]
                 );
-                $this->info("Campaign {$campaignId}: Updated " . count($requests) . " listings.");
+                $this->info("Campaign {$campaignId}: Updated " . json_encode($requests, JSON_PRETTY_PRINT) . " listings.");
                 Log::info("eBay campaign {$campaignId} bulk update response: " . $response->getBody()->getContents());
             } catch (\Exception $e) {
                 Log::error("Failed to update eBay campaign {$campaignId}: " . $e->getMessage());

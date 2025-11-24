@@ -54,7 +54,7 @@ class ForecastAnalysisController extends Controller
                 ];
             });
 
-        $productListData = DB::table('product_master')->get();
+        $productListData = DB::table('product_master')->whereNull('deleted_at')->get();
 
         $shopifyData = ShopifySku::all()->keyBy(fn($item) => $normalizeSku($item->sku));
 
