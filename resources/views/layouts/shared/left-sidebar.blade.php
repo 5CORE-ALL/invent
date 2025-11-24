@@ -1855,7 +1855,7 @@
                                         <a href="{{ url('ebay-pricing-cvr') }}">Ebay Pricing - CVR</a>
                                     </li>
                                     <li>
-                                        <a href="{{ url('ebay-pricing-decrease') }}">Ebay Pricing
+                                        <a href="{{ url('ebay-tabulator-view') }}">Ebay Pricing
                                             Decrease </a>
                                     </li>
                                     <li>

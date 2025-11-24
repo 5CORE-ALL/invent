@@ -233,29 +233,27 @@
         }
 
         .skuColumn {
-            max-width: 150px;
+            min-width: 150px;
+            max-width: none;
         }
 
         .skuColumn .sku-text,
         .skuColumn strong.sku-text {
             display: inline-block;
-            max-width: 140px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            word-break: break-word;
             vertical-align: middle;
         }
 
         .parentColumn {
-            max-width: 150px;
+            min-width: 150px;
+            max-width: none;
         }
 
         .parentColumn .parent-text {
             display: inline-block;
-            max-width: 140px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            word-break: break-word;
             vertical-align: middle;
         }
 
@@ -1021,6 +1019,9 @@
                     <div id="" class="d-flex align-items-right">
                         <button id="hideSkuBtn" class="btn btn-outline-danger ms-2">
                             <i class="fa fa-eye-slash"></i> Hide SKU
+                        </button>
+                        <button id="exportCsvBtn" class="btn btn-outline-success ms-2">
+                            <i class="fa fa-file-csv"></i> Export CSV
                         </button>
                     </div>
                 </div>
@@ -2669,13 +2670,25 @@
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'relative');
 
                     if (item.is_parent) {
-                        $skuCell.html(`<strong class="sku-text">${safeSku}</strong>`);
+                        $skuCell.html(`
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <strong class="sku-text">${safeSku}</strong>
+                                <i class="fas fa-copy sku-copy-icon" 
+                                   data-sku="${skuValue}" 
+                                   style="cursor: pointer; color: #6c757d; font-size: 14px;"
+                                   title="Copy SKU"></i>
+                            </div>
+                        `);
                     } else {
                         const imageUrl = item.raw_data?.image || "";
 
                         $skuCell.html(`
-                            <div class="sku-tooltip-container" style="position: relative; cursor: pointer;">
+                            <div class="sku-tooltip-container" style="position: relative; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                                 <span class="sku-text">${safeSku}</span>
+                                <i class="fas fa-copy sku-copy-icon" 
+                                   data-sku="${skuValue}" 
+                                   style="cursor: pointer; color: #6c757d; font-size: 14px;"
+                                   title="Copy SKU"></i>
 
                                 <div class="sku-tooltip" style="
                                     display: none;
@@ -5815,9 +5828,9 @@
                         return `font-size:14px; padding:6px 12px; border-radius:8px; color:#fff; background-color:${getSPFTBgColor(value)};`;
                     }
 
-                    // Escape SKU for use in selector
-                    const escapedSku = sku.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, "\\$&");
-                    const $spftCell = $(`#spft-${escapedSku}`);
+                    // Find the cell by traversing the DOM instead of using ID
+                    const $row = $input.closest('tr');
+                    const $spftCell = $row.find('td[id^="spft-"]');
                     const $spftSpan = $spftCell.find('.sprofit-value');
                     
                     console.log('SPFT Cell found:', $spftCell.length, 'Span found:', $spftSpan.length);
@@ -5843,7 +5856,8 @@
                         return `font-size:14px; padding:6px 12px; border-radius:8px; color:#fff; background-color:${getSROIBgColor(value)};`;
                     }
 
-                    const $sroiCell = $(`#sroi-${escapedSku}`);
+                    // Find the cell by traversing the DOM instead of using ID
+                    const $sroiCell = $row.find('td[id^="sroi-"]');
                     const $sroiSpan = $sroiCell.find('.sroi-value');
                     
                     console.log('SROI Cell found:', $sroiCell.length, 'Span found:', $sroiSpan.length);
@@ -5927,6 +5941,101 @@
                     notification.find('.alert').alert('close');
                 }, 3000);
             }
+
+            // Export CSV handler
+            $('#exportCsvBtn').on('click', function() {
+                if (filteredData.length === 0) {
+                    showNotification('warning', 'No data to export');
+                    return;
+                }
+
+                // Define CSV columns
+                const headers = [
+                    'Sl', 'Parent', '(Child) sku', 'Title', 'INV', 'OV L30', 'OV DIL%',
+                    'EL 30', 'E DIL%', 'views', 'PFT %', 'Roi', 'Tacos30', 'SCVR',
+                    'LP', 'SHIP', 'eBay Price', 'SPRICE', 'SPROFIT', 'SROI', 'LMP1',
+                    'LMP1 Link', 'LMP2', 'LMP2 Link', 'LMP3', 'LMP3 Link', 'NR', 
+                    'R&A', 'Hide', 'Listed', 'Live'
+                ];
+
+                // Create CSV content
+                let csvContent = headers.join(',') + '\n';
+
+                filteredData.forEach(item => {
+                    const row = [
+                        item.Sl || '',
+                        `"${(item.Parent || '').replace(/"/g, '""')}"`,
+                        `"${(item['(Child) sku'] || '').replace(/"/g, '""')}"`,
+                        `"${(item.Title || '').replace(/"/g, '""')}"`,
+                        item.INV || '',
+                        item['OV L30'] || '',
+                        item['OV DIL%'] || '',
+                        item['EL 30'] || '',
+                        item['E DIL%'] || '',
+                        item.views || '',
+                        item['PFT %'] || '',
+                        item.Roi || '',
+                        item.Tacos30 || '',
+                        item.SCVR || '',
+                        item.LP || '',
+                        item.SHIP || '',
+                        item['eBay Price'] || '',
+                        item.SPRICE || '',
+                        item.SPROFIT || '',
+                        item.SROI || '',
+                        item.LMP1 || '',
+                        `"${(item['LMP1 Link'] || '').replace(/"/g, '""')}"`,
+                        item.LMP2 || '',
+                        `"${(item['LMP2 Link'] || '').replace(/"/g, '""')}"`,
+                        item.LMP3 || '',
+                        `"${(item['LMP3 Link'] || '').replace(/"/g, '""')}"`,
+                        item.NR || '',
+                        item['R&A'] || '',
+                        item.Hide || '',
+                        item.Listed || '',
+                        item.Live || ''
+                    ];
+                    csvContent += row.join(',') + '\n';
+                });
+
+                // Create download link
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                
+                link.setAttribute('href', url);
+                link.setAttribute('download', `ebay_pricing_data_${timestamp}.csv`);
+                link.style.visibility = 'hidden';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                showNotification('success', `Exported ${filteredData.length} rows to CSV`);
+            });
+
+            // Copy SKU handler
+            $(document).on('click', '.sku-copy-icon', function(e) {
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                const $icon = $(this);
+                
+                navigator.clipboard.writeText(sku).then(() => {
+                    const originalClass = $icon.attr('class');
+                    $icon.removeClass('fa-copy').addClass('fa-check').css('color', '#28a745');
+                    
+                    setTimeout(() => {
+                        $icon.attr('class', originalClass).css('color', '#6c757d');
+                    }, 1500);
+                    
+                    showNotification('success', `SKU copied: ${sku}`);
+                }).catch(err => {
+                    showNotification('danger', 'Failed to copy SKU');
+                    console.error('Copy failed:', err);
+                });
+            });
+
             // Initialize everything
             initTable();
             // Make the static Hide SKU modal draggable using the existing logic
