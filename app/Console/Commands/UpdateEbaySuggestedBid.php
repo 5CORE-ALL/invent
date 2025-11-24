@@ -46,7 +46,14 @@ class UpdateEbaySuggestedBid extends Command
             ->select('listing_id', 'campaign_id')
             ->where('funding_strategy', 'COST_PER_SALE')
             ->get()
-            ->keyBy('listing_id');
+            ->keyBy('listing_id')
+            ->map(function ($item) {
+                return (object) [
+                    'listing_id' => $item->listing_id,
+                    'campaign_id' => $item->campaign_id,
+                    'sbid' => null
+                ];
+            });
             
         foreach ($productMasters as $pm) {
             $shopify = $shopifyData[$pm->sku] ?? null;
@@ -109,7 +116,7 @@ class UpdateEbaySuggestedBid extends Command
                 }
             }
 
-            if ($ebayMetric && isset($campaignListings[$ebayMetric->item_id])) {
+            if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
                 $campaignListings[$ebayMetric->item_id]->sbid = $sbid;
             }
         }
