@@ -31,6 +31,12 @@ use App\Models\SheinSheetData;
 use App\Models\AmazonDatasheet;
 use App\Models\EbayTwoDataView;
 use App\Models\WalmartDataView;
+use App\Models\WayfairDataView;
+use App\Models\MercariWoShipDataView;
+use App\Models\MercariWShipDataView;
+use App\Models\Business5CoreDataView;
+use App\Models\PLSDataView;
+use App\Models\FBMarketplaceDataView;
 use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
 use App\Services\DobaApiService;
@@ -72,6 +78,7 @@ use Illuminate\Contracts\Session\Session;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Http\Controllers\UpdatePriceApiController;
+use App\Models\PLSDataView as ModelsPLSDataView;
 
 class PricingMasterViewsController extends Controller
 {
@@ -406,8 +413,16 @@ class PricingMasterViewsController extends Controller
         $bestbuyUsaDataView = BestbuyUSADataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $tiendamiaLookup = TiendamiaProduct::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $tiendamiaDataView = TiendamiaDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $tiktokDataView = TiktokShopDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $aliexpressDataView = AliexpressDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $aliexpressLookup = AliExpressSheetData::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $walmartDataView = WalmartDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $wayfairDataView = WayfairDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $mercariWoShipDataView = MercariWoShipDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $mercariWShipDataView = MercariWShipDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $fbMarketplaceDataView = FBMarketplaceDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $business5CoreDataView = Business5CoreDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $plsDataView = PLSDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $walmartProductSheetLookup = DB::table('walmart_product_sheet')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $dobaProductSheetLookup = DB::table('doba_sheet_data')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         // Wayfair sheet lookup
@@ -941,9 +956,9 @@ class PricingMasterViewsController extends Controller
                 'temu_sprice' => isset($temuDataView[$sku]) ? (is_array($temuDataView[$sku]->value) ? ($temuDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($temuDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
                 'temu_spft' => isset($temuDataView[$sku]) ? (is_array($temuDataView[$sku]->value) ? ($temuDataView[$sku]->value['SPFT'] ?? null) : (json_decode($temuDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
                 'temu_sroi' => isset($temuDataView[$sku]) ? (is_array($temuDataView[$sku]->value) ? ($temuDataView[$sku]->value['SROI'] ?? null) : (json_decode($temuDataView[$sku]->value, true)['SROI'] ?? null)) : null,
-                'reverb_sprice' => isset($reverbDataView[$sku]) ? (is_array($reverbDataView[$sku]->value) ? ($reverbDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($reverbDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
-                'reverb_spft' => isset($reverbDataView[$sku]) ? (is_array($reverbDataView[$sku]->value) ? ($reverbDataView[$sku]->value['SPFT'] ?? null) : (json_decode($reverbDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
-                'reverb_sroi' => isset($reverbDataView[$sku]) ? (is_array($reverbDataView[$sku]->value) ? ($reverbDataView[$sku]->value['SROI'] ?? null) : (json_decode($reverbDataView[$sku]->value, true)['SROI'] ?? null)) : null,
+                'reverb_sprice' => isset($reverbDataView[$sku]) ? (is_array($reverbDataView[$sku]->values) ? ($reverbDataView[$sku]->values['SPRICE'] ?? null) : (json_decode($reverbDataView[$sku]->values, true)['SPRICE'] ?? null)) : null,
+                'reverb_spft' => isset($reverbDataView[$sku]) ? (is_array($reverbDataView[$sku]->values) ? ($reverbDataView[$sku]->values['SPFT'] ?? null) : (json_decode($reverbDataView[$sku]->values, true)['SPFT'] ?? null)) : null,
+                'reverb_sroi' => isset($reverbDataView[$sku]) ? (is_array($reverbDataView[$sku]->values) ? ($reverbDataView[$sku]->values['SROI'] ?? null) : (json_decode($reverbDataView[$sku]->values, true)['SROI'] ?? null)) : null,
                 'macy_sprice' => isset($macyDataView[$sku]) ? (is_array($macyDataView[$sku]->value) ? ($macyDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($macyDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
                 'macy_spft' => isset($macyDataView[$sku]) ? (is_array($macyDataView[$sku]->value) ? ($macyDataView[$sku]->value['SPFT'] ?? null) : (json_decode($macyDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
                 'macy_sroi' => isset($macyDataView[$sku]) ? (is_array($macyDataView[$sku]->value) ? ($macyDataView[$sku]->value['SROI'] ?? null) : (json_decode($macyDataView[$sku]->value, true)['SROI'] ?? null)) : null,
@@ -962,11 +977,33 @@ class PricingMasterViewsController extends Controller
                 'aliexpress_sprice' => isset($aliexpressDataView[$sku]) ? (is_array($aliexpressDataView[$sku]->value) ? ($aliexpressDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($aliexpressDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
                 'aliexpress_spft' => isset($aliexpressDataView[$sku]) ? (is_array($aliexpressDataView[$sku]->value) ? ($aliexpressDataView[$sku]->value['SPFT'] ?? null) : (json_decode($aliexpressDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
                 'aliexpress_sroi' => isset($aliexpressDataView[$sku]) ? (is_array($aliexpressDataView[$sku]->value) ? ($aliexpressDataView[$sku]->value['SROI'] ?? null) : (json_decode($aliexpressDataView[$sku]->value, true)['SROI'] ?? null)) : null,
+                'walmart_sprice' => isset($walmartDataView[$sku]) ? (is_array($walmartDataView[$sku]->value) ? ($walmartDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($walmartDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
+                'walmart_spft' => isset($walmartDataView[$sku]) ? (is_array($walmartDataView[$sku]->value) ? ($walmartDataView[$sku]->value['SPFT'] ?? null) : (json_decode($walmartDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
+                'walmart_sroi' => isset($walmartDataView[$sku]) ? (is_array($walmartDataView[$sku]->value) ? ($walmartDataView[$sku]->value['SROI'] ?? null) : (json_decode($walmartDataView[$sku]->value, true)['SROI'] ?? null)) : null,
+                'wayfair_sprice' => isset($wayfairDataView[$sku]) ? (is_array($wayfairDataView[$sku]->value) ? ($wayfairDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($wayfairDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
+                'wayfair_spft' => isset($wayfairDataView[$sku]) ? (is_array($wayfairDataView[$sku]->value) ? ($wayfairDataView[$sku]->value['SPFT'] ?? null) : (json_decode($wayfairDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
+                'wayfair_sroi' => isset($wayfairDataView[$sku]) ? (is_array($wayfairDataView[$sku]->value) ? ($wayfairDataView[$sku]->value['SROI'] ?? null) : (json_decode($wayfairDataView[$sku]->value, true)['SROI'] ?? null)) : null,
+                'mercariwoship_sprice' => isset($mercariWoShipDataView[$sku]) ? (is_array($mercariWoShipDataView[$sku]->value) ? ($mercariWoShipDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($mercariWoShipDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
+                'mercariwoship_spft' => isset($mercariWoShipDataView[$sku]) ? (is_array($mercariWoShipDataView[$sku]->value) ? ($mercariWoShipDataView[$sku]->value['SPFT'] ?? null) : (json_decode($mercariWoShipDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
+                'mercariwoship_sroi' => isset($mercariWoShipDataView[$sku]) ? (is_array($mercariWoShipDataView[$sku]->value) ? ($mercariWoShipDataView[$sku]->value['SROI'] ?? null) : (json_decode($mercariWoShipDataView[$sku]->value, true)['SROI'] ?? null)) : null,
+                'mercariwship_sprice' => isset($mercariWShipDataView[$sku]) ? (is_array($mercariWShipDataView[$sku]->value) ? ($mercariWShipDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($mercariWShipDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
+                'mercariwship_spft' => isset($mercariWShipDataView[$sku]) ? (is_array($mercariWShipDataView[$sku]->value) ? ($mercariWShipDataView[$sku]->value['SPFT'] ?? null) : (json_decode($mercariWShipDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
+                'mercariwship_sroi' => isset($mercariWShipDataView[$sku]) ? (is_array($mercariWShipDataView[$sku]->value) ? ($mercariWShipDataView[$sku]->value['SROI'] ?? null) : (json_decode($mercariWShipDataView[$sku]->value, true)['SROI'] ?? null)) : null,
+                'fbmarketplace_sprice' => isset($fbMarketplaceDataView[$sku]) ? (is_array($fbMarketplaceDataView[$sku]->value) ? ($fbMarketplaceDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($fbMarketplaceDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
+                'fbmarketplace_spft' => isset($fbMarketplaceDataView[$sku]) ? (is_array($fbMarketplaceDataView[$sku]->value) ? ($fbMarketplaceDataView[$sku]->value['SPFT'] ?? null) : (json_decode($fbMarketplaceDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
+                'fbmarketplace_sroi' => isset($fbMarketplaceDataView[$sku]) ? (is_array($fbMarketplaceDataView[$sku]->value) ? ($fbMarketplaceDataView[$sku]->value['SROI'] ?? null) : (json_decode($fbMarketplaceDataView[$sku]->value, true)['SROI'] ?? null)) : null,
+                'business5core_sprice' => isset($business5CoreDataView[$sku]) ? (is_array($business5CoreDataView[$sku]->value) ? ($business5CoreDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($business5CoreDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
+                'business5core_spft' => isset($business5CoreDataView[$sku]) ? (is_array($business5CoreDataView[$sku]->value) ? ($business5CoreDataView[$sku]->value['SPFT'] ?? null) : (json_decode($business5CoreDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
+                'business5core_sroi' => isset($business5CoreDataView[$sku]) ? (is_array($business5CoreDataView[$sku]->value) ? ($business5CoreDataView[$sku]->value['SROI'] ?? null) : (json_decode($business5CoreDataView[$sku]->value, true)['SROI'] ?? null)) : null,
+                'pls_sprice' => isset($plsDataView[$sku]) ? (is_array($plsDataView[$sku]->value) ? ($plsDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($plsDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
+                'pls_spft' => isset($plsDataView[$sku]) ? (is_array($plsDataView[$sku]->value) ? ($plsDataView[$sku]->value['SPFT'] ?? null) : (json_decode($plsDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
+                'pls_sroi' => isset($plsDataView[$sku]) ? (is_array($plsDataView[$sku]->value) ? ($plsDataView[$sku]->value['SROI'] ?? null) : (json_decode($plsDataView[$sku]->value, true)['SROI'] ?? null)) : null,
                 // L90 Sales and Views from ProductMaster
                 'sales' => is_string($product->sales) ? json_decode($product->sales, true) : ($product->sales ?? []),
                 'views' => is_string($product->views) ? json_decode($product->views, true) : ($product->views ?? []),
             ];
 
+            
             // Set inventory calculations
             $item->avg_inventory = $lp != 0 ? (($item->initial_cogs + $item->current_cogs) / 2) : 0;
             $item->initial_calculated_cogs = $item->initial_cogs - $item->current_cogs;
@@ -1315,17 +1352,6 @@ class PricingMasterViewsController extends Controller
                 $dobaDataView->value = $existing;
                 $dobaDataView->save();
 
-                // Update ProductMaster Values field with doba_final_price
-                // $product = ProductMaster::where('sku', $sku)->first();
-                // if ($product) {
-                //     $values = is_string($product->Values) ? json_decode($product->Values, true) : $product->Values;
-                //     if (!is_array($values)) {
-                //         $values = [];
-                //     }
-                //     $values['doba_final_price'] = number_format($sprice * 0.75, 2, '.', '');
-                //     $product->Values = json_encode($values);
-                //     $product->save();
-                // }
                 break;
 
             case 'temu':
@@ -1521,6 +1547,156 @@ class PricingMasterViewsController extends Controller
                 $aliexpressDataView->save();
                 break;
 
+            case 'tiktok':
+                // TikTok logic
+                $tiktokDataView = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($tiktokDataView->value) ? $tiktokDataView->value : (json_decode($tiktokDataView->value, true) ?: []);
+
+                $spft = $sprice > 0 ? round(((($sprice * 0.80) - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? ((($sprice * 0.80) - $lp - $ship) / $lp) * 100 : 0;
+
+                $existing['SPRICE'] = number_format($sprice, 2, '.', '');
+                $existing['SPFT'] = number_format($spft, 2, '.', '');
+                $existing['SROI'] = number_format($sroi, 2, '.', '');
+
+                $tiktokDataView->value = $existing;
+                $tiktokDataView->save();
+
+                // Also update TiktokSheet price
+                $tiktokSheet = TiktokSheet::firstOrNew(['sku' => $sku]);
+                $tiktokSheet->price = $sprice;
+                $tiktokSheet->save();
+                break;
+
+            case 'bestbuy':
+            case 'bestbuyusa':
+                // BestBuy USA logic
+                $bestbuyDataView = BestbuyUSADataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($bestbuyDataView->value) ? $bestbuyDataView->value : (json_decode($bestbuyDataView->value, true) ?: []);
+
+                $spft = $sprice > 0 ? round(((($sprice * 0.80) - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? round(((($sprice * 0.80) - $lp - $ship) / $lp) * 100, 2) : 0;
+
+                $existing['SPRICE'] = number_format($sprice, 2, '.', '');
+                $existing['SPFT'] = number_format($spft, 2, '.', '');
+                $existing['SROI'] = number_format($sroi, 2, '.', '');
+
+                $bestbuyDataView->value = $existing;
+                $bestbuyDataView->save();
+                break;
+
+            case 'tiendamia':
+                // Tiendamia logic
+                $tiendamiaDataView = TiendamiaDataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($tiendamiaDataView->value) ? $tiendamiaDataView->value : (json_decode($tiendamiaDataView->value, true) ?: []);
+
+                $spft = $sprice > 0 ? round(((($sprice * 0.83) - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? round(((($sprice * 0.83) - $lp - $ship) / $lp) * 100, 2) : 0;
+
+                $existing['SPRICE'] = number_format($sprice, 2, '.', '');
+                $existing['SPFT'] = number_format($spft, 2, '.', '');
+                $existing['SROI'] = number_format($sroi, 2, '.', '');
+
+                $tiendamiaDataView->value = $existing;
+                $tiendamiaDataView->save();
+                break;
+
+            case 'wayfair':
+                // Wayfair logic
+                $wayfairDataView = WayfairDataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($wayfairDataView->value) ? $wayfairDataView->value : (json_decode($wayfairDataView->value, true) ?: []);
+
+                $spft = $sprice > 0 ? round(((($sprice * 0.97) - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? round(((($sprice * 0.97) - $lp - $ship) / $lp) * 100, 2) : 0;
+
+                $existing['SPRICE'] = number_format($sprice, 2, '.', '');
+                $existing['SPFT'] = number_format($spft, 2, '.', '');
+                $existing['SROI'] = number_format($sroi, 2, '.', '');
+
+                $wayfairDataView->value = $existing;
+                $wayfairDataView->save();
+                break;
+
+            case 'mercariwoship':
+                // Mercari Without Ship logic - no shipping cost
+                $mercariWoShipDataView = MercariWoShipDataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($mercariWoShipDataView->value) ? $mercariWoShipDataView->value : (json_decode($mercariWoShipDataView->value, true) ?: []);
+
+                $spft = $sprice > 0 ? round(((($sprice * 0.88) - $lp) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? round(((($sprice * 0.88) - $lp) / $lp) * 100, 2) : 0;
+
+                $existing['SPRICE'] = number_format($sprice, 2, '.', '');
+                $existing['SPFT'] = number_format($spft, 2, '.', '');
+                $existing['SROI'] = number_format($sroi, 2, '.', '');
+
+                $mercariWoShipDataView->value = $existing;
+                $mercariWoShipDataView->save();
+                break;
+
+            case 'mercariwship':
+                // Mercari With Ship logic
+                $mercariWShipDataView = MercariWShipDataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($mercariWShipDataView->value) ? $mercariWShipDataView->value : (json_decode($mercariWShipDataView->value, true) ?: []);
+
+                $spft = $sprice > 0 ? round(((($sprice * 0.88) - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? round(((($sprice * 0.88) - $lp - $ship) / $lp) * 100, 2) : 0;
+
+                $existing['SPRICE'] = number_format($sprice, 2, '.', '');
+                $existing['SPFT'] = number_format($spft, 2, '.', '');
+                $existing['SROI'] = number_format($sroi, 2, '.', '');
+
+                $mercariWShipDataView->value = $existing;
+                $mercariWShipDataView->save();
+                break;
+
+            case 'fbmarketplace':
+                // FB Marketplace logic
+                $fbMarketplaceDataView = FBMarketplaceDataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($fbMarketplaceDataView->value) ? $fbMarketplaceDataView->value : (json_decode($fbMarketplaceDataView->value, true) ?: []);
+
+                $spft = $sprice > 0 ? round(((($sprice * 0.80) - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? round(((($sprice * 0.80) - $lp - $ship) / $lp) * 100, 2) : 0;
+
+                $existing['SPRICE'] = number_format($sprice, 2, '.', '');
+                $existing['SPFT'] = number_format($spft, 2, '.', '');
+                $existing['SROI'] = number_format($sroi, 2, '.', '');
+
+                $fbMarketplaceDataView->value = $existing;
+                $fbMarketplaceDataView->save();
+                break;
+
+            case 'business5core':
+                // Business Five Core logic
+                $business5CoreDataView = Business5CoreDataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($business5CoreDataView->value) ? $business5CoreDataView->value : (json_decode($business5CoreDataView->value, true) ?: []);
+
+                $spft = $sprice > 0 ? round(((($sprice * 0.95) - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? round(((($sprice * 0.95) - $lp - $ship) / $lp) * 100, 2) : 0;
+
+                $existing['SPRICE'] = number_format($sprice, 2, '.', '');
+                $existing['SPFT'] = number_format($spft, 2, '.', '');
+                $existing['SROI'] = number_format($sroi, 2, '.', '');
+
+                $business5CoreDataView->value = $existing;
+                $business5CoreDataView->save();
+                break;
+
+            case 'pls':
+                // PLS logic
+                $plsDataView = PLSDataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($plsDataView->value) ? $plsDataView->value : (json_decode($plsDataView->value, true) ?: []);
+
+                $spft = $sprice > 0 ? round(((($sprice * 0.80) - $lp - $ship) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? round(((($sprice * 0.80) - $lp - $ship) / $lp) * 100, 2) : 0;
+
+                $existing['SPRICE'] = number_format($sprice, 2, '.', '');
+                $existing['SPFT'] = number_format($spft, 2, '.', '');
+                $existing['SROI'] = number_format($sroi, 2, '.', '');
+
+                $plsDataView->value = $existing;
+                $plsDataView->save();
+                break;
+
             default:
                 return response()->json([
                     'message' => 'Unknown marketplace type',
@@ -1642,7 +1818,8 @@ class PricingMasterViewsController extends Controller
             if ($result['success']) {
                 return response()->json(['success' => true]);
             } else {
-                $reason = $result['errors'] ?? 'Unknown API error';
+                $errors = $result['errors'] ?? 'Unknown API error';
+                $reason = is_array($errors) ? json_encode($errors) : $errors;
                 Log::error("eBay price update failed", ['sku' => $sku, 'item_id' => $itemId, 'reason' => $reason]);
                 return response()->json([
                     'error' => "eBay: Failed for SKU {$sku} - Reason: {$reason}"
@@ -1667,7 +1844,10 @@ class PricingMasterViewsController extends Controller
             ], 400);
         }
 
-        $itemId = Ebay2Metric::where('sku', $sku)->value('item_id');
+        $itemId = DB::connection('apicentral')
+            ->table('ebay2_metrics')
+            ->where('sku', $sku)
+            ->value('item_id');
 
         if (!$itemId) {
             return response()->json([
@@ -1681,7 +1861,8 @@ class PricingMasterViewsController extends Controller
             if ($result['success']) {
                 return response()->json(['success' => true]);
             } else {
-                $reason = $result['errors'] ?? 'Unknown API error';
+                $errors = $result['errors'] ?? 'Unknown API error';
+                $reason = is_array($errors) ? json_encode($errors) : $errors;
                 Log::error("eBay2 price update failed", ['sku' => $sku, 'item_id' => $itemId, 'reason' => $reason]);
                 return response()->json([
                     'error' => "eBay2: Failed for SKU {$sku} - Reason: {$reason}"
@@ -1720,7 +1901,8 @@ class PricingMasterViewsController extends Controller
             if ($result['success']) {
                 return response()->json(['success' => true]);
             } else {
-                $reason = $result['errors'] ?? 'Unknown API error';
+                $errors = $result['errors'] ?? 'Unknown API error';
+                $reason = is_array($errors) ? json_encode($errors) : $errors;
                 Log::error("eBay3 price update failed", ['sku' => $sku, 'item_id' => $itemId, 'reason' => $reason]);
                 return response()->json([
                     'error' => "eBay3: Failed for SKU {$sku} - Reason: {$reason}"

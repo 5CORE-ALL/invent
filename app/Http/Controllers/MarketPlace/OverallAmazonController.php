@@ -154,174 +154,175 @@ class OverallAmazonController extends Controller
                 return $campaignName === $cleanSku;
             });
 
-            $matchedCampaignPtL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
+            // $matchedCampaignPtL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($sku) {
+            //     $cleanName = strtoupper(trim($item->campaignName));
+            //     return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
+            //         && strtoupper($item->campaignStatus) === 'ENABLED';
+            // });
 
-            $matchedCampaignPtL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
+            // $matchedCampaignPtL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
+            //     $cleanName = strtoupper(trim($item->campaignName));
+            //     return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
+            //         && strtoupper($item->campaignStatus) === 'ENABLED';
+            // });
 
-            $matchedCampaignPtL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
+            // $matchedCampaignPtL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
+            //     $cleanName = strtoupper(trim($item->campaignName));
+            //     return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
+            //         && strtoupper($item->campaignStatus) === 'ENABLED';
+            // });
 
-            $matchedCampaignHlL90 = $amazonHlL90->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
+            // $matchedCampaignHlL90 = $amazonHlL90->first(function ($item) use ($sku) {
+            //     $cleanName = strtoupper(trim($item->campaignName));
+            //     return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
+            // });
 
-            $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
-            $matchedCampaignHlL7 = $amazonHlL7->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
+            // $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($sku) {
+            //     $cleanName = strtoupper(trim($item->campaignName));
+            //     return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
+            // });
+            // $matchedCampaignHlL7 = $amazonHlL7->first(function ($item) use ($sku) {
+            //     $cleanName = strtoupper(trim($item->campaignName));
+            //     return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
+            // });
 
-            if (str_starts_with($sku, 'PARENT')) {
-                $childCount = $parentSkuCounts[$parent] ?? 0;
-                $parentHlSpendData[$parent] = [
-                    'total_L90' => $matchedCampaignHlL90->cost ?? 0,
-                    'total_L30' => $matchedCampaignHlL30->cost ?? 0,
-                    'total_L7'  => $matchedCampaignHlL7->cost ?? 0,
-                    'total_L90_sales' => $matchedCampaignHlL90->sales ?? 0,
-                    'total_L30_sales' => $matchedCampaignHlL30->sales ?? 0,
-                    'total_L7_sales'  => $matchedCampaignHlL7->sales ?? 0,
-                    'total_L90_sold'  => $matchedCampaignHlL90->unitsSold ?? 0,
-                    'total_L30_sold'  => $matchedCampaignHlL30->unitsSold ?? 0,
-                    'total_L7_sold'   => $matchedCampaignHlL7->unitsSold ?? 0,
-                    'total_L90_impr'  => $matchedCampaignHlL90->impressions ?? 0,
-                    'total_L30_impr'  => $matchedCampaignHlL30->impressions ?? 0,
-                    'total_L7_impr'   => $matchedCampaignHlL7->impressions ?? 0,
-                    'total_L90_clicks'=> $matchedCampaignHlL90->clicks ?? 0,
-                    'total_L30_clicks'=> $matchedCampaignHlL30->clicks ?? 0,
-                    'total_L7_clicks' => $matchedCampaignHlL7->clicks ?? 0,
-                    'childCount'=> $childCount,
-                ];
-            }
+            // if (str_starts_with($sku, 'PARENT')) {
+            //     $childCount = $parentSkuCounts[$parent] ?? 0;
+            //     $parentHlSpendData[$parent] = [
+            //         'total_L90' => $matchedCampaignHlL90->cost ?? 0,
+            //         'total_L30' => $matchedCampaignHlL30->cost ?? 0,
+            //         'total_L7'  => $matchedCampaignHlL7->cost ?? 0,
+            //         'total_L90_sales' => $matchedCampaignHlL90->sales ?? 0,
+            //         'total_L30_sales' => $matchedCampaignHlL30->sales ?? 0,
+            //         'total_L7_sales'  => $matchedCampaignHlL7->sales ?? 0,
+            //         'total_L90_sold'  => $matchedCampaignHlL90->unitsSold ?? 0,
+            //         'total_L30_sold'  => $matchedCampaignHlL30->unitsSold ?? 0,
+            //         'total_L7_sold'   => $matchedCampaignHlL7->unitsSold ?? 0,
+            //         'total_L90_impr'  => $matchedCampaignHlL90->impressions ?? 0,
+            //         'total_L30_impr'  => $matchedCampaignHlL30->impressions ?? 0,
+            //         'total_L7_impr'   => $matchedCampaignHlL7->impressions ?? 0,
+            //         'total_L90_clicks'=> $matchedCampaignHlL90->clicks ?? 0,
+            //         'total_L30_clicks'=> $matchedCampaignHlL30->clicks ?? 0,
+            //         'total_L7_clicks' => $matchedCampaignHlL7->clicks ?? 0,
+            //         'childCount'=> $childCount,
+            //     ];
+            // }
 
-            $row = [];
+            // $row = [];
 
-            // --- KW ---
-            $row['kw_impr_L90'] = $matchedCampaignL90->impressions ?? 0;
-            $row['kw_impr_L30'] = $matchedCampaignL30->impressions ?? 0;
-            $row['kw_impr_L7']  = $matchedCampaignKwL7->impressions ?? 0;
-            $row['kw_clicks_L90'] = $matchedCampaignL90->clicks ?? 0;
-            $row['kw_clicks_L30'] = $matchedCampaignL30->clicks ?? 0;
-            $row['kw_clicks_L7']  = $matchedCampaignKwL7->clicks ?? 0;
-            $row['kw_spend_L90']  = $matchedCampaignL90->spend ?? 0;
-            $row['kw_spend_L30']  = $matchedCampaignL30->spend ?? 0;
-            $row['kw_spend_L7']   = $matchedCampaignKwL7->spend ?? 0;
-            $row['kw_sales_L90']  = $matchedCampaignL90->sales30d ?? 0;
-            $row['kw_sales_L30']  = $matchedCampaignL30->sales30d ?? 0;
-            $row['kw_sales_L7']   = $matchedCampaignKwL7->sales7d ?? 0;
-            $row['kw_sold_L90']  = $matchedCampaignL90->unitsSoldSameSku30d ?? 0;
-            $row['kw_sold_L30']  = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
-            $row['kw_sold_L7']   = $matchedCampaignKwL7->unitsSoldSameSku7d ?? 0;
+            // // --- KW ---
+            // $row['kw_impr_L90'] = $matchedCampaignL90->impressions ?? 0;
+            // $row['kw_impr_L30'] = $matchedCampaignL30->impressions ?? 0;
+            // $row['kw_impr_L7']  = $matchedCampaignKwL7->impressions ?? 0;
+            // $row['kw_clicks_L90'] = $matchedCampaignL90->clicks ?? 0;
+            // $row['kw_clicks_L30'] = $matchedCampaignL30->clicks ?? 0;
+            // $row['kw_clicks_L7']  = $matchedCampaignKwL7->clicks ?? 0;
+            // $row['kw_spend_L90']  = $matchedCampaignL90->spend ?? 0;
+            // $row['kw_spend_L30']  = $matchedCampaignL30->spend ?? 0;
+            // $row['kw_spend_L7']   = $matchedCampaignKwL7->spend ?? 0;
+            // $row['kw_sales_L90']  = $matchedCampaignL90->sales30d ?? 0;
+            // $row['kw_sales_L30']  = $matchedCampaignL30->sales30d ?? 0;
+            // $row['kw_sales_L7']   = $matchedCampaignKwL7->sales7d ?? 0;
+            // $row['kw_sold_L90']  = $matchedCampaignL90->unitsSoldSameSku30d ?? 0;
+            // $row['kw_sold_L30']  = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
+            // $row['kw_sold_L7']   = $matchedCampaignKwL7->unitsSoldSameSku7d ?? 0;
 
-            // --- PT ---
-            $row['pt_impr_L90'] = $matchedCampaignPtL90->impressions ?? 0;
-            $row['pt_impr_L30'] = $matchedCampaignPtL30->impressions ?? 0;
-            $row['pt_impr_L7']  = $matchedCampaignPtL7->impressions ?? 0;
-            $row['pt_clicks_L90'] = $matchedCampaignPtL90->clicks ?? 0;
-            $row['pt_clicks_L30'] = $matchedCampaignPtL30->clicks ?? 0;
-            $row['pt_clicks_L7']  = $matchedCampaignPtL7->clicks ?? 0;
-            $row['pt_spend_L90']  = $matchedCampaignPtL90->spend ?? 0;
-            $row['pt_spend_L30']  = $matchedCampaignPtL30->spend ?? 0;
-            $row['pt_spend_L7']   = $matchedCampaignPtL7->spend ?? 0;
-            $row['pt_sales_L90']  = $matchedCampaignPtL90->sales30d ?? 0;
-            $row['pt_sales_L30']  = $matchedCampaignPtL30->sales30d ?? 0;
-            $row['pt_sales_L7']   = $matchedCampaignPtL7->sales7d ?? 0;
-            $row['pt_sold_L90']  = $matchedCampaignPtL90->unitsSoldSameSku30d ?? 0;
-            $row['pt_sold_L30']  = $matchedCampaignPtL30->unitsSoldSameSku30d ?? 0;
-            $row['pt_sold_L7']   = $matchedCampaignPtL7->unitsSoldSameSku7d ?? 0;
+            // // --- PT ---
+            // $row['pt_impr_L90'] = $matchedCampaignPtL90->impressions ?? 0;
+            // $row['pt_impr_L30'] = $matchedCampaignPtL30->impressions ?? 0;
+            // $row['pt_impr_L7']  = $matchedCampaignPtL7->impressions ?? 0;
+            // $row['pt_clicks_L90'] = $matchedCampaignPtL90->clicks ?? 0;
+            // $row['pt_clicks_L30'] = $matchedCampaignPtL30->clicks ?? 0;
+            // $row['pt_clicks_L7']  = $matchedCampaignPtL7->clicks ?? 0;
+            // $row['pt_spend_L90']  = $matchedCampaignPtL90->spend ?? 0;
+            // $row['pt_spend_L30']  = $matchedCampaignPtL30->spend ?? 0;
+            // $row['pt_spend_L7']   = $matchedCampaignPtL7->spend ?? 0;
+            // $row['pt_sales_L90']  = $matchedCampaignPtL90->sales30d ?? 0;
+            // $row['pt_sales_L30']  = $matchedCampaignPtL30->sales30d ?? 0;
+            // $row['pt_sales_L7']   = $matchedCampaignPtL7->sales7d ?? 0;
+            // $row['pt_sold_L90']  = $matchedCampaignPtL90->unitsSoldSameSku30d ?? 0;
+            // $row['pt_sold_L30']  = $matchedCampaignPtL30->unitsSoldSameSku30d ?? 0;
+            // $row['pt_sold_L7']   = $matchedCampaignPtL7->unitsSoldSameSku7d ?? 0;
 
-            // --- HL  ---
-            $row['hl_impr_L90'] = $matchedCampaignHlL90->impressions ?? 0;
-            $row['hl_impr_L30'] = $matchedCampaignHlL30->impressions ?? 0;
-            $row['hl_impr_L7']  = $matchedCampaignHlL7->impressions ?? 0;
-            $row['hl_clicks_L90'] = $matchedCampaignHlL90->clicks ?? 0;
-            $row['hl_clicks_L30'] = $matchedCampaignHlL30->clicks ?? 0;
-            $row['hl_clicks_L7']  = $matchedCampaignHlL7->clicks ?? 0;
-            $row['hl_campaign_L90'] = $matchedCampaignHlL90->campaignName ?? null;
-            $row['hl_campaign_L30'] = $matchedCampaignHlL30->campaignName ?? null;
-            $row['hl_campaign_L7']  = $matchedCampaignHlL7->campaignName ?? null;
-            $row['hl_sales_L90']  = $matchedCampaignHlL90->sales ?? 0;
-            $row['hl_sales_L30']  = $matchedCampaignHlL30->sales ?? 0;
-            $row['hl_sales_L7']   = $matchedCampaignHlL7->sales ?? 0;
-            $row['hl_sold_L90']  = $matchedCampaignHlL90->unitsSold ?? 0;
-            $row['hl_sold_L30']  = $matchedCampaignHlL30->unitsSold ?? 0;
-            $row['hl_sold_L7']   = $matchedCampaignHlL7->unitsSold ?? 0;
+            // // --- HL  ---
+            // $row['hl_impr_L90'] = $matchedCampaignHlL90->impressions ?? 0;
+            // $row['hl_impr_L30'] = $matchedCampaignHlL30->impressions ?? 0;
+            // $row['hl_impr_L7']  = $matchedCampaignHlL7->impressions ?? 0;
+            // $row['hl_clicks_L90'] = $matchedCampaignHlL90->clicks ?? 0;
+            // $row['hl_clicks_L30'] = $matchedCampaignHlL30->clicks ?? 0;
+            // $row['hl_clicks_L7']  = $matchedCampaignHlL7->clicks ?? 0;
+            // $row['hl_campaign_L90'] = $matchedCampaignHlL90->campaignName ?? null;
+            // $row['hl_campaign_L30'] = $matchedCampaignHlL30->campaignName ?? null;
+            // $row['hl_campaign_L7']  = $matchedCampaignHlL7->campaignName ?? null;
+            // $row['hl_sales_L90']  = $matchedCampaignHlL90->sales ?? 0;
+            // $row['hl_sales_L30']  = $matchedCampaignHlL30->sales ?? 0;
+            // $row['hl_sales_L7']   = $matchedCampaignHlL7->sales ?? 0;
+            // $row['hl_sold_L90']  = $matchedCampaignHlL90->unitsSold ?? 0;
+            // $row['hl_sold_L30']  = $matchedCampaignHlL30->unitsSold ?? 0;
+            // $row['hl_sold_L7']   = $matchedCampaignHlL7->unitsSold ?? 0;
 
-            if (str_starts_with($sku, 'PARENT')) {
-                $row['hl_spend_L90'] = $matchedCampaignHlL90->cost ?? 0;
-                $row['hl_spend_L30'] = $matchedCampaignHlL30->cost ?? 0;
-                $row['hl_spend_L7']  = $matchedCampaignHlL7->cost ?? 0;
-                $row['hl_sales_L90']  = $matchedCampaignHlL90->sales ?? 0;
-                $row['hl_sales_L30']  = $matchedCampaignHlL30->sales ?? 0;
-                $row['hl_sales_L7']   = $matchedCampaignHlL7->sales ?? 0;
-                $row['hl_sold_L90']  = $matchedCampaignHlL90->unitsSold ?? 0;
-                $row['hl_sold_L30']  = $matchedCampaignHlL30->unitsSold ?? 0;
-                $row['hl_sold_L7']   = $matchedCampaignHlL7->unitsSold ?? 0;
-                $row['hl_impr_L90'] = $matchedCampaignHlL90->impressions ?? 0;
-                $row['hl_impr_L30'] = $matchedCampaignHlL30->impressions ?? 0;
-                $row['hl_impr_L7']  = $matchedCampaignHlL7->impressions ?? 0;
-                $row['hl_clicks_L90'] = $matchedCampaignHlL90->clicks ?? 0;
-                $row['hl_clicks_L30'] = $matchedCampaignHlL30->clicks ?? 0;
-                $row['hl_clicks_L7']  = $matchedCampaignHlL7->clicks ?? 0;
-            } 
-            elseif (isset($parentHlSpendData[$parent]) && $parentHlSpendData[$parent]['childCount'] > 0) {
-                $row['hl_spend_L90'] = $parentHlSpendData[$parent]['total_L90'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_spend_L30'] = $parentHlSpendData[$parent]['total_L30'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_spend_L7']  = $parentHlSpendData[$parent]['total_L7'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_sales_L90']  = $parentHlSpendData[$parent]['total_L90_sales'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_sales_L30']  = $parentHlSpendData[$parent]['total_L30_sales'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_sales_L7']   = $parentHlSpendData[$parent]['total_L7_sales'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_sold_L90']  = $parentHlSpendData[$parent]['total_L90_sold'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_sold_L30']  = $parentHlSpendData[$parent]['total_L30_sold'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_sold_L7']   = $parentHlSpendData[$parent]['total_L7_sold'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_impr_L90'] = $parentHlSpendData[$parent]['total_L90_impr'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_impr_L30'] = $parentHlSpendData[$parent]['total_L30_impr'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_impr_L7']  = $parentHlSpendData[$parent]['total_L7_impr'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_clicks_L90'] = $parentHlSpendData[$parent]['total_L90_clicks'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_clicks_L30'] = $parentHlSpendData[$parent]['total_L30_clicks'] / $parentHlSpendData[$parent]['childCount'];
-                $row['hl_clicks_L7']  = $parentHlSpendData[$parent]['total_L7_clicks'] / $parentHlSpendData[$parent]['childCount'];
-            } else {
-                $row['hl_spend_L90'] = 0;
-                $row['hl_spend_L30'] = 0;
-                $row['hl_spend_L7']  = 0;
-                $row['hl_sales_L90'] = 0;
-                $row['hl_sales_L30'] = 0;
-                $row['hl_sales_L7']  = 0;
-                $row['hl_sold_L90']  = 0;
-                $row['hl_sold_L30']  = 0;
-                $row['hl_sold_L7']   = 0;
-                $row['hl_impr_L90'] = 0;
-                $row['hl_impr_L30'] = 0;
-                $row['hl_impr_L7']  = 0;
-                $row['hl_clicks_L90'] = 0;
-                $row['hl_clicks_L30'] = 0;
-                $row['hl_clicks_L7']  = 0;
-            }
+            // if (str_starts_with($sku, 'PARENT')) {
+            //     $row['hl_spend_L90'] = $matchedCampaignHlL90->cost ?? 0;
+            //     $row['hl_spend_L30'] = $matchedCampaignHlL30->cost ?? 0;
+            //     $row['hl_spend_L7']  = $matchedCampaignHlL7->cost ?? 0;
+            //     $row['hl_sales_L90']  = $matchedCampaignHlL90->sales ?? 0;
+            //     $row['hl_sales_L30']  = $matchedCampaignHlL30->sales ?? 0;
+            //     $row['hl_sales_L7']   = $matchedCampaignHlL7->sales ?? 0;
+            //     $row['hl_sold_L90']  = $matchedCampaignHlL90->unitsSold ?? 0;
+            //     $row['hl_sold_L30']  = $matchedCampaignHlL30->unitsSold ?? 0;
+            //     $row['hl_sold_L7']   = $matchedCampaignHlL7->unitsSold ?? 0;
+            //     $row['hl_impr_L90'] = $matchedCampaignHlL90->impressions ?? 0;
+            //     $row['hl_impr_L30'] = $matchedCampaignHlL30->impressions ?? 0;
+            //     $row['hl_impr_L7']  = $matchedCampaignHlL7->impressions ?? 0;
+            //     $row['hl_clicks_L90'] = $matchedCampaignHlL90->clicks ?? 0;
+            //     $row['hl_clicks_L30'] = $matchedCampaignHlL30->clicks ?? 0;
+            //     $row['hl_clicks_L7']  = $matchedCampaignHlL7->clicks ?? 0;
+            // } 
+            // elseif (isset($parentHlSpendData[$parent]) && $parentHlSpendData[$parent]['childCount'] > 0) {
+            //     $row['hl_spend_L90'] = $parentHlSpendData[$parent]['total_L90'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_spend_L30'] = $parentHlSpendData[$parent]['total_L30'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_spend_L7']  = $parentHlSpendData[$parent]['total_L7'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_sales_L90']  = $parentHlSpendData[$parent]['total_L90_sales'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_sales_L30']  = $parentHlSpendData[$parent]['total_L30_sales'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_sales_L7']   = $parentHlSpendData[$parent]['total_L7_sales'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_sold_L90']  = $parentHlSpendData[$parent]['total_L90_sold'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_sold_L30']  = $parentHlSpendData[$parent]['total_L30_sold'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_sold_L7']   = $parentHlSpendData[$parent]['total_L7_sold'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_impr_L90'] = $parentHlSpendData[$parent]['total_L90_impr'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_impr_L30'] = $parentHlSpendData[$parent]['total_L30_impr'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_impr_L7']  = $parentHlSpendData[$parent]['total_L7_impr'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_clicks_L90'] = $parentHlSpendData[$parent]['total_L90_clicks'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_clicks_L30'] = $parentHlSpendData[$parent]['total_L30_clicks'] / $parentHlSpendData[$parent]['childCount'];
+            //     $row['hl_clicks_L7']  = $parentHlSpendData[$parent]['total_L7_clicks'] / $parentHlSpendData[$parent]['childCount'];
+            // } else {
+            //     $row['hl_spend_L90'] = 0;
+            //     $row['hl_spend_L30'] = 0;
+            //     $row['hl_spend_L7']  = 0;
+            //     $row['hl_sales_L90'] = 0;
+            //     $row['hl_sales_L30'] = 0;
+            //     $row['hl_sales_L7']  = 0;
+            //     $row['hl_sold_L90']  = 0;
+            //     $row['hl_sold_L30']  = 0;
+            //     $row['hl_sold_L7']   = 0;
+            //     $row['hl_impr_L90'] = 0;
+            //     $row['hl_impr_L30'] = 0;
+            //     $row['hl_impr_L7']  = 0;
+            //     $row['hl_clicks_L90'] = 0;
+            //     $row['hl_clicks_L30'] = 0;
+            //     $row['hl_clicks_L7']  = 0;
+            // }
 
             $row['parent'] = $parent;
             $row['sku']    = $pm->sku;
             $row['INV']    = $shopify->inv ?? 0;
             $row['L30']    = $shopify->quantity ?? 0;
             $row['fba']    = $pm->fba ?? null;
-            // $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
-            // $row['A_L90']  = $amazonSheet->units_ordered_l90 ?? 0;
-            $row['A_L90'] = $row['kw_sold_L90'] + $row['pt_sold_L90'] + $row['hl_sold_L90'];
-            $row['A_L30'] = $row['kw_sold_L30'] + $row['pt_sold_L30'] + $row['hl_sold_L30'];
-            $row['A_L7'] = $row['kw_sold_L7'] + $row['pt_sold_L7'] + $row['hl_sold_L7'];
+            $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
+            $row['A_L7']  = $amazonSheet->units_ordered_l7 ?? 0;
+            $row['A_L90']  = $amazonSheet->units_ordered_l90 ?? 0;
+            // $row['A_L90'] = $row['kw_sold_L90'] + $row['pt_sold_L90'] + $row['hl_sold_L90'];
+            // $row['A_L30'] = $row['kw_sold_L30'] + $row['pt_sold_L30'] + $row['hl_sold_L30'];
+            // $row['A_L7'] = $row['kw_sold_L7'] + $row['pt_sold_L7'] + $row['hl_sold_L7'];
             $row['total_review_count']  = $amazonSheet->total_review_count ?? 0;
             $row['average_star_rating']  = $amazonSheet->average_star_rating ?? 0;
             $row['campaign_id'] = $matchedCampaignL90->campaign_id ??  '';
@@ -329,14 +330,18 @@ class OverallAmazonController extends Controller
             $row['campaignStatus'] = $matchedCampaignL90->campaignStatus ?? '';
             $row['campaignBudgetAmount'] = $matchedCampaignL90->campaignBudgetAmount ?? 0;
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
-            // $row['spend_l90'] = $matchedCampaignL90->spend ?? 0;
-            // $row['ad_sales_l90'] = $matchedCampaignL90->sales30d ?? 0;
-            $row['spend_l90'] = $row['kw_spend_L90'] + $row['pt_spend_L90'] + $row['hl_spend_L90'];
-            $row['ad_sales_l90'] = $row['kw_sales_L90'] + $row['pt_sales_L90'] + $row['hl_sales_L90'];
-            $row['spend_l30'] = $row['kw_spend_L30'] + $row['pt_spend_L30'] + $row['hl_spend_L30'];
-            $row['ad_sales_l30'] = $row['kw_sales_L30'] + $row['pt_sales_L30'] + $row['hl_sales_L30'];
-            $row['spend_l7'] = $row['kw_spend_L7'] + $row['pt_spend_L7'] + $row['hl_spend_L7'];
-            $row['ad_sales_l7'] = $row['kw_sales_L7'] + $row['pt_sales_L7'] + $row['hl_sales_L7'];
+            $row['spend_l90'] = $matchedCampaignL90->spend ?? 0;
+            $row['ad_sales_l90'] = $matchedCampaignL90->sales30d ?? 0;
+            $row['spend_l30'] = $matchedCampaignL30->spend ?? 0;
+            $row['ad_sales_l30'] = $matchedCampaignL30->sales30d ?? 0;
+            $row['spend_l7'] = $matchedCampaignL7->spend ?? 0;
+            $row['ad_sales_l7'] = $matchedCampaignL7->sales30d ?? 0;
+            // $row['spend_l90'] = $row['kw_spend_L90'] + $row['pt_spend_L90'] + $row['hl_spend_L90'];
+            // $row['ad_sales_l90'] = $row['kw_sales_L90'] + $row['pt_sales_L90'] + $row['hl_sales_L90'];
+            // $row['spend_l30'] = $row['kw_spend_L30'] + $row['pt_spend_L30'] + $row['hl_spend_L30'];
+            // $row['ad_sales_l30'] = $row['kw_sales_L30'] + $row['pt_sales_L30'] + $row['hl_sales_L30'];
+            // $row['spend_l7'] = $row['kw_spend_L7'] + $row['pt_spend_L7'] + $row['hl_spend_L7'];
+            // $row['ad_sales_l7'] = $row['kw_sales_L7'] + $row['pt_sales_L7'] + $row['hl_sales_L7'];
 
             if ($amazonSheet) {
                 $row['A_L30'] = $amazonSheet->units_ordered_l30;
@@ -402,10 +407,12 @@ class OverallAmazonController extends Controller
                 $row['acos_L7'] = 0;
             }
 
-            // $row['clicks_L90'] = $matchedCampaignL90->clicks ?? 0;
-            $row['clicks_L90'] = $row['kw_clicks_L90'] + $row['pt_clicks_L90'] + $row['hl_clicks_L90'];
-            $row['clicks_L30'] = $row['kw_clicks_L30'] + $row['pt_clicks_L30'] + $row['hl_clicks_L30'];
-            $row['clicks_L7'] = $row['kw_clicks_L7'] + $row['pt_clicks_L7'] + $row['hl_clicks_L7'];
+            $row['clicks_L90'] = $matchedCampaignL90->clicks ?? 0;
+            $row['clicks_L30'] = $matchedCampaignL30->clicks ?? 0;
+            $row['clicks_L7'] = $matchedCampaignL7->clicks ?? 0;
+            // $row['clicks_L90'] = $row['kw_clicks_L90'] + $row['pt_clicks_L90'] + $row['hl_clicks_L90'];
+            // $row['clicks_L30'] = $row['kw_clicks_L30'] + $row['pt_clicks_L30'] + $row['hl_clicks_L30'];
+            // $row['clicks_L7'] = $row['kw_clicks_L7'] + $row['pt_clicks_L7'] + $row['hl_clicks_L7'];
 
             $row['cvr_l90'] = $row['clicks_L90'] == 0 ? NULL : number_format(($row['A_L90'] / $row['clicks_L90']) * 100, 2);
             $row['cvr_l30'] = $row['clicks_L30'] == 0 ? NULL : number_format(($row['A_L30'] / $row['clicks_L30']) * 100, 2);

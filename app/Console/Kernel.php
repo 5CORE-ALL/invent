@@ -143,6 +143,9 @@ class Kernel extends ConsoleKernel
         ->dailyAt('03:00')
         ->timezone('UTC');
         // Sync Temu sheet command
+
+
+        $schedule->command('app:fetch-pls-data')->twiceDaily(1, 13);
       
         $schedule->command('sync:neweegg-sheet')->twiceDaily(1, 13);
         $schedule->command('sync:wayfair-sheet')->twiceDaily(2, 14);
@@ -271,6 +274,8 @@ class Kernel extends ConsoleKernel
 
         $schedule->command('app:sync-cp-master-to-sheet')->hourly();
                 
+
+
         // FBA Commands - Daily Updates
         $schedule->command('app:fetch-fba-reports')
             ->dailyAt('01:00')

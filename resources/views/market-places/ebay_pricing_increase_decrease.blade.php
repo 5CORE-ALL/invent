@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'eBay Decrease', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'EBay  Pricing Decrease', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <div id="messageArea" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1055;"></div>
 
@@ -129,6 +129,33 @@
         .dil-percent-value.gray {
             /* background-color: #6c757d; */
             color:  #6c757d;
+        }
+
+        /* ========== NR SELECT DROPDOWN ========== */
+        .nr-select {
+            font-weight: 500;
+        }
+
+        .nr-select option[value="NRL"] {
+            background-color: #dc3545 !important;
+            color: #ffffff !important;
+        }
+
+        .nr-select option[value="REQ"] {
+            background-color: #28a745 !important;
+            color: #ffffff !important;
+        }
+
+        /* When NRL is selected, the select itself should be red */
+        .nr-select[data-value="NRL"] {
+            background-color: #dc3545 !important;
+            color: #ffffff !important;
+        }
+
+        /* When REQ is selected, the select itself should be green */
+        .nr-select[data-value="REQ"] {
+            background-color: #28a745 !important;
+            color: #ffffff !important;
         }
 
         /* ========== TABLE CONTROLS ========== */
@@ -438,7 +465,7 @@
             width: 100%;
             height: 100%;
             z-index: 1050;
-            overflow: hidden;
+            overflow: auto;
             outline: 0;
             pointer-events: none;
         }
@@ -448,14 +475,14 @@
         }
 
         .custom-modal-dialog {
-            position: fixed;
+            position: absolute;
             width: auto;
             min-width: 600px;
-            max-width: 90vw;
-            margin: 1.75rem auto;
+            max-width: 800px;
+            left: 50%;
+            transform: translateX(-50%);
             pointer-events: auto;
             z-index: 1051;
-            transition: transform 0.3s ease-out;
             background-color: white;
             border-radius: 0.3rem;
             box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
@@ -507,53 +534,41 @@
             max-height: 70vh;
         }
 
-        /* Multiple Modal Stacking */
+        /* Multiple Modal Stacking - Vertical Layout */
         .custom-modal:nth-child(1) .custom-modal-dialog {
             top: 20px;
-            right: 20px;
-            z-index: 1051;
         }
 
         .custom-modal:nth-child(2) .custom-modal-dialog {
-            top: 40px;
-            right: 40px;
-            z-index: 1052;
+            top: 100px;
         }
 
         .custom-modal:nth-child(3) .custom-modal-dialog {
-            top: 60px;
-            right: 60px;
-            z-index: 1053;
+            top: 180px;
         }
 
         .custom-modal:nth-child(4) .custom-modal-dialog {
-            top: 80px;
-            right: 80px;
-            z-index: 1054;
+            top: 260px;
         }
 
         .custom-modal:nth-child(5) .custom-modal-dialog {
-            top: 100px;
-            right: 100px;
-            z-index: 1055;
+            top: 340px;
         }
 
-        /* For more than 5 modals - dynamic calculation */
+        /* For more than 5 modals - continue vertical stacking */
         .custom-modal:nth-child(n+6) .custom-modal-dialog {
-            top: calc(100px + (var(--modal-offset) * 20px));
-            right: calc(100px + (var(--modal-offset) * 20px));
-            z-index: calc(1055 + var(--modal-offset));
+            top: calc(340px + (var(--modal-offset) * 80px));
         }
 
         /* Animations */
         @keyframes modalSlideIn {
             from {
-                transform: translateX(30px);
+                transform: translateY(-30px);
                 opacity: 0;
             }
 
             to {
-                transform: translateX(0);
+                transform: translateY(0);
                 opacity: 1;
             }
         }
@@ -580,7 +595,7 @@
         /* Body scroll lock */
         body.custom-modal-open {
             overflow: hidden;
-            padding-right: 15px;
+            padding-right: 0;
         }
 
         /* Responsive adjustments */
@@ -597,10 +612,7 @@
             .custom-modal:nth-child(4) .custom-modal-dialog,
             .custom-modal:nth-child(5) .custom-modal-dialog,
             .custom-modal:nth-child(n+6) .custom-modal-dialog {
-                top: 10px;
-                right: 10px;
-                left: 10px;
-                margin: 0 auto;
+                margin: 0.5rem auto;
             }
         }
 
@@ -635,37 +647,12 @@
             border-color: rgba(108, 117, 125, 0.3);
         }
 
-        @keyframes slideInRight {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        .custom-modal.show .custom-modal-dialog {
-            animation: slideInRight 0.3s ease-out;
-        }
-
         /* Close All button */
         #close-all-modals {
             position: fixed;
             bottom: 20px;
             right: 20px;
             z-index: 1060;
-        }
-
-        .custom-modal-dialog {
-            position: fixed !important;
-            top: 20px;
-            right: 20px;
-            margin: 0 !important;
-            transform: none !important;
-            cursor: move;
         }
 
         .custom-modal-header {
@@ -960,14 +947,37 @@
             display: none;
         }
 
+        /* ========== INLINE SPRICE INPUT ========== */
+        .sprice-input {
+            min-width: 100px;
+            padding: 6px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+            text-align: center;
+        }
 
+        .sprice-input:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+            outline: 0;
+        }
+
+        /* Column header input totals */
+        #sprice-total,
+        #sprofit-total,
+        #sroi-total {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            border: 1px solid #dee2e6;
+        }
 
         /*popup modal style end */
     </style>
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'eBay Decrease', 'sub_title' => 'eBay Analysis'])
+    @include('layouts.shared/page-title', ['page_title' => 'Ebay  Pricing Decrease', 'sub_title' => 'eBay Analysis'])
 
     <div class="row">
         <div class="col-12">
@@ -1054,6 +1064,21 @@
 
                     <!-- Custom Dropdown Filters Row -->
                     <div class="d-flex flex-wrap gap-2 mb-3">
+                        <!-- NRL Filter -->
+                        <div class="dropdown manual-dropdown-container">
+                            <button class="btn btn-light dropdown-toggle" type="button" id="nrlFilterDropdown">
+                                <span class="status-circle default"></span> NRL Status
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="nrlFilterDropdown">
+                                <li><a class="dropdown-item nr-filter" href="#" data-nr-value="all">
+                                        <span class="status-circle default"></span> All</a></li>
+                                <li><a class="dropdown-item nr-filter" href="#" data-nr-value="NRL">
+                                        <span class="status-circle red"></span> NRL</a></li>
+                                <li><a class="dropdown-item nr-filter" href="#" data-nr-value="REQ">
+                                        <span class="status-circle green"></span> REQ</a></li>
+                            </ul>
+                        </div>
+
                         <!-- Dil% Filter -->
                         <div class="dropdown manual-dropdown-container">
                             <button class="btn btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
@@ -1526,49 +1551,7 @@
                                             <div class="metric-total" id="cvr-total">0%</div>
                                         </div>
                                     </th>
-                                    {{-- <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                NRL/REQ
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="req-total"
-                                                style="display:inline-block; background:#43dc35; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0</div>
-                                        </div>
-                                    </th> --}}
-                                    {{-- <th data-field="e_dil" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                E DIL <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="eDil-total">0%</div>
-                                        </div>
-                                    </th> --}}
-                                    <th data-field="NRL">NRL</th>
-
-                                    {{-- <th data-field="listed" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                LISTED <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="listed-total">0</div>
-                                        </div>
-                                    </th>
-
-                                    <th data-field="live" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                LIVE <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="live-total">0</div>
-                                        </div>
-                                    </th> --}}
-
-                                    {{-- <th>Hide</th> --}}
+                                   
 
                                     <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
@@ -1579,6 +1562,17 @@
                                             <div class="metric-total" id="views-total">0</div>
                                         </div>
                                     </th>
+
+                                    <th data-field="NRL">NRL</th>
+
+                                    <th data-field="c_bid" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center">
+                                            <div class="d-flex align-items-center">
+                                                C Bid <span class="sort-arrow">↓</span>
+                                            </div>
+                                        </div>
+                                    </th>
+                                 
                                     <th data-field="price"
                                         style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
                                         <div class="d-flex flex-column align-items-center">
@@ -1660,7 +1654,8 @@
                                                 SPRICE <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
+                                            <input type="number" step="0.01" class="form-control form-control-sm" id="sprice-total" 
+                                                   style="width: 80px; text-align: center;" value="0" readonly />
                                         </div>
                                     </th>
                                     <th data-field="sprofit" style="vertical-align: middle; white-space: nowrap;">
@@ -1669,7 +1664,8 @@
                                                 SPROFIT <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
+                                            <input type="text" class="form-control form-control-sm" id="sprofit-total" 
+                                                   style="width: 80px; text-align: center;" value="0%" readonly />
                                         </div>
                                     </th>
                                     <th data-field="sroi" style="vertical-align: middle; white-space: nowrap;">
@@ -1678,7 +1674,8 @@
                                                 SROI <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
+                                            <input type="text" class="form-control form-control-sm" id="sroi-total" 
+                                                   style="width: 80px; text-align: center;" value="0%" readonly />
                                         </div>
                                     </th>
                                 </tr>
@@ -1927,7 +1924,8 @@
                     'Roi': 'all',
                     'Tacos30': 'all',
                     'SCVR': 'all',
-                    'entryType': 'all'
+                    'entryType': 'all',
+                    'nrFilter': 'all'
                 }
             };
 
@@ -2050,6 +2048,7 @@
                         // Apply new position
                         dialog.style.left = `${initialLeft + dx}px`;
                         dialog.style.top = `${initialTop + dy}px`;
+                        dialog.style.transform = 'none';
                     };
 
                     const upHandler = () => {
@@ -2410,21 +2409,20 @@
                                     is_parent: item['(Child) sku'] ? item['(Child) sku']
                                         .toUpperCase().includes("PARENT") : false,
                                     raw_data: item || {},
-                                    NR: item.NRL || '',
-                                    NRLn: item.NRL || '',
+                                    NR: item.NR || '',
+                                    NRL: item.NR || '',
                                     // listed: listedVal,
                                     // live: liveVal,
                                     Hide: item.Hide !== undefined ? item.Hide : '',
-                                    SPRICE: (item.SPRICE !== null && !isNaN(parseFloat(item
-                                        .SPRICE))) ? parseFloat(item.SPRICE) : 0,
-                                    SPFT: (item.SPFT !== null && !isNaN(parseFloat(item
-                                        .SPFT))) ? parseFloat(item.SPFT) : 0,
-                                    SROI: (item.SROI !== null && !isNaN(parseFloat(item
-                                        .SROI))) ? parseFloat(item.SROI) : 0,
+                                    SPRICE: (item.SPRICE !== null && item.SPRICE !== undefined && !isNaN(parseFloat(item.SPRICE))) ? (scvr < 0.02 ? parseFloat(item.SPRICE) * 0.99 : parseFloat(item.SPRICE)) : null,
+                                    SPFT: (item.SPFT !== null && item.SPFT !== undefined && !isNaN(parseFloat(item.SPFT))) ? parseFloat(item.SPFT) : null,
+                                    SROI: (item.SROI !== null && item.SROI !== undefined && !isNaN(parseFloat(item.SROI))) ? parseFloat(item.SROI) : null,
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
                                     GPFT: item['GPFT%'] || 0,
                                     AD: item['AD%'] || 0,
+                                    bid_percentage: item.bid_percentage !== null && item.bid_percentage !== undefined ? parseFloat(parseFloat(item.bid_percentage).toFixed(1)) : null,
+                                    suggested_bid: item.suggested_bid !== null && item.suggested_bid !== undefined ? parseFloat(parseFloat(item.suggested_bid).toFixed(1)) : null,
 
                                 };
                             });
@@ -2784,33 +2782,7 @@
                     // ));
 
                     //NRL and REQ
-                    if (item.is_parent) {
-                        $row.append($('<td>')); // Empty cell for parent
-                    } else {
-                        // const currentNR = (item.NR === 'RA' || item.NR === 'NRA' || item.NR === 'LATER') ?
-                        //     item.NR : 'RA';
-                        const currentNR = item.NRL || "RA";
-
-                        const $select = $(`
-                            <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                                <option value="NRA" ${currentNR === 'NRA' ? 'selected' : ''}>NRL</option>
-                                <option value="RA" ${currentNR === 'RA' ? 'selected' : ''}>REQ</option>
-                            </select>
-                        `);
-
-                        // Set background color based on value
-                        if (currentNR === 'NRA') {
-                            $select.css('background-color', '#dc3545');
-                            $select.css('color', '#ffffff');
-                        } else if (currentNR === 'RA') {
-                            $select.css('background-color', '#28a745');
-                            $select.css('color', '#ffffff');
-                        }
-
-                        $select.data('sku', item['(Child) sku']);
-                        $row.append($('<td>').append($select));
-                    }
-
+                 
                     //Listed checkbox
                     // const listedVal = rawData.Listed === true || rawData.Listed === 'true' || rawData
                     //     .Listed === 1 || rawData.Listed === '1';
@@ -2862,6 +2834,40 @@
                             title="Visibility View"
                             data-item='${JSON.stringify(item.raw_data)}'>V</span>`
                     ));
+
+
+                       if (item.is_parent) {
+                        $row.append($('<td>')); // Empty cell for parent
+                    } else {
+                        // const currentNR = (item.NR === 'RA' || item.NR === 'NRA' || item.NR === 'LATER') ?
+                        //     item.NR : 'RA';
+                        const currentNR = item.NR ? item.NR : "REQ";
+
+                        // Debug: Log the NR value
+                        if (item['(Child) sku'] && item.NR) {
+                            console.log('SKU:', item['(Child) sku'], 'NR Value:', item.NR, 'Type:', typeof item.NR);
+                        }
+
+                        // Determine colors based on current value
+                        const bgColor = currentNR === 'NRL' ? '#dc3545' : '#28a745';
+                        const textColor = '#ffffff';
+
+                        const $select = $(`
+                            <select class="form-select form-select-sm nr-select" data-value="${currentNR}" style="min-width: 100px; background-color: ${bgColor} !important; color: ${textColor} !important;">
+                                <option value="NRL" style="background-color: #dc3545; color: #ffffff;" ${currentNR === 'NRL' ? 'selected' : ''}>NRL</option>
+                                <option value="REQ" style="background-color: #28a745; color: #ffffff;" ${currentNR === 'REQ' ? 'selected' : ''}>REQ</option>
+                            </select>
+                        `);
+
+                        $select.data('sku', item['(Child) sku']);
+                        $row.append($('<td>').append($select));
+                    }
+
+                    // C Bid column
+                    const bidPercentage = item.bid_percentage !== null && item.bid_percentage !== undefined 
+                        ? parseFloat(item.bid_percentage).toFixed(1) + '%' 
+                        : '';
+                    $row.append($('<td>').text(bidPercentage));
 
                     //price with tooltip
                     // Replace the existing price section with this:
@@ -2973,26 +2979,24 @@
                    
 
 
-                    // SPRICE + Edit Button (no decimals)
+                    // SPRICE inline input
+                    const displayPrice = item.SPRICE !== null && item.SPRICE !== undefined && !isNaN(parseFloat(item.SPRICE)) 
+                        ? parseFloat(item.SPRICE) 
+                        : (item['eBay Price'] ? parseFloat(item['eBay Price']) : 0);
+                    
                     $row.append($('<td>').html(
-                        item.SPRICE !== null && !isNaN(parseFloat(item.SPRICE)) ?
                         `
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="badge bg-primary s_price" style="font-size: 16px; padding: 6px 10px;">
-                                $${parseFloat(item.SPRICE).toFixed(2)}
-                            </span>
-                            <div class="btn-group btn-group-sm" role="group">
-                                <!-- Edit Button -->
-                                <button class="btn btn-outline-primary openPricingBtn"
-                                    title="Edit SPRICE"
-                                    data-lp="${item.LP}"
-                                    data-ship="${item.SHIP}"
-                                    data-sku="${item["(Child) sku"]}">
-                                    <i class="fa fa-edit"></i>
-                                </button>
-                            </div>
-                        </div>
-                        ` : ''
+                        <input 
+                            type="number" 
+                            step="0.01" 
+                            class="form-control sprice-input" 
+                            style="min-width: 100px;" 
+                            value="${displayPrice.toFixed(2)}"
+                            data-sku="${item["(Child) sku"]}"
+                            data-lp="${item.LP}"
+                            data-ship="${item.SHIP}"
+                        />
+                        `
                     ));
 
                     function getSPFTStyle(value) {
@@ -3007,41 +3011,49 @@
                     }
 
 
+                    // Calculate SPFT and SROI based on display price
+                    const priceForCalc = item.SPRICE !== null && item.SPRICE !== undefined && !isNaN(parseFloat(item.SPRICE)) 
+                        ? parseFloat(item.SPRICE) 
+                        : (item['eBay Price'] ? parseFloat(item['eBay Price']) : 0);
+                    
+                    const calcSPFT = item.LP !== undefined && item.SHIP !== undefined
+                        ? ((priceForCalc * ebayPercentage) - item.LP - item.SHIP) / (priceForCalc || 1)
+                        : (item.SPFT !== null && item.SPFT !== undefined ? parseFloat(item.SPFT) / 100 : 0);
+                    
+                    const calcSROI = item.LP !== undefined && item.SHIP !== undefined && item.LP > 0
+                        ? ((priceForCalc * ebayPercentage) - item.LP - item.SHIP) / item.LP
+                        : (item.SROI !== null && item.SROI !== undefined ? parseFloat(item.SROI) / 100 : 0);
 
                     $row.append($('<td>').attr('id', `spft-${item["(Child) sku"]}`).html(
-                        item.SPFT !== null && !isNaN(parseFloat(item.SPFT)) ?
-                        `<span style="${getSPFTStyle(parseFloat(item.SPFT))}; font-size:14px; padding:6px 12px; border-radius:8px;">
-                            ${(parseFloat(item.SPFT) - Math.floor(parseFloat(item.SPFT)) >= 0.5 
-                                ? Math.ceil(parseFloat(item.SPFT)) 
-                                : Math.floor(parseFloat(item.SPFT)))}%
-                        </span>` :
-                        ''
+                        `<span class="sprofit-value" style="${getSPFTStyle(calcSPFT * 100)}; font-size:14px; padding:6px 12px; border-radius:8px;">
+                            ${(calcSPFT * 100 - Math.floor(calcSPFT * 100) >= 0.5 
+                                ? Math.ceil(calcSPFT * 100) 
+                                : Math.floor(calcSPFT * 100))}%
+                        </span>`
                     ));
 
 
 
                     // ✅ SROI (rounded to whole number %)
                     $row.append($('<td>').attr('id', `sroi-${item["(Child) sku"]}`).html(
-                        item.SROI !== null && !isNaN(parseFloat(item.SROI)) ?
-                        `<span style="
+                        `<span class="sroi-value" style="
                             font-size:14px; 
                             padding:6px 12px; 
                             border-radius:8px; 
                             color:#fff; 
                             background-color:${
-                                parseFloat(item.SROI) <= 50 
+                                calcSROI * 100 <= 50 
                                     ? '#dc3545'   // 🔴 red
-                                    : parseFloat(item.SROI) <= 100 
+                                    : calcSROI * 100 <= 100 
                                         ? '#ffc107'   // 🟡 yellow
-                                        : parseFloat(item.SROI) <= 150 
+                                        : calcSROI * 100 <= 150 
                                             ? '#198754'   // 🟢 green
                                             : '#6f42c1'   // 🟣 purple
                             };">
-                            ${(parseFloat(item.SROI) - Math.floor(parseFloat(item.SROI)) >= 0.5 
-                                ? Math.ceil(parseFloat(item.SROI)) 
-                                : Math.floor(parseFloat(item.SROI)))}%
-                        </span>` :
-                        ''
+                            ${(calcSROI * 100 - Math.floor(calcSROI * 100) >= 0.5 
+                                ? Math.ceil(calcSROI * 100) 
+                                : Math.floor(calcSROI * 100))}%
+                        </span>`
                     ));
 
 
@@ -3167,11 +3179,9 @@
                     const sku = $select.data('sku');
 
                     // Change background color based on selected value
-                    if (newValue === 'NRA') {
-                        $select.css('background-color', '#dc3545').css('color', '#ffffff');
-                    } else {
-                        $select.css('background-color', '#28a745').css('color', '#ffffff');
-                    }
+                    $select.attr('data-value', newValue);
+                    const bgColor = newValue === 'NRL' ? '#dc3545' : '#28a745';
+                    $select.attr('style', 'min-width: 100px; background-color: ' + bgColor + ' !important; color: #ffffff !important;');
 
                     // Send AJAX
                     $.ajax({
@@ -3179,8 +3189,7 @@
                         type: 'POST',
                         data: {
                             sku: sku,
-                            nr: newValue,
-                            nrl: newValue, 
+                            nr: newValue, 
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
@@ -3189,11 +3198,13 @@
                             // Update tableData and filteredData
                             tableData.forEach(item => {
                                 if (item['(Child) sku'] === sku) {
+                                    item.NR = newValue;
                                     item.NRL = newValue;
                                 }
                             });
                             filteredData.forEach(item => {
                                 if (item['(Child) sku'] === sku) {
+                                    item.NR = newValue;
                                     item.NRL = newValue;
                                 }
                             });
@@ -3286,7 +3297,9 @@
 
                     // Create modal content based on type
                     const mainContainer = document.createElement('div');
-                    mainContainer.className = 'd-flex flex-nowrap align-items-start gap-3 p-3 overflow-auto';
+                    mainContainer.className = 'd-flex flex-column gap-3 p-3';
+                    mainContainer.style.maxHeight = '70vh';
+                    mainContainer.style.overflowY = 'auto';
 
                     // Common fields for all modal types
                     const commonFields = [{
@@ -3943,7 +3956,7 @@
 
                             // Cards row
                             const cardsRow = document.createElement('div');
-                            cardsRow.className = 'd-flex flex-nowrap gap-2';
+                            cardsRow.className = 'd-flex flex-column gap-2';
                             cardsRow.style.marginTop = '2px';
 
                             // Create cards for each child field
@@ -3982,43 +3995,7 @@
                 }
             };
 
-            if (!document.getElementById('pricingModal')) {
-                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-                $('body').append(`
-                <div class="modal fade" id="pricingModal" tabindex="-1" aria-labelledby="pricingModalLabel" aria-hidden="true">
-                    <div class="modal-dialog">
-                        <div class="modal-content p-3">
-                            <div class="modal-header">
-                                <h5 class="modal-title">SPRICE Calculator</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <form id="pricingForm" method="POST" >
-                                    @csrf
-                                    <input type="hidden" id="skuInput" name="sku">
-
-                                    <div class="mb-2">
-                                        <label>SPRICE ($)</label>
-                                        <input type="number" step="0.01" class="form-control" id="sprPriceInput" name="sprice">
-                                    </div>
-                                    <div class="mb-2">
-                                        <label>SPFT%</label>
-                                        <input type="text" class="form-control" id="spftPercentInput" name="spft_percent" readonly>
-                                    </div>
-                                    <div class="mb-2">
-                                        <label>SROI%</label>
-                                        <input type="text" class="form-control" id="sroiPercentInput" name="sroi_percent" readonly>
-                                    </div>
-<button type="button" id="savePricingBtn" class="btn btn-primary">Save</button>
-                                </form>
-
-                            </div>
-                        </div>
-                    </div>
-                </div>
-    `);
-            }
+            // Modal removed - now using inline editing
 
             // Helper function to create a field card
             function createFieldCard(field, data, type, itemId) {
@@ -4142,11 +4119,9 @@
                 // Create card element
                 const card = document.createElement('div');
                 card.className =
-                    `card flex-shrink-0 position-relative ${showStatusIndicator ? 'card-bg-' + indicatorColor : ''}`;
+                    `card position-relative ${showStatusIndicator ? 'card-bg-' + indicatorColor : ''}`;
                 card.style.cssText = `
-                    min-width: 160px;
-                    width: auto;
-                    max-width: 100%;
+                    width: 100%;
                     margin-top: 0px;
                     border-radius: 8px;
                     box-shadow: rgba(0, 0, 0, 0.1) 0px 2px 4px;
@@ -4918,6 +4893,22 @@
                     applyColumnFilters();
                 });
 
+                // NRL filter
+                $('.dropdown-menu').on('click', '.nr-filter', function(e) {
+                    e.preventDefault();
+                    const $this = $(this);
+                    const nrValue = $this.data('nr-value');
+                    const text = $this.text().trim();
+
+                    $this.closest('.dropdown')
+                        .find('.dropdown-toggle')
+                        .html(`<span class="status-circle ${nrValue === 'NRL' ? 'red' : nrValue === 'REQ' ? 'green' : 'default'}"></span> NRL Status (${text})`);
+
+                    state.filters.nrFilter = nrValue;
+                    $this.closest('.dropdown-menu').removeClass('show');
+                    applyColumnFilters();
+                });
+
                 // Entry type filter
                 $('.entry-type-filter').on('click', function(e) {
                     e.preventDefault();
@@ -4994,6 +4985,12 @@
                             if (filterValue === 'parent') return item.is_parent;
                             if (filterValue === 'child') return !item.is_parent;
                             return true;
+                        }
+
+                        if (column === 'nrFilter') {
+                            const itemNR = item.NR || 'REQ';
+                            console.log('NR Filter - Item SKU:', item['(Child) sku'], 'Item NR:', itemNR, 'Filter Value:', filterValue, 'Match:', itemNR === filterValue);
+                            return itemNR === filterValue;
                         }
 
                         const color = getColorForColumn(column, item);
@@ -5183,6 +5180,42 @@
                     $('#tacos-total').text(Math.round((metrics.tacosTotal / divisor) * 100) + '%');
                     $('#cvr-total').text(Math.round((metrics.scvrSum / divisor) * 100) + '%');
 
+                    // Calculate SPRICE, SPROFIT, and SROI totals
+                    let spriceSum = 0;
+                    let sprofitSum = 0;
+                    let sroiSum = 0;
+                    let sprofitCount = 0;
+                    let sroiCount = 0;
+
+                    filteredData.forEach(item => {
+                        const sprice = item.SPRICE !== null && item.SPRICE !== undefined && !isNaN(parseFloat(item.SPRICE)) 
+                            ? parseFloat(item.SPRICE) 
+                            : (item['eBay Price'] ? parseFloat(item['eBay Price']) : 0);
+                        
+                        if (sprice > 0) {
+                            spriceSum += sprice;
+                        }
+
+                        const LP = parseFloat(item.LP) || 0;
+                        const SHIP = parseFloat(item.SHIP) || 0;
+                        
+                        if (sprice > 0 && LP >= 0 && SHIP >= 0) {
+                            const spft = ((sprice * ebayPercentage) - LP - SHIP) / sprice;
+                            sprofitSum += spft;
+                            sprofitCount++;
+                            
+                            if (LP > 0) {
+                                const sroi = ((sprice * ebayPercentage) - LP - SHIP) / LP;
+                                sroiSum += sroi;
+                                sroiCount++;
+                            }
+                        }
+                    });
+
+                    $('#sprice-total').val(spriceSum > 0 ? spriceSum.toFixed(2) : '0');
+                    $('#sprofit-total').val(sprofitCount > 0 ? ((sprofitSum / sprofitCount) * 100).toFixed(2) + '%' : '0%');
+                    $('#sroi-total').val(sroiCount > 0 ? ((sroiSum / sroiCount) * 100).toFixed(2) + '%' : '0%');
+
                 } catch (error) {
                     console.error('Error in calculateTotals:', error);
                     resetMetricsToZero();
@@ -5202,6 +5235,9 @@
                 $('#cvr-total').text('0%');
                 $('#listed-total').text('0');
                 $('#live-total').text('0');
+                $('#sprice-total').val('0');
+                $('#sprofit-total').val('0%');
+                $('#sroi-total').val('0%');
             }
 
             // Initialize enhanced dropdowns
@@ -5745,52 +5781,97 @@
                 });
             });
 
-            $(document).on('click', '.openPricingBtn', function() {
-                const LP = parseFloat($(this).data('lp')) || 0;
-                const SHIP = parseFloat($(this).data('ship')) || 0;
-                const SKU = $(this).data('sku') || '';
+            // Handle SPRICE input changes with live calculation
+            $(document).on('input', '.sprice-input', function() {
+                const $input = $(this);
+                const sku = $input.data('sku');
+                const LP = parseFloat($input.data('lp')) || 0;
+                const SHIP = parseFloat($input.data('ship')) || 0;
+                const SPRICE = parseFloat($input.val()) || 0;
 
-                $('#skuInput').val(SKU);
+                console.log('SPRICE input change:', { sku, LP, SHIP, SPRICE, ebayPercentage });
 
-                const $sprInput = $('#sprPriceInput');
-                const $spftInput = $('#spftPercentInput');
-                const $sroiInput = $('#sroiPercentInput');
+                if (SPRICE > 0) {
+                    // Calculate SPFT and SROI
+                    const SPFT = ((SPRICE * ebayPercentage) - LP - SHIP) / SPRICE;
+                    const SROI = LP > 0 ? ((SPRICE * ebayPercentage) - LP - SHIP) / LP : 0;
 
-                // Reset values
-                $sprInput.val('');
-                $spftInput.val('');
-                $sroiInput.val('');
+                    console.log('Calculated:', { SPFT, SROI });
 
-                $sprInput.off('input').on('input', function() {
-                    const SPRICE = parseFloat(this.value) || 0;
-
-                    if (SPRICE > 0) {
-                        const SPFT = ((SPRICE * ebayPercentage) - LP - SHIP) / SPRICE;
-                        const SROI = ((SPRICE * ebayPercentage) - LP - SHIP) / LP;
-
-                        $spftInput.val((SPFT * 100).toFixed(2) + '%');
-                        $sroiInput.val(isFinite(SROI) ? (SROI * 100).toFixed(2) + '%' : '∞');
-                    } else {
-                        $spftInput.val('');
-                        $sroiInput.val('');
+                    // Update SPROFIT column
+                    const spftPercent = SPFT * 100;
+                    const spftRounded = (spftPercent - Math.floor(spftPercent) >= 0.5 
+                        ? Math.ceil(spftPercent) 
+                        : Math.floor(spftPercent));
+                    
+                    function getSPFTBgColor(value) {
+                        if (value <= 10) return '#dc3545';
+                        if (value <= 15) return '#ffc107';
+                        if (value <= 20) return '#0d6efd';
+                        return '#198754';
                     }
-                });
 
-                $('#pricingModal').modal('show');
+                    function getSPFTStyle(value) {
+                        return `font-size:14px; padding:6px 12px; border-radius:8px; color:#fff; background-color:${getSPFTBgColor(value)};`;
+                    }
+
+                    // Escape SKU for use in selector
+                    const escapedSku = sku.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, "\\$&");
+                    const $spftCell = $(`#spft-${escapedSku}`);
+                    const $spftSpan = $spftCell.find('.sprofit-value');
+                    
+                    console.log('SPFT Cell found:', $spftCell.length, 'Span found:', $spftSpan.length);
+
+                    if ($spftSpan.length > 0) {
+                        $spftSpan.html(spftRounded + '%').attr('style', getSPFTStyle(spftPercent));
+                    }
+
+                    // Update SROI column
+                    const sroiPercent = SROI * 100;
+                    const sroiRounded = (sroiPercent - Math.floor(sroiPercent) >= 0.5 
+                        ? Math.ceil(sroiPercent) 
+                        : Math.floor(sroiPercent));
+                    
+                    function getSROIBgColor(value) {
+                        if (value <= 50) return '#dc3545';
+                        if (value <= 100) return '#ffc107';
+                        if (value <= 150) return '#198754';
+                        return '#6f42c1';
+                    }
+
+                    function getSROIStyle(value) {
+                        return `font-size:14px; padding:6px 12px; border-radius:8px; color:#fff; background-color:${getSROIBgColor(value)};`;
+                    }
+
+                    const $sroiCell = $(`#sroi-${escapedSku}`);
+                    const $sroiSpan = $sroiCell.find('.sroi-value');
+                    
+                    console.log('SROI Cell found:', $sroiCell.length, 'Span found:', $sroiSpan.length);
+
+                    if ($sroiSpan.length > 0) {
+                        $sroiSpan.html(sroiRounded + '%').attr('style', getSROIStyle(sroiPercent));
+                    }
+                    
+                    // Recalculate totals
+                    calculateTotals();
+                }
             });
 
-            $(document).on('click', '#savePricingBtn', function() {
-                const sku = $('#skuInput').val()?.trim();
-                const spriceVal = $('#sprPriceInput').val();
-                const spft = parseFloat($('#spftPercentInput').val()?.replace('%', '')) || 0;
-                const sroi = parseFloat($('#sroiPercentInput').val()?.replace('%', '')) || 0;
+            // Save SPRICE on blur
+            $(document).on('blur', '.sprice-input', function() {
+                const $input = $(this);
+                const sku = $input.data('sku');
+                const LP = parseFloat($input.data('lp')) || 0;
+                const SHIP = parseFloat($input.data('ship')) || 0;
+                const SPRICE = parseFloat($input.val()) || 0;
 
-                const sprice = spriceVal !== '' ? parseFloat(spriceVal) : null;
-
-                if (!sku || !sprice) {
-                    alert('SKU and SPRICE are required.');
+                if (!sku || SPRICE <= 0) {
                     return;
                 }
+
+                // Calculate SPFT and SROI
+                const SPFT = ((SPRICE * ebayPercentage) - LP - SHIP) / SPRICE;
+                const SROI = LP > 0 ? ((SPRICE * ebayPercentage) - LP - SHIP) / LP : 0;
 
                 $.ajax({
                     url: '/ebay/save-sprice',
@@ -5798,41 +5879,34 @@
                     data: {
                         _token: $('meta[name="csrf-token"]').attr('content'),
                         sku: sku,
-                        sprice: sprice,
-                        spft_percent: spft,
-                        sroi_percent: sroi
+                        sprice: SPRICE,
+                        spft_percent: SPFT * 100,
+                        sroi_percent: SROI * 100
                     },
                     dataType: 'json',
-                    beforeSend: function() {
-                        $('#savePricingBtn').html(
-                            '<i class="fa fa-spinner fa-spin"></i> Saving...');
-                    },
                     success: function(response) {
-                        showNotification('success', 'Data updated successfully...');
-                        $('#pricingModal').modal('hide');
+                        showNotification('success', 'SPRICE updated successfully');
+                        
+                        // Update data in tableData and filteredData
                         tableData.forEach(item => {
                             if (item['(Child) sku'] === sku) {
-                                item.SPRICE = sprice;
-                                item.SPFT = spft;
-                                item.SROI = sroi;
+                                item.SPRICE = SPRICE;
+                                item.SPFT = SPFT * 100;
+                                item.SROI = SROI * 100;
                             }
                         });
 
                         filteredData.forEach(item => {
                             if (item['(Child) sku'] === sku) {
-                                item.SPRICE = sprice;
-                                item.SPFT = spft;
-                                item.SROI = sroi;
+                                item.SPRICE = SPRICE;
+                                item.SPFT = SPFT * 100;
+                                item.SROI = SROI * 100;
                             }
                         });
-                        renderTable();
                     },
                     error: function(xhr) {
-                        alert('Error saving SPRICE.');
+                        showNotification('danger', 'Error saving SPRICE');
                         console.error(xhr.responseText);
-                    },
-                    complete: function() {
-                        $('#savePricingBtn').html('Save');
                     }
                 });
             });
