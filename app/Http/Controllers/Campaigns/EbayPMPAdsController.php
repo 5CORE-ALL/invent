@@ -54,7 +54,7 @@ class EbayPMPAdsController extends Controller
             ->whereIn('report_range', ['L60', 'L30', 'L7'])
             ->get();
 
-        $campaignListings = DB::connection('apicentral')->table('ebay_campaign_ads_listings')->select('listing_id', 'bid_percentage', 'suggested_bid')->get()->keyBy('listing_id')->toArray();
+        $campaignListings = DB::connection('apicentral')->table('ebay_campaign_ads_listings')->select('listing_id', 'bid_percentage', 'suggested_bid')->where('funding_strategy', 'COST_PER_SALE')->get()->keyBy('listing_id');
 
         $adMetricsBySku = [];
 
@@ -118,9 +118,10 @@ class EbayPMPAdsController extends Controller
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['ebay_views'] = $ebayMetric->views ?? 0;
 
-            if ($ebayMetric && isset($campaignListings[$ebayMetric->item_id])) {
-                $row['bid_percentage'] = $campaignListings[$ebayMetric->item_id]->bid_percentage ?? null;
-                $row['suggested_bid']  = $campaignListings[$ebayMetric->item_id]->suggested_bid ?? null;
+            if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
+                $listing = $campaignListings->get($ebayMetric->item_id);
+                $row['bid_percentage'] = $listing->bid_percentage ?? null;
+                $row['suggested_bid']  = $listing->suggested_bid ?? null;
             } else {
                 $row['bid_percentage'] = null;
                 $row['suggested_bid']  = null;
@@ -208,7 +209,7 @@ class EbayPMPAdsController extends Controller
 
             $row["image_path"] = $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
 
-            if($row['NRL'] !== 'NRL'){
+            if($row['NRL'] !== 'NRL' && stripos($pm->sku, 'PARENT') === false){
                 $result[] = (object) $row;
             }
         }

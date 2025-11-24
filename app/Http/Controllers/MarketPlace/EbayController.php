@@ -383,7 +383,7 @@ class EbayController extends Controller
             $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
 
             $row["AD%"] = $adDenominator > 0
-                ? round(($kw_spend_l30 + $pmt_spend_l30) / $adDenominator, 4)
+                ? round((($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100, 4)
                 : 0;
 
 
@@ -423,20 +423,22 @@ class EbayController extends Controller
             $row["Profit"] = $row["Total_pft"]; // Add this for frontend compatibility
             $row["T_Sale_l30"] = round($price * $units_ordered_l30, 2);
             $row["Sales L30"] = $row["T_Sale_l30"]; // Add this for frontend compatibility
-            $row["PFT %"] = round(
-                $price > 0 ? (($price * $percentage - $lp - $ship) / $price) : 0,
-                2
-            );
+            
+            // Calculate GPFT%
+            $gpft = $price > 0 ? (($price * 0.86 - $ship - $lp) / $price) * 100 : 0;
+            
+            // PFT% = GPFT% - AD%
+            $row["PFT %"] = round($gpft - $row["AD%"], 2);
             $totalPercentage = $percentage + $adUpdates; 
 
             $row["ROI%"] = round(
-                $lp > 0 ? (($price * 0.86 - $ship - $lp) / $lp) : 0,
+                $lp > 0 ? (($price * 0.86 - $ship - $lp) / $lp) * 100 : 0,
                 2
             );
 
 
             $row["GPFT%"] = round(
-                $price  > 0 ? (($price * 0.86 - $ship - $lp) / $price) : 0,
+                $price  > 0 ? (($price * 0.86 - $ship - $lp) / $price) * 100 : 0,
                 2
             );
             $row["percentage"] = $percentage;
@@ -449,6 +451,7 @@ class EbayController extends Controller
             $row['SPRICE'] = null;
             $row['SPFT'] = null;
             $row['SROI'] = null;
+            $row['SGPFT'] = null;
             $row['Listed'] = null;
             $row['Live'] = null;
             $row['APlus'] = null;
@@ -464,10 +467,59 @@ class EbayController extends Controller
                     $row['SPRICE'] = $raw['SPRICE'] ?? null;
                     $row['SPFT'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;
+                    $row['SGPFT'] = $raw['SGPFT'] ?? null;
                     $row['spend_l30'] = $raw['Spend_L30'] ?? null;
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
+                }
+            }
+
+            // If SPRICE is null or empty, use eBay Price as default and calculate SPFT/SROI/SGPFT
+            if (empty($row['SPRICE']) && $price > 0) {
+                $row['SPRICE'] = $price;
+                $row['has_custom_sprice'] = false; // Flag to indicate using default price
+                
+                // Calculate SGPFT based on default price
+                $sgpft = round(
+                    $price > 0 ? (($price * 0.86 - $ship - $lp) / $price) * 100 : 0,
+                    2
+                );
+                $row['SGPFT'] = $sgpft;
+                
+                // Calculate SPFT = SGPFT - AD%
+                $row['SPFT'] = round($sgpft - $row["AD%"], 2);
+                
+                // Calculate SROI using ROI formula with SPRICE: ((SPRICE * 0.86 - ship - lp) / lp) * 100
+                $row['SROI'] = round(
+                    $lp > 0 ? (($price * 0.86 - $ship - $lp) / $lp) * 100 : 0,
+                    2
+                );
+            } else {
+                $row['has_custom_sprice'] = true; // Flag to indicate custom SPRICE
+                
+                // Calculate SGPFT using custom SPRICE if not already set
+                if (empty($row['SGPFT'])) {
+                    $sprice = floatval($row['SPRICE']);
+                    $sgpft = round(
+                        $sprice > 0 ? (($sprice * 0.86 - $ship - $lp) / $sprice) * 100 : 0,
+                        2
+                    );
+                    $row['SGPFT'] = $sgpft;
+                }
+                
+                // Recalculate SPFT if already set, to ensure it uses SGPFT - AD%
+                if (!empty($row['SGPFT'])) {
+                    $row['SPFT'] = round($row['SGPFT'] - $row["AD%"], 2);
+                }
+                
+                // Recalculate SROI using ROI formula with custom SPRICE
+                if (!empty($row['SPRICE'])) {
+                    $sprice = floatval($row['SPRICE']);
+                    $row['SROI'] = round(
+                        $lp > 0 ? (($sprice * 0.86 - $ship - $lp) / $lp) * 100 : 0,
+                        2
+                    );
                 }
             }
 
@@ -626,7 +678,15 @@ class EbayController extends Controller
         $ebayDataView->value = $value;
         $ebayDataView->save();
 
-        return response()->json(["success" => true, "data" => $ebayDataView]);
+        // Create a user-friendly message based on what was updated
+        $message = "Data updated successfully";
+        if ($nr !== null) {
+            $message = $nr === 'NRL' ? "NRL updated" : ($nr === 'REQ' ? "REQ updated" : "NR updated to {$nr}");
+        } elseif ($hide !== null) {
+            $message = "Hide status updated";
+        }
+
+        return response()->json(["success" => true, "data" => $ebayDataView, "message" => $message]);
     }
 
 
@@ -673,10 +733,44 @@ class EbayController extends Controller
         $spriceFloat = floatval($sprice);
         $profit = ($spriceFloat * $percentage - $lp - $ship);
 
-        // Calculate SPFT and SROI
-        $spft = $spriceFloat > 0 ? round(($profit / $spriceFloat) * 100, 2) : 0;
-        $sroi = $lp > 0 ? round(($profit / $lp) * 100, 2) : 0;
-        Log::info('Calculated values', ['sprice' => $spriceFloat, 'spft' => $spft, 'sroi' => $sroi]);
+        // Calculate SGPFT first
+        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * 0.86 - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
+        
+        // Get AD% from the product
+        $adPercent = 0;
+        $ebayMetric = DB::connection('apicentral')
+            ->table('ebay_one_metrics')
+            ->where('sku', $sku)
+            ->first();
+        
+        if ($ebayMetric) {
+            $campaignListings = DB::connection('apicentral')
+                ->table('ebay_campaign_ads_listings')
+                ->where('listing_id', $ebayMetric->item_id)
+                ->first();
+            
+            $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
+                ->where('campaign_name', 'LIKE', '%' . $sku . '%')
+                ->first();
+            
+            $ebayGeneralReportsL30 = EbayGeneralReport::where('report_range', 'L30')
+                ->where('listing_id', $ebayMetric->item_id)
+                ->first();
+            
+            $kw_spend_l30 = (float) str_replace('USD ', '', $ebayCampaignReportsL30->cpc_ad_fees_payout_currency ?? 0);
+            $kw_sales_l30 = (float) str_replace('USD ', '', $ebayCampaignReportsL30->cpc_sale_amount_payout_currency ?? 0);
+            $pmt_spend_l30 = (float) str_replace('USD ', '', $ebayGeneralReportsL30->ad_fees ?? 0);
+            $pmt_sales_l30 = (float) str_replace('USD ', '', $ebayGeneralReportsL30->sale_amount ?? 0);
+            
+            $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
+            $adPercent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+        }
+        
+        // SPFT = SGPFT - AD%
+        $spft = round($sgpft - $adPercent, 2);
+        // SROI = same formula as ROI% but with SPRICE: ((SPRICE * 0.86 - ship - lp) / lp) * 100
+        $sroi = $lp > 0 ? round((($spriceFloat * 0.86 - $ship - $lp) / $lp) * 100, 2) : 0;
+        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
 
         $ebayDataView = EbayDataView::firstOrNew(['sku' => $sku]);
 
@@ -690,6 +784,7 @@ class EbayController extends Controller
             'SPRICE' => $spriceFloat,
             'SPFT' => $spft,
             'SROI' => $sroi,
+            'SGPFT' => $sgpft,
         ]);
 
         $ebayDataView->value = $merged;
@@ -699,7 +794,8 @@ class EbayController extends Controller
         return response()->json([
             'message' => 'Data saved successfully.',
             'spft_percent' => $spft,
-            'sroi_percent' => $sroi
+            'sroi_percent' => $sroi,
+            'sgpft_percent' => $sgpft
         ]);
     }
 
@@ -925,5 +1021,80 @@ class EbayController extends Controller
         Cache::put($key, $visibility, now()->addDays(365));
         
         return response()->json(['success' => true]);
+    }
+
+    public function exportEbayPricingData(Request $request)
+    {
+        try {
+            $response = $this->getViewEbayData($request);
+            $data = json_decode($response->getContent(), true);
+            $ebayData = $data['data'] ?? [];
+
+            // Set headers for CSV download
+            $fileName = 'eBay_Pricing_Data_' . date('Y-m-d_H-i-s') . '.csv';
+            
+            header('Content-Type: text/csv');
+            header('Content-Disposition: attachment;filename="' . $fileName . '"');
+            header('Cache-Control: max-age=0');
+
+            // Open output stream
+            $output = fopen('php://output', 'w');
+
+            // Add BOM for UTF-8
+            fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+
+            // Header Row
+            $headers = [
+                'Parent', 'SKU', 'INV', 'L30', 'Dil%', 'eBay L30', 'eBay L60', 
+                'eBay Price', 'LMP', 'AD Spend L30', 'AD Sales L30', 'AD Units L30',
+                'AD%', 'TACOS L30', 'Total Sales L30', 'Total Profit', 'PFT %', 
+                'ROI%', 'GPFT%', 'Views', 'NR', 'SPRICE', 'SPFT', 'SROI', 
+                'Listed', 'Live'
+            ];
+            fputcsv($output, $headers);
+
+            // Data Rows
+            foreach ($ebayData as $item) {
+                $item = (array) $item;
+                
+                // Calculate Dil%
+                $dil = ($item['INV'] > 0) ? round(($item['L30'] / $item['INV']) * 100, 2) : 0;
+
+                fputcsv($output, [
+                    $item['Parent'] ?? '',
+                    $item['(Child) sku'] ?? '',
+                    $item['INV'] ?? 0,
+                    $item['L30'] ?? 0,
+                    $dil,
+                    $item['eBay L30'] ?? 0,
+                    $item['eBay L60'] ?? 0,
+                    number_format($item['eBay Price'] ?? 0, 2),
+                    $item['lmp_price'] ? number_format($item['lmp_price'], 2) : '',
+                    number_format($item['AD_Spend_L30'] ?? 0, 2),
+                    number_format($item['AD_Sales_L30'] ?? 0, 2),
+                    $item['AD_Units_L30'] ?? 0,
+                    number_format(($item['AD%'] ?? 0) * 100, 2),
+                    number_format(($item['TacosL30'] ?? 0) * 100, 2),
+                    number_format($item['T_Sale_l30'] ?? 0, 2),
+                    number_format($item['Total_pft'] ?? 0, 2),
+                    number_format($item['PFT %'] ?? 0, 0),
+                    number_format($item['ROI%'] ?? 0, 0),
+                    number_format($item['GPFT%'] ?? 0, 0),
+                    $item['views'] ?? 0,
+                    $item['NR'] ?? '',
+                    $item['SPRICE'] ? number_format($item['SPRICE'], 2) : '',
+                    $item['SPFT'] ? number_format($item['SPFT'], 0) : '',
+                    $item['SROI'] ? number_format($item['SROI'], 0) : '',
+                    ($item['Listed'] ?? false) ? 'TRUE' : 'FALSE',
+                    ($item['Live'] ?? false) ? 'TRUE' : 'FALSE',
+                ]);
+            }
+
+            fclose($output);
+            exit;
+        } catch (\Exception $e) {
+            Log::error('Error exporting eBay pricing data: ' . $e->getMessage());
+            return back()->with('error', 'Failed to export data: ' . $e->getMessage());
+        }
     }
 }

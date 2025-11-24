@@ -65,6 +65,13 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
+                    <span class="me-3 px-3 py-1" style="background-color: #e3f2fd; border-radius: 5px;">
+                        <strong>PFT%:</strong> <span id="pft-calc" class="text-primary fw-bold">0.00%</span>
+                    </span>
+                    <span class="me-3 px-3 py-1" style="background-color: #e8f5e9; border-radius: 5px;">
+                        <strong>ROI%:</strong> <span id="roi-calc" class="text-success fw-bold">0.00%</span>
+                    </span>
+
                     <a href="{{ url('/ebay-export') }}" class="btn btn-sm btn-success me-2">
                         <i class="fa fa-file-excel"></i> Export
                     </a>
@@ -107,6 +114,7 @@
                 pagination: true,
                 paginationSize: 50,
                 paginationCounter: "rows",
+                columnCalcs: "both",
                 initialSort: [{
                     column: "E Dil%",
                     dir: "asc"
@@ -159,7 +167,7 @@
                         width: 80
                     },
                     {
-                        title: "L30",
+                        title: "OV<br> L30",
                         field: "L30",
                         hozAlign: "center",
                         width: 80
@@ -174,40 +182,226 @@
                             const INV = parseFloat(rowData.INV) || 0;
                             const OVL30 = parseFloat(rowData['L30']) || 0;
                             
-                            if (INV === 0) return '0%';
+                            if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
                             
-                            const dil = Math.round((OVL30 / INV) * 100);
-                            return `${dil}%`;
+                            const dil = (OVL30 / INV) * 100;
+                            let color = '';
+                            
+                            // Color logic from inc/dec page - getDilColor
+                            if (dil < 16.66) color = '#a00211'; // red
+                            else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
+                            else if (dil >= 25 && dil < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50 and above)
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
                         },
                         width: 100
                     },
                     {
-                        title: "L30",
+                        title: "E L30",
                         field: "eBay L30",
                         hozAlign: "center",
                         width: 100
                     },
+
+                    
+                    // {
+                    //     title: "eBay L60",
+                    //     field: "eBay L60",
+                    //     hozAlign: "center",
+                    //     width: 100,
+                    //     visible: false
+                    // },
                     {
-                        title: "eBay L60",
-                        field: "eBay L60",
+                        title: "SCVR",
+                        field: "SCVR",
                         hozAlign: "center",
-                        width: 100,
-                        visible: false
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const views = parseFloat(rowData.views || 0);
+                            const l30 = parseFloat(rowData['eBay L30'] || 0);
+                            
+                            if (views === 0) {
+                                return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
+                            }
+                            
+                            const scvrValue = (l30 / views) * 100;
+                            let color = '';
+                            
+                            // getCvrColor logic from inc/dec page
+                            if (scvrValue <= 4) color = '#a00211'; // red
+                            else if (scvrValue > 4 && scvrValue <= 7) color = '#ffc107'; // yellow
+                            else if (scvrValue > 7 && scvrValue <= 10) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${scvrValue.toFixed(1)}%</span>`;
+                        },
+                        width: 100
+                    },
+
+                    {
+                        title: "Views",
+                        field: "views",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            let color = '';
+                            
+                            // getViewColor logic from inc/dec page
+                            if (value >= 30) color = '#28a745'; // green
+                            else color = '#a00211'; // red
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span>`;
+                        },
+                        width: 100
+                    },
+
+
+                     {
+                        title: "NR",
+                        field: "NR",
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            let value = cell.getValue();
+                            
+                            // If empty or null, default to REQ
+                            if (!value || value === '') {
+                                value = 'REQ';
+                            }
+                            
+                            let bgColor = '#ffffff';
+                            let textColor = '#000000';
+                            
+                            if (value === 'NRL') {
+                                bgColor = '#dc3545';
+                                textColor = '#ffffff';
+                            } else if (value === 'REQ') {
+                                bgColor = '#28a745';
+                                textColor = '#ffffff';
+                            }
+                            
+                            return `<select class="form-select form-select-sm nr-select" 
+                                style="background-color: ${bgColor}; color: ${textColor}; border: none; text-align: center; cursor: pointer;">
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''} style="background-color: #28a745; color: #fff;">REQ</option>
+                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''} style="background-color: #dc3545; color: #fff;">NRL</option>
+                            </select>`;
+                        },
+                        cellClick: function(e, cell) {
+                            e.stopPropagation();
+                        },
+                        width: 120
                     },
                    
                     {
                         title: "Price",
                         field: "eBay Price",
                         hozAlign: "center",
-                        formatter: "money",
-                        formatterParams: {
-                            decimal: ".",
-                            thousand: ",",
-                            symbol: "$",
-                            precision: 2
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            
+                            if (value === 0) {
+                                // Show $0.00 in red with red alert icon
+                                return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
+                            }
+                            
+                            // Normal price formatting
+                            return `$${value.toFixed(2)}`;
                         },
-                    
+                        width: 120
                     },
+
+                      {
+                        title: "GPFT%",
+                        field: "GPFT%",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            let color = '';
+                            
+                            // getPftColor logic from inc/dec page (same as PFT)
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 100
+                    },
+
+
+                     {
+                        title: "AD%",
+                        field: "AD%",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            return `${parseFloat(value).toFixed(0)}%`;
+                        },
+                        width: 100
+                    },
+
+                     {
+                        title: "PFT %",
+                        field: "PFT %",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const gpft = parseFloat(rowData['GPFT%'] || 0);
+                            const ad = parseFloat(rowData['AD%'] || 0);
+                            
+                            // PFT% = GPFT% - AD%
+                            const percent = gpft - ad;
+                            let color = '';
+                            
+                            // getPftColor logic from inc/dec page
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        bottomCalc: "avg",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
+                        },
+                        width: 100
+                    },
+                    {
+                        title: "ROI%",
+                        field: "ROI%",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            let color = '';
+                            
+                            // getRoiColor logic from inc/dec page
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        bottomCalc: "avg",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
+                        },
+                        width: 100
+                    },
+                  
+                    
                     {
                         title: "LMP",
                         field: "lmp_price",
@@ -226,49 +420,39 @@
                         },
                     
                     },
-                    {
-                        title: "AD <br> Spend <br> L30",
-                        field: "AD_Spend_L30",
-                        hozAlign: "center",
-                        formatter: "money",
-                        formatterParams: {
-                            decimal: ".",
-                            thousand: ",",
-                            symbol: "$",
-                            precision: 2
-                        },
+                    // {
+                    //     title: "AD <br> Spend <br> L30",
+                    //     field: "AD_Spend_L30",
+                    //     hozAlign: "center",
+                    //     formatter: "money",
+                    //     formatterParams: {
+                    //         decimal: ".",
+                    //         thousand: ",",
+                    //         symbol: "$",
+                    //         precision: 2
+                    //     },
                      
-                    },
-                    {
-                        title: "AD Sales L30",
-                        field: "AD_Sales_L30",
-                        hozAlign: "center",
-                        formatter: "money",
-                        formatterParams: {
-                            decimal: ".",
-                            thousand: ",",
-                            symbol: "$",
-                            precision: 2
-                        },
-                        width: 130
-                    },
-                    {
-                        title: "AD Units L30",
-                        field: "AD_Units_L30",
-                        hozAlign: "center",
-                        width: 120
-                    },
-                    {
-                        title: "AD%",
-                        field: "AD%",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            return `${parseFloat(value).toFixed(2)}%`;
-                        },
-                        width: 100
-                    },
+                    // },
+                    // {
+                    //     title: "AD Sales L30",
+                    //     field: "AD_Sales_L30",
+                    //     hozAlign: "center",
+                    //     formatter: "money",
+                    //     formatterParams: {
+                    //         decimal: ".",
+                    //         thousand: ",",
+                    //         symbol: "$",
+                    //         precision: 2
+                    //     },
+                    //     width: 130
+                    // },
+                    // {
+                    //     title: "AD Units L30",
+                    //     field: "AD_Units_L30",
+                    //     hozAlign: "center",
+                    //     width: 120
+                    // },
+                   
                     {
                         title: "TACOS L30",
                         field: "TacosL30",
@@ -276,82 +460,47 @@
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
-                            return `${parseFloat(value).toFixed(2)}%`;
+                            const percent = parseFloat(value) * 100;
+                            let color = '';
+                            
+                            // getTacosColor logic from inc/dec page
+                            if (percent <= 7) color = '#e83e8c'; // pink
+                            else if (percent > 7 && percent <= 14) color = '#28a745'; // green
+                            else if (percent > 14 && percent <= 21) color = '#ffc107'; // yellow
+                            else color = '#a00211'; // red
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${parseFloat(value).toFixed(2)}%</span>`;
                         },
                         width: 120
                     },
-                    {
-                        title: "Total Sales L30",
-                        field: "T_Sale_l30",
-                        hozAlign: "center",
-                        formatter: "money",
-                        formatterParams: {
-                            decimal: ".",
-                            thousand: ",",
-                            symbol: "$",
-                            precision: 2
-                        },
-                        width: 140
-                    },
-                    {
-                        title: "Total Profit",
-                        field: "Total_pft",
-                        hozAlign: "center",
-                        formatter: "money",
-                        formatterParams: {
-                            decimal: ".",
-                            thousand: ",",
-                            symbol: "$",
-                            precision: 2
-                        },
-                        width: 130
-                    },
-                    {
-                        title: "PFT %",
-                        field: "PFT %",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            return `${parseFloat(value).toFixed(2)}%`;
-                        },
-                        width: 100
-                    },
-                    {
-                        title: "ROI%",
-                        field: "ROI%",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            return `${parseFloat(value).toFixed(2)}%`;
-                        },
-                        width: 100
-                    },
-                    {
-                        title: "GPFT%",
-                        field: "GPFT%",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            return `${parseFloat(value).toFixed(2)}%`;
-                        },
-                        width: 100
-                    },
-                    {
-                        title: "Views",
-                        field: "views",
-                        hozAlign: "center",
-                        width: 100
-                    },
-                    {
-                        title: "NR",
-                        field: "NR",
-                        hozAlign: "center",
-                        editor: "input",
-                        width: 100
-                    },
+                    // {
+                    //     title: "Total Sales L30",
+                    //     field: "T_Sale_l30",
+                    //     hozAlign: "center",
+                    //     formatter: "money",
+                    //     formatterParams: {
+                    //         decimal: ".",
+                    //         thousand: ",",
+                    //         symbol: "$",
+                    //         precision: 2
+                    //     },
+                    //     width: 140
+                    // },
+                    // {
+                    //     title: "Total Profit",
+                    //     field: "Total_pft",
+                    //     hozAlign: "center",
+                    //     formatter: "money",
+                    //     formatterParams: {
+                    //         decimal: ".",
+                    //         thousand: ",",
+                    //         symbol: "$",
+                    //         precision: 2
+                    //     },
+                    //     width: 130
+                    // },
+                   
+                   
                     {
                         title: "SPRICE",
                         field: "SPRICE",
@@ -359,17 +508,67 @@
                         editor: "input",
                         formatter: function(cell) {
                             const value = cell.getValue();
-                            return value ? `$${parseFloat(value).toFixed(2)}` : '';
+                            const rowData = cell.getRow().getData();
+                            const hasCustomSprice = rowData.has_custom_sprice;
+                            
+                            if (!value) return '';
+                            
+                            const formattedValue = `$${parseFloat(value).toFixed(2)}`;
+                            
+                            // If using default eBay Price (not custom), show in blue
+                            if (hasCustomSprice === false) {
+                                return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
+                            }
+                            
+                            return formattedValue;
                         },
                         width: 120
+                    },
+
+                    {
+                        title: "SGPFT",
+                        field: "SGPFT",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            // Same as GPFT% color logic
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 100
                     },
                     {
                         title: "SPFT",
                         field: "SPFT",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            return value ? `${parseFloat(value).toFixed(2)}%` : '';
+                            const rowData = cell.getRow().getData();
+                            const sgpft = parseFloat(rowData.SGPFT || 0);
+                            const ad = parseFloat(rowData['AD%'] || 0);
+                            
+                            // SPFT = SGPFT - AD%
+                            const percent = sgpft - ad;
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            // Same as PFT% color logic
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
                         width: 100
                     },
@@ -378,36 +577,103 @@
                         field: "SROI",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            return value ? `${parseFloat(value).toFixed(2)}%` : '';
+                            const rowData = cell.getRow().getData();
+                            const sprice = parseFloat(rowData.SPRICE || 0);
+                            const lp = parseFloat(rowData.LP_productmaster || 0);
+                            const ship = parseFloat(rowData.Ship_productmaster || 0);
+                            
+                            if (lp === 0) return '';
+                            
+                            // SROI = ((SPRICE * 0.86 - ship - lp) / lp) * 100 (same as ROI% but with SPRICE)
+                            const percent = ((sprice * 0.86 - ship - lp) / lp) * 100;
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            // Same as ROI% color logic
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
                         width: 100
                     },
-                    {
-                        title: "Listed",
-                        field: "Listed",
-                        formatter: "tickCross",
-                        hozAlign: "center",
-                        editor: true,
-                        cellClick: function(e, cell) {
-                            var currentValue = cell.getValue();
-                            cell.setValue(!currentValue);
-                        },
-                        width: 100
-                    },
-                    {
-                        title: "Live",
-                        field: "Live",
-                        formatter: "tickCross",
-                        hozAlign: "center",
-                        editor: true,
-                        cellClick: function(e, cell) {
-                            var currentValue = cell.getValue();
-                            cell.setValue(!currentValue);
-                        },
-                        width: 100
-                    }
+                    // {
+                    //     title: "Listed",
+                    //     field: "Listed",
+                    //     formatter: "tickCross",
+                    //     hozAlign: "center",
+                    //     editor: true,
+                    //     cellClick: function(e, cell) {
+                    //         var currentValue = cell.getValue();
+                    //         cell.setValue(!currentValue);
+                    //     },
+                    //     width: 100
+                    // },
+                    // {
+                    //     title: "Live",
+                    //     field: "Live",
+                    //     formatter: "tickCross",
+                    //     hozAlign: "center",
+                    //     editor: true,
+                    //     cellClick: function(e, cell) {
+                    //         var currentValue = cell.getValue();
+                    //         cell.setValue(!currentValue);
+                    //     },
+                    //     width: 100
+                    // }
                 ]
+            });
+
+            // NR select change handler
+            $(document).on('change', '.nr-select', function() {
+                const $select = $(this);
+                const value = $select.val();
+                const cell = table.searchRows("(Child) sku", "=", $select.closest('.tabulator-cell').parent().find('[tabulator-field="(Child) sku"]').text())[0]?.getCell('NR');
+                
+                if (!cell) {
+                    console.error('Could not find cell');
+                    return;
+                }
+                
+                const row = cell.getRow();
+                const sku = row.getData()['(Child) sku'];
+                
+                let bgColor = value === 'NRL' ? '#dc3545' : '#28a745';
+                let textColor = '#ffffff';
+                
+                // Immediately update background color
+                $select.css({'background-color': bgColor, 'color': textColor});
+                
+                // Update the row data
+                row.update({NR: value});
+                
+                // Force cell redraw
+                const cellElement = cell.getElement();
+                if (cellElement) {
+                    cellElement.style.backgroundColor = bgColor;
+                }
+                
+                // Save to database
+                $.ajax({
+                    url: '/ebay/save-nr',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        sku: sku,
+                        nr: value
+                    },
+                    success: function(response) {
+                        console.log('NR saved successfully for', sku, 'value:', value);
+                        const message = response.message || `NR updated to "${value}" for ${sku}`;
+                        showToast('success', message);
+                    },
+                    error: function(xhr) {
+                        console.error('Failed to save NR for', sku, 'Error:', xhr.responseText);
+                        showToast('error', `Failed to save NR for ${sku}`);
+                    }
+                });
             });
 
             table.on('cellEdited', function(cell) {
@@ -416,24 +682,7 @@
                 var field = cell.getColumn().getField();
                 var value = cell.getValue();
 
-                if (field === 'NR') {
-                    // Save NR value
-                    $.ajax({
-                        url: '/save-nr-ebay',
-                        method: 'POST',
-                        data: {
-                            _token: '{{ csrf_token() }}',
-                            sku: data['(Child) sku'],
-                            nr: value
-                        },
-                        success: function(response) {
-                            showToast('success', 'NR value saved successfully');
-                        },
-                        error: function(error) {
-                            showToast('error', 'Failed to save NR value');
-                        }
-                    });
-                } else if (field === 'SPRICE') {
+                if (field === 'SPRICE') {
                     // Save SPRICE and recalculate SPFT, SROI
                     $.ajax({
                         url: '/save-sprice-ebay',
@@ -447,7 +696,8 @@
                             // Update calculated fields
                             cell.getRow().update({
                                 SPFT: response.spft_percent,
-                                SROI: response.sroi_percent
+                                SROI: response.sroi_percent,
+                                SGPFT: response.sgpft_percent
                             });
                             showToast('success', 'SPRICE saved successfully');
                         },
@@ -509,6 +759,30 @@
                         }
                     });
                 }
+                
+                updateCalcValues();
+            }
+
+            $('#inventory-filter, #parent-filter, #pft-filter').on('change', function() {
+                applyFilters();
+            });
+            
+            // Update PFT% and ROI% calc values
+            function updateCalcValues() {
+                const data = table.getData("active");
+                let totalSales = 0;
+                let totalProfit = 0;
+                
+                data.forEach(row => {
+                    totalSales += parseFloat(row['T_Sale_l30']) || 0;
+                    totalProfit += parseFloat(row['Total_pft']) || 0;
+                });
+                
+                const avgPft = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
+                const avgRoi = totalSales > 0 ? (totalProfit / (totalSales - totalProfit)) * 100 : 0;
+                
+                $('#pft-calc').text(avgPft.toFixed(2) + '%');
+                $('#roi-calc').text(avgRoi.toFixed(2) + '%');
             }
 
             $('#inventory-filter, #parent-filter, #pft-filter').on('change', function() {
@@ -601,7 +875,7 @@
             });
 
             table.on('dataLoaded', function() {
-                // Data loaded
+                updateCalcValues();
             });
 
             // Toggle column from dropdown
