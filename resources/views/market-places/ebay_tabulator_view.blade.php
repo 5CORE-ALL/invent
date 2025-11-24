@@ -772,14 +772,17 @@
                 const data = table.getData("active");
                 let totalSales = 0;
                 let totalProfit = 0;
+                let sumLp = 0;
                 
                 data.forEach(row => {
                     totalSales += parseFloat(row['T_Sale_l30']) || 0;
                     totalProfit += parseFloat(row['Total_pft']) || 0;
+                    sumLp += parseFloat(row['LP_productmaster']) || 0;
                 });
                 
                 const avgPft = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
-                const avgRoi = totalSales > 0 ? (totalProfit / (totalSales - totalProfit)) * 100 : 0;
+                // ROI% = (total profit / sum of LP) * 100
+                const avgRoi = sumLp > 0 ? (totalProfit / sumLp) * 100 : 0;
                 
                 $('#pft-calc').text(avgPft.toFixed(2) + '%');
                 $('#roi-calc').text(avgRoi.toFixed(2) + '%');
