@@ -159,7 +159,17 @@
                         cssClass: "text-primary fw-bold",
                         tooltip: true,
                         frozen: true,
-                        width: 250
+                        width: 250,
+                        formatter: function(cell) {
+                            const sku = cell.getValue();
+                            return `
+                                <span>${sku}</span>
+                                <i class="fa fa-copy text-secondary copy-sku-btn" 
+                                   style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
+                                   data-sku="${sku}"
+                                   title="Copy SKU"></i>
+                            `;
+                        }
                     },
                     
                     {
@@ -1020,6 +1030,25 @@
                     // Update column visibility in cache
                     saveColumnVisibilityToServer();
                     buildColumnDropdown();
+                }
+
+                // Copy SKU to clipboard
+                if (e.target.classList.contains("copy-sku-btn")) {
+                    const sku = e.target.getAttribute("data-sku");
+                    
+                    // Copy to clipboard
+                    navigator.clipboard.writeText(sku).then(function() {
+                        showToast('success', `SKU "${sku}" copied to clipboard!`);
+                    }).catch(function(err) {
+                        // Fallback for older browsers
+                        const textarea = document.createElement('textarea');
+                        textarea.value = sku;
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        showToast('success', `SKU "${sku}" copied to clipboard!`);
+                    });
                 }
             });
 
