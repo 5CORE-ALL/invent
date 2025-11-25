@@ -13,6 +13,7 @@ use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class EbayPMPAdsController extends Controller
 {
@@ -27,13 +28,14 @@ class EbayPMPAdsController extends Controller
 
     public function getEbayPmpAdsData()
     {
-        // Clear all possible caches
-        Cache::forget('ebay_pmp_ads_data');
-        
-        // Clear OPcache if available
-        if (function_exists('opcache_reset')) {
-            @opcache_reset();
-        }
+        try {
+            // Clear all possible caches
+            Cache::forget('ebay_pmp_ads_data');
+            
+            // Clear OPcache if available
+            if (function_exists('opcache_reset')) {
+                @opcache_reset();
+            }
         
         // Force fresh database queries by disabling query cache
         $productMasters = ProductMaster::orderBy("parent", "asc")
@@ -65,7 +67,11 @@ class EbayPMPAdsController extends Controller
             ->get();
 
         // Force fresh query from apicentral database - this is critical for CBID and ESBID
-        DB::connection('apicentral')->getPdo()->exec('SET SESSION query_cache_type = OFF');
+        try {
+            DB::connection('apicentral')->getPdo()->exec('SET SESSION query_cache_type = OFF');
+        } catch (\Exception $e) {
+            // Ignore if query cache is not available
+        }
         
         $campaignListings = DB::connection('apicentral')
             ->table('ebay_campaign_ads_listings')
@@ -240,6 +246,16 @@ class EbayPMPAdsController extends Controller
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache')
           ->header('Expires', 'Sat, 01 Jan 2000 00:00:00 GMT');
+          
+        } catch (\Exception $e) {
+            Log::error('EbayPMPAdsController getEbayPmpAdsData error: ' . $e->getMessage());
+            
+            return response()->json([
+                "message" => "Error fetching data",
+                "error" => $e->getMessage(),
+                "status" => 500,
+            ], 500);
+        }
     }
 
     private function extractNumber($value)
