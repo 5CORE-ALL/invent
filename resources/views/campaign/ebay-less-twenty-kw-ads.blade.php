@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Ebay Kw Ads - Price < $20', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Ebay Kw Ads - Price < $30', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -130,8 +130,8 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Ebay Kw Ads - Price < $20',
-        'sub_title' => 'Ebay Kw Ads - Price < $20',
+        'page_title' => 'Ebay Kw Ads - Price < $30',
+        'sub_title' => 'Ebay Kw Ads - Price < $30',
     ])
     <div class="row">
         <div class="col-12">
@@ -139,10 +139,15 @@
                 <div class="card-body py-3">
                     <div class="mb-4">
                         <!-- Title -->
-                        <h4 class="fw-bold text-primary mb-3 d-flex align-items-center">
-                            <i class="fa-solid fa-chart-line me-2"></i>
-                            Ebay Kw Ads - Price < $20
-                        </h4>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="fw-bold text-primary mb-0 d-flex align-items-center">
+                                <i class="fa-solid fa-chart-line me-2"></i>
+                                Ebay Kw Ads - Price < $30
+                            </h4>
+                            <div class="badge bg-primary fs-5 px-3 py-2">
+                                Total Campaigns: <span id="total-campaigns">0</span>
+                            </div>
+                        </div>
 
                         <!-- Filters Row -->
                         <div class="row g-3 mb-3">
@@ -186,7 +191,7 @@
                                     </div>
                                     <select id="status-filter" class="form-select form-select-md" style="width: 140px;">
                                         <option value="">All Status</option>
-                                        <option value="RUNNING">Running</option>
+                                        <option value="RUNNING" selected>Running</option>
                                         <option value="PAUSED">Paused</option>
                                         <option value="ARCHIVED">Archived</option>
                                     </select>
@@ -471,6 +476,9 @@
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
+                    // Update total campaigns count
+                    const totalCampaigns = response.data ? response.data.length : 0;
+                    document.getElementById('total-campaigns').textContent = totalCampaigns;
                     return response.data;
                 }
             });
@@ -521,7 +529,7 @@
                         return false;
                     }
 
-                    // Status filter
+                    // Status filter - default to RUNNING if no filter has been changed
                     let statusVal = $("#status-filter").val();
                     if (statusVal && data.campaignStatus !== statusVal) {
                         return false;

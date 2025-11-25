@@ -30,12 +30,34 @@ class EbayRunningAdsController extends Controller
     {
         $normalizeSku = fn($sku) => strtoupper(trim($sku));
 
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
+        $productMasters = ProductMaster::whereNull('deleted_at')
+            ->orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
-        $skus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
+        $productMasterSkus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
+
+        // Get additional RUNNING campaigns that are not in ProductMaster but are valid SKUs
+        $additionalRunningCampaigns = EbayPriorityReport::where('report_range', 'L7')
+            ->where('campaignStatus', 'RUNNING')
+            ->whereNotNull('campaign_name')
+            ->where('campaign_name', '!=', '')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get()
+            ->pluck('campaign_name')
+            ->unique()
+            ->filter(function($name) use ($productMasterSkus, $normalizeSku) {
+                $nameUpper = $normalizeSku($name);
+                return !in_array($nameUpper, $productMasterSkus);
+            })
+            ->values()
+            ->all();
+
+        // Merge both lists
+        $skus = array_merge($productMasterSkus, $additionalRunningCampaigns);
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
 
@@ -53,6 +75,7 @@ class EbayRunningAdsController extends Controller
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         $ebayCampaignReportsL7 = EbayPriorityReport::where('report_range', 'L7')
@@ -61,6 +84,7 @@ class EbayRunningAdsController extends Controller
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         $itemIds = $ebayMetricData->pluck('item_id')->toArray();
@@ -82,13 +106,22 @@ class EbayRunningAdsController extends Controller
             $shopify = $shopifyData[$sku] ?? null;
             $ebay = $ebayMetricData[$sku] ?? null;
 
-            $matchedCampaignL30 = $ebayCampaignReportsL30->first(function ($item) use ($sku) {
+            // Find matching campaigns, prioritize RUNNING status
+            $matchedCampaignsL30 = $ebayCampaignReportsL30->filter(function ($item) use ($sku) {
                 return strtoupper(trim($item->campaign_name)) === strtoupper(trim($sku));
             });
+            
+            $matchedCampaignL30 = $matchedCampaignsL30->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL30->first();
 
-            $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($sku) {
+            $matchedCampaignsL7 = $ebayCampaignReportsL7->filter(function ($item) use ($sku) {
                 return strtoupper(trim($item->campaign_name)) === strtoupper(trim($sku));
             });
+            
+            $matchedCampaignL7 = $matchedCampaignsL7->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL7->first();
             
             $matchedGeneralL30 = $ebayGeneralReportsL30->first(function ($item) use ($ebay) {
                 if (!$ebay || empty($ebay->item_id)) return false;
@@ -107,7 +140,11 @@ class EbayRunningAdsController extends Controller
             $row['INV'] = $shopify->inv ?? 0;
             $row['L30'] = $shopify->quantity ?? 0;
             $row['e_l30'] = $ebay->ebay_l30 ?? 0;
-            $row['campaignName'] = $matchedCampaignL7->campaign_name ?? '';
+            
+            // Use L7 campaign if exists, otherwise fallback to L30
+            $campaignForDisplay = $matchedCampaignL7 ?? $matchedCampaignL30;
+            $row['campaignName'] = $campaignForDisplay->campaign_name ?? '';
+            $row['campaignStatus'] = $campaignForDisplay->campaignStatus ?? '';
 
             //kw
             $row['kw_spend_L30'] = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
@@ -159,6 +196,89 @@ class EbayRunningAdsController extends Controller
             if($row['campaignName'] !== ''){
                 $result[] = $row;
             }
+        }
+
+        // Now process additional RUNNING campaigns that are not in ProductMaster
+        foreach ($additionalRunningCampaigns as $campaignSku) {
+            $sku = $normalizeSku($campaignSku);
+            $shopify = $shopifyData[$sku] ?? null;
+            $ebay = $ebayMetricData[$sku] ?? null;
+
+            // Find matching campaigns
+            $matchedCampaignsL30 = $ebayCampaignReportsL30->filter(function ($item) use ($sku) {
+                return strtoupper(trim($item->campaign_name)) === $sku;
+            });
+            
+            $matchedCampaignL30 = $matchedCampaignsL30->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL30->first();
+
+            $matchedCampaignsL7 = $ebayCampaignReportsL7->filter(function ($item) use ($sku) {
+                return strtoupper(trim($item->campaign_name)) === $sku;
+            });
+            
+            $matchedCampaignL7 = $matchedCampaignsL7->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL7->first();
+
+            $matchedGeneralL30 = $ebayGeneralReportsL30->first(function ($item) use ($ebay) {
+                if (!$ebay || empty($ebay->item_id)) return false;
+                return trim((string)$item->listing_id) == trim((string)$ebay->item_id);
+            });
+
+            $matchedGeneralL7 = $ebayGeneralReportsL7->first(function ($item) use ($ebay) {
+                if (!$ebay || empty($ebay->item_id)) return false;
+                return trim((string)$item->listing_id) == trim((string)$ebay->item_id);
+            });
+
+            $row = [];
+            $row['parent'] = '';
+            $row['sku'] = $campaignSku;
+            $row['INV'] = $shopify->inv ?? 0;
+            $row['L30'] = $shopify->quantity ?? 0;
+            $row['e_l30'] = $ebay->ebay_l30 ?? 0;
+            
+            $campaignForDisplay = $matchedCampaignL7 ?? $matchedCampaignL30;
+            $row['campaignName'] = $campaignForDisplay->campaign_name ?? '';
+            $row['campaignStatus'] = $campaignForDisplay->campaignStatus ?? '';
+
+            $row['kw_spend_L30'] = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
+            $row['kw_spend_L7'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
+            $row['kw_sales_L30'] = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0);
+            $row['kw_sales_L7'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_sale_amount_payout_currency ?? 0);
+            $row['kw_sold_L30'] = (int) ($matchedCampaignL30->cpc_attributed_sales ?? 0);
+            $row['kw_sold_L7'] = (int) ($matchedCampaignL7->cpc_attributed_sales ?? 0);
+            $row['kw_clicks_L30'] = (int) ($matchedCampaignL30?->cpc_clicks ?? 0);
+            $row['kw_clicks_L7'] = (int) ($matchedCampaignL7?->cpc_clicks ?? 0);
+            $row['kw_impr_L30'] = (int) ($matchedCampaignL30?->cpc_impressions ?? 0);
+            $row['kw_impr_L7'] = (int) ($matchedCampaignL7?->cpc_impressions ?? 0);
+
+            $row['pmt_spend_L30'] = (float) str_replace('USD ', '', $matchedGeneralL30->ad_fees ?? 0);
+            $row['pmt_sales_L30'] = (float) str_replace('USD ', '', $matchedGeneralL30->sale_amount ?? 0);
+            $row['pmt_spend_L7'] = (float) str_replace('USD ', '', $matchedGeneralL7->ad_fees ?? 0);
+            $row['pmt_sales_L7'] = (float) str_replace('USD ', '', $matchedGeneralL7->sale_amount ?? 0);
+
+            $row['pmt_sold_L30'] = (int) ($matchedGeneralL30->sales ?? 0);
+            $row['pmt_sold_L7'] = (int) ($matchedGeneralL7->sales ?? 0);
+            $row['pmt_clicks_L30'] = (int) ($matchedGeneralL30->clicks ?? 0);
+            $row['pmt_clicks_L7'] = (int) ($matchedGeneralL7->clicks ?? 0);
+            $row['pmt_impr_L30'] = (int) ($matchedGeneralL30->impressions ?? 0);
+            $row['pmt_impr_L7'] = (int) ($matchedGeneralL7->impressions ?? 0);
+
+            $row['SPEND_L30'] = $row['kw_spend_L30'] + $row['pmt_spend_L30'];
+            $row['SPEND_L7'] = $row['kw_spend_L7'] + $row['pmt_spend_L7'];
+            $row['SALES_L30'] = $row['kw_sales_L30'] + $row['pmt_sales_L30'];
+            $row['SALES_L7'] = $row['kw_sales_L7'] + $row['pmt_sales_L7'];
+            $row['SOLD_L30'] = $row['kw_sold_L30'] + $row['pmt_sold_L30'];
+            $row['SOLD_L7'] = $row['kw_sold_L7'] + $row['pmt_sold_L7'];
+            $row['CLICKS_L30'] = $row['kw_clicks_L30'] + $row['pmt_clicks_L30'];
+            $row['CLICKS_L7'] = $row['kw_clicks_L7'] + $row['pmt_clicks_L7'];
+            $row['IMP_L30'] = $row['kw_impr_L30'] + $row['pmt_impr_L30'];
+            $row['IMP_L7'] = $row['kw_impr_L7'] + $row['pmt_impr_L7'];
+
+            $row['NR'] = '';
+
+            $result[] = $row;
         }
 
         return response()->json([

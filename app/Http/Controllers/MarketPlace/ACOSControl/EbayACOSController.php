@@ -138,7 +138,8 @@ class EbayACOSController extends Controller
                 }
             }
 
-            if ($row['NR'] !== 'NRA') {
+            // Only show items with price >= 30 and NR !== 'NRA'
+            if ($row['NR'] !== 'NRA' && $row['price'] >= 30) {
                 $result[] = (object) $row;
             }
         }

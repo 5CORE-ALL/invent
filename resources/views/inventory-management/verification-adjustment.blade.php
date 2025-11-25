@@ -1043,9 +1043,14 @@
                     <div class="modal fade" id="skuHistoryModal" tabindex="-1" aria-labelledby="skuHistoryModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-xl">
                             <div class="modal-content">
-                            <div class="modal-header">
+                            <div class="modal-header d-flex justify-content-between align-items-center">
                                 <h5 class="modal-title" id="skuHistoryModalLabel">Adjustment History</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                <div class="d-flex align-items-center">
+                                    <a href="#" id="shopifyInventoryLink" target="_blank" class="btn btn-success btn-sm me-2" style="display: none;">
+                                        <i class="fas fa-external-link-alt"></i> View in Shopify
+                                    </a>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
                             </div>
                             <div class="modal-body" id="sku-history-content">
                                 Loading...
@@ -2556,10 +2561,17 @@
                         }
 
                         $('#sku-history-content').html(html);
+                        
+                        // Update Shopify link
+                        const shopifyDomain = '{{ env("SHOPIFY_STORE_URL") }}';
+                        const shopifyInventoryUrl = `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent(sku)}`;
+                        $('#shopifyInventoryLink').attr('href', shopifyInventoryUrl).show();
+                        
                         $('#skuHistoryModal').modal('show');
                     },
                     error: function () {
                         $('#sku-history-content').html('<p class="text-danger">Failed to load history.</p>');
+                        $('#shopifyInventoryLink').hide();
                         $('#skuHistoryModal').modal('show');
                     }
                 });
@@ -4414,9 +4426,13 @@
 
             // Show notification
             function showNotification(type, message) {
+                const isDanger = type === 'danger' || type === 'error';
+                const fontSize = isDanger ? 'font-size: 20px; font-weight: bold;' : 'font-size: 14px;';
+                const padding = isDanger ? 'padding: 20px 25px;' : '';
+                
                 const notification = $(`
                     <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
-                        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                        <div class="alert alert-${type} alert-dismissible fade show" role="alert" style="${fontSize} ${padding}">
                             ${message}
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                         </div>
@@ -4427,7 +4443,7 @@
 
                 setTimeout(() => {
                     notification.find('.alert').alert('close');
-                }, 3000);
+                }, isDanger ? 5000 : 3000); // Error messages stay longer
             }
 
             // Loader functions

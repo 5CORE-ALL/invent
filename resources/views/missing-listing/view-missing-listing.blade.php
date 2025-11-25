@@ -413,6 +413,13 @@ document.addEventListener("DOMContentLoaded", function() {
 
         document.getElementById("total-notlisted-kpi").innerHTML =
             "Total Not Listed: " + total;
+        
+        // Update sidebar badge
+        const sidebarBadge = document.getElementById("missingListingTotalBadge");
+        if (sidebarBadge) {
+            sidebarBadge.textContent = total.toLocaleString('en-US');
+            sidebarBadge.style.display = 'inline';
+        }
     }
     
     function formatMarketName(mp) {
