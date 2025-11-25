@@ -102,7 +102,7 @@ class UpdateEbaySuggestedBid extends Command
 
             if ($sbidColor === "yellow") {
                 if ($noSale) {
-                    $sbid = $viewsLow ? 12 : 10;
+                    $sbid = $viewsLow ? 10 : 10;
                 } else {
                     $sbid = $viewsLow ? 10 : 8;
                 }
@@ -110,9 +110,9 @@ class UpdateEbaySuggestedBid extends Command
 
             if ($sbidColor === "red") {
                 if ($noSale) {
-                    $sbid = $viewsLow ? 15 : 12;
+                    $sbid = $viewsLow ? 10 : 10;
                 } else {
-                    $sbid = $viewsLow ? 12 : 10;
+                    $sbid = $viewsLow ? 10 : 10;
                 }
             }
 

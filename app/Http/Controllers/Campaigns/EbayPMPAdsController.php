@@ -27,6 +27,9 @@ class EbayPMPAdsController extends Controller
 
     public function getEbayPmpAdsData()
     {
+        // Clear any cached data to ensure fresh results
+        Cache::forget('ebay_pmp_ads_data');
+        
         $productMasters = ProductMaster::orderBy("parent", "asc")
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy("sku", "asc")
@@ -54,7 +57,12 @@ class EbayPMPAdsController extends Controller
             ->whereIn('report_range', ['L60', 'L30', 'L7'])
             ->get();
 
-        $campaignListings = DB::connection('apicentral')->table('ebay_campaign_ads_listings')->select('listing_id', 'bid_percentage', 'suggested_bid')->where('funding_strategy', 'COST_PER_SALE')->get()->keyBy('listing_id');
+        $campaignListings = DB::connection('apicentral')
+            ->table('ebay_campaign_ads_listings')
+            ->select('listing_id', 'bid_percentage', 'suggested_bid')
+            ->where('funding_strategy', 'COST_PER_SALE')
+            ->get()
+            ->keyBy('listing_id');
 
         $adMetricsBySku = [];
 
@@ -218,7 +226,9 @@ class EbayPMPAdsController extends Controller
             "message" => "eBay Data Fetched Successfully",
             "data" => $result,
             "status" => 200,
-        ]);
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', 'Sat, 01 Jan 2000 00:00:00 GMT');
     }
 
     private function extractNumber($value)

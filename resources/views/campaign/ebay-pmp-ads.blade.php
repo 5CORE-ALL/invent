@@ -2352,6 +2352,10 @@
                     url: '/ebay/pmp/ads/data',
                     type: 'GET',
                     dataType: 'json',
+                    cache: false, // Disable cache to always fetch fresh data
+                    data: {
+                        _t: new Date().getTime() // Add timestamp to prevent browser caching
+                    },
                     success: function(response) {
                         if (response && response.data) {
                             tableData = response.data.map((item, index) => {
