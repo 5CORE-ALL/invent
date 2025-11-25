@@ -1436,7 +1436,7 @@
                             initEnhancedDropdowns();
 
                             // Set default INV filter to "INV Only" on page load
-                            $('#inv-filter').val('inv-only').trigger('change');
+                            // $('#inv-filter').val('inv-only').trigger('change');
                         });
                     }
 
@@ -1578,9 +1578,9 @@
                         if (item.sku.includes('PARENT')) {
                             $row.addClass('parent-row');
                         }
-                        if (item.nr_req === 'NR') {
-                            $row.addClass('nr-hide');
-                        }
+                        // if (item.nr_req === 'NR') {
+                        //     $row.addClass('nr-hide');
+                        // }
 
                         $row.append($('<td>').text(index)); // SL No.
                         $row.append($('<td>').text(item.parent)); // Parent

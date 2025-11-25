@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'eBay Pricing Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'eBay Pricing Decrease', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -19,8 +19,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'eBay Pricing Data',
-        'sub_title' => 'eBay Pricing Data',
+        'page_title' => 'eBay Pricing Decrease',
+        'sub_title' => 'eBay Pricing Decrease',
     ])
     <div class="toast-container"></div>
     <div class="row">

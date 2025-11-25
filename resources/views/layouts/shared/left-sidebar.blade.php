@@ -2924,14 +2924,30 @@
             fetch('/stock/missing/listing/data')
                 .then(res => res.json())
                 .then(json => {
-                    const datainfo = json.datainfo || {};
-                    // Sum notlisted across known channels
-                    const channels = ['shopify', 'amazon', 'walmart', 'reverb', 'shein', 'doba', 'temu',
-                        'macy', 'ebay1', 'ebay2', 'ebay3', 'bestbuy', 'tiendamia'
-                    ];
-                    const total = channels.reduce((sum, c) => sum + (parseInt(datainfo[c]?.notlisted) || 0),
-                        0);
+                    const data = json.data || [];
+                    let total = 0;
+
+                    // Calculate total "Not Listed" items (excluding zero inventory)
+                    // Filter out rows where shopify inventory is zero (matching page behavior)
+                    const filteredData = data.filter(row => {
+                        const zi = row.is_zero_inventory || {};
+                        return !(zi.shopify === true);
+                    });
+
+                    filteredData.forEach(row => {
+                        const ls = row.listing_status || {};
+                        const zi = row.is_zero_inventory || {};
+                        
+                        // Get all marketplace keys from listing_status
+                        Object.keys(ls).forEach(mp => {
+                            if (ls[mp] === "Not Listed" && !(zi[mp] === true)) {
+                                total++;
+                            }
+                        });
+                    });
+
                     missingBadge.textContent = total.toLocaleString('en-US');
+                    missingBadge.style.display = 'inline';
                 })
                 .catch(err => console.error('Failed to load missing listing total:', err));
         }
