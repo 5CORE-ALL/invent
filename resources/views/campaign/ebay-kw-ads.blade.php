@@ -148,9 +148,10 @@
                         </h4>
 
                         <div class="row g-3 mb-3">
-                            <!-- Inventory Filters -->
-                            <div class="col-md-6">
-                                <div class="d-flex gap-2">
+                            <!-- Left side: Filters and Buttons -->
+                            <div class="col-md-8">
+                                <!-- Filters Row -->
+                                <div class="d-flex gap-2 mb-3">
                                     <select id="inv-filter" class="form-select form-select-md">
                                         <option value="">Select INV</option>
                                         <option value="ALL">ALL</option>
@@ -172,42 +173,105 @@
                                         <option value="RED">RED</option>
                                     </select>
                                 </div>
-                            </div>
-                            <div class="col-md-6 d-flex justify-content-end gap-2">
-                                <a href="javascript:void(0)" id="export-btn" class="btn btn-sm btn-success d-flex align-items-center justify-content-center">
-                                    <i class="fas fa-file-export me-1"></i> Export Excel/CSV
-                                </a>
-                                <button class="btn btn-success btn-md d-flex align-items-center">
-                                    <span>Total Campaigns: <span id="total-campaigns" class="fw-bold ms-1 fs-5">0</span></span>
-                                </button>
-                                <button class="btn btn-primary btn-md d-flex align-items-center">
-                                    <i class="fa fa-percent me-1"></i>
-                                    <span>Of Total: <span id="percentage-campaigns" class="fw-bold ms-1 fs-5">0%</span></span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Search and Controls Row -->
-                        <div class="row g-3 align-items-center">
-                            <!-- Left: Search & Status -->
-                            <div class="col-md-6">
+                                
+                                <!-- Search and Status Row -->
                                 <div class="d-flex gap-2">
                                     <input type="text" id="global-search" class="form-control form-control-md" placeholder="Search campaign...">
                                     <select id="status-filter" class="form-select form-select-md" style="width: 140px;">
                                         <option value="">All Status</option>
-                                        <option value="RUNNING">Running</option>
+                                        <option value="RUNNING" selected>Running</option>
                                         <option value="PAUSED">Paused</option>
                                         <option value="ARCHIVED">Archived</option>
                                     </select>
+                                    <a href="javascript:void(0)" id="export-btn" class="btn btn-success d-flex align-items-center justify-content-center" style="width: 180px;">
+                                        <i class="fas fa-file-export me-1"></i> Export Excel
+                                    </a>
                                 </div>
                             </div>
-                            
+
+                            <!-- Right side: Stats with Chart Button -->
+                            <div class="col-md-4">
+                                <div class="d-flex flex-column gap-2">
+                                    <div class="d-flex gap-2">
+                                        <div class="text-center p-2 bg-light rounded flex-fill">
+                                            <small class="d-block text-dark mb-1" style="font-size: 0.9rem;">Total</small>
+                                            <h4 id="total-campaigns" class="fw-bold text-dark mb-0">0</h4>
+                                        </div>
+                                        <div class="text-center p-2 bg-light rounded flex-fill">
+                                            <small class="d-block text-dark mb-1" style="font-size: 0.9rem;">Filtered</small>
+                                            <h4 id="percentage-campaigns" class="fw-bold text-dark mb-0">0%</h4>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-light w-100 fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#chartModal" style="color: black;">
+                                        <i class="fa fa-chart-pie me-2"></i> View Distribution
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Search and Controls Row -->
+                        <div class="row g-3 align-items-center" style="display: none;">
+                            <!-- Hidden - moved above -->
                         </div>
                     </div>
 
 
                     <!-- Table Section -->
                     <div id="budget-under-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart Modal -->
+    <div class="modal fade" id="chartModal" tabindex="-1" aria-labelledby="chartModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="chartModalLabel">
+                        <i class="fa fa-chart-pie me-2"></i> 7 UB% Distribution
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-8 mx-auto">
+                            <canvas id="acosColorPieChart" height="300"></canvas>
+                        </div>
+                    </div>
+                    <div class="row mt-4">
+                        <div class="col-md-12">
+                            <div class="d-flex justify-content-around">
+                                <div class="text-center">
+                                    <div class="d-flex align-items-center justify-content-center mb-2">
+                                        <div style="width: 20px; height: 20px; background-color: #05bd30; border-radius: 3px; margin-right: 8px;"></div>
+                                        <strong>Green (70-90%)</strong>
+                                    </div>
+                                    <h4 id="green-count" class="text-success mb-0">0</h4>
+                                    <small class="text-muted">campaigns</small>
+                                </div>
+                                <div class="text-center">
+                                    <div class="d-flex align-items-center justify-content-center mb-2">
+                                        <div style="width: 20px; height: 20px; background-color: #ff01d0; border-radius: 3px; margin-right: 8px;"></div>
+                                        <strong>Pink (>90%)</strong>
+                                    </div>
+                                    <h4 id="pink-count" class="mb-0" style="color: #ff01d0;">0</h4>
+                                    <small class="text-muted">campaigns</small>
+                                </div>
+                                <div class="text-center">
+                                    <div class="d-flex align-items-center justify-content-center mb-2">
+                                        <div style="width: 20px; height: 20px; background-color: #ff2727; border-radius: 3px; margin-right: 8px;"></div>
+                                        <strong>Red (<70%)</strong>
+                                    </div>
+                                    <h4 id="red-count" class="text-danger mb-0">0</h4>
+                                    <small class="text-muted">campaigns</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -1041,6 +1105,55 @@
 
                 table.setFilter(combinedFilter);
 
+                // Initialize pie chart
+                let acosColorChart = null;
+                const ctx = document.getElementById('acosColorPieChart');
+                
+                if (ctx) {
+                    acosColorChart = new Chart(ctx, {
+                        type: 'pie',
+                        data: {
+                            labels: ['Green (70-90%)', 'Pink (>90%)', 'Red (<70%)'],
+                            datasets: [{
+                                data: [0, 0, 0],
+                                backgroundColor: [
+                                    '#05bd30',
+                                    '#ff01d0',
+                                    '#ff2727'
+                                ],
+                                borderWidth: 2,
+                                borderColor: '#fff'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        padding: 10,
+                                        font: {
+                                            size: 11
+                                        }
+                                    }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.label || '';
+                                            let value = context.parsed || 0;
+                                            let total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            let percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                            return label + ': ' + value + ' (' + percentage + '%)';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
                 function updateCampaignStats() {
                     let allRows = table.getData();
                     let filteredRows = allRows.filter(combinedFilter);
@@ -1055,6 +1168,35 @@
 
                     if (totalEl) totalEl.innerText = filtered;
                     if (percentageEl) percentageEl.innerText = percentage + "%";
+
+                    // Update pie chart with 7 UB% color distribution
+                    if (acosColorChart) {
+                        let greenCount = 0;
+                        let pinkCount = 0;
+                        let redCount = 0;
+
+                        filteredRows.forEach(row => {
+                            let spend_l7 = parseFloat(row.spend_l7 || 0);
+                            let budget = parseFloat(row.campaignBudgetAmount || 0);
+                            let ub7 = budget > 0 ? (spend_l7 / (budget * 7)) * 100 : 0;
+
+                            if (ub7 >= 70 && ub7 <= 90) {
+                                greenCount++;
+                            } else if (ub7 > 90) {
+                                pinkCount++;
+                            } else if (ub7 < 70) {
+                                redCount++;
+                            }
+                        });
+
+                        acosColorChart.data.datasets[0].data = [greenCount, pinkCount, redCount];
+                        acosColorChart.update();
+
+                        // Update count displays in modal
+                        document.getElementById('green-count').innerText = greenCount;
+                        document.getElementById('pink-count').innerText = pinkCount;
+                        document.getElementById('red-count').innerText = redCount;
+                    }
                 }
 
                 table.on("dataFiltered", updateCampaignStats);

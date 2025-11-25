@@ -56,11 +56,16 @@ class EbayPMPAdsController extends Controller
             ->get();
 
         $campaignListings = DB::connection('apicentral')
-            ->table('ebay_campaign_ads_listings')
-            ->select('listing_id', 'bid_percentage', 'suggested_bid')
-            ->where('funding_strategy', 'COST_PER_SALE')
+            ->table('ebay_campaign_ads_listings as t')
+            ->join(DB::raw('(SELECT listing_id, MAX(id) AS max_id 
+                            FROM ebay_campaign_ads_listings 
+                            WHERE funding_strategy="COST_PER_SALE"
+                            GROUP BY listing_id) x'), 
+                't.id', '=', 'x.max_id')
+            ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
             ->get()
             ->keyBy('listing_id');
+
 
         $adMetricsBySku = [];
 

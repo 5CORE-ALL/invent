@@ -81,7 +81,7 @@ class UpdateEbaySuggestedBid extends Command
                 $sbidColor = "pink";
             }
 
-            $viewsLow = $views < 300;
+            $viewsLow = $views < 150;
             $noSale = $ebay_l30 === 0;
 
             if ($sbidColor === "pink") {
