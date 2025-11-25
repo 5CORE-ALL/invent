@@ -1573,7 +1573,7 @@
 
                                     <li>
 
-                                        <a href="{{ url('/amazon-pricing-decrease-cvr-fbm') }}">Amz FBM Price Decrease
+                                        <a href="{{ url('/amazon-tabulator-view') }}">Amz FBM Price Decrease
                                             </a>
                                     </li>
                                     <li>
