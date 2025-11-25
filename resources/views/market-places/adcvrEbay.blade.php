@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Ebay - Pricing', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Ebay Pricing KW', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -130,12 +130,16 @@
             color: #000 !important;
             background-color: #fff !important;
         }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Ebay - Pricing',
-        'sub_title' => 'Ebay - Pricing',
+        'page_title' => 'Ebay - AD CVR',
+        'sub_title' => 'Ebay - AD CVR',
     ])
     <div class="row">
         <div class="col-12">
@@ -145,7 +149,7 @@
                         <!-- Title -->
                         <h4 class="fw-bold text-primary mb-3 d-flex align-items-center">
                             <i class="fa-solid fa-chart-line me-2"></i>
-                            Pricing
+                            Pricing KW
                         </h4>
 
                         <!-- Filters Row -->
@@ -154,9 +158,9 @@
                             <div class="col-md-6">
                                 <div class="d-flex gap-2">
                                     <select id="clicks-filter" class="form-select form-select-md" style="width: 175px;">
-                                        <option value="">Select CLICKS L90</option>
+                                        <option value="">Select CLICKS L30</option>
                                         <option value="ALL">ALL</option>
-                                        <option value="CLICKS_L90">CLICKS L90 > 25</option>
+                                        <option value="CLICKS_L30">CLICKS L30 > 25</option>
                                         <option value="OTHERS">OTHERS</option>
                                     </select>
 
@@ -186,14 +190,12 @@
                                         <option value="FBM">FBM</option>
                                         <option value="BOTH">BOTH</option>
                                     </select>
-
                                     <select id="cvr-color-filter" class="form-select form-select-md">
                                         <option value="">Select CVR</option>
                                         <option value="red">Red (&lt; 5%)</option>
                                         <option value="green">Green (5% - 10%)</option>
                                         <option value="pink">Pink (&gt; 10%)</option>
                                     </select>
-
                                     <select id="pft-color-filter" class="form-select form-select-md">
                                         <option value="">Select PFT</option>
                                         <option value="red">Red (&lt; 10%)</option>
@@ -202,7 +204,6 @@
                                         <option value="green">Green (20% - 40%)</option>
                                         <option value="pink">Pink (&gt; 40%)</option>
                                     </select>
-
                                 </div>
                             </div>
 
@@ -217,7 +218,7 @@
                                     </a>
                                     <button class="btn btn-success btn-md">
                                         <i class="fa fa-arrow-up me-1"></i>
-                                        Need to increase bids: <span id="total-campaigns" class="fw-bold ms-1 fs-4">0</span>
+                                        Count bids: <span id="total-campaigns" class="fw-bold ms-1 fs-4">0</span>
                                     </button>
                                     <button class="btn btn-primary btn-md">
                                         <i class="fa fa-percent me-1"></i>
@@ -301,8 +302,7 @@
                 height: "700px",             
                 virtualDom: true,
                 initialSort:[
-                    {column:"parent", dir:"asc"},  
-                    {column:"sku", dir:"asc"},     
+                    {column:"cvr_l30", dir:"asc"}
                 ],
                 rowFormatter: function(row) {
                     const data = row.getData();
@@ -365,20 +365,15 @@
                         visible: false
                     },
                     {
-                        title: "AL 90",
-                        field: "A_L90",
-                        visible: false
-                    },
-                    {
                         title: "A DIL %",
                         field: "A DIL %",
                         formatter: function(cell) {
                             const data = cell.getData();
-                            const al90 = parseFloat(data.A_L90);
+                            const al30 = parseFloat(data.A_L30);
                             const inv = parseFloat(data.INV);
 
-                            if (!isNaN(al90) && !isNaN(inv) && inv !== 0) {
-                                const dilDecimal = (al90 / inv);
+                            if (!isNaN(al30) && !isNaN(inv) && inv !== 0) {
+                                const dilDecimal = (al30 / inv);
                                 const color = getDilColor(dilDecimal);
                                 return `<div class="text-center"><span class="dil-percent-value ${color}">${Math.round(dilDecimal * 100)}%</span></div>`;
                             }
@@ -477,156 +472,19 @@
                         visible: false
                     },
                     {
+                        title: "L30",
+                        field: "A_L30",
+                    },
+                    {
                         title: "CAMPAIGN",
                         field: "campaignName"
                     },
                     {
-                        title: "BGT",
-                        field: "campaignBudgetAmount",
-                        hozAlign: "right",
-                        formatter: (cell) => parseFloat(cell.getValue() || 0)
-                    },
-                    {
-                        title: "ACOS L90",
-                        field: "acos_L90",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0) + "%"}</span>
-                            `;
-                            
-                        }
-                    },
-                    {
-                        title: "SPEND L90",
-                        field: "spend_l90",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "SALES L90",
-                        field: "ad_sales_l90",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "CLK L90",
-                        field: "clicks_L90",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "ADS SOLD L90",
-                        field: "A_L90",
-                    },
-                    {
-                        title: "ACOS L30",
-                        field: "acos_L30",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0) + "%"}</span>
-                            `;
-                            
-                        }
-                    },
-                    {
-                        title: "SPEND L30",
-                        field: "spend_l30",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "SALES L30",
-                        field: "ad_sales_l30",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "CLK L30",
-                        field: "clicks_L30",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "ADS SOLD L30",
-                        field: "A_L30",
-                    },
-                    {
-                        title: "ACOS L7",
-                        field: "acos_L7",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0) + "%"}</span>
-                            `;
-                            
-                        }
-                    },
-                    {
-                        title: "SPEND L7",
-                        field: "spend_l7",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "SALES L7",
-                        field: "ad_sales_l7",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "CLK L7",
-                        field: "clicks_L7",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "ADS SOLD L7",
-                        field: "A_L7",
-                    },
-                    {
-                        title: "CVR L90",
-                        field: "cvr_l90",
+                        title: "CVR L30",
+                        field: "cvr_l30",
                         formatter: function(cell){
                             let value = parseFloat(cell.getValue()) || 0;
-                            let cvr = value.toFixed(0);
+                            let cvr = Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
                             let color = "";
 
                             if (value < 5) {
@@ -644,250 +502,338 @@
                             if (value < 5) {
                                 let newPrice = basePrice * 0.99;
                                 row.update({ ebay_price: newPrice.toFixed(2) });
-                            } else {
-                                row.update({ ebay_price: "" });
                             }
 
-                            return `
+                            if (color == "pink") {
+                                return `
                                 <span class="dil-percent-value ${color}">
                                     ${cvr}%
                                 </span>
                             `;
+                            } else {
+                                return `
+                                    <span style="font-weight:600; color:${color};">
+                                        ${cvr}%
+                                    </span>
+                                `;
+                            }
                         }
                     },
                     {
-                        title: "Price",
-                        field: "price"
+                        title: "BGT",
+                        field: "campaignBudgetAmount",
+                        hozAlign: "right",
+                        formatter: (cell) => parseFloat(cell.getValue() || 0)
                     },
                     {
-                        title: "LMP",
-                        field: "lmp",
+                        title: "ACOS L30",
+                        field: "acos_L30",
+                        hozAlign: "right",
                         formatter: function(cell) {
-                            let lmp = cell.getValue();
+                            let acos_L30 = parseFloat(cell.getValue() || 0).toFixed(0);
                             return `
-                                <span>${lmp}</span>
-                                <i class="fa fa-info-circle text-primary toggle-lmp-cols-btn" 
-                                data-lmp="${lmp}" 
+                                <span>${acos_L30 + "%"}</span>
+                                <i class="fa fa-info-circle text-primary toggle-acos-cols-btn" 
+                                data-lmp="${acos_L30}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                            
+                        }
+                    },
+                    {
+                        title: "ACOS L7",
+                        field: "acos_L7",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            return `
+                                <span>${parseFloat(cell.getValue() || 0).toFixed(0) + "%"}</span>
+                            `;
+                            
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "SPEND L30",
+                        field: "spend_l30",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let spend_l30 = parseFloat(cell.getValue() || 0).toFixed(0);
+                            return `
+                                <span>${spend_l30}</span>
+                                <i class="fa fa-info-circle text-primary toggle-spend-cols-btn" 
+                                data-lmp="${spend_l30}" 
                                 style="cursor:pointer; margin-left:8px;"></i>
                             `;
                         }
                     },
                     {
-                        title: "PRICE 1",
-                        field: "lmp_1",
-                        visible: false
-                    },
-                    {
-                        title: "PRICE 2",
-                        field: "lmp_2",
-                        visible: false
-                    },
-                    {
-                        title: "PRICE 3",
-                        field: "lmp_3",
-                        visible: false
-                    },
-                    {
-                        title: "PRICE 4",
-                        field: "lmp_4",
-                        visible: false
-                    },
-                    {
-                        title: "PRICE 5",
-                        field: "lmp_5",
-                        visible: false
-                    },
-                    {
-                        title: "PRICE 6",
-                        field: "lmp_6",
-                        visible: false
-                    },
-                    {
-                        title: "PRICE 7",
-                        field: "lmp_7",
-                        visible: false
-                    },
-                    {
-                        title: "PRICE 8",
-                        field: "lmp_8",
-                        visible: false
-                    },
-                    {
-                        title: "PRICE 9",
-                        field: "lmp_9",
-                        visible: false
-                    },
-                    {
-                        title: "PRICE 10",
-                        field: "lmp_10",
-                        visible: false
-                    },
-                    {
-                        title: "PRICE 11",
-                        field: "lmp_11",
-                        visible: false
-                    },
-                    {
-                        title: "PFT",
-                        field: "PFT_percentage",
-                        hozAlign: "center",
-                        formatter: function(cell){
-                            let value = parseFloat(cell.getValue()) || 0;
-                            let pft = value.toFixed(0);
-
-                            if (pft < 10) {
-                                color = "red";
-                            } else if (pft >= 10 && pft < 15) {
-                                color = "yellow";
-                            } else if (pft >= 15 && pft < 20) {
-                                color = "blue";
-                            } else if (pft >= 20 && pft <= 40) {
-                                color = "green";
-                            } else if (pft > 40) {
-                                color = "pink";
-                            }
-
-                            return `
-                                <span class="dil-percent-value ${color}">
-                                    ${pft}%
-                                </span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "GPFT",
-                        field: "gpft",
-                        hozAlign: "center",
-                        formatter: function(cell){
-                            let ship = Number(cell.getRow().getData().SHIP) || 0;
-                            let lp = Number(cell.getRow().getData().LP) || 0;
-
-                            const spend = parseFloat(cell.getRow().getData()['spend_l90']) || 0;
-                            const aL90 = Number(cell.getRow().getData()['A_L90']) || 0;
-                            const price = Number(cell.getRow().getData().price) || 0;
-                            const ebayAdUpdates = {{ $ebayAdUpdates ?? 0 }};
-
-                            let percentage = {{ $ebayPercentage ?? 0 }};
-                            let costPercentage = (percentage + ebayAdUpdates) / 100; 
-                            let netPft = (price * costPercentage) - ship - lp - (spend / aL90);
-                            
-                            const totalEbayPercentage = (percentage - ebayAdUpdates) / 100;
-                            const netGpft = (price * totalEbayPercentage) - ship - lp;
-                            let gPft = (netGpft / price) * 100;
-
-                            if(isNaN(gPft) || !isFinite(gPft)) {
-                                gPft = 0;
-                            }
-
-                            if (gPft < 10) {
-                                color = "red";
-                            } else if (gPft >= 10 && gPft < 15) {
-                                color = "yellow";
-                            } else if (gPft >= 15 && gPft < 20) {
-                                color = "blue";
-                            } else if (gPft >= 20 && gPft <= 40) {
-                                color = "green";
-                            } else if (gPft > 40) {
-                                color = "pink";
-                            }
-
-                            return `
-                                <span class="dil-percent-value ${color}">
-                                    ${gPft.toFixed(0)}%
-                                </span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "TPFT%",
-                        field: "TPFT",
-                        hozAlign: "center",
-                        formatter: function(cell){
-                            let value = parseFloat(cell.getValue()) || 0;
-                            let percent = value.toFixed(0);
-                            let color = "";
-
-                            if (value < 10) {
-                                color = "red";
-                            } else if (value >= 10 && value < 15) {
-                                color = "#ffc107";
-                            } else if (value >= 15 && value < 20) {
-                                color = "blue";
-                            } else if (value >= 20 && value <= 40) {
-                                color = "green";
-                            } else if (value > 40) {
-                                color = "#e83e8c";
-                            }
-
-                            return `
-                                <span style="font-weight:600; color:${color};">
-                                    ${percent}%
-                                </span>
-                            `;
-                        }
-                    },
-                    {
-                        title: "SPRICE",
-                        field: "ebay_price",
-                        editor: false,
-                        cssClass: "price-cell",
-                        formatter: function(cell){
-                            let value = parseFloat(cell.getValue()) || '';
-                            return `<span class="dil-percent-value">$${value.toFixed(2)}</span>`;
-                        },
-                    },
-                    {
-                        title: "SPFT",
-                        field: "ebay_pft",
+                        title: "SPEND L7",
+                        field: "spend_l7",
+                        hozAlign: "right",
                         formatter: function(cell) {
-                            let value = parseFloat(cell.getValue()) || 0;
-                            let spft = value.toFixed(0);
-                            const pftClass = spft > 20 ? 'positive' : spft < 10 ? 'negative' : 'neutral';
-
-                            const val = Number(spft);
-                            let color = '#000000';
-
-                            if (isFinite(val) && !isNaN(val)) {
-                                if (val <= 0) color = '#ff0000';
-                                else if (val > 0 && val <= 10) color = '#ff0000';
-                                else if (val > 10 && val <= 14) color = '#fd7e14';
-                                else if (val > 14 && val <= 19) color = '#0d6efd';
-                                else if (val > 19 && val <= 40) color = '#198754';
-                                else if (val > 40) color = '#800080';
-                            }
-
                             return `
-                                <div class="value-indicator ${pftClass}" style="color: ${color};">
-                                    ${fmtPct(spft)}
-                                </div>
+                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "SALES L30",
+                        field: "ad_sales_l30",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let ad_sales_l30 = parseFloat(cell.getValue() || 0).toFixed(0);
+                            return `
+                                <span>${ad_sales_l30}</span>
+                                <i class="fa fa-info-circle text-primary toggle-sales-cols-btn" 
+                                data-lmp="${ad_sales_l30}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
                             `;
                         }
                     },
                     {
-                        title: "SROI",
-                        field: "ebay_roi",
-                        formatter: function(cell){
-                            let value = parseFloat(cell.getValue()) || 0;
-                            let sroi = value.toFixed(0);
-                            const roiClass = sroi > 30 ? 'positive' : sroi < 15 ? 'negative' : 'neutral';
-
-                            const val = Number(sroi);
-                            let color = '#000000';
-
-                            if (isFinite(val) && !isNaN(val)) {
-                                if (val <= 0) color = '#ff0000';
-                                else if (val > 0 && val <= 10) color = '#ff0000';
-                                else if (val > 10 && val <= 14) color = '#fd7e14';
-                                else if (val > 14 && val <= 19) color = '#0d6efd';
-                                else if (val > 19 && val <= 40) color = '#198754';
-                                else if (val > 40) color = '#800080';
-                            }
+                        title: "SALES L7",
+                        field: "ad_sales_l7",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            return `
+                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CLK L30",
+                        field: "clicks_L30",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            let clicks_L30 = parseFloat(cell.getValue() || 0).toFixed(0);
+                            return `
+                                <span>${clicks_L30}</span>
+                                <i class="fa fa-info-circle text-primary toggle-clicks-cols-btn" 
+                                data-lmp="${clicks_L30}" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "CLK L7",
+                        field: "clicks_L7",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            return `
+                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "ADS SOLD",
+                        field: "A_L30",
+                    },
+                    {
+                        title: "Price",
+                        field: "price",
+                        formatter: function(cell) {
+                            let price = cell.getValue();
+                            let uniqueId = "popup-" + Math.random().toString(36).substr(2, 9);
 
                             return `
-                                <div class="value-indicator ${roiClass}" style="color: ${color};">
-                                    ${fmtPct(sroi)}
-                                </div>
+                                <span>${price}</span>
+                                <i class="fa fa-info-circle text-primary info-icon" 
+                                    data-id="${uniqueId}" 
+                                    data-price="${price}" 
+                                    style="cursor:pointer; margin-left:8px;">
+                                </i>
                             `;
+                        },
+                        cellClick: function (e, cell) {
+                            let target = e.target;
+                            if (target.classList.contains("info-icon")) {
+                                let price = parseFloat(target.getAttribute("data-price"));
+                                let popupId = target.getAttribute("data-id");
+                                let existingPopup = document.getElementById(popupId);
+
+                                if (existingPopup) {
+                                    existingPopup.remove();
+                                    return;
+                                }
+
+                                document.querySelectorAll(".draggable-popup").forEach(p => p.remove());
+                                let rowData = cell.getRow().getData();
+
+                                const ebayAdUpdates = {{ $ebayAdUpdates ?? 0 }};
+                                const percentage = {{ $ebayPercentage ?? 0 }};
+                                const costPercentage = percentage + ebayAdUpdates;
+
+                                let ship = Number(rowData.SHIP) || 0;
+                                let lp = Number(rowData.LP) || 0;
+                                let gPft = ((price * costPercentage) - ship - lp) / price;
+                                if (isNaN(gPft) || !isFinite(gPft)) gPft = 0;
+                                gPft = (gPft).toFixed(0);
+
+                                const getColorPFT = (val) => {
+                                    if (val < 10) return "red";
+                                    if (val >= 10 && val < 15) return "yellow";
+                                    if (val >= 15 && val < 20) return "blue";
+                                    if (val >= 20 && val <= 40) return "green";
+                                    return "pink";
+                                };
+                                const getColorProfit = (val) => {
+                                    if (val <= 0) return '#ff0000';
+                                    if (val > 0 && val <= 10) return '#ff0000';
+                                    if (val > 10 && val <= 14) return '#fd7e14';
+                                    if (val > 14 && val <= 19) return '#0d6efd';
+                                    if (val > 19 && val <= 40) return '#198754';
+                                    if (val > 40) return '#800080';
+                                    return '#000';
+                                };
+                                const fmtPct = (v) => isNaN(v) ? '' : `${parseFloat(v).toFixed(0)}%`;
+                                const fmtColored = (val, color) => 
+                                    `<span style="font-weight:600; color:${color};">${fmtPct(val)}</span>`;
+
+                                let popupTableHTML = `
+                                    <table class="popup-inner-table">
+                                        <tr><th>LMP</th><td>${rowData.lmp ?? ''}</td></tr>
+                                        ${Array.from({ length: 11 }, (_, i) => {
+                                            let idx = i + 1;
+                                            return `<tr><th>LMP ${idx+1}</th><td>${rowData["lmp_" + idx] ?? ''}</td></tr>`;
+                                        }).join("")}
+                                        <tr><th>PFT%</th><td>${fmtColored(rowData.PFT_percentage, getColorProfit(rowData.PFT_percentage))}</td></tr>
+                                        <tr><th>GPFT%</th><td>${fmtColored(gPft, getColorProfit(gPft))}</td></tr>
+                                        <tr><th>TPFT%</th><td>${fmtColored(rowData.TPFT, getColorProfit(rowData.TPFT))}</td></tr>
+                                        <tr>
+                                            <th>SPRICE</th>
+                                            <td>
+                                                <input type="number" id="sprice-input" value="${parseFloat(rowData.ebay_price ?? 0).toFixed(2)}" style="width:80px; margin-right:6px;" />
+                                                <button id="approve-sprice" style="padding:2px 8px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer;">✔</button>
+                                            </td>
+                                        </tr>
+                                        <tr><th>SPFT%</th><td>${fmtColored(rowData.ebay_pft, getColorProfit(rowData.ebay_pft))}</td></tr>
+                                        <tr><th>SROI%</th><td>${fmtColored(rowData.ebay_roi, getColorProfit(rowData.ebay_roi))}</td></tr>
+                                    </table>
+                                `;
+
+                                let popup = document.createElement("div");
+                                popup.id = popupId;
+                                popup.className = "draggable-popup";
+                                popup.innerHTML = `
+                                    <div class="popup-header">
+                                        <span>PRICE</span>
+                                        <button class="popup-close">&times;</button>
+                                    </div>
+                                    <div class="popup-body">
+                                        ${popupTableHTML}
+                                    </div>
+                                `;
+                                document.body.appendChild(popup);
+
+                                const popupRect = popup.getBoundingClientRect();
+                                popup.style.left = `calc(50% - ${popupRect.width / 2}px)`;
+                                popup.style.top = `calc(50% - ${popupRect.height / 2}px)`;
+
+                                popup.querySelector(".popup-close").onclick = () => popup.remove();
+                                makeDraggable(popup);
+
+                                const spriceInput = popup.querySelector("#sprice-input");
+
+                                let spftCell;
+                                popup.querySelectorAll("tr").forEach(row => {
+                                    const label = row.querySelector("th")?.innerText?.trim();
+                                    if (label === "SPFT%") {
+                                        spftCell = row.querySelector("td span");
+                                    }
+                                });
+
+                                spriceInput.addEventListener("blur", function () {
+                                    let enteredPrice = parseFloat(spriceInput.value);
+                                    if (isNaN(enteredPrice) || enteredPrice <= 0) return;
+
+                                    let ship = Number(rowData.SHIP) || 0;
+                                    let lp   = Number(rowData.LP) || 0;
+
+                                    let raw = ((enteredPrice * percentage) - lp - ship) / enteredPrice;
+                                    let spft = (raw).toFixed(2);
+
+                                    let color = getColorProfit(spft);
+
+                                    spftCell.innerHTML = `<span style="font-weight:600; color:${color};">${spft}%</span>`;
+                                });
+
+                                popup.querySelector("#approve-sprice").addEventListener("click", async function () {
+                                    const btn = this;
+                                    const input = document.getElementById("sprice-input");
+                                    let newPrice = parseFloat(input.value);
+
+                                    if (isNaN(newPrice) || newPrice <= 0) {
+                                        alert("Please enter a valid price.");
+                                        return;
+                                    }
+
+                                    const originalText = btn.innerHTML;
+                                    btn.disabled = true;
+                                    btn.innerHTML = `<span class="spinner" style="
+                                        display:inline-block;
+                                        width:14px;
+                                        height:14px;
+                                        border:2px solid #fff;
+                                        border-top:2px solid transparent;
+                                        border-radius:50%;
+                                        animation: spin 0.8s linear infinite;
+                                    "></span>`;
+
+                                    try {
+                                        const res = await fetch("/push-ebay-price", {
+                                            method: "POST",
+                                            headers: {
+                                                "Content-Type": "application/json",
+                                                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').getAttribute("content")
+                                            },
+                                            body: JSON.stringify({
+                                                sku: rowData.sku,
+                                                price: newPrice
+                                            })
+                                        });
+
+                                        let data = null;
+                                        try {
+                                            data = await res.json();
+                                        } catch (e) {
+                                            // non-JSON response
+                                            data = null;
+                                        }
+
+                                        const okFromBody = data && (data.status === 200 || data.success === true || data.success === 'true');
+                                        const success = okFromBody || res.ok;
+
+                                        if (success) {
+                                            btn.innerHTML = "✔";
+                                            btn.style.background = "#198754";
+                                            // update visible row price so UI reflects change immediately
+                                            try {
+                                                const rowComp = table.getRow(rowData.sku);
+                                                if (rowComp) {
+                                                    rowComp.update({ ebay_price: parseFloat(newPrice).toFixed(2), price: parseFloat(newPrice).toFixed(2) });
+                                                }
+                                            } catch (e) {
+                                                // ignore table update errors
+                                            }
+
+                                            alert("Price updated successfully! Please refresh if values don't update automatically.");
+                                            popup.remove();
+                                        } else {
+                                            const msg = (data && (data.message || data.error || data.msg)) || `HTTP ${res.status}`;
+                                            throw new Error(msg || "Failed to update price.");
+                                        }
+
+                                    } catch (err) {
+                                        console.error(err);
+                                        alert("Error while updating price. Please try again.");
+                                        btn.disabled = false;
+                                        btn.innerHTML = originalText;
+                                    }
+                                });
+                            }
                         }
                     },
                 ],
@@ -903,6 +849,89 @@
                     document.getElementById("apr-all-sbid-btn").classList.add("d-none");
                 }
             });
+
+            function makeDraggable(el) {
+                const header = el.querySelector(".popup-header");
+                let offsetX, offsetY, isDown = false;
+
+                header.style.cursor = "move";
+
+                header.addEventListener("mousedown", (e) => {
+                    isDown = true;
+                    offsetX = e.clientX - el.offsetLeft;
+                    offsetY = e.clientY - el.offsetTop;
+                    header.style.userSelect = "none";
+                });
+
+                document.addEventListener("mouseup", () => { isDown = false; });
+                document.addEventListener("mousemove", (e) => {
+                    if (!isDown) return;
+                    el.style.left = e.clientX - offsetX + "px";
+                    el.style.top = e.clientY - offsetY + "px";
+                });
+            }
+
+            const style = document.createElement("style");
+            style.textContent = `
+            .draggable-popup {
+                position: fixed;
+                z-index: 9999;
+                background: #fff;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                width: 500px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                font-family: sans-serif;
+            }
+            .popup-header {
+                background: #007bff;
+                color: #fff;
+                padding: 6px 10px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .popup-header button {
+                background: none;
+                border: none;
+                color: white;
+                font-size: 16px;
+                cursor: pointer;
+            }
+            .popup-body {
+                padding: 10px;
+            }
+            `;
+
+            style.textContent += `
+                .popup-inner-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 6px;
+                    font-size: 15px;
+                }
+                .popup-inner-table th {
+                    background: #f8f9fa;
+                    text-align: left;
+                    padding: 4px 6px;
+                    border: 1px solid #ddd;
+                    width: 45%;
+                    color: #000;
+                }
+                .popup-inner-table td {
+                    padding: 4px 6px;
+                    border: 1px solid #ddd;
+                    text-align: right;
+                    color: #000;
+                }
+                .popup-inner-table tr:nth-child(even) {
+                    background: #f9f9f9;
+                }
+                `;
+
+            document.head.appendChild(style);
 
             // table.on("cellEdited", function(cell) {
             //     const field = cell.getField();
@@ -995,18 +1024,18 @@
                     }
 
                     let clicksFilterVal = $("#clicks-filter").val();
-                    let clicks_L90 = parseFloat(data.clicks_L90) || 0;
+                    let clicks_L30 = parseFloat(data.clicks_L30) || 0;
 
                     if (!clicksFilterVal) {
-                        if (clicks_L90 <= 25) return false;
+                        if (clicks_L30 <= 25) return false;
                     } else {
                         // When user selects a filter from dropdown
-                        if (clicksFilterVal === "CLICKS_L90") {
-                            if (clicks_L90 <= 25) return false;
+                        if (clicksFilterVal === "CLICKS_L30") {
+                            if (clicks_L30 <= 25) return false;
                         } else if (clicksFilterVal === "ALL") {
                             // Show all rows
                         } else if (clicksFilterVal === "OTHERS") {
-                            if (clicks_L90 > 25) return false;
+                            if (clicks_L30 > 25) return false;
                         }
                     }
 
@@ -1054,7 +1083,7 @@
 
                     let cvrColorFilterVal = $("#cvr-color-filter").val();
                     if (cvrColorFilterVal) {
-                        let cvrValue = parseFloat(data.cvr_l90) || 0;
+                        let cvrValue = parseFloat(data.cvr_l30) || 0;
 
                         let color = "";
                         if (cvrValue < 5) {
@@ -1124,7 +1153,7 @@
                 if (e.target.classList.contains("toggle-cols-btn")) {
                     let btn = e.target;
 
-                    let colsToToggle = ["INV", "L30", "DIL %", "A_L90", "A DIL %", "NRL", "NRA", "FBA"];
+                    let colsToToggle = ["INV", "L30", "DIL %", "A DIL %", "NRL", "NRA", "FBA"];
 
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);
@@ -1152,10 +1181,42 @@
 
             document.addEventListener("click", function(e) {
                 if (e.target.classList.contains("toggle-acos-cols-btn")) {
-                    let colsToToggle = ["acos_L15", "acos_L7"]; 
+                    let btn = e.target;
 
-                    colsToToggle.forEach(colField => {
-                        let col = table.getColumn(colField);
+                    let colsToToggle = ["acos_L7"];
+
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-spend-cols-btn")) {
+                    let btn = e.target;
+
+                    let colsToToggle = ["spend_l7"];
+
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-sales-cols-btn")) {
+                    let btn = e.target;
+
+                    let colsToToggle = ["ad_sales_l7"];
+
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
                         if (col) {
                             col.toggle();
                         }
@@ -1165,10 +1226,12 @@
 
             document.addEventListener("click", function(e) {
                 if (e.target.classList.contains("toggle-clicks-cols-btn")) {
-                    let colsToToggle = ["clicks_L15", "clicks_L7"]; 
+                    let btn = e.target;
 
-                    colsToToggle.forEach(colField => {
-                        let col = table.getColumn(colField);
+                    let colsToToggle = ["clicks_L7"];
+
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
                         if (col) {
                             col.toggle();
                         }
@@ -1190,7 +1253,7 @@
                     var rowEl = row.getElement();
                     if(rowEl && rowEl.offsetParent !== null){  
                         var rowData = row.getData();
-                        var acos = parseFloat(rowData.acos_L90) || 0;
+                        var acos = parseFloat(rowData.acos_L30) || 0;
 
                         if(acos > 0){
                             var sbgtInput = rowEl.querySelector('.sbgt-input');
@@ -1281,7 +1344,7 @@
                     let formattedPrice = row.ebay_price ? `$${parseFloat(row.ebay_price).toFixed(2)}` : '';
                     return {
                         ...row,
-                        SPRICE: formattedPrice
+                        SPRICE: formattedPrice,
                     };
                 });
 

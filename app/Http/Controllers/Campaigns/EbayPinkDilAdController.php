@@ -108,7 +108,7 @@ class EbayPinkDilAdController extends Controller
             $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
             $row['l1_spend'] = (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0);
             $row['l1_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0);
-            $row['sbid'] = 0.05;
+            $row['sbid'] = 0.10;
 
             $row['NR'] = '';
             if (isset($nrValues[$pm->sku])) {

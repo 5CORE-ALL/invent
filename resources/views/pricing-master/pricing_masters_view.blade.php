@@ -1852,7 +1852,6 @@ $.ajax({
                     return element;
                 }
             },
-            
 
         {
                     title: "Views",
@@ -2337,6 +2336,7 @@ $.ajax({
         <table class="table table-sm table-bordered align-middle sortable-table mb-0" style="border-color: #dee2e6;">
             <thead class="table-light position-sticky" style="top: 0; z-index: 1000;">
                 <tr>
+                     <th class="fw-bold">PP</th>
                     <th class="fw-bold" data-sort="string">Channel <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">L60 <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold default-sort" data-sort="number">L30 <i class="bi bi-arrow-down"></i></th>
@@ -2351,6 +2351,7 @@ $.ajax({
                     <th class="fw-bold">S Price</th>
                     <th class="fw-bold" data-sort="number">S PFT <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">S ROI <i class="bi bi-arrow-down-up"></i></th>
+                   
                 </tr>
             </thead>
             <tbody class="table-striped">
@@ -2395,6 +2396,22 @@ $.ajax({
 
                 html += `
                  <tr>
+                     <td class="text-center">
+                        ${(() => {
+                            // Sites that support price pushing (green check)
+                            const supportedSites = ['amz', 'ebay', 'ebay2', 'ebay3', 'shopifyb2c', 'walmart', 'doba'];
+                            
+                            // Sites that don't support price pushing (red cross)
+                            const unsupportedSites = ['temu', 'macy', 'reverb', 'mercariwoship', 'mercariwship', 'fbmarketplace', 'business5core', 'bestbuy', 'tiendamia', 'tiktok', 'aliexpress', 'pls', 'shein', 'wayfair'];
+                            
+                            if (supportedSites.includes(r.prefix)) {
+                                return '<i class="bi bi-check-circle-fill" style="color: #28a745; font-size: 16px;" title="Price push supported"></i>';
+                            } else if (unsupportedSites.includes(r.prefix)) {
+                                return '<i class="bi bi-x-circle-fill" style="color: #dc3545; font-size: 16px;" title="Price push not supported"></i>';
+                            }
+                            return '-';
+                        })()}
+                    </td>
                     <td>
                     <div class="d-flex flex-column align-items-center text-center">
                         <div class="position-relative">
@@ -2780,6 +2797,7 @@ $.ajax({
                             return '-';
                         })()}
                     </td>
+                   
                    
 
                 </tr>

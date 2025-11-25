@@ -905,6 +905,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-data-json', [EbayController::class, 'ebayDataJson'])->name('ebay.data.json');
     Route::get('/ebay-column-visibility', [EbayController::class, 'getEbayColumnVisibility'])->name('ebay.column.visibility.get');
     Route::post('/ebay-column-visibility', [EbayController::class, 'setEbayColumnVisibility'])->name('ebay.column.visibility.set');
+    Route::get('/ebay-export', [EbayController::class, 'exportEbayPricingData'])->name('ebay.export');
     Route::get('/adv-ebay/total-sales/save-data', [EbayController::class, 'getAdvEbayTotalSaveData'])->name('adv-ebay.total-sales.save-data');
     Route::post('/ebay/saveLowProfit', [EbayController::class, 'saveLowProfit']);
     Route::post('/ebay-analytics/import', [EbayController::class, 'importEbayAnalytics'])->name('ebay.analytics.import');
