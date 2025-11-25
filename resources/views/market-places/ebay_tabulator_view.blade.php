@@ -775,8 +775,13 @@
                 let sumLp = 0;
                 
                 data.forEach(row => {
-                    totalSales += parseFloat(row['T_Sale_l30']) || 0;
-                    totalProfit += parseFloat(row['Total_pft']) || 0;
+                    const profit = parseFloat(row['Total_pft']) || 0;
+                    const salesL30 = parseFloat(row['T_Sale_l30']) || 0;
+                    // Only add if both values are > 0 (matching inc/dec page logic)
+                    if (profit > 0 && salesL30 > 0) {
+                        totalProfit += profit;
+                        totalSales += salesL30;
+                    }
                     sumLp += parseFloat(row['LP_productmaster']) || 0;
                 });
                 
