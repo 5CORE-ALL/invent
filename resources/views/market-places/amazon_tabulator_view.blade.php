@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Pricing Decrease CVR', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amazon Pricing Decrease CVR FBM', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -30,8 +30,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon Pricing Decrease CVR',
-        'sub_title' => 'Amazon Pricing Decrease CVR',
+        'page_title' => 'Amazon Pricing Decrease CVR FBM',
+        'sub_title' => 'Amazon Pricing Decrease CVR FBM',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -809,8 +809,11 @@
                 const data = table.getData("active");
                 let totalSales = 0;
                 let totalProfit = 0;
-                let sumLp = 0;
+                let totalCogs = 0;
+                let rowCount = 0;
 
+                console.log('=== TOP CALCULATION DEBUG ===');
+                
                 data.forEach(row => {
                     if (!row['is_parent_summary']) {
                         const price = parseFloat(row['price']) || 0;
@@ -820,21 +823,44 @@
                         const adPercent = parseFloat(row['AD%']) || 0;
                         const adDecimal = adPercent / 100;
                         
-                        // Total PFT = L30 * ((price * (0.80 - adDecimal)) - ship - lp)
-                        const profit = aL30 * ((price * (0.80 - adDecimal)) - ship - lp);
-                        const salesL30 = price * aL30;
-                        
-                        // Only add if both values are > 0
-                        if (profit > 0 && salesL30 > 0) {
-                            totalProfit += profit;
+                        // Only process rows with sales
+                        if (aL30 > 0 && price > 0) {
+                            // Profit per unit = (price * (0.80 - adDecimal)) - ship - lp
+                            const profitPerUnit = (price * (0.80 - adDecimal)) - ship - lp;
+                            // Total profit for this row = profitPerUnit * L30
+                            const profitTotal = profitPerUnit * aL30;
+                            const salesL30 = price * aL30;
+                            const cogs = lp * aL30;
+                            
+                            totalProfit += profitTotal;
                             totalSales += salesL30;
-                            sumLp += lp * aL30;  // Sum LP multiplied by units for matching rows
+                            totalCogs += cogs;
+                            rowCount++;
+                            
+                            // Log first 3 rows for verification
+                            if (rowCount <= 3) {
+                                console.log(`Row ${rowCount} - SKU: ${row['(Child) sku']}`);
+                                console.log(`  Price: $${price}, L30: ${aL30}, LP: $${lp}, Ship: $${ship}, AD%: ${adPercent}%`);
+                                console.log(`  Profit/Unit: $${profitPerUnit.toFixed(2)}, Total Profit: $${profitTotal.toFixed(2)}`);
+                                console.log(`  Sales: $${salesL30.toFixed(2)}, COGS: $${cogs.toFixed(2)}`);
+                            }
                         }
                     }
                 });
 
+                console.log(`\nTotal Rows Counted: ${rowCount}`);
+                console.log(`Total Profit (sum): $${totalProfit.toFixed(2)}`);
+                console.log(`Total Sales: $${totalSales.toFixed(2)}`);
+                console.log(`Total COGS: $${totalCogs.toFixed(2)}`);
+
+                // TOP PFT% = (total profit sum / total sales) * 100
                 const avgPft = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
-                const avgRoi = sumLp > 0 ? (totalProfit / sumLp) * 100 : 0;
+                // TOP ROI% = (total profit sum / total COGS) * 100
+                const avgRoi = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
+
+                console.log(`\nTOP PFT% = (${totalProfit.toFixed(2)} / ${totalSales.toFixed(2)}) * 100 = ${avgPft.toFixed(2)}%`);
+                console.log(`TOP ROI% = (${totalProfit.toFixed(2)} / ${totalCogs.toFixed(2)}) * 100 = ${avgRoi.toFixed(2)}%`);
+                console.log('=== END DEBUG ===\n');
 
                 $('#pft-calc').text(avgPft.toFixed(2) + '%');
                 $('#roi-calc').text(avgRoi.toFixed(2) + '%');

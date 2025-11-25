@@ -1573,8 +1573,8 @@
 
                                     <li>
 
-                                        <a href="{{ route('amazon.pricing.increase') }}">Amz FBM Price Decrease
-                                            CVR</a>
+                                        <a href="{{ url('/amazon-pricing-decrease-cvr-fbm') }}">Amz FBM Price Decrease
+                                            </a>
                                     </li>
                                     <li>
                                         <a href="{{ route('amazon.pricing.inc') }}">Amz FBM Price Increase CVR</a>
