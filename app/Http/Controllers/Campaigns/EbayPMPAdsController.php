@@ -27,9 +27,15 @@ class EbayPMPAdsController extends Controller
 
     public function getEbayPmpAdsData()
     {
-        // Clear any cached data to ensure fresh results
+        // Clear all possible caches
         Cache::forget('ebay_pmp_ads_data');
         
+        // Clear OPcache if available
+        if (function_exists('opcache_reset')) {
+            @opcache_reset();
+        }
+        
+        // Force fresh database queries by disabling query cache
         $productMasters = ProductMaster::orderBy("parent", "asc")
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy("sku", "asc")
@@ -37,6 +43,7 @@ class EbayPMPAdsController extends Controller
 
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
+        // Fresh queries without cache
         $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
         $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get()->keyBy("sku");
         $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
@@ -57,6 +64,9 @@ class EbayPMPAdsController extends Controller
             ->whereIn('report_range', ['L60', 'L30', 'L7'])
             ->get();
 
+        // Force fresh query from apicentral database - this is critical for CBID and ESBID
+        DB::connection('apicentral')->getPdo()->exec('SET SESSION query_cache_type = OFF');
+        
         $campaignListings = DB::connection('apicentral')
             ->table('ebay_campaign_ads_listings')
             ->select('listing_id', 'bid_percentage', 'suggested_bid')
@@ -226,6 +236,7 @@ class EbayPMPAdsController extends Controller
             "message" => "eBay Data Fetched Successfully",
             "data" => $result,
             "status" => 200,
+            "timestamp" => now()->timestamp, // Add timestamp to verify fresh data
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache')
           ->header('Expires', 'Sat, 01 Jan 2000 00:00:00 GMT');
