@@ -472,7 +472,7 @@
                         visible: false
                     },
                     {
-                        title: "A L30",
+                        title: "L30",
                         field: "A_L30",
                     },
                     {
