@@ -34,10 +34,12 @@
                         <option value="zero">0 Inventory</option>
                         <option value="more" selected>More than 0</option>
                     </select>
-                    <select id="parent-filter" class="form-select form-select-sm me-2"
+
+                    <select id="nrl-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
-                        <option value="show">Show Parent</option>
-                        <option value="hide" selected>Hide Parent</option>
+                        <option value="all">All NRL</option>
+                        <option value="REQ">REQ</option>
+                        <option value="NRL">NRL</option>
                     </select>
 
                     <select id="pft-filter" class="form-select form-select-sm me-2"
@@ -109,14 +111,14 @@
         $(document).ready(function() {
             const table = new Tabulator("#ebay-table", {
                 ajaxURL: "/ebay-data-json",
-                ajaxSorting: true,
+                ajaxSorting: false,
                 layout: "fitDataStretch",
                 pagination: true,
-                paginationSize: 50,
+                paginationSize: 100,
                 paginationCounter: "rows",
                 columnCalcs: "both",
                 initialSort: [{
-                    column: "E Dil%",
+                    column: "SCVR",
                     dir: "asc"
                 }],
                 rowFormatter: function(row) {
@@ -164,19 +166,22 @@
                         title: "INV",
                         field: "INV",
                         hozAlign: "center",
-                        width: 80
+                        width: 80,
+                        sorter: "number"
                     },
                     {
                         title: "OV<br> L30",
                         field: "L30",
                         hozAlign: "center",
-                        width: 80
+                        width: 80,
+                        sorter: "number"
                     },
 
                      {
-                        title: "Dil%",
+                        title: "Dil",
                         field: "E Dil%",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const INV = parseFloat(rowData.INV) || 0;
@@ -195,13 +200,14 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
                         },
-                        width: 100
+                        width: 60
                     },
                     {
-                        title: "E L30",
+                        title: "E <br> L30",
                         field: "eBay L30",
                         hozAlign: "center",
-                        width: 100
+                        width: 60,
+                        sorter: "number"
                     },
 
                     
@@ -213,9 +219,23 @@
                     //     visible: false
                     // },
                     {
-                        title: "SCVR",
+                        title: "S <br> CVR",
                         field: "SCVR",
                         hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aData = aRow.getData();
+                            const bData = bRow.getData();
+                            
+                            const aViews = parseFloat(aData.views || 0);
+                            const bViews = parseFloat(bData.views || 0);
+                            const aL30 = parseFloat(aData['eBay L30'] || 0);
+                            const bL30 = parseFloat(bData['eBay L30'] || 0);
+                            
+                            const aValue = aViews === 0 ? 0 : (aL30 / aViews) * 100;
+                            const bValue = bViews === 0 ? 0 : (bL30 / bViews) * 100;
+                            
+                            return aValue - bValue;
+                        },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const views = parseFloat(rowData.views || 0);
@@ -240,9 +260,10 @@
                     },
 
                     {
-                        title: "Views",
+                        title: "View",
                         field: "views",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             let color = '';
@@ -253,12 +274,12 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span>`;
                         },
-                        width: 100
+                        width: 50
                     },
 
 
                      {
-                        title: "NR",
+                        title: "NRL",
                         field: "NR",
                         hozAlign: "center",
                         headerSort: false,
@@ -270,33 +291,25 @@
                                 value = 'REQ';
                             }
                             
-                            let bgColor = '#ffffff';
-                            let textColor = '#000000';
-                            
-                            if (value === 'NRL') {
-                                bgColor = '#dc3545';
-                                textColor = '#ffffff';
-                            } else if (value === 'REQ') {
-                                bgColor = '#28a745';
-                                textColor = '#ffffff';
-                            }
+                            let dotColor = value === 'NRL' ? '#dc3545' : '#28a745';
                             
                             return `<select class="form-select form-select-sm nr-select" 
-                                style="background-color: ${bgColor}; color: ${textColor}; border: none; text-align: center; cursor: pointer;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''} style="background-color: #28a745; color: #fff;">REQ</option>
-                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''} style="background-color: #dc3545; color: #fff;">NRL</option>
+                                style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 4px;">
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
                             </select>`;
                         },
                         cellClick: function(e, cell) {
                             e.stopPropagation();
                         },
-                        width: 120
+                        width: 70
                     },
                    
                     {
-                        title: "Price",
+                        title: "Prc",
                         field: "eBay Price",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             
@@ -312,9 +325,10 @@
                     },
 
                       {
-                        title: "GPFT%",
+                        title: "GPFT <br>%",
                         field: "GPFT%",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -338,6 +352,7 @@
                         title: "AD%",
                         field: "AD%",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -347,9 +362,10 @@
                     },
 
                      {
-                        title: "PFT %",
+                        title: "PFT <br>%",
                         field: "PFT %",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const gpft = parseFloat(rowData['GPFT%'] || 0);
@@ -373,12 +389,13 @@
                             const value = cell.getValue();
                             return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                         },
-                        width: 100
+                        width: 70
                     },
                     {
                         title: "ROI%",
                         field: "ROI%",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -398,7 +415,7 @@
                             const value = cell.getValue();
                             return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                         },
-                        width: 100
+                        width: 70
                     },
                   
                     
@@ -406,6 +423,7 @@
                         title: "LMP",
                         field: "lmp_price",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -454,9 +472,10 @@
                     // },
                    
                     {
-                        title: "TACOS L30",
+                        title: "TACOS <br> L30",
                         field: "TacosL30",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -471,7 +490,7 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${parseFloat(value).toFixed(2)}%</span>`;
                         },
-                        width: 120
+                        width: 80
                     },
                     // {
                     //     title: "Total Sales L30",
@@ -502,7 +521,7 @@
                    
                    
                     {
-                        title: "SPRICE",
+                        title: "S <br> PRC",
                         field: "SPRICE",
                         hozAlign: "center",
                         editor: "input",
@@ -526,7 +545,7 @@
                     },
 
                     {
-                        title: "SGPFT",
+                        title: "S <br> GPFT",
                         field: "SGPFT",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -548,7 +567,7 @@
                         width: 100
                     },
                     {
-                        title: "SPFT",
+                        title: "S <br> PFT",
                         field: "SPFT",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -640,20 +659,8 @@
                 const row = cell.getRow();
                 const sku = row.getData()['(Child) sku'];
                 
-                let bgColor = value === 'NRL' ? '#dc3545' : '#28a745';
-                let textColor = '#ffffff';
-                
-                // Immediately update background color
-                $select.css({'background-color': bgColor, 'color': textColor});
-                
                 // Update the row data
                 row.update({NR: value});
-                
-                // Force cell redraw
-                const cellElement = cell.getElement();
-                if (cellElement) {
-                    cellElement.style.backgroundColor = bgColor;
-                }
                 
                 // Save to database
                 $.ajax({
@@ -665,13 +672,13 @@
                         nr: value
                     },
                     success: function(response) {
-                        console.log('NR saved successfully for', sku, 'value:', value);
-                        const message = response.message || `NR updated to "${value}" for ${sku}`;
+                        console.log('NRL saved successfully for', sku, 'value:', value);
+                        const message = response.message || `NRL updated to "${value}" for ${sku}`;
                         showToast('success', message);
                     },
                     error: function(xhr) {
-                        console.error('Failed to save NR for', sku, 'Error:', xhr.responseText);
-                        showToast('error', `Failed to save NR for ${sku}`);
+                        console.error('Failed to save NRL for', sku, 'Error:', xhr.responseText);
+                        showToast('error', `Failed to save NRL for ${sku}`);
                     }
                 });
             });
@@ -729,7 +736,7 @@
             // Apply filters
             function applyFilters() {
                 const inventoryFilter = $('#inventory-filter').val();
-                const parentFilter = $('#parent-filter').val();
+                const nrlFilter = $('#nrl-filter').val();
                 const pftFilter = $('#pft-filter').val();
 
                 table.clearFilter(true);
@@ -740,10 +747,16 @@
                     table.addFilter('INV', '>', 0);
                 }
 
-                if (parentFilter === 'hide') {
-                    table.addFilter(function(data) {
-                        return !data.Parent || !data.Parent.startsWith('PARENT');
-                    });
+                if (nrlFilter !== 'all') {
+                    if (nrlFilter === 'REQ') {
+                        // Show all data except NRL
+                        table.addFilter(function(data) {
+                            return data.NR !== 'NRL';
+                        });
+                    } else {
+                        // Show only NRL
+                        table.addFilter('NR', '=', nrlFilter);
+                    }
                 }
 
                 if (pftFilter !== 'all') {
@@ -763,7 +776,7 @@
                 updateCalcValues();
             }
 
-            $('#inventory-filter, #parent-filter, #pft-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #pft-filter').on('change', function() {
                 applyFilters();
             });
             
@@ -792,10 +805,6 @@
                 $('#pft-calc').text(avgPft.toFixed(2) + '%');
                 $('#roi-calc').text(avgRoi.toFixed(2) + '%');
             }
-
-            $('#inventory-filter, #parent-filter, #pft-filter').on('change', function() {
-                applyFilters();
-            });
 
             // Build Column Visibility Dropdown
             function buildColumnDropdown() {
