@@ -339,6 +339,12 @@
                         field: "campaignName"
                     },
                     {
+                        title: "Price",
+                        field: "price",
+                        hozAlign: "right",
+                        formatter: (cell) => parseFloat(cell.getValue() || 0).toFixed(2)
+                    },
+                    {
                         title: "BGT",
                         field: "campaignBudgetAmount",
                         hozAlign: "right",
@@ -658,9 +664,9 @@
 
                         var sbid = 0;
                         if(l1_cpc > l7_cpc){
-                            sbid = (l1_cpc * 0.95).toFixed(2);
+                            sbid = parseFloat((l1_cpc * 0.95).toFixed(2));
                         }else{
-                            sbid = (l1_cpc * 0.95).toFixed(2);
+                            sbid = parseFloat((l1_cpc * 0.95).toFixed(2));
                         }
 
                         campaignIds.push(rowData.campaign_id);
@@ -684,13 +690,26 @@
                 .then(res => res.json())
                 .then(data => {
                     console.log("Backend response:", data);
-                    if (data.status === 200) {
-                        alert("Keywords updated successfully!");
+                    if (data.status === 200 || data.status === 207) {
+                        if (data.data && data.data.length > 0) {
+                            const errors = data.data.filter(r => r.status === 'error');
+                            if (errors.length > 0) {
+                                alert(`Updated ${data.data.length - errors.length} campaigns. ${errors.length} failed. Check console for details.`);
+                                console.error("Failed updates:", errors);
+                            } else {
+                                alert("All keywords updated successfully!");
+                            }
+                        } else {
+                            alert("Keywords updated successfully!");
+                        }
                     } else {
                         alert("Something went wrong: " + data.message);
                     }
                 })
-                .catch(err => console.error(err))
+                .catch(err => {
+                    console.error("Error updating bids:", err);
+                    alert("Error updating bids. Check console for details.");
+                })
                 .finally(() => {
                     overlay.style.display = "none";
                 });
@@ -700,7 +719,10 @@
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
 
-                console.log("Updating bid for Campaign ID:", campaignId, "New Bid:", aprBid);
+                // Convert bid to float to ensure proper numeric value
+                const bidValue = parseFloat(aprBid);
+                
+                console.log("Updating bid for Campaign ID:", campaignId, "New Bid:", bidValue);
 
                 fetch('/update-ebay-keywords-bid-price', {
                     method: 'PUT',
@@ -711,19 +733,32 @@
                     },
                     body: JSON.stringify({
                         campaign_ids: [campaignId],
-                        bids: [aprBid]
+                        bids: [bidValue]
                     })
                 })
                 .then(res => res.json())
                 .then(data => {
                     console.log("Backend response:", data);
-                    if (data.status === 200) {
-                        alert("Keywords updated successfully!");
+                    if (data.status === 200 || data.status === 207) {
+                        if (data.data && data.data.length > 0) {
+                            const errors = data.data.filter(r => r.status === 'error');
+                            if (errors.length > 0) {
+                                alert("Some keywords failed to update. Check console for details.");
+                                console.error("Failed updates:", errors);
+                            } else {
+                                alert("Keywords updated successfully!");
+                            }
+                        } else {
+                            alert("Keywords updated successfully!");
+                        }
                     } else {
                         alert("Something went wrong: " + data.message);
                     }
                 })
-                .catch(err => console.error(err))
+                .catch(err => {
+                    console.error("Error updating bid:", err);
+                    alert("Error updating bid. Check console for details.");
+                })
                 .finally(() => {
                     overlay.style.display = "none";
                 });

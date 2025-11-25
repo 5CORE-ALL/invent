@@ -323,12 +323,45 @@ class EbayOverUtilizedBgtController extends Controller
 
     public function getEbayOverUtiData()
     {
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
+        $productMasters = ProductMaster::whereNull('deleted_at')
+            ->orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+
+        // Get product master SKUs for filtering additional campaigns
+        $productMasterSkus = $productMasters->pluck('sku')->map(function($sku) {
+            return strtoupper(trim($sku));
+        })->filter()->unique()->values()->all();
+
+        // Fetch additional RUNNING campaigns not in product_masters from both L7 and L30
+        $additionalL7 = EbayPriorityReport::where('report_range', 'L7')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get()
+            ->pluck('campaign_name')
+            ->map(function($name) { return strtoupper(trim($name)); });
+
+        $additionalL30 = EbayPriorityReport::where('report_range', 'L30')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get()
+            ->pluck('campaign_name')
+            ->map(function($name) { return strtoupper(trim($name)); });
+
+        $additionalRunningCampaigns = $additionalL7->merge($additionalL30)
+            ->unique()
+            ->filter(function($campaignSku) use ($productMasterSkus) {
+                return !in_array($campaignSku, $productMasterSkus);
+            })
+            ->values()
+            ->all();
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -342,6 +375,7 @@ class EbayOverUtilizedBgtController extends Controller
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         $ebayCampaignReportsL1 = EbayPriorityReport::where('report_range', 'L1')
@@ -350,6 +384,7 @@ class EbayOverUtilizedBgtController extends Controller
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
@@ -358,6 +393,7 @@ class EbayOverUtilizedBgtController extends Controller
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         $result = [];
@@ -369,25 +405,37 @@ class EbayOverUtilizedBgtController extends Controller
             $shopify = $shopifyData[$pm->sku] ?? null;
             $ebay = $ebayMetricData[$pm->sku] ?? null;
 
-            $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($sku) {
+            $matchedCampaignsL7 = $ebayCampaignReportsL7->filter(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaign_name, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
                 return $campaignName === $cleanSku;
             });
+            $matchedCampaignL7 = $matchedCampaignsL7->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL7->first();
 
-            $matchedCampaignL1 = $ebayCampaignReportsL1->first(function ($item) use ($sku) {
+            $matchedCampaignsL1 = $ebayCampaignReportsL1->filter(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaign_name, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
                 return $campaignName === $cleanSku;
             });
+            $matchedCampaignL1 = $matchedCampaignsL1->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL1->first();
 
-            $matchedCampaignL30 = $ebayCampaignReportsL30->first(function ($item) use ($sku) {
+            $matchedCampaignsL30 = $ebayCampaignReportsL30->filter(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaign_name, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
                 return $campaignName === $cleanSku;
             });
+            $matchedCampaignL30 = $matchedCampaignsL30->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL30->first();
 
-            if (!$matchedCampaignL7) {
+            // Use L7 if available, otherwise fall back to L30
+            $campaignForDisplay = $matchedCampaignL7 ?? $matchedCampaignL30;
+            
+            if (!$campaignForDisplay) {
                 continue;
             }
 
@@ -397,10 +445,10 @@ class EbayOverUtilizedBgtController extends Controller
             $row['INV']    = $shopify->inv ?? 0;
             $row['L30']    = $shopify->quantity ?? 0;
             $row['price']  = $ebay->ebay_price ?? 0;
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? '';
-            $row['campaignName'] = $matchedCampaignL7->campaign_name ?? '';
-            $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? '';
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? '';
+            $row['campaign_id'] = $campaignForDisplay->campaign_id ?? '';
+            $row['campaignName'] = $campaignForDisplay->campaign_name ?? '';
+            $row['campaignStatus'] = $campaignForDisplay->campaignStatus ?? '';
+            $row['campaignBudgetAmount'] = $campaignForDisplay->campaignBudgetAmount ?? '';
 
             $adFees   = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
             $sales    = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0 );
@@ -429,7 +477,73 @@ class EbayOverUtilizedBgtController extends Controller
                 }
             }
 
-            if ($row['NR'] !== 'NRA') {
+            // Only show items with price >= 30
+            if($row['price'] >= 30){
+                $result[] = (object) $row;
+            }
+        }
+
+        // Process additional RUNNING campaigns not in product_masters
+        $allL7Reports = EbayPriorityReport::where('report_range', 'L7')->get();
+        $allL1Reports = EbayPriorityReport::where('report_range', 'L1')->get();
+        $allL30Reports = EbayPriorityReport::where('report_range', 'L30')->get();
+
+        foreach ($additionalRunningCampaigns as $campaignSku) {
+            $matchedCampaignsL7 = $allL7Reports->filter(function ($item) use ($campaignSku) {
+                return strtoupper(trim($item->campaign_name)) === $campaignSku;
+            });
+            $matchedCampaignL7 = $matchedCampaignsL7->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL7->first();
+
+            $matchedCampaignsL1 = $allL1Reports->filter(function ($item) use ($campaignSku) {
+                return strtoupper(trim($item->campaign_name)) === $campaignSku;
+            });
+            $matchedCampaignL1 = $matchedCampaignsL1->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL1->first();
+
+            $matchedCampaignsL30 = $allL30Reports->filter(function ($item) use ($campaignSku) {
+                return strtoupper(trim($item->campaign_name)) === $campaignSku;
+            });
+            $matchedCampaignL30 = $matchedCampaignsL30->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL30->first();
+
+            if (!$matchedCampaignL7) {
+                continue;
+            }
+
+            $row = [];
+            $row['parent'] = '';
+            $row['sku'] = $campaignSku;
+            $row['INV'] = 0;
+            $row['L30'] = 0;
+            $row['price'] = 0;
+            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? '';
+            $row['campaignName'] = $matchedCampaignL7->campaign_name ?? '';
+            $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? '';
+            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? '';
+
+            $adFees = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
+            $sales = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0);
+
+            $acos = $sales > 0 ? ($adFees / $sales) * 100 : 0;
+            
+            if ($adFees > 0 && $sales === 0) {
+                $row['acos'] = 100;
+            } else {
+                $row['acos'] = $acos;
+            }
+
+            $row['l7_spend'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
+            $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
+            $row['l1_spend'] = (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0);
+            $row['l1_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0);
+            $row['NR'] = '';
+
+            // Only show items with price >= 30
+            if($row['price'] >= 30){
                 $result[] = (object) $row;
             }
         }
