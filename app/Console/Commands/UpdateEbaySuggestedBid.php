@@ -118,6 +118,11 @@ class UpdateEbaySuggestedBid extends Command
 
             if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
                 $campaignListings[$ebayMetric->item_id]->sbid = $sbid;
+                
+                // Debug logging for specific SKU
+                if ($pm->sku === 'SP 12120 8OHMS 2PCS') {
+                    Log::info("Processing SKU: {$pm->sku}, item_id: {$ebayMetric->item_id}, sbid: {$sbid}, campaign: {$campaignListings[$ebayMetric->item_id]->campaign_id}");
+                }
             }
         }
 

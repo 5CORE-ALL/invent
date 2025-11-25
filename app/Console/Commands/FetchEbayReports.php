@@ -46,57 +46,62 @@ class FetchEbayReports extends Command
         $listingData = $this->processTask($taskId, $token);
 
         // Save price + SKU mapping
-        // We'll map itemId => [sku, sku, ...]
-        $itemIdToSku = [];
+        // Map: sku => itemId (keep latest/active item_id per SKU)
+        // Note: SKU is the unique identifier to prevent duplicates.
+        // Same SKU may appear in multiple eBay listings, we keep the most recent item_id
+        $skuToItemId = [];
+        $skuPrices = [];
 
         foreach ($listingData as $row) {
             $itemId = $row['item_id'] ?? null;
             $sku = trim((string)($row['sku'] ?? ''));
+            $price = $row['price'] ?? null;
 
-            // skip rows with no itemId or no sku (we care about child SKUs)
+            // skip rows with no itemId or no sku
             if (! $itemId || $sku === '') {
                 continue;
             }
 
-            // keep mapping of itemId to array of SKUs
-            if (! isset($itemIdToSku[$itemId])) {
-                $itemIdToSku[$itemId] = [];
-            }
+            // Keep the latest item_id for each SKU (prevent duplicates)
+            $skuToItemId[$sku] = $itemId;
+            $skuPrices[$sku] = $price;
+        }
 
-            // avoid duplicates
-            if (! in_array($sku, $itemIdToSku[$itemId])) {
-                $itemIdToSku[$itemId][] = $sku;
-            }
-
-            // Save per SKU (unique by item_id + sku)
+        // Save metrics with SKU as unique identifier
+        foreach ($skuToItemId as $sku => $itemId) {
             EbayMetric::updateOrCreate(
-                ['item_id' => $itemId, 'sku' => $sku],
+                ['sku' => $sku],
                 [
-                    'ebay_price' => $row['price'] ?? null,
-                    'report_range' => now()->toDateString(),
+                    'item_id' => $itemId,
+                    'ebay_price' => $skuPrices[$sku],
+                    'report_date' => now()->toDateString(),
                 ]
             );
         }
 
-        // Update views per itemId -> sku list
-        $this->updateViews($token, $itemIdToSku);
+        // Build reverse mapping: itemId => [skus]
+        $itemIdToSkus = [];
+        foreach ($skuToItemId as $sku => $itemId) {
+            $itemIdToSkus[$itemId][] = $sku;
+        }
+
+        // Update views per itemId
+        $this->updateViews($token, $itemIdToSkus);
 
         // Update organic clicks for last 30 days
-        $this->updateOrganicClicksFromSheet($itemIdToSku);
+        $this->updateOrganicClicksFromSheet($itemIdToSkus);
 
         // L30 / L60
-        $existingItemIds = array_keys($itemIdToSku);
+        $existingItemIds = array_keys($itemIdToSkus);
         $dateRanges = $this->dateRanges();
 
         $l30 = $this->orderQty($token, $dateRanges['l30'], $existingItemIds);
         $l60 = $this->orderQty($token, $dateRanges['l60'], $existingItemIds);
 
-        // Save L30/L60 for each SKU under the item
-        foreach ($existingItemIds as $itemId) {
-            $skus = $itemIdToSku[$itemId] ?? [];
+        // Save L30/L60 for each SKU
+        foreach ($itemIdToSkus as $itemId => $skus) {
             foreach ($skus as $sku) {
-                EbayMetric::where('item_id', $itemId)
-                    ->where('sku', $sku)
+                EbayMetric::where('sku', $sku)
                     ->update([
                         'ebay_l30' => $l30[$itemId] ?? 0,
                         'ebay_l60' => $l60[$itemId] ?? 0,
@@ -363,8 +368,7 @@ class FetchEbayReports extends Command
 
                 $skus = $map[$id] ?? [];
                 foreach ($skus as $sku) {
-                    EbayMetric::where('item_id', $id)
-                        ->where('sku', $sku)
+                    EbayMetric::where('sku', $sku)
                         ->update(['views' => $v]);
                 }
             }
@@ -392,8 +396,7 @@ class FetchEbayReports extends Command
 
             // Update for all matched SKUs in $map
             foreach ($map[$itemId] ?? [] as $sku) {
-                EbayMetric::where('item_id', $itemId)
-                    ->where('sku', $sku)
+                EbayMetric::where('sku', $sku)
                     ->update([
                         'organic_clicks' => $organicClicks
                     ]);
