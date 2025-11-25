@@ -333,6 +333,12 @@
                         field: "campaignName"
                     },
                     {
+                        title: "Price",
+                        field: "price",
+                        hozAlign: "right",
+                        formatter: (cell) => parseFloat(cell.getValue() || 0).toFixed(2)
+                    },
+                    {
                         title: "BGT",
                         field: "campaignBudgetAmount",
                         hozAlign: "right",

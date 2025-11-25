@@ -2644,7 +2644,7 @@
                         sbidColor = "pink";
                     }
 
-                    const viewsLow = item.VIEWS < 300;
+                    const viewsLow = item.VIEWS < 150;
                     const noSale = item['eBay L30'] === 0;
 
                     if (sbidColor === "pink") {
@@ -2665,7 +2665,7 @@
 
                     if (sbidColor === "yellow") {
                         if (noSale) {
-                            sbid = viewsLow ? 12 : 10;
+                            sbid = viewsLow ? 10 : 10;
                         } else {
                             sbid = viewsLow ? 10 : 8;
                         }
@@ -2673,9 +2673,9 @@
 
                     if (sbidColor === "red") {
                         if (noSale) {
-                            sbid = viewsLow ? 15 : 12;
+                            sbid = viewsLow ? 10 : 10;
                         } else {
-                            sbid = viewsLow ? 12 : 10;
+                            sbid = viewsLow ? 10 : 10;
                         }
                     }
 

@@ -19,12 +19,34 @@ class EbayKwAdsController extends Controller
 
     public function getEbayKwAdsData(){
 
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
+        $productMasters = ProductMaster::whereNull('deleted_at')
+            ->orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        $productMasterSkus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+
+        // Get additional RUNNING campaigns that are not in ProductMaster but are valid SKUs (not "Campaign Date" format)
+        $additionalRunningCampaigns = EbayPriorityReport::where('report_range', 'L30')
+            ->where('campaignStatus', 'RUNNING')
+            ->whereNotNull('campaign_name')
+            ->where('campaign_name', '!=', '')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get()
+            ->pluck('campaign_name')
+            ->unique()
+            ->filter(function($name) use ($productMasterSkus) {
+                $nameUpper = strtoupper(trim($name));
+                return !in_array($nameUpper, array_map('strtoupper', $productMasterSkus));
+            })
+            ->values()
+            ->all();
+
+        // Merge both lists
+        $skus = array_merge($productMasterSkus, $additionalRunningCampaigns);
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -38,11 +60,14 @@ class EbayKwAdsController extends Controller
                     foreach ($skus as $sku) {
                         $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                     }
-                })->get();
+                })
+                ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
+                ->get();
         }
 
         $result = [];
 
+        // Process ProductMasters first
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
@@ -56,9 +81,14 @@ class EbayKwAdsController extends Controller
                 'NR'     => ''
             ];
 
-            $matchedCampaignL30 = $campaignReports['L30']->first(function ($item) use ($sku) {
+            // Find matching campaigns, prioritize RUNNING status
+            $matchedCampaigns = $campaignReports['L30']->filter(function ($item) use ($sku) {
                 return strtoupper(trim($item->campaign_name)) === strtoupper(trim($sku));
             });
+            
+            $matchedCampaignL30 = $matchedCampaigns->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaigns->first();
 
             $row['campaignName'] = $matchedCampaignL30->campaign_name ?? '';
             $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? 0;
@@ -110,10 +140,81 @@ class EbayKwAdsController extends Controller
                 $row["cpc_" . strtolower($period)]         = $cpc;
             }
 
-            if ($row['campaignName'] !== "") {
+            // Only show rows with campaign
+            if ($row['campaignName'] !== '') {
                 $result[] = (object) $row;
             }
     
+        }
+
+        // Now process additional RUNNING campaigns that are not in ProductMaster
+        foreach ($additionalRunningCampaigns as $campaignSku) {
+            $sku = strtoupper($campaignSku);
+            $shopify = $shopifyData[$campaignSku] ?? null;
+
+            $row = [
+                'parent' => '',
+                'sku'    => $campaignSku,
+                'INV'    => $shopify->inv ?? 0,
+                'L30'    => $shopify->quantity ?? 0,
+                'NR'     => ''
+            ];
+
+            $matchedCampaignL30 = $campaignReports['L30']->first(function ($item) use ($sku) {
+                return strtoupper(trim($item->campaign_name)) === strtoupper(trim($sku));
+            });
+
+            $row['campaignName'] = $matchedCampaignL30->campaign_name ?? '';
+            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? 0;
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? '';
+
+            if (isset($nrValues[$campaignSku])) {
+                $raw = $nrValues[$campaignSku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $row['NR'] = $raw['NR'] ?? null;
+                }
+            }
+
+            foreach ($periods as $period) {
+                $matchedCampaign = $campaignReports[$period]->first(function ($item) use ($sku) {
+                    return strtoupper(trim($item->campaign_name)) === strtoupper(trim($sku));
+                });
+                
+                if (!$matchedCampaign) {
+                    $row["impressions_" . strtolower($period)] = 0;
+                    $row["clicks_" . strtolower($period)]      = 0;
+                    $row["ad_sales_" . strtolower($period)]    = 0;
+                    $row["ad_sold_" . strtolower($period)]     = 0;
+                    $row["spend_" . strtolower($period)]       = 0;
+                    $row["acos_" . strtolower($period)]        = 0;
+                    $row["cpc_" . strtolower($period)]         = 0;
+                    continue;
+                }
+
+                $adFees = (float) str_replace('USD ', '', $matchedCampaign->cpc_ad_fees_payout_currency ?? 0);
+                $sales  = (float) str_replace('USD ', '', $matchedCampaign->cpc_sale_amount_payout_currency ?? 0);
+                $clicks = (float) ($matchedCampaign->cpc_clicks ?? 0);
+                $spend  = (float) ($matchedCampaign->cpc_cost ?? $adFees);
+                $cpc    = $clicks > 0 ? ($spend / $clicks) : 0;
+                $acos   = $sales > 0 ? ($adFees / $sales) * 100 : 0;
+
+                if ($adFees > 0 && $sales === 0) {
+                    $acos = 100;
+                }
+
+                $row["impressions_" . strtolower($period)] = $matchedCampaign->cpc_impressions ?? 0;
+                $row["clicks_" . strtolower($period)]      = $matchedCampaign->cpc_clicks ?? 0;
+                $row["ad_sales_" . strtolower($period)]    = $sales;
+                $row["ad_sold_" . strtolower($period)]     = $matchedCampaign->unitsSold ?? 0;
+                $row["spend_" . strtolower($period)]       = $adFees;
+                $row["acos_" . strtolower($period)]        = $acos;
+                $row["cpc_" . strtolower($period)]         = $cpc;
+            }
+
+            $result[] = (object) $row;
         }
 
         return response()->json([
@@ -140,7 +241,7 @@ class EbayKwAdsController extends Controller
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
 
-        $ebayMetricData = DB::connection('apicentral')->table('ebay_one_metrics')->select('sku', 'ebay_price')->whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
 
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
@@ -150,6 +251,7 @@ class EbayKwAdsController extends Controller
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         $ebayCampaignReportsL1 = EbayPriorityReport::where('report_range', 'L1')
@@ -158,6 +260,7 @@ class EbayKwAdsController extends Controller
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
@@ -166,6 +269,7 @@ class EbayKwAdsController extends Controller
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         $result = [];
@@ -178,17 +282,26 @@ class EbayKwAdsController extends Controller
 
             $ebay = $ebayMetricData[$sku] ?? null;
 
-            $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($sku) {
+            $matchedCampaignsL7 = $ebayCampaignReportsL7->filter(function ($item) use ($sku) {
                 return strtoupper(trim($item->campaign_name)) === strtoupper(trim($sku));
             });
+            $matchedCampaignL7 = $matchedCampaignsL7->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL7->first();
 
-            $matchedCampaignL1 = $ebayCampaignReportsL1->first(function ($item) use ($sku) {
+            $matchedCampaignsL1 = $ebayCampaignReportsL1->filter(function ($item) use ($sku) {
                 return strtoupper(trim($item->campaign_name)) === strtoupper(trim($sku));
             });
+            $matchedCampaignL1 = $matchedCampaignsL1->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL1->first();
 
-            $matchedCampaignL30 = $ebayCampaignReportsL30->first(function ($item) use ($sku) {
+            $matchedCampaignsL30 = $ebayCampaignReportsL30->filter(function ($item) use ($sku) {
                 return strtoupper(trim($item->campaign_name)) === strtoupper(trim($sku));
             });
+            $matchedCampaignL30 = $matchedCampaignsL30->first(function ($item) {
+                return $item->campaignStatus === 'RUNNING';
+            }) ?? $matchedCampaignsL30->first();
 
             $row = [];
             $row['parent'] = $parent;
@@ -236,26 +349,34 @@ class EbayKwAdsController extends Controller
             $l7_cpc = floatval($row['l7_cpc']);
 
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+            
+            // Calculate SBID based on budget utilization
             if($ub7 < 70){
-                if($l1_cpc > $l7_cpc){
-                    $row['sbid'] = floor($l1_cpc * 1.05 * 100) / 100;
-                }else{
-                    $row['sbid'] = floor($l7_cpc * 1.05 * 100) / 100;
-                }
+                // Under-utilized: increase bid by 5%
+                $row['sbid'] = floor($l7_cpc * 1.05 * 100) / 100;
             }else if($ub7 > 90){
+                // Over-utilized: decrease bid by 10%
                 $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
+            }else{
+                // Correctly utilized (70-90): keep current bid
+                $row['sbid'] = floor($l7_cpc * 100) / 100;
             }
             
+            // Apply price-based SBID caps - this runs AFTER the ub7 calculation
             if($row['price'] < 30 && $row['campaignName'] !== ''){
-                if($row['price'] <= 10 && $row['sbid'] > 0.10){
-                    $row['sbid'] = 0.10;
+                if($row['price'] <= 10){
+                    $row['sbid'] = max(0.10, min($row['sbid'], 0.10));
                 }
-                elseif($row['price'] > 10 && $row['price'] <= 20 && $row['sbid'] > 0.20){
-                    $row['sbid'] = 0.20;
+                elseif($row['price'] > 10 && $row['price'] <= 20){
+                    $row['sbid'] = max(0.20, min($row['sbid'], 0.20));
                 }
-                elseif($row['price'] > 20 && $row['price'] <= 30 && $row['sbid'] > 0.30){
-                    $row['sbid'] = 0.30;
+                elseif($row['price'] > 20 && $row['price'] <= 30){
+                    $row['sbid'] = max(0.30, min($row['sbid'], 0.30));
                 }
+            }
+            
+            // Only show data under price 30, exclude PARENT SKUs, and only show items with campaigns
+            if($row['price'] < 30 && stripos($row['sku'], 'PARENT') === false && $row['campaignName'] !== ''){
                 $result[] = (object) $row;
             }
         }

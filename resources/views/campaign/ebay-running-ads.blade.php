@@ -185,9 +185,9 @@
                                     </div>
                                     <select id="status-filter" class="form-select form-select-md" style="width: 140px;">
                                         <option value="">All Status</option>
-                                        <option value="ENABLED">Enabled</option>
+                                        <option value="RUNNING">Running</option>
                                         <option value="PAUSED">Paused</option>
-                                        <option value="ARCHIVED">Archived</option>
+                                        <option value="ENDED">Ended</option>
                                     </select>
                                 </div>
                             </div>

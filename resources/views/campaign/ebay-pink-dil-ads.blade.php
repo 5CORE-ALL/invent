@@ -169,6 +169,9 @@
                             <!-- Stats -->
                             <div class="col-md-6">
                                 <div class="d-flex gap-2 justify-content-end">
+                                    <span id="total-campaigns" class="badge bg-primary d-flex align-items-center" style="font-size: 14px; padding: 8px 12px;">
+                                        Total Campaigns: <strong class="ms-1" id="campaign-count">0</strong>
+                                    </span>
                                     <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none">
                                         APR ALL SBID
                                     </button>
@@ -563,11 +566,23 @@
 
                 $("#global-search").on("keyup", function() {
                     table.setFilter(combinedFilter);
+                    updateCampaignCount();
                 });
 
                 $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
                     table.setFilter(combinedFilter);
+                    updateCampaignCount();
                 });
+
+                // Update count initially
+                updateCampaignCount();
+
+                function updateCampaignCount() {
+                    setTimeout(function() {
+                        const count = table.getData("active").length;
+                        document.getElementById("campaign-count").textContent = count;
+                    }, 100);
+                }
 
             });
 
