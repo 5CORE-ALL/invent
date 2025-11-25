@@ -1188,9 +1188,32 @@ class PricingMasterViewsController extends Controller
         $sku = $request["sku"];
         $price = $request["price"];
 
-        $price = app(AmazonSpApiService::class)->updateAmazonPriceUS($sku, $price);
+        if (!$sku || !$price) {
+            return response()->json([
+                'error' => "Price not pushed for Amazon"
+            ], 400);
+        }
 
-        return response()->json(['status' => 200, 'data' => $price]);
+        try {
+            $result = app(AmazonSpApiService::class)->updateAmazonPriceUS($sku, $price);
+            
+            // Check if the result indicates an error
+            if (isset($result['error']) || (is_array($result) && isset($result['errors']))) {
+                $reason = $result['error'] ?? $result['errors'] ?? 'Unknown API error';
+                $reason = is_array($reason) ? json_encode($reason) : $reason;
+                Log::error("Amazon price update failed", ['sku' => $sku, 'reason' => $reason]);
+                return response()->json([
+                    'error' => "Price not pushed for Amazon"
+                ], 400);
+            }
+            
+            return response()->json(['status' => 200, 'data' => $result, 'success' => true]);
+        } catch (Exception $e) {
+            Log::error("Amazon API exception", ['sku' => $sku, 'error' => $e->getMessage()]);
+            return response()->json([
+                'error' => "Price not pushed for Amazon"
+            ], 500);
+        }
     }
 
     public function saveSprice(Request $request)
@@ -1733,7 +1756,7 @@ class PricingMasterViewsController extends Controller
                 'price' => $price
             ]);
             return response()->json([
-                'error' => "Shopify: Failed for SKU {$sku} - Reason: SKU and price are required"
+                'error' => "Price not pushed for Shopify"
             ], 400);
         }
 
@@ -1744,7 +1767,7 @@ class PricingMasterViewsController extends Controller
                 'sku' => $sku
             ]);
             return response()->json([
-                'error' => "Shopify: Failed for SKU {$sku} - Reason: SKU not found in shopify_skus table"
+                'error' => "Price not pushed for Shopify"
             ], 404);
         }
 
@@ -1756,7 +1779,7 @@ class PricingMasterViewsController extends Controller
                 'shopify_record' => $shopifyRecord
             ]);
             return response()->json([
-                'error' => "Shopify: Failed for SKU {$sku} - Reason: Variant ID not found in database"
+                'error' => "Price not pushed for Shopify"
             ], 404);
         }
 
@@ -1786,7 +1809,7 @@ class PricingMasterViewsController extends Controller
                 'full_result' => $result
             ]);
             return response()->json([
-                'error' => "Shopify: Failed for SKU {$sku} - Reason: {$reason}"
+                'error' => "Price not pushed for Shopify"
             ], 500);
         }
     }
@@ -1800,7 +1823,7 @@ class PricingMasterViewsController extends Controller
 
         if (!$sku || !$price) {
             return response()->json([
-                'error' => "eBay: Failed for SKU {$sku} - Reason: SKU and price are required"
+                'error' => "Price not pushed for eBay"
             ], 400);
         }
 
@@ -1808,7 +1831,7 @@ class PricingMasterViewsController extends Controller
 
         if (!$itemId) {
             return response()->json([
-                'error' => "eBay: Failed for SKU {$sku} - Reason: Item ID not found in database"
+                'error' => "Price not pushed for eBay"
             ], 404);
         }
 
@@ -1822,13 +1845,13 @@ class PricingMasterViewsController extends Controller
                 $reason = is_array($errors) ? json_encode($errors) : $errors;
                 Log::error("eBay price update failed", ['sku' => $sku, 'item_id' => $itemId, 'reason' => $reason]);
                 return response()->json([
-                    'error' => "eBay: Failed for SKU {$sku} - Reason: {$reason}"
+                    'error' => "Price not pushed for eBay"
                 ], 400);
             }
         } catch (Exception $e) {
             Log::error("eBay API exception", ['sku' => $sku, 'error' => $e->getMessage()]);
             return response()->json([
-                'error' => "eBay: Failed for SKU {$sku} - Reason: {$e->getMessage()}"
+                'error' => "Price not pushed for eBay"
             ], 500);
         }
     }
@@ -1840,7 +1863,7 @@ class PricingMasterViewsController extends Controller
 
         if (!$sku || !$price) {
             return response()->json([
-                'error' => "eBay2: Failed for SKU {$sku} - Reason: SKU and price are required"
+                'error' => "Price not pushed for eBay2"
             ], 400);
         }
 
@@ -1851,7 +1874,7 @@ class PricingMasterViewsController extends Controller
 
         if (!$itemId) {
             return response()->json([
-                'error' => "eBay2: Failed for SKU {$sku} - Reason: Item ID not found in database"
+                'error' => "Price not pushed for eBay2"
             ], 404);
         }
 
@@ -1865,13 +1888,13 @@ class PricingMasterViewsController extends Controller
                 $reason = is_array($errors) ? json_encode($errors) : $errors;
                 Log::error("eBay2 price update failed", ['sku' => $sku, 'item_id' => $itemId, 'reason' => $reason]);
                 return response()->json([
-                    'error' => "eBay2: Failed for SKU {$sku} - Reason: {$reason}"
+                    'error' => "Price not pushed for eBay2"
                 ], 400);
             }
         } catch (Exception $e) {
             Log::error("eBay2 API exception", ['sku' => $sku, 'error' => $e->getMessage()]);
             return response()->json([
-                'error' => "eBay2: Failed for SKU {$sku} - Reason: {$e->getMessage()}"
+                'error' => "Price not pushed for eBay2"
             ], 500);
         }
     }
@@ -1883,7 +1906,7 @@ class PricingMasterViewsController extends Controller
 
         if (!$sku || !$price) {
             return response()->json([
-                'error' => "eBay3: Failed for SKU {$sku} - Reason: SKU and price are required"
+                'error' => "Price not pushed for eBay3"
             ], 400);
         }
 
@@ -1891,7 +1914,7 @@ class PricingMasterViewsController extends Controller
 
         if (!$itemId) {
             return response()->json([
-                'error' => "eBay3: Failed for SKU {$sku} - Reason: Item ID not found in database"
+                'error' => "Price not pushed for eBay3"
             ], 404);
         }
 
@@ -1905,13 +1928,13 @@ class PricingMasterViewsController extends Controller
                 $reason = is_array($errors) ? json_encode($errors) : $errors;
                 Log::error("eBay3 price update failed", ['sku' => $sku, 'item_id' => $itemId, 'reason' => $reason]);
                 return response()->json([
-                    'error' => "eBay3: Failed for SKU {$sku} - Reason: {$reason}"
+                    'error' => "Price not pushed for eBay3"
                 ], 400);
             }
         } catch (Exception $e) {
             Log::error("eBay3 API exception", ['sku' => $sku, 'error' => $e->getMessage()]);
             return response()->json([
-                'error' => "eBay3: Failed for SKU {$sku} - Reason: {$e->getMessage()}"
+                'error' => "Price not pushed for eBay3"
             ], 500);
         }
     }
@@ -1924,7 +1947,7 @@ class PricingMasterViewsController extends Controller
 
         if (!$sku || !$price) {
             return response()->json([
-                'error' => "Walmart: Failed for SKU {$sku} - Reason: SKU and price are required"
+                'error' => "Price not pushed for Walmart"
             ], 400);
         }
 
@@ -1932,7 +1955,7 @@ class PricingMasterViewsController extends Controller
 
         if (!$itemId) {
             return response()->json([
-                'error' => "Walmart: Failed for SKU {$sku} - Reason: Item not found in Walmart API data"
+                'error' => "Price not pushed for Walmart"
             ], 404);
         }
 
@@ -1942,7 +1965,7 @@ class PricingMasterViewsController extends Controller
             $reason = is_array($result['errors']) ? json_encode($result['errors']) : $result['errors'];
             Log::error("Walmart price update failed", ['sku' => $sku, 'reason' => $reason]);
             return response()->json([
-                'error' => "Walmart: Failed for SKU {$sku} - Reason: {$reason}"
+                'error' => "Price not pushed for Walmart"
             ], 400);
         }
 
@@ -1960,7 +1983,7 @@ class PricingMasterViewsController extends Controller
         // Validate inputs
         if (!$sku) {
             return response()->json([
-                'error' => "SKU is required"
+                'error' => "Price not pushed for Doba"
             ], 400);
         }
 
@@ -1968,7 +1991,7 @@ class PricingMasterViewsController extends Controller
         $dobaDataView = DobaDataView::where('sku', $sku)->first();
         if (!$dobaDataView) {
             return response()->json([
-                'error' => "Doba: Failed for SKU {$sku} - Reason: No Doba data found in database"
+                'error' => "Price not pushed for Doba"
             ], 404);
         }
 
@@ -1977,7 +2000,7 @@ class PricingMasterViewsController extends Controller
 
         if (!$price) {
             return response()->json([
-                'error' => "Doba: Failed for SKU {$sku} - Reason: FINAL_PRICE not available"
+                'error' => "Price not pushed for Doba"
             ], 404);
         }
 
@@ -1985,7 +2008,7 @@ class PricingMasterViewsController extends Controller
         $itemId = DobaMetric::where('sku', $sku)->value('item_id');
         if (!$itemId) {
             return response()->json([
-                'error' => "Doba: Failed for SKU {$sku} - Reason: Item ID not found in Doba metrics"
+                'error' => "Price not pushed for Doba"
             ], 404);
         }
 
@@ -2018,7 +2041,7 @@ class PricingMasterViewsController extends Controller
             ]);
 
             return response()->json([
-                'error' => "Doba: Failed for SKU {$sku} - Reason: {$reason}"
+                'error' => "Price not pushed for Doba"
             ], 400);
         }
 
