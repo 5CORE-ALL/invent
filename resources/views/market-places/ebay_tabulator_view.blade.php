@@ -356,6 +356,23 @@
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
+                            
+                            const rowData = cell.getRow().getData();
+                            const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
+                            const adPercent = parseFloat(value || 0);
+                            
+                            // If KW ads spend > 0 but AD% is 0, show red alert
+                            if (kwSpend > 0 && adPercent === 0) {
+                                return `
+                                    <span style="color: #dc3545; font-weight: 600;">${adPercent.toFixed(0)}%</span>
+                                    <i class="fa fa-exclamation-triangle text-danger" 
+                                       style="cursor: pointer; margin-left: 5px;" 
+                                       title="There is KW ads spend data"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top"></i>
+                                `;
+                            }
+                            
                             return `${parseFloat(value).toFixed(0)}%`;
                         },
                         width: 100
@@ -471,27 +488,27 @@
                     //     width: 120
                     // },
                    
-                    {
-                        title: "TACOS <br> L30",
-                        field: "TacosL30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value) * 100;
-                            let color = '';
+                    // {
+                    //     title: "TACOS <br> L30",
+                    //     field: "TacosL30",
+                    //     hozAlign: "center",
+                    //     sorter: "number",
+                    //     formatter: function(cell) {
+                    //         const value = cell.getValue();
+                    //         if (value === null || value === undefined) return '';
+                    //         const percent = parseFloat(value) * 100;
+                    //         let color = '';
                             
-                            // getTacosColor logic from inc/dec page
-                            if (percent <= 7) color = '#e83e8c'; // pink
-                            else if (percent > 7 && percent <= 14) color = '#28a745'; // green
-                            else if (percent > 14 && percent <= 21) color = '#ffc107'; // yellow
-                            else color = '#a00211'; // red
+                    //         // getTacosColor logic from inc/dec page
+                    //         if (percent <= 7) color = '#e83e8c'; // pink
+                    //         else if (percent > 7 && percent <= 14) color = '#28a745'; // green
+                    //         else if (percent > 14 && percent <= 21) color = '#ffc107'; // yellow
+                    //         else color = '#a00211'; // red
                             
-                            return `<span style="color: ${color}; font-weight: 600;">${parseFloat(value).toFixed(2)}%</span>`;
-                        },
-                        width: 80
-                    },
+                    //         return `<span style="color: ${color}; font-weight: 600;">${parseFloat(value).toFixed(2)}%</span>`;
+                    //     },
+                    //     width: 80
+                    // },
                     // {
                     //     title: "Total Sales L30",
                     //     field: "T_Sale_l30",
@@ -596,15 +613,9 @@
                         field: "SROI",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const sprice = parseFloat(rowData.SPRICE || 0);
-                            const lp = parseFloat(rowData.LP_productmaster || 0);
-                            const ship = parseFloat(rowData.Ship_productmaster || 0);
-                            
-                            if (lp === 0) return '';
-                            
-                            // SROI = ((SPRICE * 0.86 - ship - lp) / lp) * 100 (same as ROI% but with SPRICE)
-                            const percent = ((sprice * 0.86 - ship - lp) / lp) * 100;
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
                             if (isNaN(percent)) return '';
                             
                             let color = '';
@@ -618,6 +629,65 @@
                         },
                         width: 100
                     },
+
+
+                        {
+                        title: "SPEND<br>L30",
+                        field: "AD_Spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>$${value.toFixed(2)}</span>
+                                <i class="fa fa-info-circle text-primary toggle-spendL30-btn" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                        },
+                        width: 120
+                    },
+
+                    {
+                        title: "KW<br>SPEND<br>L30",
+                        field: "kw_spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `$${value.toFixed(2)}`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                        },
+                        width: 100
+                    },
+
+                    {
+                        title: "PMT<br>SPEND<br>L30",
+                        field: "pmt_spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `$${value.toFixed(2)}`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                        },
+                        width: 100
+                    },
+                  
                     // {
                     //     title: "Listed",
                     //     field: "Listed",
@@ -893,6 +963,23 @@
 
             table.on('dataLoaded', function() {
                 updateCalcValues();
+                // Initialize Bootstrap tooltips for dynamically created elements
+                setTimeout(function() {
+                    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+                        new bootstrap.Tooltip(tooltipTriggerEl);
+                    });
+                }, 100);
+            });
+
+            // Also initialize tooltips when table is rendered
+            table.on('renderComplete', function() {
+                setTimeout(function() {
+                    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+                        new bootstrap.Tooltip(tooltipTriggerEl);
+                    });
+                }, 100);
             });
 
             // Toggle column from dropdown
@@ -916,6 +1003,24 @@
                 });
                 buildColumnDropdown();
                 saveColumnVisibilityToServer();
+            });
+
+            // Toggle SPEND L30 breakdown columns
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-spendL30-btn")) {
+                    let colsToToggle = ["kw_spend_L30", "pmt_spend_L30"];
+
+                    colsToToggle.forEach(colField => {
+                        let col = table.getColumn(colField);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                    
+                    // Update column visibility in cache
+                    saveColumnVisibilityToServer();
+                    buildColumnDropdown();
+                }
             });
 
             // Toast notification
