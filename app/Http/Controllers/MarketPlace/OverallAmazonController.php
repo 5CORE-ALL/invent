@@ -1453,10 +1453,46 @@ class OverallAmazonController extends Controller
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku', 'fba');
 
+        // Fetch LMP data from repricer database
+        $lmpLowestLookup = collect();
+        $lmpDetailsLookup = collect();
+        try {
+            $lmpRecords = DB::connection('repricer')
+                ->table('lmp_data')
+                ->select('sku', 'price', 'link', 'image')
+                ->whereIn('sku', $skus)
+                ->orderBy('price', 'asc')
+                ->get()
+                ->groupBy('sku');
+
+            $lmpDetailsLookup = $lmpRecords;
+            $lmpLowestLookup = $lmpRecords->map(function ($items) {
+                return $items->first();
+            });
+        } catch (\Exception $e) {
+            Log::warning('Could not fetch LMP data from repricer database: ' . $e->getMessage());
+        }
+
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Amazon')->first();
 
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1; 
         $adUpdates  = $marketplaceData ? $marketplaceData->ad_updates : 0;   
+
+        // Fetch Amazon SP Campaign Reports for L30 (KW campaigns - NOT PT)
+        $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'NOT LIKE', '%' . $sku . '% PT')
+                      ->orWhere('campaignName', 'NOT LIKE', '%' . $sku . '% pt');
+                }
+            })
+            ->get();
+
+        // Fetch Amazon SP Campaign Reports for L30 (PT campaigns)
+        $amazonSpCampaignReportsPtL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->get();
 
         $result = [];
 
@@ -1536,6 +1572,66 @@ class OverallAmazonController extends Controller
             $row['js_comp_manual_api_link'] = null;
             $row['js_comp_manual_link'] = null;
 
+            // LMP data - lowest entry plus top entries
+            $lmpEntries = $lmpDetailsLookup->get($pm->sku);
+            if (!$lmpEntries instanceof \Illuminate\Support\Collection) {
+                $lmpEntries = collect();
+            }
+
+            $lowestLmp = $lmpLowestLookup->get($pm->sku);
+            $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->price))
+                ? (is_numeric($lowestLmp->price) ? floatval($lowestLmp->price) : null)
+                : null;
+            $row['lmp_link'] = $lowestLmp->link ?? null;
+            $row['lmp_entries'] = $lmpEntries
+                ->take(10)
+                ->map(function ($entry) {
+                    return [
+                        'price' => is_numeric($entry->price) ? floatval($entry->price) : null,
+                        'link' => $entry->link ?? null,
+                        'image' => $entry->image ?? null,
+                    ];
+                })
+                ->toArray();
+            $row['lmp_entries_total'] = $lmpEntries->count();
+
+            // Amazon SP Campaign Reports - KW and PMT spend L30
+            $matchedCampaignKwL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
+                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                return $campaignName === $cleanSku;
+            });
+
+            $matchedCampaignPtL30 = $amazonSpCampaignReportsPtL30->first(function ($item) use ($sku) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'));
+            });
+
+            $row['kw_spend_L30'] = $matchedCampaignKwL30->cost ?? 0;
+            $row['pmt_spend_L30'] = $matchedCampaignPtL30->cost ?? 0;
+            $row['AD_Spend_L30'] = ($row['kw_spend_L30'] ?? 0) + ($row['pmt_spend_L30'] ?? 0);
+
+            // AD% Formula = (AD_Spend_L30 / (price * A_L30)) * 100
+            $totalRevenue = $price * $units_ordered_l30;
+            $row['AD%'] = $totalRevenue > 0
+                ? round(($row['AD_Spend_L30'] / $totalRevenue) * 100, 4)
+                : 0;
+
+            // GPFT% Formula = ((price × 0.80 - ship - lp) / price) × 100
+            $row['GPFT%'] = $price > 0
+                ? round((($price * 0.80 - $ship - $lp) / $price) * 100, 2)
+                : 0;
+
+            // PFT% = GPFT% - AD%
+            $row['PFT%'] = round($row['GPFT%'] - $row['AD%'], 2);
+
+            // ROI% = ((price * (0.80 - AD%/100) - ship - lp) / lp) * 100
+            $adDecimal = $row['AD%'] / 100;
+            $row['ROI_percentage'] = round(
+                $lp > 0 ? (($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                2
+            );
+
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
 
@@ -1551,12 +1647,63 @@ class OverallAmazonController extends Controller
                     $row['SPRICE'] = $raw['SPRICE'] ?? null;
                     $row['Spft%'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;
+                    $row['SGPFT'] = $raw['SGPFT'] ?? null;
                     $row['ad_spend'] = $raw['Spend_L30'] ?? null;
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['js_comp_manual_api_link'] = $raw['js_comp_manual_api_link'] ?? '';
                     $row['js_comp_manual_link'] = $raw['js_comp_manual_link'] ?? '';
+                }
+            }
+
+            // If SPRICE is null or empty, use price as default and calculate SGPFT/SPFT/SROI
+            if (empty($row['SPRICE']) && $price > 0) {
+                $row['SPRICE'] = $price;
+                $row['has_custom_sprice'] = false; // Flag to indicate using default price
+                
+                // Calculate SGPFT based on default price (using 0.80 for Amazon)
+                $sgpft = round(
+                    $price > 0 ? (($price * 0.80 - $ship - $lp) / $price) * 100 : 0,
+                    2
+                );
+                $row['SGPFT'] = $sgpft;
+                
+                // Calculate SPFT = SGPFT - AD%
+                $row['Spft%'] = round($sgpft - $row['AD%'], 2);
+                
+                // Calculate SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
+                $adDecimal = $row['AD%'] / 100;
+                $row['SROI'] = round(
+                    $lp > 0 ? (($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                    2
+                );
+            } else {
+                $row['has_custom_sprice'] = true; // Flag to indicate custom SPRICE
+                
+                // Calculate SGPFT using custom SPRICE if not already set (using 0.80 for Amazon)
+                if (empty($row['SGPFT'])) {
+                    $sprice = floatval($row['SPRICE']);
+                    $sgpft = round(
+                        $sprice > 0 ? (($sprice * 0.80 - $ship - $lp) / $sprice) * 100 : 0,
+                        2
+                    );
+                    $row['SGPFT'] = $sgpft;
+                }
+                
+                // Calculate SPFT = SGPFT - AD%
+                if (!empty($row['SGPFT'])) {
+                    $row['Spft%'] = round($row['SGPFT'] - $row['AD%'], 2);
+                }
+                
+                // Calculate SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
+                if (!empty($row['SPRICE'])) {
+                    $sprice = floatval($row['SPRICE']);
+                    $adDecimal = $row['AD%'] / 100;
+                    $row['SROI'] = round(
+                        $lp > 0 ? (($sprice * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                        2
+                    );
                 }
             }
 
@@ -1582,10 +1729,42 @@ class OverallAmazonController extends Controller
                 '(Child) sku' => 'PARENT ' . $parent,
                 'Parent' => $parent,
                 'INV' => $rows->sum('INV'),
-                'OV_L30' => $rows->sum('OV_L30'),
-                'AVG_Price' => null,
-                'MSRP' => null,
-                'MAP' => null,
+                'L30' => $rows->sum('L30'),
+                'price' => '',
+                'price_lmpa' => '',
+                'A_L30' => $rows->sum('A_L30'),
+                'Sess30' => $rows->sum('Sess30'),
+                'CVR_L30' => '',
+                'NRL' => '',
+                'NRA' => '',
+                'FBA' => null,
+                'shopify_id' => null,
+                'SPRICE' => '',
+                'Spft%' => '',
+                'SROI' => '',
+                'SGPFT' => '',
+                'ad_spend' => '',
+                'Listed' => null,
+                'Live' => null,
+                'APlus' => null,
+                'js_comp_manual_api_link' => '',
+                'js_comp_manual_link' => '',
+                'image_path' => '',
+                'Total_pft' => round($rows->sum('Total_pft'), 2),
+                'T_Sale_l30' => round($rows->sum('T_Sale_l30'), 2),
+                'PFT_percentage' => '',
+                'ROI_percentage' => '',
+                'T_COGS' => round($rows->sum('T_COGS'), 2),
+                'scout_data' => null,
+                'percentage' => $percentage,
+                'LP_productmaster' => '',
+                'Ship_productmaster' => '',
+                'kw_spend_L30' => round($rows->sum('kw_spend_L30'), 2),
+                'pmt_spend_L30' => round($rows->sum('pmt_spend_L30'), 2),
+                'AD_Spend_L30' => round($rows->sum('AD_Spend_L30'), 2),
+                'AD%' => 0, // Parent summary AD% not calculated
+                'GPFT%' => $rows->count() > 0 ? round($rows->avg('GPFT%'), 2) : 0,
+                'PFT%' => $rows->count() > 0 ? round($rows->avg('PFT%'), 2) : 0,
                 'is_parent_summary' => true,
                 'ad_updates' => $adUpdates
             ];
@@ -1663,7 +1842,7 @@ class OverallAmazonController extends Controller
 
     public function saveNrToDatabase(Request $request) {
         $sku = $request->input('sku');
-        $nrInput = $request->input('nr');     
+        $nr = $request->input('nr');     
         $fbaInput = $request->input('fba');   
         $spend = $request->input('spend');    
         $tpft = $request->input('tpft');      
@@ -1681,18 +1860,18 @@ class OverallAmazonController extends Controller
             ? $amazonDataView->value
             : (json_decode($amazonDataView->value ?? '{}', true));
 
-        // Handle NR
-        if ($nrInput) {
-            $nr = is_array($nrInput) ? $nrInput : json_decode($nrInput, true);
-            if (!is_array($nr)) {
-                return response()->json(['error' => 'Invalid NR format.'], 400);
+        // Handle NR - only NRL or REQ values allowed
+        if ($nr !== null) {
+            // Only accept 'NRL' or 'REQ' values
+            if ($nr === 'NRL' || $nr === 'REQ') {
+                $existing['NRL'] = $nr;
+                $existing['NRA'] = ''; // Clear NRA
+            } elseif ($nr === '') {
+                // Clear both when empty
+                $existing['NRL'] = '';
+                $existing['NRA'] = '';
             }
-
-            foreach (['NRL', 'NRA'] as $key) {
-                if (isset($nr[$key])) {
-                    $existing[$key] = $nr[$key];
-                }
-            }
+            // Ignore any other values (numbers, etc.)
         }
 
         // Handle FBA
@@ -1725,39 +1904,127 @@ class OverallAmazonController extends Controller
             $amazonDataView->save();
         }
 
-        return response()->json(['success' => true, 'data' => $amazonDataView]);
+        // Create a user-friendly message based on what was updated
+        $message = "Data updated successfully";
+        if ($nr !== null) {
+            $message = $nr === 'NRL' ? "NRL updated" : ($nr === 'REQ' ? "REQ updated" : "NR cleared");
+        }
+
+        return response()->json(['success' => true, 'data' => $amazonDataView, 'message' => $message]);
     }
 
     public function saveSpriceToDatabase(Request $request)
     {
-        $sku = $request->input('sku');
-        $price = $request["sprice"];
-        $sID = env('AMAZON_SELLER_ID');
+        Log::info('Saving Amazon pricing data', $request->all());
+        $sku = strtoupper($request->input('sku'));
+        $sprice = $request->input('sprice');
 
-        $spriceData = $request->only(['sprice', 'spft_percent', 'sroi_percent']);
-
-        if (!$sku || !$spriceData['sprice']) {
+        if (!$sku || !$sprice) {
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
+
+        // Get current marketplace percentage
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Amazon')->first();
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1;
+        Log::info('Using percentage', ['percentage' => $percentage]);
+
+        // Get ProductMaster for lp and ship
+        $pm = ProductMaster::where('sku', $sku)->first();
+        if (!$pm) {
+            return response()->json(['error' => 'SKU not found in product master.'], 404);
+        }
+
+        // Extract lp and ship
+        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+        $lp = 0;
+        foreach ($values as $k => $v) {
+            if (strtolower($k) === 'lp') {
+                $lp = floatval($v);
+                break;
+            }
+        }
+        if ($lp === 0 && isset($pm->lp)) {
+            $lp = floatval($pm->lp);
+        }
+
+        $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+        Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship]);
+
+        // Calculate SGPFT first (using 0.80 for Amazon)
+        $spriceFloat = floatval($sprice);
+        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * 0.80 - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
+        
+        // Get AD% from the product
+        $adPercent = 0;
+        $amazonDatasheet = AmazonDatasheet::where('sku', $sku)->first();
+        
+        if ($amazonDatasheet) {
+            $price = floatval($amazonDatasheet->price ?? 0);
+            $unitsL30 = floatval($amazonDatasheet->units_ordered_l30 ?? 0);
+            
+            $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', 'L30')
+                ->get()
+                ->first(function ($item) use ($sku) {
+                    $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                    return $campaignName === $cleanSku;
+                });
+            
+            $amazonSpCampaignReportsPtL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', 'L30')
+                ->get()
+                ->first(function ($item) use ($sku) {
+                    $cleanName = strtoupper(trim($item->campaignName));
+                    return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'));
+                });
+            
+            $kw_spend_l30 = $amazonSpCampaignReportsL30->cost ?? 0;
+            $pmt_spend_l30 = $amazonSpCampaignReportsPtL30->cost ?? 0;
+            $totalSpend = $kw_spend_l30 + $pmt_spend_l30;
+            
+            $totalRevenue = $price * $unitsL30;
+            $adPercent = $totalRevenue > 0 ? ($totalSpend / $totalRevenue) * 100 : 0;
+        }
+        
+        // SPFT = SGPFT - AD%
+        $spft = round($sgpft - $adPercent, 2);
+        
+        // SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
+        $adDecimal = $adPercent / 100;
+        $sroi = round(
+            $lp > 0 ? (($spriceFloat * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+            2
+        );
+        
+        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
 
         $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
 
         // Decode value column safely
-        $existing = is_array($amazonDataView->value) ? $amazonDataView->value : (json_decode($amazonDataView->value, true) ?: []);
-
-        // $changeAmzPrice = UpdateAmazonSPriceJob::dispatch($sku, $price)->delay(now()->addMinutes(3));
+        $existing = is_array($amazonDataView->value)
+            ? $amazonDataView->value
+            : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
 
         // Merge new sprice data
         $merged = array_merge($existing, [
-            'SPRICE' => $spriceData['sprice'],
-            'SPFT' => $spriceData['spft_percent'],
-            'SROI' => $spriceData['sroi_percent'],
+            'SPRICE' => $spriceFloat,
+            'SPFT' => $spft,
+            'SROI' => $sroi,
+            'SGPFT' => $sgpft,
         ]);
 
         $amazonDataView->value = $merged;
         $amazonDataView->save();
+        Log::info('Data saved successfully', ['sku' => $sku]);
 
-        return response()->json(['message' => 'Data saved successfully.', 'data' => $price]);
+        return response()->json([
+            'message' => 'Data saved successfully.',
+            'data' => $spriceFloat,
+            'spft_percent' => $spft,
+            'sroi_percent' => $sroi,
+            'sgpft_percent' => $sgpft
+        ]);
     }
 
     public function amazonPriceIncreaseDecrease(Request $request)
@@ -1854,7 +2121,7 @@ class OverallAmazonController extends Controller
     {
         $request->validate([
             'sku'   => 'required|string',
-            'field' => 'required|in:Listed,Live',
+            'field' => 'required|in:Listed,Live,APlus',
             'value' => 'required|boolean' // validate as boolean
         ]);
 
@@ -2034,5 +2301,121 @@ class OverallAmazonController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    public function amazonTabulatorView(Request $request)
+    {
+        return view("market-places.amazon_tabulator_view");
+    }
+
+    public function amazonDataJson(Request $request)
+    {
+        try {
+            $response = $this->getViewAmazonData($request);
+            $data = json_decode($response->getContent(), true);
+            
+            return response()->json($data['data'] ?? []);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Amazon data for Tabulator: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
+
+    public function getAmazonColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "amazon_tabulator_column_visibility_{$userId}";
+        
+        $visibility = Cache::get($key, []);
+        
+        return response()->json($visibility);
+    }
+
+    public function setAmazonColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "amazon_tabulator_column_visibility_{$userId}";
+        
+        $visibility = $request->input('visibility', []);
+        
+        Cache::put($key, $visibility, now()->addDays(365));
+        
+        return response()->json(['success' => true]);
+    }
+
+    public function exportAmazonPricingCVR(Request $request)
+    {
+        try {
+            $response = $this->getViewAmazonData($request);
+            $data = json_decode($response->getContent(), true);
+            $amazonData = collect($data['data'] ?? []);
+
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+
+            // Header Row
+            $headers = [
+                'Parent', '(Child) SKU', 'INV', 'L30', 'Price', 'Price LMPA',
+                'A L30', 'Sess30', 'CVR L30', 'NRL', 'NRA', 'SPRICE',
+                'SGPFT%', 'SROI%', 'Listed', 'Live', 'A+',
+                'PFT%', 'ROI%', 'Total Profit', 'Total Sales L30', 'Total COGS'
+            ];
+            $sheet->fromArray($headers, NULL, 'A1');
+
+            // Data Rows
+            $rowIndex = 2;
+            foreach ($amazonData as $item) {
+                $aL30 = $item['A_L30'] ?? 0;
+                $sess30 = $item['Sess30'] ?? 0;
+                $cvr = $sess30 > 0 ? ($aL30 / $sess30) * 100 : 0;
+
+                $rowData = [
+                    $item['Parent'] ?? '',
+                    $item['(Child) sku'] ?? '',
+                    $item['INV'] ?? 0,
+                    $item['L30'] ?? 0,
+                    $item['price'] ?? 0,
+                    $item['price_lmpa'] ?? 0,
+                    $aL30,
+                    $sess30,
+                    round($cvr, 2),
+                    $item['NRL'] ?? '',
+                    $item['NRA'] ?? '',
+                    $item['SPRICE'] ?? '',
+                    $item['Spft%'] ?? '',
+                    $item['SROI'] ?? '',
+                    $item['Listed'] ? 'TRUE' : 'FALSE',
+                    $item['Live'] ? 'TRUE' : 'FALSE',
+                    $item['APlus'] ? 'TRUE' : 'FALSE',
+                    $item['PFT_percentage'] ?? 0,
+                    $item['ROI_percentage'] ?? 0,
+                    $item['Total_pft'] ?? 0,
+                    $item['T_Sale_l30'] ?? 0,
+                    $item['T_COGS'] ?? 0
+                ];
+
+                $sheet->fromArray($rowData, NULL, 'A' . $rowIndex);
+                $rowIndex++;
+            }
+
+            // Set column widths
+            foreach (range('A', 'V') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+
+            // Output Download
+            $fileName = 'Amazon_Pricing_CVR_Export_' . date('Y-m-d') . '.xlsx';
+
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment;filename="' . $fileName . '"');
+            header('Cache-Control: max-age=0');
+
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+            exit;
+        } catch (\Exception $e) {
+            Log::error('Error exporting Amazon pricing CVR data: ' . $e->getMessage());
+            return back()->with('error', 'Failed to export data');
+        }
     }
 }
