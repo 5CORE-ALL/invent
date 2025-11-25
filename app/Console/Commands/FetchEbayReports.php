@@ -45,58 +45,146 @@ class FetchEbayReports extends Command
 
         $listingData = $this->processTask($taskId, $token);
 
-        // Save price + SKU mapping
-        // We'll map itemId => [sku, sku, ...]
-        $itemIdToSku = [];
+        $this->info("📊 Total raw listings fetched: " . count($listingData));
 
+        // Save price + SKU mapping
+        // Map: sku => itemId (keep latest/active item_id per SKU)
+        // Note: SKU is the unique identifier to prevent duplicates.
+        // Same SKU may appear in multiple eBay listings, we keep the most recent item_id
+        $skuToItemId = [];
+        $skuPrices = [];
+        $skipped = ['no_item_id' => 0, 'no_sku' => 0, 'duplicate_sku' => 0];
+        $itemsWithoutSku = [];
+
+        $duplicateDetails = [];
+        
         foreach ($listingData as $row) {
             $itemId = $row['item_id'] ?? null;
             $sku = trim((string)($row['sku'] ?? ''));
+            $price = $row['price'] ?? null;
 
-            // skip rows with no itemId or no sku (we care about child SKUs)
-            if (! $itemId || $sku === '') {
+            // skip rows with no itemId
+            if (! $itemId) {
+                $skipped['no_item_id']++;
+                continue;
+            }
+            
+            if ($sku === '') {
+                $skipped['no_sku']++;
+                // Save items without SKU using item_id as fallback
+                $itemsWithoutSku[$itemId] = $price;
                 continue;
             }
 
-            // keep mapping of itemId to array of SKUs
-            if (! isset($itemIdToSku[$itemId])) {
-                $itemIdToSku[$itemId] = [];
+            // Track duplicates
+            if (isset($skuToItemId[$sku])) {
+                $skipped['duplicate_sku']++;
+                if (!isset($duplicateDetails[$sku])) {
+                    $duplicateDetails[$sku] = [$skuToItemId[$sku]];
+                }
+                $duplicateDetails[$sku][] = $itemId;
             }
 
-            // avoid duplicates
-            if (! in_array($sku, $itemIdToSku[$itemId])) {
-                $itemIdToSku[$itemId][] = $sku;
-            }
-
-            // Save per SKU (unique by item_id + sku)
-            EbayMetric::updateOrCreate(
-                ['item_id' => $itemId, 'sku' => $sku],
-                [
-                    'ebay_price' => $row['price'] ?? null,
-                    'report_range' => now()->toDateString(),
-                ]
-            );
+            // Keep the latest item_id for each SKU (prevent duplicates)
+            $skuToItemId[$sku] = $itemId;
+            $skuPrices[$sku] = $price;
         }
 
-        // Update views per itemId -> sku list
-        $this->updateViews($token, $itemIdToSku);
+        $this->info("📝 Unique SKUs to save: " . count($skuToItemId));
+        if (count($itemsWithoutSku) > 0) {
+            $this->warn("⚠️  Found {$skipped['no_sku']} listings without SKU (will use item_id as identifier)");
+        }
+        if ($skipped['no_item_id'] > 0) {
+            $this->warn("⚠️  Skipped {$skipped['no_item_id']} listings with no item_id");
+        }
+        if ($skipped['duplicate_sku'] > 0) {
+            $this->info("ℹ️  Found {$skipped['duplicate_sku']} duplicate SKUs (using latest item_id)");
+            $this->newLine();
+            $this->info("📋 Duplicate SKU Details (first 10):");
+            $count = 0;
+            foreach ($duplicateDetails as $sku => $itemIds) {
+                if ($count >= 10) break;
+                $this->info("   • SKU: " . str_pad($sku, 35) . " → Item IDs: " . implode(', ', $itemIds));
+                $count++;
+            }
+            if (count($duplicateDetails) > 10) {
+                $this->info("   ... and " . (count($duplicateDetails) - 10) . " more");
+            }
+        }
+
+        // Save metrics with SKU as unique identifier
+        $saved = 0;
+        foreach ($skuToItemId as $sku => $itemId) {
+            EbayMetric::updateOrCreate(
+                ['sku' => $sku],
+                [
+                    'item_id' => $itemId,
+                    'ebay_price' => $skuPrices[$sku],
+                    'report_date' => now()->toDateString(),
+                ]
+            );
+            $saved++;
+        }
+
+        // Save items without SKU (use item_id as SKU identifier)
+        foreach ($itemsWithoutSku as $itemId => $price) {
+            EbayMetric::updateOrCreate(
+                ['sku' => 'NO-SKU-' . $itemId],
+                [
+                    'item_id' => $itemId,
+                    'ebay_price' => $price,
+                    'report_date' => now()->toDateString(),
+                ]
+            );
+            $saved++;
+        }
+
+        $this->info("💾 Saved/Updated {$saved} records in database");
+
+        // Build reverse mapping: itemId => [skus]
+        $itemIdToSkus = [];
+        foreach ($skuToItemId as $sku => $itemId) {
+            $itemIdToSkus[$itemId][] = $sku;
+        }
+        
+        // Add items without SKU
+        foreach ($itemsWithoutSku as $itemId => $price) {
+            $itemIdToSkus[$itemId][] = 'NO-SKU-' . $itemId;
+        }
+
+        $this->info("📋 Tracking " . count($itemIdToSkus) . " unique item IDs");
+
+        // Final summary
+        $uniqueItems = count($itemIdToSkus);
+        $totalSkus = count($skuToItemId) + count($itemsWithoutSku);
+        $this->newLine();
+        $this->info("📈 Final Summary:");
+        $this->info("   • Unique eBay Item IDs: {$uniqueItems}");
+        $this->info("   • Total SKU Records: {$totalSkus}");
+        $this->info("   • Multi-variation Items: " . count(array_filter($itemIdToSkus, fn($skus) => count($skus) > 1)));
+        
+        if ($uniqueItems < 753) {
+            $missing = 753 - $uniqueItems;
+            $this->warn("   ⚠️  {$missing} listings not in API response (may be inactive or filtered by eBay)");
+        }
+
+        // Update views per itemId
+        $this->updateViews($token, $itemIdToSkus);
 
         // Update organic clicks for last 30 days
-        $this->updateOrganicClicksFromSheet($itemIdToSku);
+        $this->updateOrganicClicksFromSheet($itemIdToSkus);
 
         // L30 / L60
-        $existingItemIds = array_keys($itemIdToSku);
+        $existingItemIds = array_keys($itemIdToSkus);
         $dateRanges = $this->dateRanges();
 
         $l30 = $this->orderQty($token, $dateRanges['l30'], $existingItemIds);
         $l60 = $this->orderQty($token, $dateRanges['l60'], $existingItemIds);
 
-        // Save L30/L60 for each SKU under the item
-        foreach ($existingItemIds as $itemId) {
-            $skus = $itemIdToSku[$itemId] ?? [];
+        // Save L30/L60 for each SKU
+        foreach ($itemIdToSkus as $itemId => $skus) {
             foreach ($skus as $sku) {
-                EbayMetric::where('item_id', $itemId)
-                    ->where('sku', $sku)
+                EbayMetric::where('sku', $sku)
                     ->update([
                         'ebay_l30' => $l30[$itemId] ?? 0,
                         'ebay_l60' => $l60[$itemId] ?? 0,
@@ -263,6 +351,7 @@ class FetchEbayReports extends Command
     private function parseXml($xml)
     {
         $out = [];
+        $seen = []; // Track item_id + sku combinations to avoid duplicates
 
         foreach ($xml->ActiveInventoryReport->SKUDetails as $item) {
             $itemId = (string) $item->ItemID;
@@ -275,19 +364,28 @@ class FetchEbayReports extends Command
             $price = isset($item->Price) ? (float) $item->Price : null;
 
             if ($primarySku !== '') {
-                $out[] = [
-                    'item_id' => $itemId,
-                    'sku' => $primarySku,
-                    'price' => $price,
-                ];
+                $key = $itemId . '|' . $primarySku;
+                if (!isset($seen[$key])) {
+                    $out[] = [
+                        'item_id' => $itemId,
+                        'sku' => $primarySku,
+                        'price' => $price,
+                    ];
+                    $seen[$key] = true;
+                }
             }
 
             foreach ($item->Variations->Variation ?? [] as $v) {
-                $out[] = [
-                    'item_id' => $itemId,
-                    'sku' => (string) $v->SKU,
-                    'price' => isset($v->Price) ? (float) $v->Price : $price,
-                ];
+                $varSku = (string) $v->SKU;
+                $key = $itemId . '|' . $varSku;
+                if (!isset($seen[$key])) {
+                    $out[] = [
+                        'item_id' => $itemId,
+                        'sku' => $varSku,
+                        'price' => isset($v->Price) ? (float) $v->Price : $price,
+                    ];
+                    $seen[$key] = true;
+                }
             }
         }
 
@@ -320,22 +418,55 @@ class FetchEbayReports extends Command
         $rows = array_map(fn ($l) => str_getcsv($l, "\t"), $lines);
         $headers = array_shift($rows);
 
+        $totalRows = count($rows);
         $data = [];
+        $parseSkipped = ['column_mismatch' => 0, 'no_itemid' => 0, 'no_sku' => 0, 'duplicate_in_feed' => 0];
+        $seen = []; // Track item_id + sku combinations
+        
         foreach ($rows as $row) {
             if (count($headers) != count($row)) {
+                $parseSkipped['column_mismatch']++;
                 continue;
             }
             $d = array_combine($headers, $row);
             $itemId = $d['itemId'] ?? null;
             $sku = trim((string) ($d['sku'] ?? ''));
-            if (! $itemId || $sku === '') {
+            
+            if (! $itemId) {
+                $parseSkipped['no_itemid']++;
                 continue;
             }
+            
+            if ($sku === '') {
+                $parseSkipped['no_sku']++;
+                continue;
+            }
+            
+            // Check for duplicates in the feed itself
+            $key = $itemId . '|' . $sku;
+            if (isset($seen[$key])) {
+                $parseSkipped['duplicate_in_feed']++;
+                continue;
+            }
+            $seen[$key] = true;
+            
             $data[] = [
                 'item_id' => $itemId,
                 'sku' => $sku,
                 'price' => $d['price'] ?? null,
             ];
+        }
+
+        // Log parsing stats
+        if ($parseSkipped['column_mismatch'] > 0 || $parseSkipped['no_itemid'] > 0 || $parseSkipped['no_sku'] > 0 || $parseSkipped['duplicate_in_feed'] > 0) {
+            Log::channel('daily')->info('eBay Report Parsing', [
+                'total_rows' => $totalRows,
+                'parsed' => count($data),
+                'skipped_column_mismatch' => $parseSkipped['column_mismatch'],
+                'skipped_no_itemid' => $parseSkipped['no_itemid'],
+                'skipped_no_sku' => $parseSkipped['no_sku'],
+                'skipped_duplicate_in_feed' => $parseSkipped['duplicate_in_feed'],
+            ]);
         }
 
         return $data;
@@ -363,8 +494,7 @@ class FetchEbayReports extends Command
 
                 $skus = $map[$id] ?? [];
                 foreach ($skus as $sku) {
-                    EbayMetric::where('item_id', $id)
-                        ->where('sku', $sku)
+                    EbayMetric::where('sku', $sku)
                         ->update(['views' => $v]);
                 }
             }
@@ -392,8 +522,7 @@ class FetchEbayReports extends Command
 
             // Update for all matched SKUs in $map
             foreach ($map[$itemId] ?? [] as $sku) {
-                EbayMetric::where('item_id', $itemId)
-                    ->where('sku', $sku)
+                EbayMetric::where('sku', $sku)
                     ->update([
                         'organic_clicks' => $organicClicks
                     ]);

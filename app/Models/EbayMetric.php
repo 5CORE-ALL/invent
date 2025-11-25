@@ -12,13 +12,15 @@ class EbayMetric extends Model
     protected $table = 'ebay_metrics';
 
     protected $fillable = [
-        'id',
         'item_id',
         'sku',
         'ebay_price',
         'ebay_l30',
         'ebay_l60',
-        'ebay_views',
+        'views',
+        'organic_clicks',
+        'price_lmpa',
+        'report_date',
     ];
 
 }
