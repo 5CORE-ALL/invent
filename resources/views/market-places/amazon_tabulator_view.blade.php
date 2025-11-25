@@ -813,14 +813,23 @@
 
                 data.forEach(row => {
                     if (!row['is_parent_summary']) {
-                        const profit = parseFloat(row['Total_pft']) || 0;
-                        const salesL30 = parseFloat(row['T_Sale_l30']) || 0;
-                        // Only add if both values are > 0 (matching eBay logic)
+                        const price = parseFloat(row['price']) || 0;
+                        const aL30 = parseFloat(row['A_L30']) || 0;
+                        const lp = parseFloat(row['LP_productmaster']) || 0;
+                        const ship = parseFloat(row['Ship_productmaster']) || 0;
+                        const adPercent = parseFloat(row['AD%']) || 0;
+                        const adDecimal = adPercent / 100;
+                        
+                        // Total PFT = L30 * ((price * (0.80 - adDecimal)) - ship - lp)
+                        const profit = aL30 * ((price * (0.80 - adDecimal)) - ship - lp);
+                        const salesL30 = price * aL30;
+                        
+                        // Only add if both values are > 0
                         if (profit > 0 && salesL30 > 0) {
                             totalProfit += profit;
                             totalSales += salesL30;
+                            sumLp += lp * aL30;  // Sum LP multiplied by units for matching rows
                         }
-                        sumLp += parseFloat(row['LP_productmaster']) || 0;
                     }
                 });
 
