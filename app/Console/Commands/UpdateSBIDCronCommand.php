@@ -22,49 +22,6 @@ class UpdateSBIDCronCommand extends Command
         $this->sbidService = $sbidService;
     }
 
-    // public function handle()
-    // {
-    //     $this->info('Starting SBID update cron for Google campaigns (L1)...');
-
-    //     $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
-
-    //     // Fetch all L1 Google campaigns (you can filter by specific ID if needed)
-    //     $googleCampaigns = DB::connection('apicentral')
-    //         ->table('google_ads_campaigns')
-    //         ->select('campaign_id', 'campaign_name', 'metrics_cost_micros', 'metrics_clicks', 'sbid_status')
-    //         ->where('range_type', 'L1')
-    //         ->where('id', 1) 
-    //         ->get();
-
-    //     $processedCount = 0;
-
-    //     foreach ($googleCampaigns as $campaign) {
-    //         if (!empty($campaign->sbid_status) && $campaign->sbid_status == 1) {
-    //             continue;
-    //         }
-
-    //         $spend_L1 = ($campaign->metrics_cost_micros ?? 0) / 1_000_000;
-    //         $clicks_L1 = $campaign->metrics_clicks ?? 0;
-    //         $cpc_L1 = $clicks_L1 > 0 ? $spend_L1 / $clicks_L1 : 0;
-    //         $sbid = round($cpc_L1 * 0.95, 2);
-
-    //         // Update AdGroups and Product Groups SBIDs in Google Ads
-    //         $this->sbidService->updateCampaignSbids($customerId, $campaign->campaign_id,$sbid);
-    //         DB::connection('apicentral')
-    //             ->table('google_ads_campaigns')
-    //             ->where('campaign_id', $campaign->campaign_id)
-    //             ->update([
-    //                 'sbid_status' => 1
-    //             ]);
-
-    //         $processedCount++;
-    //     }
-
-    //     $this->info("SBID update completed. Processed {$processedCount} campaigns.");
-    //     Log::info('SBID Cron L1 Run', ['processed_campaigns' => $processedCount]);
-
-    //     return 0;
-    // }
     public function handle()
     {
         $this->info('Starting SBID update cron for Google campaigns (L1/L7 with SKU matching)...');
@@ -123,24 +80,12 @@ class UpdateSBIDCronCommand extends Command
                 $row["spend_$range"] = isset($campaignRange->metrics_cost_micros)
                     ? $campaignRange->metrics_cost_micros / 1000000
                     : 0;
-                    Log::info('Spend Calculation:', [
-    'campaign_id' => $campaignId ?? null,
-    'range' => $range,
-    'metrics_cost_micros' => $campaignRange->metrics_cost_micros ?? null,
-    'calculated_spend' => $row["spend_$range"],
-]);
 
                 $row["clicks_$range"] = $campaignRange->metrics_clicks ?? 0;
                 $row["cpc_$range"] = $row["clicks_$range"] ? $row["spend_$range"] / $row["clicks_$range"] : 0;
             }
     
             $ub7 = $row['campaignBudgetAmount'] > 0 ? ($row["spend_L7"] / ($row['campaignBudgetAmount'] * 7)) * 100 : 0;
-                    Log::info('UB7 Calculation:', [
-    'campaign_id' => $row['campaign_id'] ?? null,
-    'spend_L7' => $row['spend_L7'] ?? null,
-    'campaignBudgetAmount' => $row['campaignBudgetAmount'] ?? null,
-    'ub7' => $ub7,
-]);
                 
 
             $sbid = 0;
@@ -148,10 +93,8 @@ class UpdateSBIDCronCommand extends Command
             $cpc_L7 = isset($row["cpc_L7"]) ? floatval($row["cpc_L7"]) : 0;
 
             if ($ub7 > 90) {
-                // $sbid = round($row["cpc_L1"] * 0.95, 2);
-                 $maxCpc = max($cpc_L1, $cpc_L7); 
-                 $sbid = round($maxCpc * 0.95, 2);
-                 dd($sbid);
+                $maxCpc = max($cpc_L1, $cpc_L7); 
+                $sbid = round($maxCpc * 0.95, 2);
             } elseif ($ub7 < 70) {
                 $maxCpc = max($row["cpc_L1"], $row["cpc_L7"]);
                 $sbid = round($maxCpc * 1.05, 2);

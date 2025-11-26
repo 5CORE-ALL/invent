@@ -126,7 +126,11 @@ class AutoUpdateAmzUnderKwBids extends Command
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
             
-            $row['sbid'] = floor(($l7_cpc + 0.02) * 100) / 100;
+            if ($l7_cpc === 0.0) {
+                $row['sbid'] = 0.75;
+            } else {
+                $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
+            }
 
             $budget = floatval($row['campaignBudgetAmount']);
             $l7_spend = floatval($row['l7_spend']);

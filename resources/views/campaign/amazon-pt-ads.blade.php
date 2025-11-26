@@ -1,6 +1,3 @@
-
-
-
 @extends('layouts.vertical', ['title' => 'Amazon PT ADS', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -155,7 +152,7 @@
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Clicks</div>
-                                <div class="h3 mb-0 fw-bold text-primary card-clicks">{{ $clicks->sum() }}</div>
+                                <div class="h3 mb-0 fw-bold text-primary card-clicks" id="total-clicks">{{ array_sum($clicks) }}</div>
                             </div>
                         </div>
 
@@ -163,8 +160,8 @@
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Spend</div>
-                                <div class="h3 mb-0 fw-bold text-success card-spend">
-                                    US${{ number_format($spend->sum(), 2) }}
+                                <div class="h3 mb-0 fw-bold text-success card-spend" id="total-spend-chart">
+                                    US${{ number_format(array_sum($spend), 2) }}
                                 </div>
                             </div>
                         </div>
@@ -173,7 +170,7 @@
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Orders</div>
-                                <div class="h3 mb-0 fw-bold text-danger card-orders">{{ $orders->sum() }}</div>
+                                <div class="h3 mb-0 fw-bold text-danger card-orders" id="total-orders">{{ array_sum($orders) }}</div>
                             </div>
                         </div>
 
@@ -183,8 +180,8 @@
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
                                         <div class="text-muted small">Sales</div>
-                                        <div class="h3 mb-0 fw-bold text-info card-sales">
-                                            US${{ number_format($sales->sum(), 2) }}
+                                        <div class="h3 mb-0 fw-bold text-info card-sales" id="total-sales-chart">
+                                            US${{ number_format(array_sum($sales), 2) }}
                                         </div>
                                     </div>
                                     <!-- Arrow button -->
@@ -1549,10 +1546,10 @@
                     chart.data.datasets[3].data = response.sales;
                     chart.update();
 
-                    $('.card-clicks').text(response.totals.clicks);
-                    $('.card-spend').text('$' + Number(response.totals.spend).toFixed(2));
-                    $('.card-orders').text(response.totals.orders);
-                    $('.card-sales').text('$' + Number(response.totals.sales).toFixed(2));
+                    $('#total-clicks').text(response.totals.clicks);
+                    $('#total-spend-chart').text('US$' + Number(response.totals.spend).toFixed(2));
+                    $('#total-orders').text(response.totals.orders);
+                    $('#total-sales-chart').text('US$' + Number(response.totals.sales).toFixed(2));
                 }
             });
         }

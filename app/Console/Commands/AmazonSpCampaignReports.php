@@ -18,6 +18,15 @@ class AmazonSpCampaignReports extends Command
         $adType = 'SPONSORED_PRODUCTS';
         $reportTypeId = 'spCampaigns';
 
+        $today = now();
+
+        // Fetch last 30 days of DAILY data for charts
+        for ($i = 1; $i <= 30; $i++) {
+            $date = $today->copy()->subDays($i)->toDateString();
+            $this->fetchReport($profileId, $adType, $reportTypeId, $date, $date, $date);
+        }
+
+        // Also fetch summary ranges for backward compatibility with table data
         $dateRanges = $this->getDateRanges();
 
         foreach ($dateRanges as $rangeLabel => [$startDate, $endDate]) {
@@ -34,15 +43,7 @@ class AmazonSpCampaignReports extends Command
         $endL30 = $today->copy()->subDay();
         $startL30 = $endL30->copy()->subDays(29);
 
-        $endL60 = $startL30->copy()->subDay();
-        $startL60 = $endL60->copy()->subDays(29);
-
-        $endL90 = $startL60->copy()->subDay();
-        $startL90 = $endL90->copy()->subDays(29);
-
         return [
-            'L90' => [$startL90->toDateString(), $endL90->toDateString()],
-            'L60' => [$startL60->toDateString(), $endL60->toDateString()],
             'L30' => [$startL30->toDateString(), $endL30->toDateString()],
             'L15' => [$today->copy()->subDays(15)->toDateString(), $today->copy()->subDay()->toDateString()],
             'L7'  => [$today->copy()->subDays(7)->toDateString(), $today->copy()->subDay()->toDateString()],
@@ -73,7 +74,7 @@ class AmazonSpCampaignReports extends Command
                     'reportTypeId' => $reportTypeId,
                     'columns' => $this->getAllowedMetrics(),
                     'format' => 'GZIP_JSON',
-                    'timeUnit' => 'SUMMARY',
+                    'timeUnit' => ($startDate === $endDate) ? 'DAILY' : 'SUMMARY',
                 ]
             ]);
 

@@ -8,13 +8,169 @@ use App\Models\EbayMetric;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class EbayKwAdsController extends Controller
 {
     public function index(){
-        return view('campaign.ebay-kw-ads');
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+        $today = \Carbon\Carbon::now();
+
+        // Get aggregated data by date from ebay_priority_reports
+        $data = DB::table('ebay_priority_reports')
+            ->selectRaw('
+                DATE(updated_at) as report_date,
+                SUM(cpc_clicks) as clicks,
+                SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as spend,
+                SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")) as ad_sales,
+                SUM(cpc_attributed_sales) as ad_sold
+            ')
+            ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->groupBy(DB::raw('DATE(updated_at)'))
+            ->orderBy('report_date', 'asc')
+            ->get()
+            ->keyBy('report_date');
+
+        // Create array for all 30 days with data or zeros
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $adSales = [];
+        $adSold = [];
+        $acos = [];
+        $cvr = [];
+
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+            $dates[] = $date;
+
+            if (isset($data[$date])) {
+                $row = $data[$date];
+                $clicksVal = (int) $row->clicks;
+                $spendVal = (float) $row->spend;
+                $salesVal = (float) $row->ad_sales;
+                $soldVal = (int) $row->ad_sold;
+
+                $clicks[] = $clicksVal;
+                $spend[] = $spendVal;
+                $adSales[] = $salesVal;
+                $adSold[] = $soldVal;
+
+                // ACOS = (Spend / Sales) * 100
+                $acosVal = $salesVal > 0 ? ($spendVal / $salesVal) * 100 : 0;
+                $acos[] = round($acosVal, 2);
+
+                // CVR = (Ad Sold / Clicks) * 100
+                $cvrVal = $clicksVal > 0 ? ($soldVal / $clicksVal) * 100 : 0;
+                $cvr[] = round($cvrVal, 2);
+            } else {
+                // No data for this date, fill with zeros
+                $clicks[] = 0;
+                $spend[] = 0;
+                $adSales[] = 0;
+                $adSold[] = 0;
+                $acos[] = 0;
+                $cvr[] = 0;
+            }
+        }
+
+        return view('campaign.ebay-kw-ads', compact('dates', 'clicks', 'spend', 'adSales', 'adSold', 'acos', 'cvr'));
+    }
+
+    public function filterEbayKwAds(Request $request)
+    {
+        $start = \Carbon\Carbon::parse($request->startDate);
+        $end   = \Carbon\Carbon::parse($request->endDate);
+
+        $data = DB::table('ebay_priority_reports')
+            ->selectRaw('
+                DATE(updated_at) as report_date,
+                SUM(cpc_clicks) as clicks,
+                SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as spend,
+                SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")) as ad_sales,
+                SUM(cpc_attributed_sales) as ad_sold
+            ')
+            ->where('report_range', 'L30')
+            ->whereBetween(DB::raw('DATE(updated_at)'), [$start->format('Y-m-d'), $end->format('Y-m-d')])
+            ->groupBy(DB::raw('DATE(updated_at)'))
+            ->orderBy('report_date', 'asc')
+            ->get()
+            ->keyBy('report_date');
+
+        // Create array for all days in range with data or zeros
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $adSales = [];
+        $adSold = [];
+        $acos = [];
+        $cvr = [];
+        
+        $totalClicks = 0;
+        $totalSpend = 0;
+        $totalAdSales = 0;
+        $totalAdSold = 0;
+
+        $currentDate = $start->copy();
+        while ($currentDate->lte($end)) {
+            $dateStr = $currentDate->format('Y-m-d');
+            $dates[] = $dateStr;
+
+            if (isset($data[$dateStr])) {
+                $row = $data[$dateStr];
+                $clicksVal = (int) $row->clicks;
+                $spendVal = (float) $row->spend;
+                $salesVal = (float) $row->ad_sales;
+                $soldVal = (int) $row->ad_sold;
+
+                $clicks[] = $clicksVal;
+                $spend[] = $spendVal;
+                $adSales[] = $salesVal;
+                $adSold[] = $soldVal;
+
+                $totalClicks += $clicksVal;
+                $totalSpend += $spendVal;
+                $totalAdSales += $salesVal;
+                $totalAdSold += $soldVal;
+
+                // ACOS = (Spend / Sales) * 100
+                $acosVal = $salesVal > 0 ? ($spendVal / $salesVal) * 100 : 0;
+                $acos[] = round($acosVal, 2);
+
+                // CVR = (Ad Sold / Clicks) * 100
+                $cvrVal = $clicksVal > 0 ? ($soldVal / $clicksVal) * 100 : 0;
+                $cvr[] = round($cvrVal, 2);
+            } else {
+                // No data for this date, fill with zeros
+                $clicks[] = 0;
+                $spend[] = 0;
+                $adSales[] = 0;
+                $adSold[] = 0;
+                $acos[] = 0;
+                $cvr[] = 0;
+            }
+
+            $currentDate->addDay();
+        }
+
+        return response()->json([
+            'dates'  => $dates,
+            'clicks' => $clicks,
+            'spend'  => $spend,
+            'ad_sales'  => $adSales,
+            'ad_sold' => $adSold,
+            'acos' => $acos,
+            'cvr' => $cvr,
+            'totals' => [
+                'clicks' => $totalClicks,
+                'spend'  => $totalSpend,
+                'ad_sales'  => $totalAdSales,
+                'ad_sold' => $totalAdSold,
+            ]
+        ]);
     }
 
     public function getEbayKwAdsData(){
