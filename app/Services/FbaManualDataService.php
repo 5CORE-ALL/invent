@@ -52,7 +52,7 @@ class FbaManualDataService
             $columns = [
                 'Parent', 'Child SKU', 'FBA SKU', 'FBA INV', 'L60 Units', 'L30 Units', 'FBA Dil',
                 'FBA Price', 'Pft%', 'ROI%', 'TPFT', 'S Price', 'SPft%', 'SROI%', 'LP', 'FBA Ship',
-                'CVR', 'Views', 'Listed', 'Live', 'FBA Fee', 'FBA Fee Manual', 'Commission Percentage', 'ASIN', 'Barcode',
+                'CVR', 'Views', 'Listed', 'Live', 'FBA Fee', 'FBA Fee Manual', 'Commission Percentage', 'Ratings', 'ASIN', 'Barcode',
                 'Done', 'Dispatch Date', 'Weight', 'Qty Box', 'Sent Qty', 'Send Cost',
                 'WH INV Red', 'Ship Amt', 'Inbound Qty', 'FBA Send', 'Dimensions',
                 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
@@ -112,6 +112,7 @@ class FbaManualDataService
                         $fbaReportsInfo ? round($fbaReportsInfo->fulfillment_fee ?? 0, 2) : 0,
                         $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
                         $manual ? ($manual->data['commission_percentage'] ?? 0) : 0,
+                        $manual ? ($manual->data['ratings'] ?? 0) : 0,
                         $fba->asin ?? '',
                         $manual ? ($manual->data['barcode'] ?? '') : '',
                         $manual && isset($manual->data['done']) && $manual->data['done'] ? 'Yes' : 'No',
@@ -228,6 +229,16 @@ class FbaManualDataService
                     }
                 }
                 
+                // ✅ Validate ratings if provided in CSV (column 10)
+                if (isset($row[10]) && !empty($row[10])) {
+                    $ratings = floatval($this->cleanText($row[10]));
+                    if ($ratings >= 0 && $ratings <= 5) {
+                        $updateData['ratings'] = $ratings;
+                    } else {
+                        Log::warning("Invalid ratings rejected for SKU: {$sku}", ['ratings' => $row[10]]);
+                    }
+                }
+                
                 $manual->data = array_merge($existingData, $updateData);
                 
                 $manual->save();
@@ -262,8 +273,8 @@ class FbaManualDataService
 
         $callback = function () {
             $file = fopen('php://output', 'w');
-            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'Commission Percentage', 'S Price']);
-            fputcsv($file, ['SAMPLE-SKU-001', '10x8x6', '2.5', '10', '100', '500', '20', '50', '10', '29.99']);
+            fputcsv($file, ['SKU', 'Dimensions', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'Commission Percentage', 'S Price', 'Ratings']);
+            fputcsv($file, ['SAMPLE-SKU-001', '10x8x6', '2.5', '10', '100', '500', '20', '50', '10', '29.99', '4.5']);
             fclose($file);
         };
 

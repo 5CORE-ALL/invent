@@ -653,8 +653,15 @@
                             formatter: function(cell) {
                                 const fbaSku = cell.getValue();
                                 const sku = cell.getRow().getData().SKU;
+                                const ratings = cell.getRow().getData().Ratings;
                                 if (!fbaSku || cell.getRow().getData().is_parent) return fbaSku;
-                                return `${fbaSku} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                                
+                                let ratingDisplay = '';
+                                if (ratings && ratings > 0) {
+                                    ratingDisplay = ` <i class="fa fa-star" style="color: orange;"></i> ${ratings}`;
+                                }
+                                
+                                return `${fbaSku}${ratingDisplay} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
                             }
                         },
                        
@@ -1138,6 +1145,13 @@
                             hozAlign: "center",
                             editor: "input"
                         },
+                        {
+                            title: "Ratings",
+                            field: "Ratings",
+                            hozAlign: "center",
+                            editor: "input",
+                            tooltip: "Enter rating between 0 and 5"
+                        },
 
                         // {
                         //     title: "Warehouse INV Reduction",
@@ -1274,11 +1288,22 @@
                     var field = cell.getColumn().getField();
                     var value = cell.getValue();
 
+                    // Validate ratings field (must be between 0 and 5)
+                    if (field === 'Ratings') {
+                        var numValue = parseFloat(value);
+                        if (isNaN(numValue) || numValue < 0 || numValue > 5) {
+                            alert('Ratings must be a number between 0 and 5');
+                            cell.setValue(data.Ratings || 0); // Revert to original value
+                            return; // Don't proceed with AJAX call
+                        }
+                        value = numValue; // Ensure it's a number
+                    }
+
                     if (field === 'Barcode' || field === 'Done' || field === 'Listed' || field === 'Live' ||
                         field === 'Dispatch_Date' || field === 'Weight' || field ===
                         'Quantity_in_each_box' ||
                         field === 'Total_quantity_sent' || field === 'Send_Cost' ||
-                        field === 'Commission_Percentage' || field === 'TCOS_Percentage' ||
+                        field === 'Commission_Percentage' || field === 'Ratings' || field === 'TCOS_Percentage' ||
                         field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
                         'FBA_Fee_Manual') {
