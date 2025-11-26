@@ -69,11 +69,60 @@
                         data-bs-target="#importModal">
                         <i class="fa fa-upload"></i>
                     </button>
+                    
+                    <button id="toggle-metrics-btn" class="btn btn-sm btn-info me-2">
+                        <i class="fa fa-chart-line"></i> Show Metrics
+                    </button>
+                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary me-2" style="display: none;">
+                        <i class="fa fa-eye-slash"></i> Hide Chart
+                    </button>
+                </div>
+
+                <!-- Metrics Summary Section -->
+                <div id="metrics-summary" class="mt-2 p-2 rounded border" style="display: none; background-color: #edfdff;">
+                    <div class="row text-center">
+                        <div class="col">
+                            <small class="text-muted">Avg Price</small>
+                            <div class="fw-bold" id="metric-avg-price">$0</div>
+                        </div>
+                        <div class="col">
+                            <small class="text-muted">Total Views</small>
+                            <div class="fw-bold" id="metric-total-views">0</div>
+                        </div>
+                        <div class="col">
+                            <small class="text-muted">Avg GPFT%</small>
+                            <div class="fw-bold text-success" id="metric-avg-gprft">0%</div>
+                        </div>
+                        <div class="col">
+                            <small class="text-muted">Avg GROI%</small>
+                            <div class="fw-bold text-primary" id="metric-avg-groi">0%</div>
+                        </div>
+                        <div class="col">
+                            <small class="text-muted">Avg TACOS%</small>
+                            <div class="fw-bold text-danger" id="metric-avg-tacos">0%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metrics Chart Section -->
+                <div id="metrics-chart-section" class="mt-2 p-2 bg-white rounded border" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Metrics Trend</h6>
+                        <select id="chart-days-filter" class="form-select form-select-sm" style="width: auto;">
+                            <option value="7">Last 7 Days</option>
+                            <option value="14">Last 14 Days</option>
+                            <option value="30" selected>Last 30 Days</option>
+                            <option value="60">Last 60 Days</option>
+                        </select>
+                    </div>
+                    <div style="height: 200px;">
+                        <canvas id="metricsChart"></canvas>
+                    </div>
                 </div>
 
                 <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-3 p-3 bg-light rounded">
-                    <h5>Summary</h5>
+                <div id="summary-stats" class="mt-2 p-2 bg-light rounded">
+                    <h6 class="mb-2">Summary</h6>
                     <div class="row">
                         <div class="col-md-6">
                             <strong>Total TCOS:</strong> <span id="total-tcos">0%</span>
@@ -85,7 +134,7 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <div id="fba-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
+                <div id="fba-table-wrapper" style="height: 600px; display: flex; flex-direction: column;">
 
                     <!--Table body (scrollable section) -->
                     <div id="fba-table" style="flex: 1;"></div>
@@ -127,6 +176,33 @@
             </div>
         </div>
     </div>
+
+    <!-- SKU Metrics Chart Modal -->
+    <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Metrics Chart for <span id="modalSkuName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Time Range:</label>
+                        <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                            <option value="7">Last 7 Days</option>
+                            <option value="14">Last 14 Days</option>
+                            <option value="30" selected>Last 30 Days</option>
+                            <option value="60">Last 60 Days</option>
+                        </select>
+                    </div>
+                    <div style="height: 350px;">
+                        <canvas id="skuMetricsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Import Modal -->
     <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
@@ -175,8 +251,363 @@
     @section('script-bottom')
         <script>
             const COLUMN_VIS_KEY = "fba_tabulator_column_visibility";
+            let metricsChart = null;
+
+            // Initialize Metrics Chart
+            function initMetricsChart() {
+                const ctx = document.getElementById('metricsChart').getContext('2d');
+                metricsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                label: 'Avg Price ($)',
+                                data: [],
+                                borderColor: 'rgb(75, 192, 192)',
+                                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Total Views',
+                                data: [],
+                                borderColor: 'rgb(54, 162, 235)',
+                                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y1',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Avg GPFT%',
+                                data: [],
+                                borderColor: 'rgb(255, 206, 86)',
+                                backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Avg GROI%',
+                                data: [],
+                                borderColor: 'rgb(153, 102, 255)',
+                                backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Avg TACOS%',
+                                data: [],
+                                borderColor: 'rgb(255, 99, 132)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 10
+                                }
+                            },
+                            title: {
+                                display: false
+                            },
+                            tooltip: {
+                                enabled: true,
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Price / Percentages'
+                                },
+                                beginAtZero: false
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Views'
+                                },
+                                beginAtZero: true,
+                                grid: {
+                                    drawOnChartArea: false,
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Load Metrics Data
+            function loadMetricsData(days = 30) {
+                fetch(`/fba-metrics-history?days=${days}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.length > 0) {
+                            // Update chart
+                            if (metricsChart) {
+                                metricsChart.data.labels = data.map(d => d.date);
+                                metricsChart.data.datasets[0].data = data.map(d => d.avg_price);
+                                metricsChart.data.datasets[1].data = data.map(d => d.total_views);
+                                metricsChart.data.datasets[2].data = data.map(d => d.avg_gprft);
+                                metricsChart.data.datasets[3].data = data.map(d => d.avg_groi_percent);
+                                metricsChart.data.datasets[4].data = data.map(d => d.avg_tacos);
+                                metricsChart.update();
+                            }
+                            
+                            // Update metrics summary with latest data
+                            const latest = data[data.length - 1];
+                            $('#metric-avg-price').text('$' + latest.avg_price);
+                            $('#metric-total-views').text(latest.total_views.toLocaleString());
+                            $('#metric-avg-gprft').text(latest.avg_gprft + '%');
+                            $('#metric-avg-groi').text(latest.avg_groi_percent + '%');
+                            $('#metric-avg-tacos').text(latest.avg_tacos + '%');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading metrics data:', error);
+                    });
+            }
+
+            // SKU-specific chart
+            let skuMetricsChart = null;
+            let currentSku = null;
+
+            function initSkuMetricsChart() {
+                const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+                skuMetricsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                label: 'Price ($)',
+                                data: [],
+                                borderColor: 'rgb(75, 192, 192)',
+                                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                                borderWidth: 3,
+                                pointRadius: 5,
+                                pointHoverRadius: 7,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Views',
+                                data: [],
+                                borderColor: 'rgb(54, 162, 235)',
+                                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                                borderWidth: 3,
+                                pointRadius: 5,
+                                pointHoverRadius: 7,
+                                yAxisID: 'y1',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'GPFT%',
+                                data: [],
+                                borderColor: 'rgb(255, 206, 86)',
+                                backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                                borderWidth: 3,
+                                pointRadius: 5,
+                                pointHoverRadius: 7,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'GROI%',
+                                data: [],
+                                borderColor: 'rgb(153, 102, 255)',
+                                backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                                borderWidth: 3,
+                                pointRadius: 5,
+                                pointHoverRadius: 7,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'TACOS%',
+                                data: [],
+                                borderColor: 'rgb(255, 99, 132)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                                borderWidth: 3,
+                                pointRadius: 5,
+                                pointHoverRadius: 7,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 15
+                                }
+                            },
+                            title: {
+                                display: false
+                            },
+                            tooltip: {
+                                enabled: true,
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Price / Percentages'
+                                },
+                                beginAtZero: false
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Views'
+                                },
+                                beginAtZero: true,
+                                grid: {
+                                    drawOnChartArea: false,
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function loadSkuMetricsData(sku, days = 30) {
+                fetch(`/fba-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (skuMetricsChart) {
+                            skuMetricsChart.data.labels = data.map(d => d.date);
+                            skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
+                            skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
+                            skuMetricsChart.data.datasets[2].data = data.map(d => d.gprft || 0);
+                            skuMetricsChart.data.datasets[3].data = data.map(d => d.groi_percent || 0);
+                            skuMetricsChart.data.datasets[4].data = data.map(d => d.tacos || 0);
+                            skuMetricsChart.update();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading SKU metrics data:', error);
+                    });
+            }
 
             $(document).ready(function() {
+                // Initialize charts
+                initMetricsChart();
+                loadMetricsData(30);
+                initSkuMetricsChart();
+
+                // Toggle metrics summary button
+                $('#toggle-metrics-btn').on('click', function() {
+                    const $summary = $('#metrics-summary');
+                    const $btn = $(this);
+                    
+                    if ($summary.is(':visible')) {
+                        $summary.slideUp();
+                        $btn.html('<i class="fa fa-chart-line"></i> Show Metrics');
+                    } else {
+                        $summary.slideDown();
+                        $btn.html('<i class="fa fa-chart-line"></i> Hide Metrics');
+                        loadMetricsData($('#chart-days-filter').val());
+                    }
+                });
+
+                // Toggle chart button
+                $('#toggle-chart-btn').on('click', function() {
+                    const $chartSection = $('#metrics-chart-section');
+                    const $btn = $(this);
+                    
+                    if ($chartSection.is(':visible')) {
+                        $chartSection.slideUp();
+                        $btn.html('<i class="fa fa-eye"></i> Show Chart');
+                    } else {
+                        $chartSection.slideDown();
+                        $btn.html('<i class="fa fa-eye-slash"></i> Hide Chart');
+                    }
+                });
+
+                // Show metrics summary and chart button by default on first load
+                $('#metrics-summary').show();
+                $('#toggle-metrics-btn').html('<i class="fa fa-chart-line"></i> Hide Metrics');
+                $('#toggle-chart-btn').show();
+
+                // Chart days filter
+                $('#chart-days-filter').on('change', function() {
+                    const days = $(this).val();
+                    loadMetricsData(days);
+                });
+
+                // SKU chart days filter
+                $('#sku-chart-days-filter').on('change', function() {
+                    const days = $(this).val();
+                    if (currentSku) {
+                        loadSkuMetricsData(currentSku, days);
+                    }
+                });
+
+                // Event delegation for eye button clicks
+                $(document).on('click', '.view-sku-chart', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const sku = $(this).data('sku');
+                    currentSku = sku;
+                    $('#modalSkuName').text(sku);
+                    $('#sku-chart-days-filter').val('30');
+                    loadSkuMetricsData(sku, 30);
+                    $('#skuMetricsModal').modal('show');
+                });
+
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
                     ajaxSorting: true,
@@ -218,7 +649,13 @@
                             headerFilterPlaceholder: "Search SKU...",
                             cssClass: "font-weight-bold",
                             tooltip: true,
-                            frozen: true
+                            frozen: true,
+                            formatter: function(cell) {
+                                const fbaSku = cell.getValue();
+                                const sku = cell.getRow().getData().SKU;
+                                if (!fbaSku || cell.getRow().getData().is_parent) return fbaSku;
+                                return `${fbaSku} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                            }
                         },
 
                         // {

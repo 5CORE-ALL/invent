@@ -2397,6 +2397,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('update-fba-sku-manual-data', 'updateFbaSkuManualData');
         Route::get('fba-column-visibility', 'getFbaColumnVisibility');
         Route::post('fba-column-visibility', 'setFbaColumnVisibility');
+        Route::get('fba-metrics-history', 'getMetricsHistory');
 
     });
     Route::controller(FBAAnalysticsController::class)->group(function () {

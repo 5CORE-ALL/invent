@@ -116,6 +116,11 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:fetch-doba-metrics')
             ->dailyAt('00:00')
             ->timezone('UTC');
+        
+        // Collect FBA metrics for historical tracking
+        $schedule->command('fba:collect-metrics')
+            ->dailyAt('23:30')
+            ->timezone('UTC');
 
         // Sync Main sheet update command
         $schedule->command('app:sync-sheet')
