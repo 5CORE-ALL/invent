@@ -42,8 +42,9 @@ class AmazonCampaignReportsController extends Controller
 
     public function amazonKwAdsView() {
         $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
+        $today = \Carbon\Carbon::now()->format('Y-m-d');
 
-        $data = DB::connection('apicentral')->table('amazon_sp_campaign_reports')
+        $data = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
                 report_date_range,
                 SUM(clicks) as clicks, 
@@ -58,13 +59,32 @@ class AmazonCampaignReportsController extends Controller
             })
             ->groupBy('report_date_range')
             ->orderBy('report_date_range', 'asc')
-            ->get();
+            ->get()
+            ->keyBy('report_date_range');
 
-        $dates  = $data->pluck('report_date_range')->map(fn($d) => \Carbon\Carbon::parse($d)->format('Y-m-d'));
-        $clicks = $data->pluck('clicks')->map(fn($v) => (int) $v);
-        $spend  = $data->pluck('spend')->map(fn($v) => (float) $v);
-        $orders = $data->pluck('orders')->map(fn($v) => (int) $v);
-        $sales  = $data->pluck('sales')->map(fn($v) => (float) $v);
+        // Fill in missing dates with zeros
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $orders = [];
+        $sales = [];
+
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+            $dates[] = $date;
+            
+            if (isset($data[$date])) {
+                $clicks[] = (int) $data[$date]->clicks;
+                $spend[] = (float) $data[$date]->spend;
+                $orders[] = (int) $data[$date]->orders;
+                $sales[] = (float) $data[$date]->sales;
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $orders[] = 0;
+                $sales[] = 0;
+            }
+        }
         
         return view('campaign.amazon-kw-ads', compact('dates', 'clicks', 'spend', 'orders', 'sales'));
     }
@@ -75,7 +95,7 @@ class AmazonCampaignReportsController extends Controller
         $start = $request->startDate;
         $end   = $request->endDate;  
 
-        $data = DB::connection('apicentral')->table('amazon_sp_campaign_reports')
+        $data = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
                 report_date_range,
                 SUM(clicks) as clicks,
@@ -112,7 +132,7 @@ class AmazonCampaignReportsController extends Controller
         $start = $request->startDate;
         $end   = $request->endDate;  
 
-        $data = DB::connection('apicentral')->table('amazon_sp_campaign_reports')
+        $data = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
                 report_date_range,
                 SUM(clicks) as clicks,
@@ -282,12 +302,13 @@ class AmazonCampaignReportsController extends Controller
                 'impressions_l15' => $matchedCampaignL15->impressions ?? 0,
                 'clicks_l15'      => $matchedCampaignL15->clicks ?? 0,
                 'spend_l15'       => $matchedCampaignL15->spend ?? 0,
-                'ad_sales_l15'    => $matchedCampaignL15->sales14d ?? 0,
                 'ad_sales_l15'    => ($matchedCampaignL15->sales1d ?? 0) + ($matchedCampaignL15->sales14d ?? 0),
                 'ad_sold_l15'     => ($matchedCampaignL15->unitsSoldClicks1d ?? 0) + ($matchedCampaignL15->unitsSoldClicks14d ?? 0),
                 'acos_l15'        => (($matchedCampaignL15->spend ?? 0) > 0 && (($matchedCampaignL15->sales1d ?? 0) + ($matchedCampaignL15->sales14d ?? 0)) > 0) 
                                     ? round(($matchedCampaignL15->spend / (($matchedCampaignL15->sales1d ?? 0) + ($matchedCampaignL15->sales14d ?? 0))) * 100, 2) 
                                     : 0,
+                'cpc_l15'         => $matchedCampaignL15->costPerClick ?? 0,
+
                 // L7
                 'impressions_l7'  => $matchedCampaignL7->impressions ?? 0,
                 'clicks_l7'       => $matchedCampaignL7->clicks ?? 0,
@@ -329,8 +350,9 @@ class AmazonCampaignReportsController extends Controller
 
     public function amazonPtAdsView(){
         $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
+        $today = \Carbon\Carbon::now()->format('Y-m-d');
 
-        $data = DB::connection('apicentral')->table('amazon_sp_campaign_reports')
+        $data = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
                 report_date_range,
                 SUM(clicks) as clicks, 
@@ -345,13 +367,32 @@ class AmazonCampaignReportsController extends Controller
             })
             ->groupBy('report_date_range')
             ->orderBy('report_date_range', 'asc')
-            ->get();
+            ->get()
+            ->keyBy('report_date_range');
 
-        $dates  = $data->pluck('report_date_range')->map(fn($d) => \Carbon\Carbon::parse($d)->format('Y-m-d'));
-        $clicks = $data->pluck('clicks')->map(fn($v) => (int) $v);
-        $spend  = $data->pluck('spend')->map(fn($v) => (float) $v);
-        $orders = $data->pluck('orders')->map(fn($v) => (int) $v);
-        $sales  = $data->pluck('sales')->map(fn($v) => (float) $v);
+        // Fill in missing dates with zeros
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $orders = [];
+        $sales = [];
+
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+            $dates[] = $date;
+            
+            if (isset($data[$date])) {
+                $clicks[] = (int) $data[$date]->clicks;
+                $spend[] = (float) $data[$date]->spend;
+                $orders[] = (int) $data[$date]->orders;
+                $sales[] = (float) $data[$date]->sales;
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $orders[] = 0;
+                $sales[] = 0;
+            }
+        }
         
         return view('campaign.amazon-pt-ads', compact('dates', 'clicks', 'spend', 'orders', 'sales'));
     }
@@ -553,7 +594,48 @@ class AmazonCampaignReportsController extends Controller
     }
 
     public function amazonHlAdsView(){
-        return view('campaign.amazon-hl-ads');
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
+        $today = \Carbon\Carbon::now()->format('Y-m-d');
+
+        $data = DB::table('amazon_sb_campaign_reports')
+            ->selectRaw('
+                report_date_range,
+                SUM(clicks) as clicks, 
+                SUM(cost) as spend, 
+                SUM(purchases) as orders, 
+                SUM(sales) as sales
+            ')
+            ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
+            ->groupBy('report_date_range')
+            ->orderBy('report_date_range', 'asc')
+            ->get()
+            ->keyBy('report_date_range');
+
+        // Fill in missing dates with zeros
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $orders = [];
+        $sales = [];
+
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+            $dates[] = $date;
+            
+            if (isset($data[$date])) {
+                $clicks[] = (int) $data[$date]->clicks;
+                $spend[] = (float) $data[$date]->spend;
+                $orders[] = (int) $data[$date]->orders;
+                $sales[] = (float) $data[$date]->sales;
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $orders[] = 0;
+                $sales[] = 0;
+            }
+        }
+        
+        return view('campaign.amazon-hl-ads', compact('dates', 'clicks', 'spend', 'orders', 'sales'));
     }
 
     public function getAmazonHlAdsData(){
@@ -750,6 +832,39 @@ class AmazonCampaignReportsController extends Controller
             'message' => 'Data fetched successfully',
             'data'    => $result,
             'status'  => 200,
+        ]);
+    }
+
+    public function filterHlAds(Request $request)
+    {
+        $start = $request->startDate;
+        $end   = $request->endDate;  
+
+        $data = DB::table('amazon_sb_campaign_reports')
+            ->selectRaw('
+                report_date_range,
+                SUM(clicks) as clicks,
+                SUM(cost) as spend,
+                SUM(purchases) as orders,
+                SUM(sales) as sales
+            ')
+            ->whereBetween('report_date_range', [$start, $end])
+            ->groupBy('report_date_range')
+            ->orderBy('report_date_range', 'asc')
+            ->get();
+
+        return response()->json([
+            'dates'  => $data->pluck('report_date_range'),
+            'clicks' => $data->pluck('clicks')->map(fn($v) => (int) $v),
+            'spend'  => $data->pluck('spend')->map(fn($v) => (float) $v),
+            'orders' => $data->pluck('orders')->map(fn($v) => (int) $v),
+            'sales'  => $data->pluck('sales')->map(fn($v) => (float) $v),
+            'totals' => [
+                'clicks' => $data->sum('clicks'),
+                'spend'  => $data->sum('spend'),
+                'orders' => $data->sum('orders'),
+                'sales'  => $data->sum('sales'),
+            ]
         ]);
     }
 

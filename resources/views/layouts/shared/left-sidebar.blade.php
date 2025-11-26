@@ -1923,7 +1923,7 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('ebay.keywords.ads.less-than-twenty') }}">Ebay Ads <
-                                                $20</a>
+                                                $30</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('ebay.missing.ads') }}">Ebay MISSING ADS</a>

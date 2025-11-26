@@ -232,7 +232,7 @@
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Clicks</div>
-                                <div class="h3 mb-0 fw-bold text-primary card-clicks">{{ $clicks->sum() }}</div>
+                                <div class="h3 mb-0 fw-bold text-primary card-clicks">{{ array_sum($clicks) }}</div>
                             </div>
                         </div>
 
@@ -241,7 +241,7 @@
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Spend</div>
                                 <div class="h3 mb-0 fw-bold text-success card-spend">
-                                    US${{ number_format($spend->sum(), 2) }}
+                                    US${{ number_format(array_sum($spend), 2) }}
                                 </div>
                             </div>
                         </div>
@@ -250,7 +250,7 @@
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Orders</div>
-                                <div class="h3 mb-0 fw-bold text-danger card-orders">{{ $orders->sum() }}</div>
+                                <div class="h3 mb-0 fw-bold text-danger card-orders">{{ array_sum($orders) }}</div>
                             </div>
                         </div>
 
@@ -261,7 +261,7 @@
                                     <div>
                                         <div class="text-muted small">Sales</div>
                                         <div class="h3 mb-0 fw-bold text-info card-sales">
-                                            US${{ number_format($sales->sum(), 2) }}
+                                            US${{ number_format(array_sum($sales), 2) }}
                                         </div>
                                     </div>
                                     <!-- Arrow button -->
@@ -1048,7 +1048,7 @@
                             }
                             return `
                                 <span style="color:${color}; font-weight:600;">
-                                    ${cvr_l30.toFixed(0)}%
+                                    ${isNaN(cvr_l30) ? 0 : cvr_l30.toFixed(0)}%
                                 </span>
                                 <i class="fa fa-info-circle text-primary cvr_l30_btn" 
                                     data-cvr-l30="${cvr_l30}" 
@@ -1076,7 +1076,7 @@
                             }
                             return `
                                 <span style="color:${color}; font-weight:600;">
-                                    ${cvr_l60.toFixed(0)}%
+                                    ${isNaN(cvr_l60) ? 0 : cvr_l60.toFixed(0)}%
                                 </span>
                             `;
 
@@ -1103,7 +1103,7 @@
                             }
                             return `
                                 <span style="color:${color}; font-weight:600;">
-                                    ${cvr_l15.toFixed(0)}%
+                                    ${isNaN(cvr_l15) ? 0 : cvr_l15.toFixed(0)}%
                                 </span>
                             `;
                         },
@@ -1129,7 +1129,7 @@
                             }
                             return `
                                 <span style="color:${color}; font-weight:600;">
-                                    ${cvr_l7.toFixed(0)}%
+                                    ${isNaN(cvr_l7) ? 0 : cvr_l7.toFixed(0)}%
                                 </span>
                             `;
                         },

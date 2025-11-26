@@ -18,12 +18,160 @@ use Illuminate\Support\Facades\Log;
 class EbayPMPAdsController extends Controller
 {
     public function index(){
-
         $marketplaceData = MarketplacePercentage::where("marketplace", "Ebay" )->first();
         $ebayPercentage = $marketplaceData ? $marketplaceData->percentage : 100;
         $ebayAdPercentage = $marketplaceData ? $marketplaceData->ad_updates : 100;
 
-        return view('campaign.ebay-pmp-ads', compact('ebayPercentage','ebayAdPercentage'));
+        // Get chart data for last 30 days
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+
+        $data = DB::table('ebay_general_reports')
+            ->selectRaw('
+                DATE(updated_at) as report_date,
+                SUM(clicks) as clicks,
+                SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as spend,
+                SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")) as ad_sales,
+                SUM(sales) as ad_sold
+            ')
+            ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->groupBy(DB::raw('DATE(updated_at)'))
+            ->orderBy('report_date', 'asc')
+            ->get()
+            ->keyBy('report_date');
+
+        // Create array for all 30 days with data or zeros
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $adSales = [];
+        $adSold = [];
+        $acos = [];
+        $cvr = [];
+
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+            $dates[] = $date;
+
+            if (isset($data[$date])) {
+                $row = $data[$date];
+                $clicksVal = (int) $row->clicks;
+                $spendVal = (float) $row->spend;
+                $salesVal = (float) $row->ad_sales;
+                $soldVal = (int) $row->ad_sold;
+
+                $clicks[] = $clicksVal;
+                $spend[] = $spendVal;
+                $adSales[] = $salesVal;
+                $adSold[] = $soldVal;
+
+                // ACOS = (Spend / Sales) * 100
+                $acosVal = $salesVal > 0 ? ($spendVal / $salesVal) * 100 : 0;
+                $acos[] = round($acosVal, 2);
+
+                // CVR = (Ad Sold / Clicks) * 100
+                $cvrVal = $clicksVal > 0 ? ($soldVal / $clicksVal) * 100 : 0;
+                $cvr[] = round($cvrVal, 2);
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $adSales[] = 0;
+                $adSold[] = 0;
+                $acos[] = 0;
+                $cvr[] = 0;
+            }
+        }
+
+        return view('campaign.ebay-pmp-ads', compact('ebayPercentage','ebayAdPercentage', 'dates', 'clicks', 'spend', 'adSales', 'adSold', 'acos', 'cvr'));
+    }
+
+    public function filterEbayPmpAds(Request $request)
+    {
+        $start = \Carbon\Carbon::parse($request->startDate);
+        $end   = \Carbon\Carbon::parse($request->endDate);
+
+        $data = DB::table('ebay_general_reports')
+            ->selectRaw('
+                DATE(updated_at) as report_date,
+                SUM(clicks) as clicks,
+                SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as spend,
+                SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")) as ad_sales,
+                SUM(sales) as ad_sold
+            ')
+            ->where('report_range', 'L30')
+            ->whereBetween(DB::raw('DATE(updated_at)'), [$start->format('Y-m-d'), $end->format('Y-m-d')])
+            ->groupBy(DB::raw('DATE(updated_at)'))
+            ->orderBy('report_date', 'asc')
+            ->get()
+            ->keyBy('report_date');
+
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $adSales = [];
+        $adSold = [];
+        $acos = [];
+        $cvr = [];
+        
+        $totalClicks = 0;
+        $totalSpend = 0;
+        $totalAdSales = 0;
+        $totalAdSold = 0;
+
+        $currentDate = $start->copy();
+        while ($currentDate->lte($end)) {
+            $dateStr = $currentDate->format('Y-m-d');
+            $dates[] = $dateStr;
+
+            if (isset($data[$dateStr])) {
+                $row = $data[$dateStr];
+                $clicksVal = (int) $row->clicks;
+                $spendVal = (float) $row->spend;
+                $salesVal = (float) $row->ad_sales;
+                $soldVal = (int) $row->ad_sold;
+
+                $clicks[] = $clicksVal;
+                $spend[] = $spendVal;
+                $adSales[] = $salesVal;
+                $adSold[] = $soldVal;
+
+                $totalClicks += $clicksVal;
+                $totalSpend += $spendVal;
+                $totalAdSales += $salesVal;
+                $totalAdSold += $soldVal;
+
+                $acosVal = $salesVal > 0 ? ($spendVal / $salesVal) * 100 : 0;
+                $acos[] = round($acosVal, 2);
+
+                $cvrVal = $clicksVal > 0 ? ($soldVal / $clicksVal) * 100 : 0;
+                $cvr[] = round($cvrVal, 2);
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $adSales[] = 0;
+                $adSold[] = 0;
+                $acos[] = 0;
+                $cvr[] = 0;
+            }
+
+            $currentDate->addDay();
+        }
+
+        return response()->json([
+            'dates'  => $dates,
+            'clicks' => $clicks,
+            'spend'  => $spend,
+            'ad_sales'  => $adSales,
+            'ad_sold' => $adSold,
+            'acos' => $acos,
+            'cvr' => $cvr,
+            'totals' => [
+                'clicks' => $totalClicks,
+                'spend'  => $totalSpend,
+                'ad_sales'  => $totalAdSales,
+                'ad_sold' => $totalAdSold,
+            ]
+        ]);
     }
 
     public function getEbayPmpAdsData()
@@ -55,13 +203,18 @@ class EbayPMPAdsController extends Controller
             ->whereIn('report_range', ['L60', 'L30', 'L7'])
             ->get();
 
+        // Get campaign listings with bid_percentage. Prioritize COST_PER_SALE rows
+        // since they have bid_percentage, but fallback to latest row if no COST_PER_SALE exists.
         $campaignListings = DB::connection('apicentral')
             ->table('ebay_campaign_ads_listings as t')
-            ->join(DB::raw('(SELECT listing_id, MAX(id) AS max_id 
-                            FROM ebay_campaign_ads_listings 
-                            WHERE funding_strategy="COST_PER_SALE"
-                            GROUP BY listing_id) x'), 
-                't.id', '=', 'x.max_id')
+            ->join(DB::raw('(SELECT listing_id, 
+                                    MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                    MAX(id) AS max_id
+                             FROM ebay_campaign_ads_listings 
+                             GROUP BY listing_id) x'), 
+                function($join) {
+                    $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                })
             ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
             ->get()
             ->keyBy('listing_id');
@@ -113,6 +266,16 @@ class EbayPMPAdsController extends Controller
 
             $shopify = $shopifyData[$pm->sku] ?? null;
             $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            
+            // Fallback: If exact match not found, try partial match (e.g., "CAPO AL BLK" -> "CAPO AL BLK 2PCS")
+            if (!$ebayMetric) {
+                foreach ($ebayMetrics as $metric) {
+                    if (stripos($metric->sku, $pm->sku) === 0 || stripos($pm->sku, $metric->sku) === 0) {
+                        $ebayMetric = $metric;
+                        break;
+                    }
+                }
+            }
 
             $row = [];
             $row["Parent"] = $parent;

@@ -120,10 +120,15 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
             $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
-            $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
+            $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
 
-            $l1_cpc = floatval($row['l1_cpc']);
-            $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
+            $l7_cpc = floatval($row['l7_cpc']);
+            
+            if ($l7_cpc === 0.0) {
+                $row['sbid'] = 0.75;
+            } else {
+                $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
+            }
 
             $budget = floatval($row['campaignBudgetAmount']);
             $l7_spend = floatval($row['l7_spend']);

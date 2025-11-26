@@ -5,6 +5,7 @@ namespace App\Console;
 use App\Console\Commands\AmazonSbCampaignReports;
 use App\Console\Commands\AmazonSdCampaignReports;
 use App\Console\Commands\AmazonSpCampaignReports;
+use App\Console\Commands\FetchGoogleAdsCampaigns;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 use App\Console\Commands\FetchReverbData;
@@ -54,7 +55,8 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\SyncShopifyAllChannelsData::class,
         AmazonSpCampaignReports::class,
         AmazonSbCampaignReports::class,
-        AmazonSdCampaignReports::class
+        AmazonSdCampaignReports::class,
+        FetchGoogleAdsCampaigns::class,
 
     ];
 
@@ -110,11 +112,19 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:amazon-sd-campaign-reports')
             ->dailyAt('08:00')
             ->timezone('Asia/Kolkata');
+        $schedule->command('app:fetch-google-ads-campaigns')
+            ->dailyAt('09:00')
+            ->timezone('Asia/Kolkata');
         $schedule->command('app:ebay-campaign-reports')
             ->dailyAt('05:00')
             ->timezone('UTC');
         $schedule->command('app:fetch-doba-metrics')
             ->dailyAt('00:00')
+            ->timezone('UTC');
+        
+        // Collect FBA metrics for historical tracking
+        $schedule->command('fba:collect-metrics')
+            ->dailyAt('23:30')
             ->timezone('UTC');
 
         // Sync Main sheet update command
