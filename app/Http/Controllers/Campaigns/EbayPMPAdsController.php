@@ -184,7 +184,14 @@ class EbayPMPAdsController extends Controller
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
         $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
-        $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get()->keyBy("sku");
+        $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get();
+        
+        // Normalize SKUs by replacing non-breaking spaces with regular spaces for matching
+        $ebayMetricsNormalized = $ebayMetrics->mapWithKeys(function($item) {
+            $normalizedSku = str_replace(["\xC2\xA0", "\u{00A0}"], ' ', $item->sku);
+            return [$normalizedSku => $item];
+        });
+        
         $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
 
         $itemIdToSku = $ebayMetrics->pluck('sku', 'item_id')->toArray();
@@ -265,15 +272,23 @@ class EbayPMPAdsController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData[$pm->sku] ?? null;
-            $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
             
-            // Fallback: If exact match not found, try partial match (e.g., "CAPO AL BLK" -> "CAPO AL BLK 2PCS")
+            // Fallback: If exact match not found, try partial match
+            // Prefer longer SKU matches to avoid matching "DS CH YLW" when looking for "DS CH YLW REST-LVR"
             if (!$ebayMetric) {
-                foreach ($ebayMetrics as $metric) {
+                $candidates = [];
+                foreach ($ebayMetricsNormalized as $metric) {
                     if (stripos($metric->sku, $pm->sku) === 0 || stripos($pm->sku, $metric->sku) === 0) {
-                        $ebayMetric = $metric;
-                        break;
+                        $candidates[] = $metric;
                     }
+                }
+                // Sort by SKU length descending and pick the longest match
+                if (!empty($candidates)) {
+                    usort($candidates, function($a, $b) {
+                        return strlen($b->sku) - strlen($a->sku);
+                    });
+                    $ebayMetric = $candidates[0];
                 }
             }
 
