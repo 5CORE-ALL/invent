@@ -13,11 +13,13 @@ use App\Models\FbaMonthlySale;
 use App\Models\FbaManualData;
 use App\Models\FbaOrder;
 use App\Models\FbaShipCalculation;
+use App\Models\FbaMetricsHistory;
 use App\Services\ColorService;
 use App\Services\FbaManualDataService;
 use App\Services\LmpaDataService;
 use App\Services\AmazonSpApiService;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 
 class FbaDataController extends Controller
@@ -1172,5 +1174,50 @@ class FbaDataController extends Controller
       $result = $service->updateAmazonPriceUS($sku, $price);
 
       return response()->json($result);
+   }
+
+   public function getMetricsHistory(Request $request)
+   {
+      $days = $request->input('days', 30); // Default to last 30 days
+      $sku = $request->input('sku'); // Optional SKU filter
+      
+      $startDate = Carbon::today()->subDays($days);
+      
+      $query = FbaMetricsHistory::where('record_date', '>=', $startDate)
+         ->orderBy('record_date', 'asc');
+      
+      // If SKU is provided, return data for specific SKU
+      if ($sku) {
+         $metricsData = $query->where('sku', strtoupper(trim($sku)))->get();
+         
+         $chartData = [];
+         foreach ($metricsData as $record) {
+            $chartData[] = [
+               'date' => Carbon::parse($record->record_date)->format('M d'),
+               'price' => round($record->price, 2),
+               'views' => $record->views,
+               'gprft' => round($record->gprft, 2),
+               'groi_percent' => round($record->groi_percent, 2),
+               'tacos' => round($record->tacos, 2),
+            ];
+         }
+      } else {
+         // Aggregate data for all SKUs
+         $metricsData = $query->get()->groupBy('record_date');
+         
+         $chartData = [];
+         foreach ($metricsData as $date => $records) {
+            $chartData[] = [
+               'date' => Carbon::parse($date)->format('M d'),
+               'avg_price' => round($records->avg('price'), 2),
+               'total_views' => $records->sum('views'),
+               'avg_gprft' => round($records->avg('gprft'), 2),
+               'avg_groi_percent' => round($records->avg('groi_percent'), 2),
+               'avg_tacos' => round($records->avg('tacos'), 2),
+            ];
+         }
+      }
+
+      return response()->json($chartData);
    }
 }
