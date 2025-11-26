@@ -18,7 +18,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\FacadesLog;
 
 class ZeroVisibilityMasterController extends Controller
 {
@@ -114,6 +113,7 @@ class ZeroVisibilityMasterController extends Controller
 
     public function Zeroviewmasters(Request $request)
     {
+        try {
         $productSKUs = ProductMaster::where('sku', 'NOT LIKE', '%PARENT%')
             ->pluck('sku')
             ->toArray();
@@ -324,6 +324,18 @@ class ZeroVisibilityMasterController extends Controller
         }
 
         return view('marketing-masters.live-pending-masters', compact('data', 'totalSkuCount', 'zeroInvCount', 'todayUpdates'));
+        } catch (\Exception $e) {
+            Log::error('Live pending data error: ' . $e->getMessage());
+            if ($request->wantsJson() || $request->expectsJson()) {
+                return response()->json(['data' => [], 'totalSkuCount' => 0, 'zeroInvCount' => 0, 'todayUpdates' => 0]);
+            }
+            return view('marketing-masters.live-pending-masters', [
+                'data' => [],
+                'totalSkuCount' => 0,
+                'zeroInvCount' => 0,
+                'todayUpdates' => 0
+            ]);
+        }
     }
 
 
@@ -411,11 +423,21 @@ class ZeroVisibilityMasterController extends Controller
                 }
             }
 
+            // Try to fetch existing sheet link for this channel from zero_visibility_masters
+            $sheetLink = '';
+            try {
+                $sheetLink = ZeroVisibilityMaster::where('channel_name', $channel)->value('sheet_link') ?? '';
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch sheet_link for channel ' . $channel . ': ' . $e->getMessage());
+                $sheetLink = '';
+            }
+
             $data[] = [
                 'Channel ' => $channel,          // keep space to match your DataTable
                 'R&A' => false,                  // placeholder
                 'Live Pending' => $livePending,
                 'Zero Visibility SKU Count' => $zeroViews,
+                'sheet_link' => $sheetLink,
             ];
         }
 
@@ -676,4 +698,41 @@ class ZeroVisibilityMasterController extends Controller
             ], 500);
         }
     }
+
+    public function updateSheetLink(Request $request)
+    {
+        $request->validate([
+            'channel'    => 'required|string',
+            'sheet_link' => 'nullable|string'
+        ]);
+
+        // Find or create ZeroVisibilityMaster record by channel_name
+        try {
+            $record = ZeroVisibilityMaster::where('channel_name', $request->channel)->first();
+
+            if (!$record) {
+                $record = ZeroVisibilityMaster::create([
+                    'channel_name' => $request->channel,
+                    'sheet_link' => $request->sheet_link
+                ]);
+            } else {
+                $record->sheet_link = $request->sheet_link;
+                $record->save();
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to update/create ZeroVisibilityMaster for channel ' . $request->channel . ': ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to update sheet link'
+            ], 500);
+        }
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Sheet link updated successfully',
+            'data'    => $record
+        ]);
+    }
+
 }
+

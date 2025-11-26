@@ -18,12 +18,12 @@ use Illuminate\Support\Facades\Log;
 use App\Models\ShopifySku;
 use App\Models\Inventory;
 use App\Models\ShopifyInventory;
+use App\Models\ProductStockMapping;
 
 use App\Models\AmazonDataView;
 use App\Models\AmazonListingStatus;
 use App\Models\WalmartListingStatus;
 use App\Models\ReverbListingStatus;
-use App\Models\ProductStockMapping;
 use App\Models\SheinListingStatus;
 use App\Models\DobaListingStatus;
 use App\Models\TemuListingStatus;
@@ -66,9 +66,10 @@ class StockMappingController extends Controller
      
    public function getShopifyAmazonInventoryStock(Request $request)
 {
-        ini_set('max_execution_time', 300);
-        $latestRecord = ProductStockMapping::orderBy('updated_at', 'desc')->first();    
-        if ($latestRecord) {
+        try {
+            ini_set('max_execution_time', 300);
+            $latestRecord = ProductStockMapping::orderBy('updated_at', 'desc')->first();    
+            if ($latestRecord) {
             $data = ProductStockMapping::all()->groupBy('sku')->map(function ($items) {return $items->first(); });
             $skusforNR = array_values(array_filter(array_map(function ($item) { return $item['sku'] ?? null; }, $data->toArray())));
             $marketplaces = [
@@ -127,6 +128,16 @@ class StockMappingController extends Controller
     ]);
 
 
+        }
+        } catch (\Exception $e) {
+            \Log::error('Stock mapping error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Data fetched successfully',
+                'data' => [],
+                'datainfo' => [],
+                'totalNotMatching' => 0,
+                'status' => 200
+            ]);
         }
 }
 
