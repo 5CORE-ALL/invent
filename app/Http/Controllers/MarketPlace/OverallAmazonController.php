@@ -20,17 +20,21 @@ use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ChannelMaster;
 use Illuminate\Support\Facades\DB;
+use App\Services\AmazonDataService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use App\Models\AmazonFbmManual;
 
 class OverallAmazonController extends Controller
 {
     protected $apiController;
+    protected $amazonDataService;
 
-    public function __construct(ApiController $apiController)
+    public function __construct(ApiController $apiController, AmazonDataService $amazonDataService)
     {
         $this->apiController = $apiController;
+        $this->amazonDataService = $amazonDataService;
     }
 
     public function updatePrice(Request $request)
@@ -1423,6 +1427,8 @@ class OverallAmazonController extends Controller
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
+        $ratings = AmazonFbmManual::whereIn('sku', $skus)->pluck('data', 'sku')->toArray();
+
         $parents = $productMasters->pluck('parent')->filter()->unique()->map('strtoupper')->values()->all();
 
         $jungleScoutData = JungleScoutProductData::whereIn('parent', $parents)
@@ -1508,6 +1514,8 @@ class OverallAmazonController extends Controller
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $row = [];
+            $ratingData = isset($ratings[strtoupper($pm->sku)]) ? json_decode($ratings[strtoupper($pm->sku)], true) : null;
+            $row['rating'] = $ratingData['rating'] ?? null;
             $row['Parent'] = $parent;
             $row['(Child) sku'] = $pm->sku;
 
@@ -2346,77 +2354,61 @@ class OverallAmazonController extends Controller
 
     public function exportAmazonPricingCVR(Request $request)
     {
+        return $this->amazonDataService->exportPricingCVRToCSV($request);
+    }
+
+    public function downloadAmazonRatingsSample(Request $request)
+    {
+        return $this->amazonDataService->downloadRatingsSampleTemplate($request);
+    }
+
+    public function importAmazonRatings(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt'
+        ]);
+
         try {
-            $response = $this->getViewAmazonData($request);
-            $data = json_decode($response->getContent(), true);
-            $amazonData = collect($data['data'] ?? []);
+            $file = $request->file('file');
+            $content = file_get_contents($file->getRealPath());
+            $content = preg_replace('/^\x{FEFF}/u', '', $content); // Remove BOM
+            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8');
+            $csvData = array_map('str_getcsv', explode("\n", $content));
+            $csvData = array_filter($csvData, function($row) {
+                return count($row) > 0 && !empty(trim(implode('', $row)));
+            });
+            $header = array_shift($csvData); // Remove header
 
-            $spreadsheet = new Spreadsheet();
-            $sheet = $spreadsheet->getActiveSheet();
+            $imported = 0;
+            $skipped = 0;
 
-            // Header Row
-            $headers = [
-                'Parent', '(Child) SKU', 'INV', 'L30', 'Price', 'Price LMPA',
-                'A L30', 'Sess30', 'CVR L30', 'NRL', 'NRA', 'SPRICE',
-                'SGPFT%', 'SROI%', 'Listed', 'Live', 'A+',
-                'PFT%', 'ROI%', 'Total Profit', 'Total Sales L30', 'Total COGS'
-            ];
-            $sheet->fromArray($headers, NULL, 'A1');
+            foreach ($csvData as $row) {
+                $row = array_map('trim', $row); // Trim all elements
+                if (empty($row) || count($row) < 1 || empty($row[0])) {
+                    $skipped++;
+                    continue;
+                }
 
-            // Data Rows
-            $rowIndex = 2;
-            foreach ($amazonData as $item) {
-                $aL30 = $item['A_L30'] ?? 0;
-                $sess30 = $item['Sess30'] ?? 0;
-                $cvr = $sess30 > 0 ? ($aL30 / $sess30) * 100 : 0;
+                if (count($row) !== count($header)) {
+                    $skipped++;
+                    continue;
+                }
 
-                $rowData = [
-                    $item['Parent'] ?? '',
-                    $item['(Child) sku'] ?? '',
-                    $item['INV'] ?? 0,
-                    $item['L30'] ?? 0,
-                    $item['price'] ?? 0,
-                    $item['price_lmpa'] ?? 0,
-                    $aL30,
-                    $sess30,
-                    round($cvr, 2),
-                    $item['NRL'] ?? '',
-                    $item['NRA'] ?? '',
-                    $item['SPRICE'] ?? '',
-                    $item['Spft%'] ?? '',
-                    $item['SROI'] ?? '',
-                    $item['Listed'] ? 'TRUE' : 'FALSE',
-                    $item['Live'] ? 'TRUE' : 'FALSE',
-                    $item['APlus'] ? 'TRUE' : 'FALSE',
-                    $item['PFT_percentage'] ?? 0,
-                    $item['ROI_percentage'] ?? 0,
-                    $item['Total_pft'] ?? 0,
-                    $item['T_Sale_l30'] ?? 0,
-                    $item['T_COGS'] ?? 0
-                ];
+                $sku = strtoupper($row[0]);
+                $rowData = array_combine($header, $row);
+                unset($rowData['sku']);
 
-                $sheet->fromArray($rowData, NULL, 'A' . $rowIndex);
-                $rowIndex++;
+                AmazonFbmManual::create([
+                    'sku' => $sku,
+                    'data' => json_encode($rowData)
+                ]);
+
+                $imported++;
             }
 
-            // Set column widths
-            foreach (range('A', 'V') as $col) {
-                $sheet->getColumnDimension($col)->setAutoSize(true);
-            }
-
-            // Output Download
-            $fileName = 'Amazon_Pricing_CVR_Export_' . date('Y-m-d') . '.xlsx';
-
-            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            header('Content-Disposition: attachment;filename="' . $fileName . '"');
-            header('Cache-Control: max-age=0');
-
-            $writer = new Xlsx($spreadsheet);
-            $writer->save('php://output');
-            exit;
+            return response()->json(['success' => 'Imported ' . $imported . ' ratings successfully' . ($skipped > 0 ? ', skipped ' . $skipped . ' invalid rows' : '')]);
         } catch (\Exception $e) {
-            Log::error('Error exporting Amazon pricing CVR data: ' . $e->getMessage());
-            return back()->with('error', 'Failed to export data');
+            return response()->json(['error' => 'Error importing ratings: ' . $e->getMessage()]);
         }
     }
 }

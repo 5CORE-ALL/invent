@@ -764,6 +764,7 @@ class FbaDataController extends Controller
             'Send_Cost' => $manual ? ($manual->data['send_cost'] ?? 0) : 0,
             'IN_Charges' => $manual ? ($manual->data['in_charges'] ?? 0) : 0,
             'Commission_Percentage' => $manual ? ($manual->data['commission_percentage'] ?? 0) : 0,
+            'Ratings' => $manual ? ($manual->data['ratings'] ?? 0) : 0,
             'Total_quantity_sent' => $manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0,
             'Done' => $manual ? ($manual->data['done'] ?? false) : false,
             'Warehouse_INV_Reduction' => $manual ? ($manual->data['warehouse_inv_reduction'] ?? false) : false,
@@ -859,6 +860,7 @@ class FbaDataController extends Controller
             'Send_Cost' => round($children->sum(fn($item) => is_numeric($item['Send_Cost']) ? $item['Send_Cost'] : 0), 2),
             'IN_Charges' => round($children->sum(fn($item) => is_numeric($item['IN_Charges']) ? $item['IN_Charges'] : 0), 2),
             'Commission_Percentage' => '',
+            'Ratings' => '',
             'Total_Spend_L30' => $children->sum('Total_Spend_L30'),
             'TCOS_Percentage' => '',
             'Done' => false,
@@ -984,6 +986,17 @@ class FbaDataController extends Controller
       $value = $request->input('value') ?: 0;
       $fulfillmentFee = floatval($request->input('fulfillment_fee') ?? 0);
 
+      // Validate ratings field
+      if ($field === 'ratings') {
+         $numValue = floatval($value);
+         if ($numValue < 0 || $numValue > 5) {
+            return response()->json([
+               'success' => false,
+               'error' => 'Ratings must be between 0 and 5'
+            ], 400);
+         }
+         $value = $numValue; // Ensure it's stored as a number
+      }
 
       // Row find or create
       $manual = FbaManualData::where('sku', $sku)->first();

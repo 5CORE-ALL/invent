@@ -804,6 +804,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
     Route::post('/update-amazon-listed-live', [OverallAmazonController::class, 'updateListedLive']);
     Route::get('/amazon-export-pricing-cvr', [OverallAmazonController::class, 'exportAmazonPricingCVR'])->name('amazon.export.pricing.cvr');
+    Route::get('/amazon-ratings-sample', [OverallAmazonController::class, 'downloadAmazonRatingsSample'])->name('amazon.ratings.sample');
     Route::get('/amazon-pricing-increase-decrease', action: [OverallAmazonController::class, 'amazonPriceIncreaseDecrease'])->name('amazon.pricing.increase');
     Route::post('/amazon/save-manual-link', [OverallAmazonController::class, 'saveManualLink'])->name('amazon.saveManualLink');
     Route::get('/amazon-pricing-increase', action: [OverallAmazonController::class, 'amazonPriceIncrease'])->name('amazon.pricing.inc');
@@ -812,6 +813,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-analytics/import', [OverallAmazonController::class, 'importAmazonAnalytics'])->name('amazon.analytics.import');
     Route::get('/amazon-analytics/export', [OverallAmazonController::class, 'exportAmazonAnalytics'])->name('amazon.analytics.export');
     Route::get('/amazon-analytics/sample', [OverallAmazonController::class, 'downloadSample'])->name('amazon.analytics.sample');
+    Route::post('/import-amazon-ratings', [OverallAmazonController::class, 'importAmazonRatings']);
 
     //ebay 2 
     Route::get('/zero-ebay2', [Ebay2ZeroController::class, 'ebay2Zeroview'])->name('zero.ebay2');
