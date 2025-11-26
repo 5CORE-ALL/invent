@@ -2198,6 +2198,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/pmp/ads', 'index')->name('ebay.pmp.ads');
         Route::get('/ebay/pmp/ads/data', 'getEbayPmpAdsData');
         Route::get('/ebay/pmp/ads/filter', 'filterEbayPmpAds')->name('ebay.pmp.ads.filter');
+        Route::get('/ebay/pmp/ads/campaign-chart', 'getCampaignChartData')->name('ebay.pmp.ads.campaign-chart');
         Route::post('/update-ebay-pmt-percenatge', 'updateEbayPercentage');
         Route::post('/update-ebay-pmt-sprice', 'saveEbayPMTSpriceToDatabase');
     });

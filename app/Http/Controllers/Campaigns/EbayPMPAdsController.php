@@ -202,6 +202,12 @@ class EbayPMPAdsController extends Controller
             ->pluck('clicks', 'listing_id')
             ->toArray();
 
+        // Get campaign_id for each listing_id
+        $listingToCampaignId = EbayGeneralReport::whereIn('listing_id', array_keys($itemIdToSku))
+            ->where('report_range', 'L30')
+            ->pluck('campaign_id', 'listing_id')
+            ->toArray();
+
         $generalReports = EbayGeneralReport::whereIn('listing_id', array_keys($itemIdToSku))
             ->whereIn('report_range', ['L60', 'L30', 'L7'])
             ->get();
@@ -306,6 +312,8 @@ class EbayPMPAdsController extends Controller
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['ebay_views'] = $ebayMetric->views ?? 0;
+            $row['campaign_id'] = ($ebayMetric && isset($listingToCampaignId[$ebayMetric->item_id])) 
+                ? $listingToCampaignId[$ebayMetric->item_id] : null;
 
             if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
                 $listing = $campaignListings->get($ebayMetric->item_id);
@@ -442,6 +450,82 @@ class EbayPMPAdsController extends Controller
         $ebayDataView->save();
 
         return response()->json(['message' => 'Data saved successfully.']);
+    }
+
+    public function getCampaignChartData(Request $request)
+    {
+        $campaignId = $request->input('campaign_id');
+        
+        if (!$campaignId) {
+            return response()->json(['error' => 'Campaign ID is required'], 400);
+        }
+
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+
+        $data = DB::table('ebay_general_reports')
+            ->selectRaw('
+                DATE(updated_at) as report_date,
+                SUM(clicks) as clicks,
+                SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as spend,
+                SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")) as ad_sales,
+                SUM(sales) as ad_sold
+            ')
+            ->where('campaign_id', $campaignId)
+            ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->groupBy(DB::raw('DATE(updated_at)'))
+            ->orderBy('report_date', 'asc')
+            ->get()
+            ->keyBy('report_date');
+
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $adSales = [];
+        $adSold = [];
+        $acos = [];
+        $cvr = [];
+
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+            $dates[] = $date;
+
+            if (isset($data[$date])) {
+                $row = $data[$date];
+                $clicksVal = (int) $row->clicks;
+                $spendVal = (float) $row->spend;
+                $salesVal = (float) $row->ad_sales;
+                $soldVal = (int) $row->ad_sold;
+
+                $clicks[] = $clicksVal;
+                $spend[] = $spendVal;
+                $adSales[] = $salesVal;
+                $adSold[] = $soldVal;
+
+                $acosVal = $salesVal > 0 ? ($spendVal / $salesVal) * 100 : 0;
+                $acos[] = round($acosVal, 2);
+
+                $cvrVal = $clicksVal > 0 ? ($soldVal / $clicksVal) * 100 : 0;
+                $cvr[] = round($cvrVal, 2);
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $adSales[] = 0;
+                $adSold[] = 0;
+                $acos[] = 0;
+                $cvr[] = 0;
+            }
+        }
+
+        return response()->json([
+            'dates'  => $dates,
+            'clicks' => $clicks,
+            'spend'  => $spend,
+            'ad_sales'  => $adSales,
+            'ad_sold' => $adSold,
+            'acos' => $acos,
+            'cvr' => $cvr,
+        ]);
     }
 
     public function updateEbayPercentage(Request $request)
