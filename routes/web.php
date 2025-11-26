@@ -2133,6 +2133,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-pt-ads/filter', 'filterPtAds')->name('amazonPtAds.filter');
         Route::get('/amazon/hl/ads', 'amazonHlAdsView')->name('amazon.hl.ads');
         Route::get('/amazon/hl/ads/data', 'getAmazonHlAdsData');
+        Route::get('/amazon-hl-ads/filter', 'filterHlAds')->name('amazonHlAds.filter');
 
         Route::get('/amazon/campaign/reports/data', 'getAmazonCampaignsData');
     });
@@ -2193,6 +2194,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(EbayPMPAdsController::class)->group(function () {
         Route::get('/ebay/pmp/ads', 'index')->name('ebay.pmp.ads');
         Route::get('/ebay/pmp/ads/data', 'getEbayPmpAdsData');
+        Route::get('/ebay/pmp/ads/filter', 'filterEbayPmpAds')->name('ebay.pmp.ads.filter');
         Route::post('/update-ebay-pmt-percenatge', 'updateEbayPercentage');
         Route::post('/update-ebay-pmt-sprice', 'saveEbayPMTSpriceToDatabase');
     });
@@ -2200,6 +2202,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(EbayKwAdsController::class)->group(function () {
         Route::get('/ebay/keywords/ads', 'index')->name('ebay.keywords.ads');
         Route::get('/ebay/keywords/ads/data', 'getEbayKwAdsData');
+        Route::get('/ebay/keywords/ads/filter', 'filterEbayKwAds')->name('ebay.keywords.ads.filter');
 
         Route::get('/ebay/keywords/ads/less-than-twenty', 'ebayPriceLessThanTwentyAdsView')->name('ebay.keywords.ads.less-than-twenty');
         Route::get('/ebay/keywords/ads/less-than-twenty/data', 'ebayPriceLessThanTwentyAdsData');
@@ -2356,6 +2359,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/report', 'googleShoppingAdsReport')->name('google.shopping.report');
         Route::get('/adv-shopify/gshopping/save-data', 'getAdvShopifyGShoppingSaveData')->name('adv-shopify.gshopping.save-data');
 
+        // Chart filter routes
+        Route::get('/google/shopping/chart/filter', 'filterGoogleShoppingChart')->name('google.shopping.chart.filter');
+        Route::get('/google/shopping/running/chart/filter', 'filterGoogleShoppingRunningChart')->name('google.shopping.running.chart.filter');
+        Route::get('/google/shopping/over/chart/filter', 'filterGoogleShoppingOverChart')->name('google.shopping.over.chart.filter');
+        Route::get('/google/shopping/under/chart/filter', 'filterGoogleShoppingUnderChart')->name('google.shopping.under.chart.filter');
+        Route::get('/google/shopping/report/chart/filter', 'filterGoogleShoppingReportChart')->name('google.shopping.report.chart.filter');
+        Route::get('/google/serp/chart/filter', 'filterGoogleSerpChart')->name('google.shopping.serp.chart.filter');
+        Route::get('/google/serp/report/chart/filter', 'filterGoogleSerpReportChart')->name('google.serp.report.chart.filter');
+        Route::get('/google/pmax/chart/filter', 'filterGooglePmaxChart')->name('google.shopping.pmax.chart.filter');
 
         Route::get('/google/serp/list', 'googleSerpView')->name('google.serp.list');
         Route::get('/google/serp/report', 'googleSerpReportView')->name('google.serp.report');

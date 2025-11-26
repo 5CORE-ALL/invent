@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use App\Models\StockBalance;
 use App\Http\Controllers\ApiController;
+use App\Models\ShopifySku;
+use Illuminate\Support\Facades\DB;
 
 
 class StockBalanceController extends Controller
@@ -32,6 +34,42 @@ class StockBalanceController extends Controller
         $this->shopifyPassword = env('SHOPIFY_PASSWORD');
     }
 
+
+    /**
+     * Make Shopify API call with automatic retry on rate limit
+     */
+    private function shopifyApiCall($method, $url, $data = [], $maxRetries = 3)
+    {
+        $attempt = 0;
+        
+        while ($attempt < $maxRetries) {
+            $attempt++;
+            
+            $request = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                ->timeout(30);
+            
+            if ($method === 'GET') {
+                $response = $request->get($url, $data);
+            } else {
+                $response = $request->post($url, $data);
+            }
+            
+            // If rate limited, wait and retry
+            if ($response->status() === 429 && $attempt < $maxRetries) {
+                $waitTime = $attempt * 2; // 2, 4, 6 seconds
+                Log::info("Rate limited, waiting {$waitTime}s before retry", [
+                    'attempt' => $attempt,
+                    'url' => $url
+                ]);
+                sleep($waitTime);
+                continue;
+            }
+            
+            return $response;
+        }
+        
+        return $response;
+    }
 
     /**
      * Display a listing of the resource.
@@ -70,13 +108,13 @@ class StockBalanceController extends Controller
         $request->validate([
             'from_parent_name' => 'required|string',
             'from_sku' => 'required|string',
-            'from_dil_percent' => 'nullable|numeric',
+            'from_dil_percent' => 'nullable|numeric|max:100',
             'from_available_qty' => 'nullable|integer',
             'from_adjust_qty' => 'required|integer|min:1',
 
             'to_parent_name' => 'required|string',
             'to_sku' => 'required|string',
-            'to_dil_percent' => 'nullable|numeric',
+            'to_dil_percent' => 'nullable|numeric|max:100',
             'to_available_qty' => 'nullable|integer',
             'to_adjust_qty' => 'required|integer|min:1',
 
@@ -90,114 +128,318 @@ class StockBalanceController extends Controller
             $fromQty = (int) $request->from_adjust_qty;
             $toQty = (int) $request->to_adjust_qty;
 
-            // Helper function to get inventory_item_id and location_id
+            Log::info("Stock balance transfer request received", [
+                'from_sku' => $fromSku,
+                'to_sku' => $toSku,
+                'from_qty' => $fromQty,
+                'to_qty' => $toQty,
+                'user' => Auth::user()->name ?? 'Unknown'
+            ]);
+
+            // Helper function to get inventory_item_id and location_id using ShopifySku table
             $getInventoryInfo = function ($sku) {
-                $inventoryItemId = null;
-                $pageInfo = null;
-
-                do {
-                    $params = ['limit' => 250];
-                    if ($pageInfo) $params['page_info'] = $pageInfo;
-
-                    $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                        ->get("https://{$this->shopifyDomain}/admin/api/2025-01/products.json", $params);
-
-                    $products = $response->json('products') ?? [];
-
-                    foreach ($products as $product) {
-                        foreach ($product['variants'] as $variant) {
-                            if (trim($variant['sku']) === $sku) {
-                                $inventoryItemId = $variant['inventory_item_id'];
-                                break 2;
-                            }
-                        }
-                    }
-
-                    $linkHeader = $response->header('Link');
-                    $pageInfo = null;
-                    if ($linkHeader && preg_match('/<([^>]+page_info=([^&>]+)[^>]*)>; rel="next"/', $linkHeader, $matches)) {
-                        $pageInfo = $matches[2];
-                    }
-                } while (!$inventoryItemId && $pageInfo);
-
-                if (!$inventoryItemId) {
-                    throw new \Exception("Inventory item ID not found for SKU: $sku");
+                // Step 1: Get variant_id from local shopify_skus table
+                $shopifySku = ShopifySku::where('sku', $sku)->first();
+                
+                if (!$shopifySku || !$shopifySku->variant_id) {
+                    Log::error("SKU not found in shopify_skus table", [
+                        'sku' => $sku,
+                        'found_in_db' => $shopifySku ? 'yes' : 'no'
+                    ]);
+                    
+                    return [
+                        'success' => false,
+                        'error' => 'SKU not found in Shopify inventory',
+                        'details' => "The SKU '{$sku}' was not found in your local Shopify inventory table. Please sync your Shopify data first."
+                    ];
                 }
 
-                $invLevelResponse = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                    ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
-                        'inventory_item_ids' => $inventoryItemId,
-                    ]);
+                $variantId = $shopifySku->variant_id;
 
-                $levels = $invLevelResponse->json('inventory_levels');
+                // Step 2: Get inventory_item_id from variant
+                sleep(2); // Rate limit protection (2 calls/second max)
+                $variantResponse = $this->shopifyApiCall(
+                    'GET',
+                    "https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$variantId}.json"
+                );
+
+                if (!$variantResponse->successful()) {
+                    Log::error("Failed to fetch variant for SKU", [
+                        'sku' => $sku,
+                        'variant_id' => $variantId,
+                        'status' => $variantResponse->status(),
+                        'body' => $variantResponse->body()
+                    ]);
+                    
+                    return [
+                        'success' => false,
+                        'error' => 'Failed to fetch product from Shopify',
+                        'details' => "Error " . $variantResponse->status() . " - Could not retrieve product details for SKU: {$sku}"
+                    ];
+                }
+
+                $variant = $variantResponse->json('variant');
+                $inventoryItemId = $variant['inventory_item_id'] ?? null;
+                
+                if (!$inventoryItemId) {
+                    return [
+                        'success' => false,
+                        'error' => 'Invalid product data',
+                        'details' => "Could not find inventory item ID for SKU: {$sku}"
+                    ];
+                }
+
+                // Step 3: Get location_id from inventory levels
+                sleep(2); // Rate limit protection (2 calls/second max)
+                $levelsResponse = $this->shopifyApiCall(
+                    'GET',
+                    "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json",
+                    ['inventory_item_ids' => $inventoryItemId]
+                );
+
+                if (!$levelsResponse->successful()) {
+                    Log::error("Failed to fetch inventory levels for SKU", [
+                        'sku' => $sku,
+                        'inventory_item_id' => $inventoryItemId,
+                        'status' => $levelsResponse->status()
+                    ]);
+                    
+                    return [
+                        'success' => false,
+                        'error' => 'Failed to get current inventory level',
+                        'details' => "Error " . $levelsResponse->status() . " - Could not fetch inventory levels for SKU: {$sku}"
+                    ];
+                }
+
+                $levels = $levelsResponse->json('inventory_levels');
                 $locationId = $levels[0]['location_id'] ?? null;
 
                 if (!$locationId) {
-                    throw new \Exception("Location ID not found for SKU: $sku");
+                    return [
+                        'success' => false,
+                        'error' => 'Shopify location not found',
+                        'details' => "Could not determine location for SKU: {$sku}"
+                    ];
                 }
 
+                Log::info("Got inventory info for SKU", [
+                    'sku' => $sku,
+                    'variant_id' => $variantId,
+                    'inventory_item_id' => $inventoryItemId,
+                    'location_id' => $locationId
+                ]);
+
                 return [
+                    'success' => true,
                     'inventory_item_id' => $inventoryItemId,
                     'location_id' => $locationId,
                 ];
             };
 
-            // 1. Decrease inventory from 'from_sku'
+            // Step 1: Get inventory info and decrease from 'from_sku'
             $fromInfo = $getInventoryInfo($fromSku);
+            
+            if (!$fromInfo['success']) {
+                return response()->json([
+                    'error' => $fromInfo['error'],
+                    'details' => $fromInfo['details']
+                ], 404);
+            }
 
-            $decrease = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+            sleep(2); // Rate limit protection (2 calls/second max)
+            $decrease = $this->shopifyApiCall(
+                'POST',
+                "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",
+                [
                     'inventory_item_id' => $fromInfo['inventory_item_id'],
                     'location_id' => $fromInfo['location_id'],
                     'available_adjustment' => -$fromQty,
-                ]);
+                ]
+            );
 
             if (!$decrease->successful()) {
-                Log::error("Failed to deduct inventory for SKU $fromSku", $decrease->json());
-                return response()->json(['error' => 'Failed to deduct inventory from Shopify.'], 500);
+                Log::error("Failed to deduct inventory for SKU", [
+                    'sku' => $fromSku,
+                    'status' => $decrease->status(),
+                    'response' => $decrease->body()
+                ]);
+                return response()->json([
+                    'error' => 'Failed to deduct inventory from Shopify',
+                    'details' => "Could not decrease stock for SKU: $fromSku"
+                ], 500);
             }
 
-            // 2. Increase inventory to 'to_sku'
-            $toInfo = $getInventoryInfo($toSku);
+            Log::info("Successfully decreased inventory", [
+                'sku' => $fromSku,
+                'adjustment' => -$fromQty,
+                'response' => $decrease->json()
+            ]);
 
-            $increase = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+            // Step 2: Get inventory info and increase to 'to_sku'
+            sleep(2); // Rate limit protection before processing second SKU
+            $toInfo = $getInventoryInfo($toSku);
+            
+            if (!$toInfo['success']) {
+                return response()->json([
+                    'error' => $toInfo['error'],
+                    'details' => $toInfo['details']
+                ], 404);
+            }
+
+            sleep(2); // Rate limit protection (2 calls/second max)
+            $increase = $this->shopifyApiCall(
+                'POST',
+                "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",
+                [
                     'inventory_item_id' => $toInfo['inventory_item_id'],
                     'location_id' => $toInfo['location_id'],
                     'available_adjustment' => $toQty,
-                ]);
+                ]
+            );
 
             if (!$increase->successful()) {
-                Log::error("Failed to increase inventory for SKU $toSku", $increase->json());
-                return response()->json(['error' => 'Failed to increase inventory in Shopify.'], 500);
+                Log::error("Failed to increase inventory for SKU", [
+                    'sku' => $toSku,
+                    'status' => $increase->status(),
+                    'response' => $increase->body()
+                ]);
+                
+                // Try to rollback the first adjustment
+                Log::warning("Attempting to rollback first adjustment", [
+                    'from_sku' => $fromSku,
+                    'rollback_qty' => $fromQty
+                ]);
+                
+                sleep(1);
+                $rollback = $this->shopifyApiCall(
+                    'POST',
+                    "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",
+                    [
+                        'inventory_item_id' => $fromInfo['inventory_item_id'],
+                        'location_id' => $fromInfo['location_id'],
+                        'available_adjustment' => $fromQty, // Add back
+                    ]
+                );
+                
+                if ($rollback->successful()) {
+                    Log::info("Successfully rolled back first adjustment", ['sku' => $fromSku]);
+                    return response()->json([
+                        'error' => 'Failed to increase inventory in Shopify',
+                        'details' => "Could not increase stock for SKU: $toSku. Previous deduction has been rolled back."
+                    ], 500);
+                } else {
+                    Log::error("Failed to rollback first adjustment", [
+                        'sku' => $fromSku,
+                        'status' => $rollback->status()
+                    ]);
+                    return response()->json([
+                        'error' => 'Failed to increase inventory in Shopify',
+                        'details' => "Could not increase stock for SKU: $toSku. WARNING: $fromSku was decreased by $fromQty but rollback failed!"
+                    ], 500);
+                }
             }
 
-            StockBalance::create([
-                'from_parent_name'     => $request->from_parent_name,
-                'from_sku'             => $fromSku,
-                'from_dil_percent'     => $request->from_dil_percent,
-                // 'from_warehouse_id'    => $fromWarehouseId, // assuming you set this earlier
-                'from_available_qty'   => $request->from_available_qty,
-                'from_adjust_qty'      => $fromQty,
-
-                'to_parent_name'       => $request->to_parent_name,
-                'to_sku'               => $toSku,
-                'to_dil_percent'       => $request->to_dil_percent,
-                // 'to_warehouse_id'      => $toWarehouseId, // assuming you set this earlier
-                'to_available_qty'     => $request->to_available_qty,
-                'to_adjust_qty'        => $toQty,
-
-                'transferred_by'       => Auth::user()->name ?? 'N/A',
-                'transferred_at'       => Carbon::now('America/New_York'),
+            Log::info("Successfully increased inventory", [
+                'sku' => $toSku,
+                'adjustment' => $toQty,
+                'response' => $increase->json()
             ]);
 
-            return response()->json(['message' => 'Inventory transferred successfully.']);
+            // Step 3: Only save to database after both Shopify updates succeed
+            try {
+                DB::beginTransaction();
+                
+                // Cap DIL percent values to prevent database overflow (max 100%)
+                $fromDilPercent = $request->from_dil_percent;
+                if ($fromDilPercent > 100) {
+                    Log::warning("from_dil_percent exceeds 100%, capping it", [
+                        'original' => $fromDilPercent,
+                        'capped' => 100
+                    ]);
+                    $fromDilPercent = 100;
+                }
+                
+                $toDilPercent = $request->to_dil_percent;
+                if ($toDilPercent > 100) {
+                    Log::warning("to_dil_percent exceeds 100%, capping it", [
+                        'original' => $toDilPercent,
+                        'capped' => 100
+                    ]);
+                    $toDilPercent = 100;
+                }
+                
+                $dataToInsert = [
+                    'from_parent_name'     => $request->from_parent_name,
+                    'from_sku'             => $fromSku,
+                    'from_dil_percent'     => $fromDilPercent,
+                    'from_available_qty'   => $request->from_available_qty,
+                    'from_adjust_qty'      => $fromQty,
+
+                    'to_parent_name'       => $request->to_parent_name,
+                    'to_sku'               => $toSku,
+                    'to_dil_percent'       => $toDilPercent,
+                    'to_available_qty'     => $request->to_available_qty,
+                    'to_adjust_qty'        => $toQty,
+
+                    'transferred_by'       => Auth::user()->name ?? 'N/A',
+                    'transferred_at'       => Carbon::now('America/New_York'),
+                ];
+                
+                Log::info("Attempting to save stock balance to database", [
+                    'data' => $dataToInsert
+                ]);
+                
+                StockBalance::create($dataToInsert);
+                
+                DB::commit();
+                
+                Log::info("Stock balance transfer saved to database", [
+                    'from_sku' => $fromSku,
+                    'to_sku' => $toSku
+                ]);
+                
+            } catch (\Exception $dbException) {
+                DB::rollBack();
+                
+                Log::error("Failed to save stock balance to database after successful Shopify updates", [
+                    'from_sku' => $fromSku,
+                    'to_sku' => $toSku,
+                    'error' => $dbException->getMessage(),
+                    'trace' => $dbException->getTraceAsString(),
+                    'line' => $dbException->getLine(),
+                    'file' => $dbException->getFile()
+                ]);
+                
+                return response()->json([
+                    'error' => 'Shopify updated successfully but failed to save to database',
+                    'details' => "Inventory was transferred in Shopify successfully.<br><br>" .
+                                "<strong>Database Error:</strong> " . $dbException->getMessage() . "<br><br>" .
+                                "<strong>Transfer Details:</strong><br>" .
+                                "From: $fromSku (-$fromQty)<br>" .
+                                "To: $toSku (+$toQty)<br><br>" .
+                                "<em>Note: The inventory has been updated in Shopify but the record was not saved to your local database.</em>",
+                    'shopify_updated' => true,
+                    'db_error' => $dbException->getMessage()
+                ], 500);
+            }
+
+            return response()->json([
+                'message' => 'Stock transferred successfully in Shopify and saved to database'
+            ]);
 
         } catch (\Exception $e) {
             Log::error("Stock transfer failed: " . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+                'from_sku' => $request->from_sku ?? 'N/A',
+                'to_sku' => $request->to_sku ?? 'N/A',
+                'trace' => $e->getTraceAsString(),
+                'line' => $e->getLine(),
+                'file' => $e->getFile()
             ]);
-            return response()->json(['error' => 'Something went wrong during transfer.'], 500);
+            
+            return response()->json([
+                'error' => 'Error storing stock balance',
+                'details' => $e->getMessage()
+            ], 500);
         }
     }
 

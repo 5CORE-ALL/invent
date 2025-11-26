@@ -579,10 +579,10 @@
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
                             var sbid;
-                            if(l1_cpc > l7_cpc) {
-                                sbid = Math.round((l7_cpc + 0.02) * 100) / 100;
-                            }else{
-                                sbid = Math.round((l7_cpc + 0.02) * 100) / 100;
+                            if (l7_cpc === 0) {
+                                sbid = 0.75;
+                            } else {
+                                sbid = Math.round((l7_cpc * 1.10) * 100) / 100;
                             }
                             sbid = sbid.toFixed(2);
                             return sbid;
@@ -606,10 +606,10 @@
                                 var l1_cpc = parseFloat(row.l1_cpc) || 0;
                                 var l7_cpc = parseFloat(row.l7_cpc) || 0;
                                 var sbid;
-                                if(l1_cpc > l7_cpc) {
-                                    sbid = Math.round((l7_cpc + 0.02) * 100) / 100;
-                                }else{
-                                    sbid = Math.round((l7_cpc + 0.02) * 100) / 100;
+                                if (l7_cpc === 0) {
+                                    sbid = 0.75;
+                                } else {
+                                    sbid = Math.round((l7_cpc * 1.10) * 100) / 100;
                                 }
                                 sbid = sbid.toFixed(2);
                                 updateBid(sbid, row.campaign_id);
@@ -884,10 +884,10 @@
                         var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
                         var sbid;
 
-                        if(l1_cpc > l7_cpc) {
-                            sbid = Math.round((l7_cpc + 0.02) * 100) / 100;
-                        }else{
-                            sbid = Math.round((l7_cpc + 0.02) * 100) / 100;
+                        if (l7_cpc === 0) {
+                            sbid = 0.75;
+                        } else {
+                            sbid = Math.round((l7_cpc * 1.10) * 100) / 100;
                         }
                         sbid = sbid.toFixed(2);
 

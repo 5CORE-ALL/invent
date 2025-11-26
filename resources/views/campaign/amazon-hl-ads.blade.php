@@ -2,6 +2,7 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator .tabulator-header {
@@ -138,6 +139,70 @@
     ])
     <div class="row">
         <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <button id="daterange-btn" class="btn btn-outline-dark">
+                            <span>Date range: Select</span> <i class="fa-solid fa-chevron-down ms-1"></i>
+                        </button>
+                    </div>
+                    <!-- Stats Row -->
+                    <div class="row text-center mb-4">
+                        <!-- Clicks -->
+                        <div class="col-md-3 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Clicks</div>
+                                <div class="h3 mb-0 fw-bold text-primary card-clicks" id="total-clicks">{{ array_sum($clicks) }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Spend -->
+                        <div class="col-md-3 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Spend</div>
+                                <div class="h3 mb-0 fw-bold text-success card-spend" id="total-spend-chart">
+                                    US${{ number_format(array_sum($spend), 2) }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Orders -->
+                        <div class="col-md-3 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Orders</div>
+                                <div class="h3 mb-0 fw-bold text-danger card-orders" id="total-orders">{{ array_sum($orders) }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Sales -->
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="text-muted small">Sales</div>
+                                        <div class="h3 mb-0 fw-bold text-info card-sales" id="total-sales-chart">
+                                            US${{ number_format(array_sum($sales), 2) }}
+                                        </div>
+                                    </div>
+                                    <!-- Arrow button -->
+                                    <button id="toggleChartBtn" class="btn btn-sm btn-info ms-2">
+                                        <i id="chartArrow" class="fa-solid fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chart (hidden by default) -->
+                    <div id="chartContainer" style="display: none;">
+                        <canvas id="campaignChart" height="120"></canvas>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body py-3">
                     <div class="mb-4">
@@ -214,6 +279,10 @@
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Moment.js (daterangepicker dependency) -->
+    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <!-- Daterangepicker -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
@@ -1251,5 +1320,132 @@
         });
     </script>
 
+    <script>
+        const ctx = document.getElementById('campaignChart').getContext('2d');
+
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: {!! json_encode($dates) !!},
+                datasets: [
+                    {
+                        label: 'Clicks',
+                        data: {!! json_encode($clicks) !!},
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Spend',
+                        data: {!! json_encode($spend) !!},
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Orders',
+                        data: {!! json_encode($orders) !!},
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Sales',
+                        data: {!! json_encode($sales) !!},
+                        borderColor: 'rgb(255, 206, 86)',
+                        backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    title: {
+                        display: false
+                    }
+                }
+            }
+        });
+
+        document.addEventListener("DOMContentLoaded", function() {
+            const toggleBtn = document.getElementById("toggleChartBtn");
+            const chartContainer = document.getElementById("chartContainer");
+            const arrowIcon = document.getElementById("chartArrow");
+
+            toggleBtn.addEventListener("click", function() {
+                if (chartContainer.style.display === "none") {
+                    chartContainer.style.display = "block";
+                    arrowIcon.classList.remove("fa-chevron-down");
+                    arrowIcon.classList.add("fa-chevron-up");
+                } else {
+                    chartContainer.style.display = "none";
+                    arrowIcon.classList.remove("fa-chevron-up");
+                    arrowIcon.classList.add("fa-chevron-down");
+                }
+            });
+        });
+
+        $(function() {
+            let picker = $('#daterange-btn').daterangepicker({
+                opens: 'right',
+                autoUpdateInput: false,
+                alwaysShowCalendars: true,
+                locale: {
+                    format: 'YYYY-MM-DD',
+                    cancelLabel: 'Clear'
+                },
+                ranges: {
+                    'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+                    'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+                    'This Month': [moment().startOf('month'), moment().endOf('month')],
+                    'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+                }
+            }, function(start, end) {
+                const startDate = start.format("YYYY-MM-DD");
+                const endDate   = end.format("YYYY-MM-DD");
+
+                $('#daterange-btn span').html("Date range: " + startDate + " - " + endDate);
+                fetchChartData(startDate, endDate);
+            });
+
+            // Reset on cancel
+            $('#daterange-btn').on('cancel.daterangepicker', function(ev, picker) {
+                $(this).find('span').html("Date range: Select");
+                fetchChartData(); 
+            });
+
+        });
+
+        function fetchChartData(startDate, endDate) {
+            $.ajax({
+                url: "{{ route('amazonHlAds.filter') }}",
+                type: "GET",
+                data: { startDate, endDate },
+                success: function(response) {
+                    const formattedDates = response.dates.map(d => moment(d).format('MMM DD'));
+                    chart.data.labels = formattedDates;
+                    chart.data.datasets[0].data = response.clicks;
+                    chart.data.datasets[1].data = response.spend;
+                    chart.data.datasets[2].data = response.orders;
+                    chart.data.datasets[3].data = response.sales;
+                    chart.update();
+
+                    $('#total-clicks').text(response.totals.clicks);
+                    $('#total-spend-chart').text('US$' + Number(response.totals.spend).toFixed(2));
+                    $('#total-orders').text(response.totals.orders);
+                    $('#total-sales-chart').text('US$' + Number(response.totals.sales).toFixed(2));
+                }
+            });
+        }
+    </script>
 @endsection
 

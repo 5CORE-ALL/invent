@@ -1500,6 +1500,7 @@
 
             // Store the loaded data globally
             let tableData = [];
+            let productMap = new Map(); // Fast lookup by SKU
             let productUniqueParents = [];
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
@@ -1550,6 +1551,15 @@
                     .then(response => {
                         if (response && response.data && Array.isArray(response.data)) {
                             tableData = response.data;
+                            
+                            // Build fast lookup map
+                            productMap.clear();
+                            tableData.forEach(product => {
+                                if (product.SKU) {
+                                    productMap.set(product.SKU, product);
+                                }
+                            });
+                            
                             renderTable(tableData);
                             updateParentOptions();
                             initProductPlaybackControls();
@@ -3117,7 +3127,7 @@
                 document.querySelectorAll('.edit-btn').forEach(btn => {
                     btn.addEventListener('click', function() {
                         const sku = this.getAttribute('data-sku');
-                        const product = tableData.find(p => p.SKU === sku);
+                        const product = productMap.get(sku); // O(1) lookup instead of O(n) find
                         if (product) {
                             editProduct(product);
                         }
@@ -3547,7 +3557,7 @@
                         const sku = skuCell.textContent.trim();
 
                         // Find the item in tableData to get the ID
-                        const item = tableData.find(item => item.SKU === sku);
+                        const item = productMap.get(sku); // O(1) lookup
                         const id = item ? item.id : '';
 
                         const checkboxCell = document.createElement('td');
@@ -3760,7 +3770,7 @@
                         // Convert selectedItems to array of {sku, id} objects
                         items: Object.entries(selectedItems).map(([sku, item]) => {
                             // Find the full item data to get the ID
-                            const fullItem = tableData.find(i => i.SKU === sku);
+                            const fullItem = productMap.get(sku); // O(1) lookup
                             return {
                                 sku: sku,
                                 id: fullItem ? fullItem.id : null
