@@ -1656,6 +1656,7 @@ class OverallAmazonController extends Controller
                     $row['js_comp_manual_link'] = $raw['js_comp_manual_link'] ?? '';
                 }
             }
+            
 
             // If SPRICE is null or empty, use price as default and calculate SGPFT/SPFT/SROI
             if (empty($row['SPRICE']) && $price > 0) {
