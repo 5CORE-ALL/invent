@@ -2204,6 +2204,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/keywords/ads', 'index')->name('ebay.keywords.ads');
         Route::get('/ebay/keywords/ads/data', 'getEbayKwAdsData');
         Route::get('/ebay/keywords/ads/filter', 'filterEbayKwAds')->name('ebay.keywords.ads.filter');
+        Route::get('/ebay/keywords/ads/campaign-chart', 'getCampaignChartData')->name('ebay.keywords.ads.campaign-chart');
 
         Route::get('/ebay/keywords/ads/less-than-twenty', 'ebayPriceLessThanTwentyAdsView')->name('ebay.keywords.ads.less-than-twenty');
         Route::get('/ebay/keywords/ads/less-than-twenty/data', 'ebayPriceLessThanTwentyAdsData');
