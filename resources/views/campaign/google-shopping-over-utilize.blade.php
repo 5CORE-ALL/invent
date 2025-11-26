@@ -505,9 +505,13 @@
                             var cpc_L7 = parseFloat(row.cpc_L7) || 0;
                             var sbid;
 
-                            sbid = Math.floor(cpc_L1 * 0.95 * 100) / 100;
+                            if (cpc_L7 === 0) {
+                                sbid = 0.75;
+                            } else {
+                                sbid = Math.floor(cpc_L7 * 0.90 * 100) / 100;
+                            }
 
-                            return sbid;
+                            return sbid.toFixed(2);
                         },
                     },
                     {
@@ -529,9 +533,13 @@
                                 var cpc_L7 = parseFloat(row.cpc_L7) || 0;
                                 var sbid;
 
-                                sbid = Math.floor(cpc_L1 * 0.95 * 100) / 100;
+                                if (cpc_L7 === 0) {
+                                    sbid = 0.75;
+                                } else {
+                                    sbid = Math.floor(cpc_L7 * 0.90 * 100) / 100;
+                                }
 
-                                updateBid(sbid, row.campaign_id);
+                                updateBid(sbid.toFixed(2), row.campaign_id);
                             }
                         }
                     }
@@ -687,10 +695,10 @@
                         var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
 
                         var sbid = 0;
-                        if(l1_cpc > l7_cpc){
-                            sbid = Math.floor(l1_cpc * 0.95 * 100) / 100;
+                        if (l1_cpc === 0 && l7_cpc === 0) {
+                            sbid = 0.75;
                         }else{
-                            sbid = Math.floor(l7_cpc * 0.95 * 100) / 100;
+                            sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
                         }
 
                         campaignIds.push(rowData.campaign_id);
@@ -773,11 +781,8 @@
                     let cpc_L7 = parseFloat(row.cpc_L7 || 0);
                     let sbid = 0;
 
-                    if (cpc_L1 > 0) {
-                        sbid = (cpc_L1 * 0.95).toFixed(2);
-                    } else {
-                        sbid = (cpc_L1 * 0.95).toFixed(2);
-                    }
+                    sbid = (cpc_L7 * 0.90).toFixed(2);
+
 
                     return {
                         campaignName: row.campaignName || "",

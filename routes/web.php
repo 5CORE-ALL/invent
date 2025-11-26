@@ -364,6 +364,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/show-zero-visibility-data', [ZeroVisibilityMasterController::class, 'getMergedChannelData']);
     Route::get('/export-zero-visibility-csv', [ZeroVisibilityMasterController::class, 'exportCsv'])->name('zero.export.csv');
     Route::post('/update-ra-checkbox', [ZeroVisibilityMasterController::class, 'updateRaCheckbox']);
+    Route::post('/update-sheet-link', [ZeroVisibilityMasterController::class, 'updateSheetLink']);
 
     //Listing Audit Master
     Route::get('/listing-audit-master', [ListingAuditMasterController::class, 'index'])->name('listing.audit');

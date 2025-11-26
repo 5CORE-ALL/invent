@@ -39,7 +39,13 @@ class UpdateEbaySuggestedBid extends Command
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
         $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
-        $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get()->keyBy("sku");
+        $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get();
+        
+        // Normalize SKUs by replacing non-breaking spaces with regular spaces for matching
+        $ebayMetricsNormalized = $ebayMetrics->mapWithKeys(function($item) {
+            $normalizedSku = str_replace(["\xC2\xA0", "\u{00A0}"], ' ', $item->sku);
+            return [$normalizedSku => $item];
+        });
 
         $campaignListings = DB::connection('apicentral')
             ->table('ebay_campaign_ads_listings')
@@ -57,7 +63,7 @@ class UpdateEbaySuggestedBid extends Command
             
         foreach ($productMasters as $pm) {
             $shopify = $shopifyData[$pm->sku] ?? null;
-            $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
 
             $inv = $shopify->inv ?? 0;
             $l30 = $shopify->quantity ?? 0;
@@ -118,11 +124,6 @@ class UpdateEbaySuggestedBid extends Command
 
             if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
                 $campaignListings[$ebayMetric->item_id]->sbid = $sbid;
-                
-                // Debug logging for specific SKU
-                if ($pm->sku === 'SP 12120 8OHMS 2PCS') {
-                    Log::info("Processing SKU: {$pm->sku}, item_id: {$ebayMetric->item_id}, sbid: {$sbid}, campaign: {$campaignListings[$ebayMetric->item_id]->campaign_id}");
-                }
             }
         }
 
