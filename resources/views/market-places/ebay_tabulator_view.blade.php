@@ -37,9 +37,9 @@
 
                     <select id="nrl-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All NRL</option>
-                        <option value="REQ">REQ</option>
-                        <option value="NRL">NRL</option>
+                        <option value="all">All Status</option>
+                        <option value="REQ">REQ Only</option>
+                        <option value="NR">NR Only</option>
                     </select>
 
                     <select id="pft-filter" class="form-select form-select-sm me-2"
@@ -289,30 +289,47 @@
 
 
                      {
-                        title: "NRL",
-                        field: "NR",
+                        title: "NR/REQ",
+                        field: "nr_req",
                         hozAlign: "center",
                         headerSort: false,
                         formatter: function(cell) {
                             let value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const inv = parseFloat(rowData['INV']) || 0;
+                            const isParent = rowData['Parent'] && rowData['Parent'].startsWith('PARENT');
                             
-                            // If empty or null, default to REQ
+                            // Don't show dropdown for parent rows
+                            if (isParent) {
+                                return '';
+                            }
+                            
+                            // Default to REQ if not set
                             if (!value || value === '') {
                                 value = 'REQ';
                             }
                             
-                            let dotColor = value === 'NRL' ? '#dc3545' : '#28a745';
+                            let bgColor = '#f8f9fa';
+                            let textColor = '#000';
                             
-                            return `<select class="form-select form-select-sm nr-select" 
-                                style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 4px;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
-                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
+                            if (value === 'REQ') {
+                                bgColor = '#28a745';
+                                textColor = 'white';
+                            } else if (value === 'NR') {
+                                bgColor = '#dc3545';
+                                textColor = 'white';
+                            }
+                            
+                            return `<select class="form-select form-select-sm nr-req-dropdown" 
+                                style="background-color: ${bgColor}; color: ${textColor}; border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 4px;">
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
+                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>NR</option>
                             </select>`;
                         },
                         cellClick: function(e, cell) {
                             e.stopPropagation();
                         },
-                        width: 70
+                        width: 90
                     },
                    
                     {
@@ -725,40 +742,51 @@
                 ]
             });
 
-            // NR select change handler
-            $(document).on('change', '.nr-select', function() {
+            // NR/REQ dropdown change handler
+            $(document).on('change', '.nr-req-dropdown', function() {
                 const $select = $(this);
                 const value = $select.val();
-                const cell = table.searchRows("(Child) sku", "=", $select.closest('.tabulator-cell').parent().find('[tabulator-field="(Child) sku"]').text())[0]?.getCell('NR');
                 
-                if (!cell) {
-                    console.error('Could not find cell');
+                // Update dropdown colors
+                if (value === 'REQ') {
+                    $select.css('background-color', '#28a745').css('color', 'white');
+                } else if (value === 'NR') {
+                    $select.css('background-color', '#dc3545').css('color', 'white');
+                } else {
+                    $select.css('background-color', '#f8f9fa').css('color', '#000');
+                }
+                
+                // Find the row and get SKU
+                const $cell = $select.closest('.tabulator-cell');
+                const row = table.getRow($cell.closest('.tabulator-row')[0]);
+                
+                if (!row) {
+                    console.error('Could not find row');
                     return;
                 }
                 
-                const row = cell.getRow();
                 const sku = row.getData()['(Child) sku'];
                 
                 // Update the row data
-                row.update({NR: value});
+                row.update({nr_req: value});
                 
-                // Save to database
+                // Save to database using listing_ebay endpoint
                 $.ajax({
-                    url: '/ebay/save-nr',
+                    url: '/listing_ebay/save-status',
                     method: 'POST',
                     data: {
                         _token: '{{ csrf_token() }}',
                         sku: sku,
-                        nr: value
+                        nr_req: value
                     },
                     success: function(response) {
-                        console.log('NRL saved successfully for', sku, 'value:', value);
-                        const message = response.message || `NRL updated to "${value}" for ${sku}`;
+                        console.log('NR/REQ saved successfully for', sku, 'value:', value);
+                        const message = value === 'REQ' ? 'REQ updated' : (value === 'NR' ? 'NR updated' : 'Status cleared');
                         showToast('success', message);
                     },
                     error: function(xhr) {
-                        console.error('Failed to save NRL for', sku, 'Error:', xhr.responseText);
-                        showToast('error', `Failed to save NRL for ${sku}`);
+                        console.error('Failed to save NR/REQ for', sku, 'Error:', xhr.responseText);
+                        showToast('error', `Failed to save NR/REQ for ${sku}`);
                     }
                 });
             });
@@ -828,15 +856,14 @@
                 }
 
                 if (nrlFilter !== 'all') {
-                    if (nrlFilter === 'REQ') {
-                        // Show all data except NRL
-                        table.addFilter(function(data) {
-                            return data.NR !== 'NRL';
-                        });
-                    } else {
-                        // Show only NRL
-                        table.addFilter('NR', '=', nrlFilter);
-                    }
+                    table.addFilter(function(data) {
+                        if (nrlFilter === 'REQ') {
+                            return data.nr_req === 'REQ';
+                        } else if (nrlFilter === 'NR') {
+                            return data.nr_req === 'NR';
+                        }
+                        return true;
+                    });
                 }
 
                 if (pftFilter !== 'all') {

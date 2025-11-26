@@ -246,6 +246,9 @@ class EbayController extends Controller
             ->toArray();
 
         $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
+        
+        // Fetch listing status data for nr_req field
+        $listingStatusData = EbayListingStatus::whereIn("sku", $skus)->get()->keyBy("sku");
 
         $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
             ->where(function ($q) use ($skus) {
@@ -295,6 +298,7 @@ class EbayController extends Controller
 
             $shopify = $shopifyData[$pm->sku] ?? null;
             $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            $listingStatus = $listingStatusData[$pm->sku] ?? null;
 
             $row = [];
             $row["Parent"] = $parent;
@@ -304,6 +308,14 @@ class EbayController extends Controller
             // Shopify
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
+            
+            // NR/REQ status from listing status
+            if ($listingStatus) {
+                $statusValue = is_array($listingStatus->value) ? $listingStatus->value : json_decode($listingStatus->value, true);
+                $row['nr_req'] = $statusValue['nr_req'] ?? 'REQ';
+            } else {
+                $row['nr_req'] = 'REQ';
+            }
 
             // eBay Metrics
             $row["eBay L30"] = $ebayMetric->ebay_l30 ?? 0;

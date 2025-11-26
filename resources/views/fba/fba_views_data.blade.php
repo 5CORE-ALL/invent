@@ -657,7 +657,7 @@
                                 return `${fbaSku} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
                             }
                         },
-
+                       
                         // {
                         //     title: "Shopify INV",
                         //     field: "Shopify_INV",
@@ -1253,6 +1253,18 @@
                         //     field: "Dec",
                         //     hozAlign: "center"
                         // }
+
+                         {
+                            title: "Rating",
+                            field: "Rating",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const rating = cell.getValue();
+                                if (!rating || rating === 0 || rating === '0') return '';
+                                return `<span style="color: #FFA500;">★ ${rating}</span>`;
+                            }
+                        },
+
                     ]
                 });
 
