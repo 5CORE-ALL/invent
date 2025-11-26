@@ -76,6 +76,15 @@
                     <button id="toggle-chart-btn" class="btn btn-sm btn-secondary me-2" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
                     </button>
+                    <button class="btn btn-sm btn-success me-2" disabled>
+                        <i class="fa fa-dollar-sign"></i> Total PFT AMT: $<span id="total-pft-amt-badge">0.00</span>
+                    </button>
+                    <button class="btn btn-sm btn-primary me-2" disabled>
+                        <i class="fa fa-shopping-cart"></i> Total SALES AMT: $<span id="total-sales-amt-badge">0.00</span>
+                    </button>
+                    <button class="btn btn-sm btn-info me-2" disabled>
+                        <i class="fa fa-chart-line"></i> AVG GPFT: <span id="avg-gpft-badge">0%</span>
+                    </button>
                 </div>
 
                 <!-- Metrics Summary Section -->
@@ -86,12 +95,12 @@
                             <div class="fw-bold" id="metric-avg-price">$0</div>
                         </div>
                         <div class="col">
-                            <small class="text-muted">Total Views</small>
+                            <small class="text-muted">Avg CVR</small>
                             <div class="fw-bold" id="metric-total-views">0</div>
                         </div>
                         <div class="col">
                             <small class="text-muted">Avg GPFT%</small>
-                            <div class="fw-bold text-success" id="metric-avg-gprft">0%</div>
+                            <span class="badge bg-success" id="avg-gpft-summary">0%</span>
                         </div>
                         <div class="col">
                             <small class="text-muted">Avg GROI%</small>
@@ -120,16 +129,44 @@
                     </div>
                 </div>
 
+                <!-- Total Boxes -->
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title text-primary">Total FBA INV</h5>
+                                <h3 id="total-fba-inv" class="text-primary">0</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title text-success">Total FBA L30</h5>
+                                <h3 id="total-fba-l30" class="text-success">0</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title text-warning">DIL %</h5>
+                                <h3 id="avg-dil-percent" class="text-warning">0%</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-2 bg-light rounded">
                     <h6 class="mb-2">Summary</h6>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <strong>Total TCOS:</strong> <span id="total-tcos">0%</span>
-                        </div>
-                        <div class="col-md-6">
-                            <strong>Total Spend L30:</strong> <span id="total-spend-l30">0</span>
-                        </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black;">Total TCOS: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black;">Total Spend L30: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black;">Total PFT AMT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black;">Total SALES AMT: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black;">COGS AMT: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black;">ROI %: 0%</span>
                     </div>
                 </div>
             </div>
@@ -390,8 +427,6 @@
                             
                             // Update metrics summary with latest data
                             const latest = data[data.length - 1];
-                            $('#metric-avg-price').text('$' + latest.avg_price);
-                            $('#metric-total-views').text(latest.total_views.toLocaleString());
                             $('#metric-avg-gprft').text(latest.avg_gprft + '%');
                             $('#metric-avg-groi').text(latest.avg_groi_percent + '%');
                             $('#metric-avg-tacos').text(latest.avg_tacos + '%');
@@ -801,6 +836,36 @@
                                     style = 'color: purple;';
                                 }
                                 return `<span style="${style}">${rawValue}</span>`;
+                            },
+                        },
+
+                        {
+                            title: "PFT AMT",
+                            field: "PFT_AMT",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue()) || 0;
+                                return '$' + value.toFixed(2);
+                            },
+                        },
+
+                        {
+                            title: "SALES AMT",
+                            field: "SALES_AMT",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue()) || 0;
+                                return '$' + value.toFixed(2);
+                            },
+                        },
+
+                        {
+                            title: "LP AMT",
+                            field: "LP_AMT",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue()) || 0;
+                                return '$' + value.toFixed(2);
                             },
                         },
 
@@ -1268,16 +1333,7 @@
                         //     hozAlign: "center"
                         // }
 
-                         {
-                            title: "Rating",
-                            field: "Rating",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const rating = cell.getValue();
-                                if (!rating || rating === 0 || rating === '0') return '';
-                                return `<span style="color: #FFA500;">★ ${rating}</span>`;
-                            }
-                        },
+                       
 
                     ]
                 });
@@ -1442,14 +1498,66 @@
                     const data = table.getData().filter(row => !row.is_parent); // Exclude parent rows
                     let totalTcos = 0;
                     let totalSpendL30 = 0;
+                    let totalPftAmt = 0;
+                    let totalSalesAmt = 0;
+                    let totalLpAmt = 0;
+                    let totalFbaInv = 0;
+                    let totalFbaL30 = 0;
+                    let totalDilPercent = 0;
+                    let dilCount = 0;
 
                     data.forEach(row => {
                         totalTcos += parseFloat(row.TCOS_Percentage || 0);
                         totalSpendL30 += parseFloat(row.Total_Spend_L30 || 0);
+                        totalPftAmt += parseFloat(row.PFT_AMT || 0);
+                        totalSalesAmt += parseFloat(row.SALES_AMT || 0);
+                        totalLpAmt += parseFloat(row.LP_AMT || 0);
+                        totalFbaInv += parseFloat(row.FBA_Quantity || 0);
+                        totalFbaL30 += parseFloat(row.l30_units || 0);
+                        
+                        const dil = parseFloat(row.FBA_Dil || 0);
+                        if (!isNaN(dil)) {
+                            totalDilPercent += dil;
+                            dilCount++;
+                        }
                     });
 
-                    $('#total-tcos').text(totalTcos.toFixed(2) + '%');
-                    $('#total-spend-l30').text('$' + totalSpendL30.toFixed(2));
+                    let totalWeightedPrice = 0;
+                    let totalL30 = 0;
+                    data.forEach(row => {
+                        const price = parseFloat(row.FBA_Price) || 0;
+                        const l30 = parseFloat(row.l30_units) || 0;
+                        totalWeightedPrice += price * l30;
+                        totalL30 += l30;
+                    });
+                    const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
+                    $('#metric-avg-price').text('$' + avgPrice.toFixed(2));
+
+                    let totalViews = 0;
+                    data.forEach(row => {
+                        totalViews += parseFloat(row.Current_Month_Views) || 0;
+                    });
+                    const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+                    $('#metric-total-views').text(avgCVR.toFixed(2) + '%');
+
+                    $('#total-tcos-badge').text('Total TCOS: ' + totalTcos.toFixed(2) + '%');
+                    $('#total-spend-l30-badge').text('Total Spend L30: $' + totalSpendL30.toFixed(2));
+                    $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + totalPftAmt.toFixed(2));
+                    $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + totalSalesAmt.toFixed(2));
+                    $('#total-cogs-amt-badge').text('COGS AMT: $' + totalLpAmt.toFixed(2));
+                    const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
+                    $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
+                    $('#total-fba-inv').text(totalFbaInv.toLocaleString());
+                    $('#total-fba-l30').text(totalFbaL30.toLocaleString());
+                    const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
+                    $('#avg-dil-percent').text(avgDilPercent.toFixed(2) + '%');
+                    $('#total-pft-amt').text('$' + totalPftAmt.toFixed(2));
+                    $('#total-pft-amt-badge').text(totalPftAmt.toFixed(2));
+                    $('#total-sales-amt').text('$' + totalSalesAmt.toFixed(2));
+                    $('#total-sales-amt-badge').text(totalSalesAmt.toFixed(2));
+                    const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
+                    $('#avg-gpft-badge').text(avgGpft + '%');
+                    $('#avg-gpft-summary').text(avgGpft + '%');
                 }
 
 
