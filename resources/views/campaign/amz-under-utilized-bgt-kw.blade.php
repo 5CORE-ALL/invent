@@ -582,7 +582,7 @@
                             if (l7_cpc === 0) {
                                 sbid = 0.75;
                             } else {
-                                sbid = Math.round((l7_cpc * 1.10) * 100) / 100;
+                                sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
                             }
                             sbid = sbid.toFixed(2);
                             return sbid;
@@ -609,7 +609,7 @@
                                 if (l7_cpc === 0) {
                                     sbid = 0.75;
                                 } else {
-                                    sbid = Math.round((l7_cpc * 1.10) * 100) / 100;
+                                    sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
                                 }
                                 sbid = sbid.toFixed(2);
                                 updateBid(sbid, row.campaign_id);
@@ -887,7 +887,7 @@
                         if (l7_cpc === 0) {
                             sbid = 0.75;
                         } else {
-                            sbid = Math.round((l7_cpc * 1.10) * 100) / 100;
+                            sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
                         }
                         sbid = sbid.toFixed(2);
 
