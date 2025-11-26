@@ -95,6 +95,85 @@
             opacity: 0.8 !important;
         }
 
+        /* Large Error Display */
+        .error-alert-large {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+            min-width: 500px;
+            max-width: 800px;
+            background: #fff;
+            border: 5px solid #dc3545;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            padding: 30px;
+            animation: shake 0.5s;
+        }
+
+        .error-alert-large .error-title {
+            color: #dc3545;
+            font-size: 42px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        .error-alert-large .error-message {
+            color: #dc3545;
+            font-size: 24px;
+            font-weight: 600;
+            line-height: 1.5;
+            text-align: center;
+            margin-bottom: 25px;
+            word-wrap: break-word;
+        }
+
+        .error-alert-large .error-details {
+            background: #f8d7da;
+            border: 2px solid #f5c6cb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #721c24;
+            font-size: 16px;
+        }
+
+        .error-alert-large .btn-close-error {
+            width: 100%;
+            padding: 15px;
+            font-size: 20px;
+            font-weight: bold;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .error-alert-large .btn-close-error:hover {
+            background: #c82333;
+            transform: scale(1.05);
+        }
+
+        .error-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 9998;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translate(-50%, -50%) rotate(0deg); }
+            10%, 30%, 50%, 70%, 90% { transform: translate(-50%, -50%) rotate(-2deg); }
+            20%, 40%, 60%, 80% { transform: translate(-50%, -50%) rotate(2deg); }
+        }
 
     </style>
 @endsection
@@ -223,7 +302,7 @@
 
                                     <div class="modal-footer">
                                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                        <button type="submit" class="btn btn-success">Save Stock Adjustment</button>
+                                        <button type="submit" class="btn btn-success" id="saveStockAdjustmentBtn">Save Stock Adjustment</button>
                                     </div>
                                 </div>
                             </form>
@@ -431,19 +510,58 @@
                     e.preventDefault();
 
                     const formData = $(this).serialize();
+                    const $submitBtn = $('#saveStockAdjustmentBtn');
+                    const originalText = $submitBtn.text();
+                    
+                    // Show loading state
+                    $submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Processing...');
 
                     $.ajax({
                         url: '{{ route("stock.adjustment.store") }}',
                         method: 'POST',
                         data: formData,
                         success: function (response) {
+                            $submitBtn.prop('disabled', false).text(originalText);
                             $('#addWarehouseModal').modal('hide');
                             loadData(); // Reload after store
-                            $('#stockAdjustmentForm')[0].reset(); // Optional: clear form
+                            $('#stockAdjustmentForm')[0].reset();
+                            showSuccessAlert(response.message || 'Stock adjustment saved successfully!');
                         },
                         error: function (xhr) {
-                            console.log(xhr.responseJSON);
-                            alert('Error storing stock adjustment.');
+                            $submitBtn.prop('disabled', false).text(originalText);
+                            console.log('Full Error Response:', xhr);
+                            
+                            let errorMessage = 'Error storing stock adjustment.';
+                            let errorDetails = '';
+                            
+                            if (xhr.responseJSON && xhr.responseJSON.error) {
+                                errorMessage = xhr.responseJSON.error;
+                                // Check if there are additional details
+                                if (xhr.responseJSON.details) {
+                                    errorDetails = xhr.responseJSON.details;
+                                }
+                            } else if (xhr.responseJSON && xhr.responseJSON.errors) {
+                                // Handle validation errors
+                                const errors = xhr.responseJSON.errors;
+                                errorMessage = Object.values(errors).flat().join('<br>');
+                            } else if (xhr.status === 429) {
+                                errorMessage = 'Shopify API rate limit exceeded!';
+                                errorDetails = 'Too many requests. Please wait 5-10 seconds and try again.';
+                            } else if (xhr.status === 500) {
+                                errorMessage = 'Server Error';
+                                errorDetails = xhr.responseJSON?.message || 'Please check the logs or contact support.';
+                            } else if (xhr.status === 0) {
+                                errorMessage = 'Connection Failed';
+                                errorDetails = 'Unable to connect to the server. Please check your internet connection.';
+                            }
+                            
+                            // Add SKU info to error details
+                            const sku = $('#sku option:selected').text();
+                            if (sku) {
+                                errorDetails += (errorDetails ? '<br><br>' : '') + '<strong>SKU Attempted:</strong> ' + sku;
+                            }
+                            
+                            showLargeErrorAlert(errorMessage, errorDetails);
                         }
                     });
                 });
@@ -957,6 +1075,87 @@
                     field.classList.remove('is-invalid');
                     errorElement.textContent = '';
                 }
+            }
+
+            // Large Error Alert Display
+            function showLargeErrorAlert(message, details = '') {
+                // Remove any existing error alerts
+                $('.error-overlay, .error-alert-large').remove();
+                
+                // Create overlay
+                const overlay = $('<div class="error-overlay"></div>');
+                
+                // Create error alert
+                const errorAlert = $(`
+                    <div class="error-alert-large">
+                        <div class="error-title">
+                            <i class="fas fa-exclamation-circle"></i> ERROR
+                        </div>
+                        <div class="error-message">
+                            ${message}
+                        </div>
+                        ${details ? `<div class="error-details">${details}</div>` : ''}
+                        <button class="btn-close-error">
+                            <i class="fas fa-times-circle"></i> CLOSE
+                        </button>
+                    </div>
+                `);
+                
+                // Add to body
+                $('body').append(overlay).append(errorAlert);
+                
+                // Close on button click
+                errorAlert.find('.btn-close-error').on('click', function() {
+                    overlay.fadeOut(300, function() { $(this).remove(); });
+                    errorAlert.fadeOut(300, function() { $(this).remove(); });
+                });
+                
+                // Close on overlay click
+                overlay.on('click', function() {
+                    overlay.fadeOut(300, function() { $(this).remove(); });
+                    errorAlert.fadeOut(300, function() { $(this).remove(); });
+                });
+                
+                // Auto-play error sound if available
+                try {
+                    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSmH0fPTgjMGHm7A7+OZURI7k9nzwoQtBCF+0PDZjjwIGGS57OmjVxEIQ5zg8bhjHAU8kdXzyoIvBCN70vDekj8JGWi67Oqe'); 
+                    audio.volume = 0.3;
+                    audio.play().catch(() => {});
+                } catch(e) {}
+            }
+
+            // Success Alert Display
+            function showSuccessAlert(message) {
+                // Remove any existing alerts
+                $('.error-overlay, .error-alert-large, .success-alert-large').remove();
+                
+                const successAlert = $(`
+                    <div class="error-alert-large" style="border-color: #28a745;">
+                        <div class="error-title" style="color: #28a745;">
+                            <i class="fas fa-check-circle"></i> SUCCESS
+                        </div>
+                        <div class="error-message" style="color: #28a745;">
+                            ${message}
+                        </div>
+                        <button class="btn-close-error" style="background: #28a745;">
+                            <i class="fas fa-check"></i> OK
+                        </button>
+                    </div>
+                `);
+                
+                const overlay = $('<div class="error-overlay" style="background: rgba(0, 0, 0, 0.5);"></div>');
+                
+                $('body').append(overlay).append(successAlert);
+                
+                successAlert.find('.btn-close-error').on('click', function() {
+                    overlay.fadeOut(300, function() { $(this).remove(); });
+                    successAlert.fadeOut(300, function() { $(this).remove(); });
+                });
+                
+                overlay.on('click', function() {
+                    overlay.fadeOut(300, function() { $(this).remove(); });
+                    successAlert.fadeOut(300, function() { $(this).remove(); });
+                });
             }
 
             initializeTable();

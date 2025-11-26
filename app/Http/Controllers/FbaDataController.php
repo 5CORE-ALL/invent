@@ -629,9 +629,26 @@ class FbaDataController extends Controller
          $totalSpendSum = $kwSpend + $ptSpend;
 
          // Calculate TCOS percentage (total_spend_sum / price_l30)
-         $tcosPercentage = $priceL30 > 0 ? round(($totalSpendSum / $priceL30) * 100, 2) : 0;
+         // If no ad spend, TCOS = 0%
+         // If ad spend exists but no sales, TCOS = 100%
+         // Otherwise, calculate normally
+         if ($totalSpendSum == 0) {
+            $tcosPercentage = 0;
+         } elseif ($totalSpendSum > 0 && $priceL30 == 0) {
+            $tcosPercentage = 100;
+         } else {
+            $tcosPercentage = round(($totalSpendSum / $priceL30) * 100, 2);
+         }
 
          $lmpaData = $this->lmpaDataService->getLmpaData($sku);
+
+         // Debug logging for ET 6FT BLU LMP data
+         if (stripos($sku, 'ET 6FT BLU') !== false) {
+            Log::info("ET 6FT BLU LMP Data Check", [
+               'sku' => $sku,
+               'lmpaData' => $lmpaData
+            ]);
+         }
 
          $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
          $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);

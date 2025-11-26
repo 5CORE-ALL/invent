@@ -379,15 +379,8 @@
                             field: "TCOS_Percentage",
                             hozAlign: "center",
                             formatter: function(cell) {
-                                const data = cell.getRow().getData();
-                                const sales = parseFloat(data.sales || 0);
-                                const spend = parseFloat(data.ad_spend || 0);
-                                if (sales === 0 && spend !== 0) {
-                                    return '100%';
-                                } else {
-                                    const value = parseFloat(cell.getValue() || 0);
-                                    return value > 0 ? value.toFixed(0) + '%' : '100%';
-                                }
+                                const value = parseFloat(cell.getValue() || 0);
+                                return value.toFixed(0) + '%';
                             }
                         },
 

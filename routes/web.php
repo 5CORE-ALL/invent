@@ -796,6 +796,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
+    Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
+    Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
+    Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility']);
+    Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'setAmazonColumnVisibility']);
+    Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
+    Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
+    Route::post('/update-amazon-listed-live', [OverallAmazonController::class, 'updateListedLive']);
+    Route::get('/amazon-export-pricing-cvr', [OverallAmazonController::class, 'exportAmazonPricingCVR'])->name('amazon.export.pricing.cvr');
     Route::get('/amazon-pricing-increase-decrease', action: [OverallAmazonController::class, 'amazonPriceIncreaseDecrease'])->name('amazon.pricing.increase');
     Route::post('/amazon/save-manual-link', [OverallAmazonController::class, 'saveManualLink'])->name('amazon.saveManualLink');
     Route::get('/amazon-pricing-increase', action: [OverallAmazonController::class, 'amazonPriceIncrease'])->name('amazon.pricing.inc');
