@@ -35,10 +35,10 @@ class StockAdjustmentController extends Controller
     }
 
     /**
-     * Make Shopify API call with automatic retry on rate limit
-         * Implements exponential backoff for 429 errors with shorter wait times
+     * Make Shopify API call with aggressive retry on any error
+     * Uses longer backoff for better reliability - especially for variant fetch
      */
-    private function shopifyApiCall($method, $url, $data = [], $maxRetries = 3)
+    private function shopifyApiCall($method, $url, $data = [], $maxRetries = 5)
     {
         $attempt = 0;
         $response = null;
@@ -46,22 +46,23 @@ class StockAdjustmentController extends Controller
         while ($attempt < $maxRetries) {
             $attempt++;
             
-            // Shorter wait times: 1, 2, 3 seconds instead of exponential
+            // Longer wait times for better reliability: 0.5, 1, 2, 3, 4 seconds
             if ($attempt > 1) {
-                $waitTime = $attempt; // 1, 2, 3 seconds max
+                $waitTime = max(0.5, $attempt - 0.5); // 0.5, 1, 2, 3, 4 seconds
                 Log::warning("Shopify API retry attempt {$attempt}/{$maxRetries}, waiting {$waitTime}s", [
                     'url' => $url,
-                    'method' => $method
+                    'method' => $method,
+                    'attempt' => $attempt
                 ]);
-                sleep($waitTime);
+                usleep($waitTime * 1000000); // Use microseconds for more precision
             }
             
             try {
-                // Use shorter timeout - 8 seconds instead of 15
+                // Use 10 second timeout for more reliable connections
                 $request = Http::withHeaders([
                     'X-Shopify-Access-Token' => $this->shopifyPassword,
                     'Content-Type' => 'application/json',
-                ])->timeout(8);
+                ])->timeout(10);
                 
                 if ($method === 'GET') {
                     $response = $request->get($url, $data);
@@ -73,7 +74,8 @@ class StockAdjustmentController extends Controller
                 if ($response->successful()) {
                     Log::info("Shopify API call successful on attempt {$attempt}", [
                         'url' => $url,
-                        'method' => $method
+                        'method' => $method,
+                        'attempt' => $attempt
                     ]);
                     return $response;
                 }
@@ -81,7 +83,27 @@ class StockAdjustmentController extends Controller
                 // If rate limited (429), retry with backoff
                 if ($response->status() === 429 && $attempt < $maxRetries) {
                     Log::warning("Rate limit hit (429) on attempt {$attempt}, will retry", [
-                        'url' => $url
+                        'url' => $url,
+                        'attempt' => $attempt
+                    ]);
+                    continue;
+                }
+                
+                // If server error (5xx), always retry
+                if ($response->status() >= 500 && $response->status() < 600 && $attempt < $maxRetries) {
+                    Log::warning("Server error ({$response->status()}) on attempt {$attempt}, will retry", [
+                        'url' => $url,
+                        'status' => $response->status(),
+                        'attempt' => $attempt
+                    ]);
+                    continue;
+                }
+                
+                // If timeout-like error, retry
+                if ($response->status() >= 502 && $response->status() <= 504 && $attempt < $maxRetries) {
+                    Log::warning("Timeout error ({$response->status()}) on attempt {$attempt}, will retry", [
+                        'url' => $url,
+                        'attempt' => $attempt
                     ]);
                     continue;
                 }
@@ -90,16 +112,22 @@ class StockAdjustmentController extends Controller
                 return $response;
                 
             } catch (\Exception $e) {
-                Log::error("Exception in Shopify API call attempt {$attempt}", [
+                Log::warning("Exception in Shopify API call attempt {$attempt}: {$e->getMessage()}", [
                     'url' => $url,
                     'error' => $e->getMessage(),
                     'attempt' => $attempt
                 ]);
                 
+                // Retry on any connection error
                 if ($attempt < $maxRetries) {
                     continue;   
                 }
                 
+                // All attempts failed
+                Log::error("All Shopify API retry attempts failed for URL: {$url}", [
+                    'total_attempts' => $attempt,
+                    'last_error' => $e->getMessage()
+                ]);
                 throw $e;
             }
         }
@@ -182,23 +210,41 @@ class StockAdjustmentController extends Controller
 
             $adjustValue = $adjustment === 'Add' ? $qty : -$qty;
 
-            // Step 1: Get inventory_item_id from variant (Single API call with retry)
-            $variantResponse = $this->shopifyApiCall(
-                'GET',
-                "https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$variantId}.json"
-            );
-
-            if (!$variantResponse->successful()) {
-                Log::error("Failed to fetch variant after retries", [
-                    'status' => $variantResponse->status(),
-                    'body' => $variantResponse->body(),
-                    'sku' => $sku
+            // Step 1: Get inventory_item_id from variant 
+            // This is the most critical step - if SKU exists, this MUST succeed
+            try {
+                $variantResponse = $this->shopifyApiCall(
+                    'GET',
+                    "https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$variantId}.json",
+                    [],
+                    5 // More retries for variant fetch since it's critical and SKU definitely exists
+                );
+            } catch (\Exception $e) {
+                Log::error("Exception fetching variant for SKU {$sku}", [
+                    'error' => $e->getMessage(),
+                    'variant_id' => $variantId
                 ]);
                 
                 return response()->json([
+                    'error' => 'Cannot connect to Shopify',
+                    'details' => 'Network error connecting to Shopify. Please check your internet connection and try again.'
+                ], 503);
+            }
+
+            if (!$variantResponse || !$variantResponse->successful()) {
+                $status = $variantResponse ? $variantResponse->status() : 'No Response';
+                Log::error("Failed to fetch variant after all retries", [
+                    'status' => $status,
+                    'body' => $variantResponse ? $variantResponse->body() : 'No response received',
+                    'sku' => $sku,
+                    'variant_id' => $variantId
+                ]);
+                
+                // Return a more helpful error message
+                return response()->json([
                     'error' => 'Failed to fetch product from Shopify',
-                    'details' => 'Shopify API Error: ' . $variantResponse->status() . '. Please try again.'
-                ], 500);
+                    'details' => 'Could not retrieve product data from Shopify after multiple attempts. This may be a temporary Shopify outage. Please wait a moment and try again.'
+                ], 503);
             }
 
             $variant = $variantResponse->json('variant');
