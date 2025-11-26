@@ -290,7 +290,7 @@ class EbayKwAdsController extends Controller
                 $row["impressions_" . strtolower($period)] = $matchedCampaign->cpc_impressions ?? 0;
                 $row["clicks_" . strtolower($period)]      = $matchedCampaign->cpc_clicks ?? 0;
                 $row["ad_sales_" . strtolower($period)]    = $sales;
-                $row["ad_sold_" . strtolower($period)]     = $matchedCampaign->unitsSold ?? 0;
+                $row["ad_sold_" . strtolower($period)]     = $matchedCampaign->cpc_attributed_sales ?? 0;
                 $row["spend_" . strtolower($period)]       = $adFees;
                 $row["acos_" . strtolower($period)]        = $acos;
                 $row["cpc_" . strtolower($period)]         = $cpc;
@@ -364,7 +364,7 @@ class EbayKwAdsController extends Controller
                 $row["impressions_" . strtolower($period)] = $matchedCampaign->cpc_impressions ?? 0;
                 $row["clicks_" . strtolower($period)]      = $matchedCampaign->cpc_clicks ?? 0;
                 $row["ad_sales_" . strtolower($period)]    = $sales;
-                $row["ad_sold_" . strtolower($period)]     = $matchedCampaign->unitsSold ?? 0;
+                $row["ad_sold_" . strtolower($period)]     = $matchedCampaign->cpc_attributed_sales ?? 0;
                 $row["spend_" . strtolower($period)]       = $adFees;
                 $row["acos_" . strtolower($period)]        = $acos;
                 $row["cpc_" . strtolower($period)]         = $cpc;
