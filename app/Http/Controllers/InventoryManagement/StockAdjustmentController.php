@@ -36,37 +36,72 @@ class StockAdjustmentController extends Controller
 
     /**
      * Make Shopify API call with automatic retry on rate limit
+         * Implements exponential backoff for 429 errors with shorter wait times
      */
     private function shopifyApiCall($method, $url, $data = [], $maxRetries = 3)
     {
         $attempt = 0;
+        $response = null;
         
         while ($attempt < $maxRetries) {
             $attempt++;
             
-            $request = Http::withHeaders([
-                'X-Shopify-Access-Token' => $this->shopifyPassword,
-                'Content-Type' => 'application/json',
-            ])->timeout(10);
-            
-            if ($method === 'GET') {
-                $response = $request->get($url, $data);
-            } else {
-                $response = $request->post($url, $data);
-            }
-            
-            // If rate limited, wait and retry
-            if ($response->status() === 429 && $attempt < $maxRetries) {
-                $waitTime = $attempt * 2; // 2, 4, 6 seconds
-                Log::info("Rate limited, waiting {$waitTime}s before retry", [
-                    'attempt' => $attempt,
-                    'url' => $url
+            // Shorter wait times: 1, 2, 3 seconds instead of exponential
+            if ($attempt > 1) {
+                $waitTime = $attempt; // 1, 2, 3 seconds max
+                Log::warning("Shopify API retry attempt {$attempt}/{$maxRetries}, waiting {$waitTime}s", [
+                    'url' => $url,
+                    'method' => $method
                 ]);
                 sleep($waitTime);
-                continue;
             }
             
-            return $response;
+            try {
+                // Use shorter timeout - 8 seconds instead of 15
+                $request = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $this->shopifyPassword,
+                    'Content-Type' => 'application/json',
+                ])->timeout(8);
+                
+                if ($method === 'GET') {
+                    $response = $request->get($url, $data);
+                } else {
+                    $response = $request->post($url, $data);
+                }
+                
+                // Success - return immediately
+                if ($response->successful()) {
+                    Log::info("Shopify API call successful on attempt {$attempt}", [
+                        'url' => $url,
+                        'method' => $method
+                    ]);
+                    return $response;
+                }
+                
+                // If rate limited (429), retry with backoff
+                if ($response->status() === 429 && $attempt < $maxRetries) {
+                    Log::warning("Rate limit hit (429) on attempt {$attempt}, will retry", [
+                        'url' => $url
+                    ]);
+                    continue;
+                }
+                
+                // Other errors - return the response
+                return $response;
+                
+            } catch (\Exception $e) {
+                Log::error("Exception in Shopify API call attempt {$attempt}", [
+                    'url' => $url,
+                    'error' => $e->getMessage(),
+                    'attempt' => $attempt
+                ]);
+                
+                if ($attempt < $maxRetries) {
+                    continue;   
+                }
+                
+                throw $e;
+            }
         }
         
         return $response;
@@ -96,6 +131,9 @@ class StockAdjustmentController extends Controller
      */
     public function store(Request $request)
     {
+        // Set longer execution time for this operation, but less than PHP's default 30 seconds
+        set_time_limit(25);
+        
         $request->validate([
             'sku' => 'required|string',
             'parent' => 'required|string',
@@ -144,22 +182,22 @@ class StockAdjustmentController extends Controller
 
             $adjustValue = $adjustment === 'Add' ? $qty : -$qty;
 
-            // Step 1: Get inventory_item_id from variant (Single API call)
-            sleep(1); // Rate limit protection
+            // Step 1: Get inventory_item_id from variant (Single API call with retry)
             $variantResponse = $this->shopifyApiCall(
                 'GET',
                 "https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$variantId}.json"
             );
 
             if (!$variantResponse->successful()) {
-                Log::error("Failed to fetch variant", [
+                Log::error("Failed to fetch variant after retries", [
                     'status' => $variantResponse->status(),
-                    'body' => $variantResponse->body()
+                    'body' => $variantResponse->body(),
+                    'sku' => $sku
                 ]);
                 
                 return response()->json([
                     'error' => 'Failed to fetch product from Shopify',
-                    'details' => 'Error: ' . $variantResponse->status()
+                    'details' => 'Shopify API Error: ' . $variantResponse->status() . '. Please try again.'
                 ], 500);
             }
 
@@ -169,7 +207,7 @@ class StockAdjustmentController extends Controller
             if (!$inventoryItemId) {
                 return response()->json([
                     'error' => 'Invalid product data',
-                    'details' => 'Could not find inventory item ID'
+                    'details' => 'Could not find inventory item ID for this SKU'
                 ], 500);
             }
 
@@ -179,8 +217,7 @@ class StockAdjustmentController extends Controller
                 'inventory_item_id' => $inventoryItemId
             ]);
 
-            // Step 2: Get location_id from inventory levels
-            sleep(1); // Rate limit protection
+            // Step 2: Get location_id from inventory levels with retry
             $levelsResponse = $this->shopifyApiCall(
                 'GET',
                 "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json",
@@ -188,14 +225,15 @@ class StockAdjustmentController extends Controller
             );
 
             if (!$levelsResponse->successful()) {
-                Log::error("Failed to fetch inventory levels", [
+                Log::error("Failed to fetch inventory levels after retries", [
                     'status' => $levelsResponse->status(),
-                    'body' => $levelsResponse->body()
+                    'body' => $levelsResponse->body(),
+                    'sku' => $sku
                 ]);
                 
                 return response()->json([
                     'error' => 'Failed to fetch inventory levels from Shopify',
-                    'details' => 'Error: ' . $levelsResponse->status()
+                    'details' => 'Shopify API Error: ' . $levelsResponse->status() . '. Please try again.'
                 ], 500);
             }
 
@@ -217,8 +255,7 @@ class StockAdjustmentController extends Controller
                 'adjustment' => $adjustValue
             ]);
 
-            // Step 3: Adjust inventory using REST API (Same as VerificationAdjustmentController)
-            sleep(1); // Rate limit protection
+            // Step 3: Adjust inventory using REST API with retry
             $adjustResponse = $this->shopifyApiCall(
                 'POST',
                 "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",
@@ -230,7 +267,7 @@ class StockAdjustmentController extends Controller
             );
 
             if (!$adjustResponse->successful()) {
-                Log::error("Failed to adjust inventory in Shopify", [
+                Log::error("Failed to adjust inventory in Shopify after retries", [
                     'sku' => $sku,
                     'status' => $adjustResponse->status(),
                     'body' => $adjustResponse->body()
@@ -238,7 +275,7 @@ class StockAdjustmentController extends Controller
                 
                 return response()->json([
                     'error' => 'Failed to update inventory in Shopify',
-                    'details' => $adjustResponse->body()
+                    'details' => 'Shopify API Error: ' . $adjustResponse->status() . '. Please try again.'
                 ], 500);
             }
 
@@ -248,8 +285,7 @@ class StockAdjustmentController extends Controller
             Log::info('Successfully adjusted Shopify inventory', [
                 'sku' => $sku,
                 'adjustment' => $adjustValue,
-                'final_quantity' => $finalQuantity,
-                'response' => $adjustResult
+                'final_quantity' => $finalQuantity
             ]);
 
             // Step 4: Only save to database AFTER successful Shopify update
@@ -285,18 +321,25 @@ class StockAdjustmentController extends Controller
                 ]);
                 
                 return response()->json([
-                    'error' => 'Shopify updated successfully but failed to save to database',
-                    'details' => 'Shopify inventory is at ' . $finalQuantity . ' but database record was not created',
+                    'error' => 'Database Error',
+                    'details' => 'Shopify inventory was updated successfully but database record could not be created. Please contact support.',
                     'shopify_updated' => true,
                     'new_stock_level' => $finalQuantity
                 ], 500);
             }
 
             return response()->json([
-                'message' => 'Stock adjusted successfully in Shopify and saved to database',
-                'new_stock_level' => $finalQuantity
+                'message' => 'Stock adjustment completed successfully for ' . $sku . '. New quantity: ' . $finalQuantity,
+                'new_stock_level' => $finalQuantity,
+                'sku' => $sku
             ]);
 
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error("Connection timeout for SKU $sku: " . $e->getMessage());
+            return response()->json([
+                'error' => 'Connection Timeout',
+                'details' => 'Request took too long. Please try again or check your internet connection.'
+            ], 504);
         } catch (\Exception $e) {
             Log::error("Stock adjustment failed for SKU $sku: " . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
@@ -304,9 +347,8 @@ class StockAdjustmentController extends Controller
                 'file' => $e->getFile()
             ]);
             return response()->json([
-                'error' => 'Something went wrong.',
-                'details' => $e->getMessage(),
-                'line' => $e->getLine()
+                'error' => 'An unexpected error occurred',
+                'details' => 'Please try again or contact support if the problem persists.'
             ], 500);
         }
     }
