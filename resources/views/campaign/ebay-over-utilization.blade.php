@@ -453,10 +453,10 @@
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
 
                             var sbid = 0;
-                            if(l1_cpc > l7_cpc){
-                                sbid = (l1_cpc * 0.95).toFixed(2);
+                            if(l7_cpc == 0){
+                                sbid = 0.75;
                             }else{
-                                sbid = (l1_cpc * 0.95).toFixed(2);
+                                sbid = (l7_cpc * 0.90).toFixed(2);
                             }
                             return sbid;
                         },
@@ -480,10 +480,10 @@
                                 var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
 
                                 var sbid = 0;
-                                if(l1_cpc > l7_cpc){
-                                    sbid = (l1_cpc * 0.95).toFixed(2);
+                                if(l7_cpc == 0){
+                                    sbid = 0.75;
                                 }else{
-                                    sbid = (l1_cpc * 0.95).toFixed(2);
+                                    sbid = (l7_cpc * 0.90).toFixed(2);
                                 }
                                 updateBid(sbid, rowData.campaign_id);
                             }
@@ -663,10 +663,10 @@
                         var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
 
                         var sbid = 0;
-                        if(l1_cpc > l7_cpc){
-                            sbid = parseFloat((l1_cpc * 0.95).toFixed(2));
+                        if(l7_cpc == 0){
+                            sbid = parseFloat(0.75);
                         }else{
-                            sbid = parseFloat((l1_cpc * 0.95).toFixed(2));
+                            sbid = parseFloat((l7_cpc * 0.90).toFixed(2));
                         }
 
                         campaignIds.push(rowData.campaign_id);
@@ -772,10 +772,10 @@
                     let l7_cpc = parseFloat(row.l7_cpc || 0);
                     let sbid = 0;
 
-                    if (l1_cpc > l7_cpc) {
-                        sbid = (l1_cpc * 0.95).toFixed(2);
+                    if (l7_cpc == 0) {
+                        sbid = 0.75;
                     } else {
-                        sbid = (l1_cpc * 0.95).toFixed(2);
+                        sbid = (l7_cpc * 0.90).toFixed(2);
                     }
 
                     return {
