@@ -203,13 +203,18 @@ class EbayPMPAdsController extends Controller
             ->whereIn('report_range', ['L60', 'L30', 'L7'])
             ->get();
 
+        // Get campaign listings with bid_percentage. Prioritize COST_PER_SALE rows
+        // since they have bid_percentage, but fallback to latest row if no COST_PER_SALE exists.
         $campaignListings = DB::connection('apicentral')
             ->table('ebay_campaign_ads_listings as t')
-            ->join(DB::raw('(SELECT listing_id, MAX(id) AS max_id 
-                            FROM ebay_campaign_ads_listings 
-                            WHERE funding_strategy="COST_PER_SALE"
-                            GROUP BY listing_id) x'), 
-                't.id', '=', 'x.max_id')
+            ->join(DB::raw('(SELECT listing_id, 
+                                    MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                    MAX(id) AS max_id
+                             FROM ebay_campaign_ads_listings 
+                             GROUP BY listing_id) x'), 
+                function($join) {
+                    $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                })
             ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
             ->get()
             ->keyBy('listing_id');
@@ -261,6 +266,16 @@ class EbayPMPAdsController extends Controller
 
             $shopify = $shopifyData[$pm->sku] ?? null;
             $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            
+            // Fallback: If exact match not found, try partial match (e.g., "CAPO AL BLK" -> "CAPO AL BLK 2PCS")
+            if (!$ebayMetric) {
+                foreach ($ebayMetrics as $metric) {
+                    if (stripos($metric->sku, $pm->sku) === 0 || stripos($pm->sku, $metric->sku) === 0) {
+                        $ebayMetric = $metric;
+                        break;
+                    }
+                }
+            }
 
             $row = [];
             $row["Parent"] = $parent;
