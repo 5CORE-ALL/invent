@@ -302,12 +302,13 @@ class AmazonCampaignReportsController extends Controller
                 'impressions_l15' => $matchedCampaignL15->impressions ?? 0,
                 'clicks_l15'      => $matchedCampaignL15->clicks ?? 0,
                 'spend_l15'       => $matchedCampaignL15->spend ?? 0,
-                'ad_sales_l15'    => $matchedCampaignL15->sales14d ?? 0,
                 'ad_sales_l15'    => ($matchedCampaignL15->sales1d ?? 0) + ($matchedCampaignL15->sales14d ?? 0),
                 'ad_sold_l15'     => ($matchedCampaignL15->unitsSoldClicks1d ?? 0) + ($matchedCampaignL15->unitsSoldClicks14d ?? 0),
                 'acos_l15'        => (($matchedCampaignL15->spend ?? 0) > 0 && (($matchedCampaignL15->sales1d ?? 0) + ($matchedCampaignL15->sales14d ?? 0)) > 0) 
                                     ? round(($matchedCampaignL15->spend / (($matchedCampaignL15->sales1d ?? 0) + ($matchedCampaignL15->sales14d ?? 0))) * 100, 2) 
                                     : 0,
+                'cpc_l15'         => $matchedCampaignL15->costPerClick ?? 0,
+
                 // L7
                 'impressions_l7'  => $matchedCampaignL7->impressions ?? 0,
                 'clicks_l7'       => $matchedCampaignL7->clicks ?? 0,
