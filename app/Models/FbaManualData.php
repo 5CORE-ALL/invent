@@ -10,7 +10,7 @@ class FbaManualData extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['sku', 'data'];
+    protected $fillable = ['sku', 'data', 'pft_amt', 'sales_amt'];
 
     protected $casts = [
         'data' => 'array', // Cast data to array
