@@ -2198,6 +2198,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/pmp/ads', 'index')->name('ebay.pmp.ads');
         Route::get('/ebay/pmp/ads/data', 'getEbayPmpAdsData');
         Route::get('/ebay/pmp/ads/filter', 'filterEbayPmpAds')->name('ebay.pmp.ads.filter');
+        Route::get('/ebay/pmp/ads/campaign-chart', 'getCampaignChartData')->name('ebay.pmp.ads.campaign-chart');
         Route::post('/update-ebay-pmt-percenatge', 'updateEbayPercentage');
         Route::post('/update-ebay-pmt-sprice', 'saveEbayPMTSpriceToDatabase');
     });
@@ -2206,6 +2207,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/keywords/ads', 'index')->name('ebay.keywords.ads');
         Route::get('/ebay/keywords/ads/data', 'getEbayKwAdsData');
         Route::get('/ebay/keywords/ads/filter', 'filterEbayKwAds')->name('ebay.keywords.ads.filter');
+        Route::get('/ebay/keywords/ads/campaign-chart', 'getCampaignChartData')->name('ebay.keywords.ads.campaign-chart');
 
         Route::get('/ebay/keywords/ads/less-than-twenty', 'ebayPriceLessThanTwentyAdsView')->name('ebay.keywords.ads.less-than-twenty');
         Route::get('/ebay/keywords/ads/less-than-twenty/data', 'ebayPriceLessThanTwentyAdsData');

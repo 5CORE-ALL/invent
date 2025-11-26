@@ -383,6 +383,23 @@
         </div>
     </div>
 
+    <!-- Campaign Chart Modal -->
+    <div class="modal fade" id="campaignChartModal" tabindex="-1" aria-labelledby="campaignChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="campaignChartModalLabel">Campaign Performance</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div style="height: 400px; position: relative;">
+                        <canvas id="singleCampaignChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Chart Modal -->
     <div class="modal fade" id="chartModal" tabindex="-1" aria-labelledby="chartModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
@@ -650,12 +667,29 @@
                 format: 'YYYY-MM-DD'
             }
         }, function(start, end, label) {
+            console.log('Date range selected:', start.format('YYYY-MM-DD'), 'to', end.format('YYYY-MM-DD'));
             $('#daterange-btn span').html('Date range: ' + start.format('YYYY-MM-DD') + ' - ' + end.format('YYYY-MM-DD'));
             
+            // Show loading indicator
+            document.querySelector('.card-clicks').innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
+            
             // Fetch filtered data
-            fetch('/ebay/keywords/ads/filter?startDate=' + start.format('YYYY-MM-DD') + '&endDate=' + end.format('YYYY-MM-DD'))
-                .then(response => response.json())
+            const url = '/ebay/keywords/ads/filter?startDate=' + start.format('YYYY-MM-DD') + '&endDate=' + end.format('YYYY-MM-DD');
+            console.log('Fetching URL:', url);
+            
+            fetch(url)
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    console.log('Response ok:', response.ok);
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.status);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    console.log('Filter response:', data);
+                    console.log('Totals:', data.totals);
+                    
                     // Update chart
                     chart.data.labels = data.dates;
                     chart.data.datasets[0].data = data.clicks;
@@ -666,19 +700,33 @@
                     chart.data.datasets[5].data = data.cvr;
                     chart.update();
 
-                    // Update stat cards
-                    document.querySelector('.card-clicks').textContent = data.totals.clicks.toLocaleString();
-                    document.querySelector('.card-spend').textContent = '$' + Number(data.totals.spend).toFixed(0);
-                    document.querySelector('.card-ad-sales').textContent = '$' + Number(data.totals.ad_sales).toFixed(0);
-                    document.querySelector('.card-ad-sold').textContent = data.totals.ad_sold.toLocaleString();
-                    
-                    const acosVal = data.totals.ad_sales > 0 ? (data.totals.spend / data.totals.ad_sales * 100) : 0;
-                    document.querySelector('.card-acos').textContent = acosVal.toFixed(0) + '%';
-                    
-                    const cvrVal = data.totals.clicks > 0 ? (data.totals.ad_sold / data.totals.clicks * 100) : 0;
-                    document.querySelector('.card-cvr').textContent = cvrVal.toFixed(1) + '%';
+                    // Update stat cards with proper checks
+                    if (data.totals) {
+                        console.log('Updating cards with:', data.totals);
+                        
+                        // Use innerHTML to replace the spinner or existing content
+                        document.querySelector('.card-clicks').innerHTML = data.totals.clicks.toLocaleString();
+                        document.querySelector('.card-spend').innerHTML = '$' + Number(data.totals.spend).toFixed(0);
+                        document.querySelector('.card-ad-sales').innerHTML = '$' + Number(data.totals.ad_sales).toFixed(0);
+                        document.querySelector('.card-ad-sold').innerHTML = data.totals.ad_sold.toLocaleString();
+                        
+                        const acosVal = data.totals.ad_sales > 0 ? (data.totals.spend / data.totals.ad_sales * 100) : 0;
+                        document.querySelector('.card-acos').innerHTML = acosVal.toFixed(0) + '%';
+                        
+                        const cvrVal = data.totals.clicks > 0 ? (data.totals.ad_sold / data.totals.clicks * 100) : 0;
+                        document.querySelector('.card-cvr').innerHTML = cvrVal.toFixed(1) + '%';
+                        
+                        console.log('Cards updated successfully!');
+                    } else {
+                        console.error('Totals object not found in response');
+                        document.querySelector('.card-clicks').innerHTML = 'Error';
+                    }
                 })
-                .catch(error => console.error('Error fetching filtered data:', error));
+                .catch(error => {
+                    console.error('Error fetching filtered data:', error);
+                    alert('Error loading filtered data: ' + error.message);
+                    document.querySelector('.card-clicks').textContent = 'Error';
+                });
         });
 
         // Set initial text for date range button
@@ -820,7 +868,17 @@
                     },
                     {
                         title: "CAMPAIGN",
-                        field: "campaignName"
+                        field: "campaignName",
+                        formatter: function(cell) {
+                            let campaignName = cell.getValue();
+                            return `
+                                <span>${campaignName}</span>
+                                <i class="fa fa-chart-line text-success campaign-chart-btn" 
+                                   data-campaign-name="${campaignName}"
+                                   style="cursor:pointer; margin-left:8px;"
+                                   title="View Campaign Chart"></i>
+                            `;
+                        }
                     },
                     {
                         title: "Status",
@@ -1732,6 +1790,176 @@
                             col.toggle();
                         }
                     });
+                }
+
+                if (e.target.classList.contains("campaign-chart-btn")) {
+                    let campaignName = e.target.getAttribute("data-campaign-name");
+                    
+                    // Set modal title
+                    document.getElementById("campaignChartModalLabel").innerText = "Campaign: " + campaignName;
+                    
+                    // Fetch campaign-specific data
+                    fetch('/ebay/keywords/ads/campaign-chart?campaignId=' + encodeURIComponent(campaignName))
+                        .then(response => response.json())
+                        .then(data => {
+                            // Destroy existing chart if any
+                            if (window.singleCampaignChartInstance) {
+                                window.singleCampaignChartInstance.destroy();
+                            }
+                            
+                            // Create new chart
+                            const ctx = document.getElementById('singleCampaignChart').getContext('2d');
+                            window.singleCampaignChartInstance = new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: data.dates,
+                                    datasets: [
+                                        {
+                                            label: 'Clicks',
+                                            data: data.clicks,
+                                            borderColor: 'purple',
+                                            backgroundColor: 'rgba(128, 0, 128, 0.1)',
+                                            yAxisID: 'y1',
+                                            tension: 0.4,
+                                            fill: false,
+                                        },
+                                        {
+                                            label: 'Spent (USD)',
+                                            data: data.spend,
+                                            borderColor: 'teal',
+                                            backgroundColor: 'rgba(0, 128, 128, 0.1)',
+                                            yAxisID: 'y2',
+                                            tension: 0.4,
+                                            fill: false,
+                                        },
+                                        {
+                                            label: 'Ad Sales (USD)',
+                                            data: data.ad_sales,
+                                            borderColor: 'blue',
+                                            backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                                            yAxisID: 'y2',
+                                            tension: 0.4,
+                                            fill: false,
+                                        },
+                                        {
+                                            label: 'Ad Sold',
+                                            data: data.ad_sold,
+                                            borderColor: 'orange',
+                                            backgroundColor: 'rgba(255, 165, 0, 0.1)',
+                                            yAxisID: 'y1',
+                                            tension: 0.4,
+                                            fill: false,
+                                        },
+                                        {
+                                            label: 'ACOS (%)',
+                                            data: data.acos,
+                                            borderColor: 'red',
+                                            backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                                            yAxisID: 'y3',
+                                            tension: 0.4,
+                                            fill: false,
+                                        },
+                                        {
+                                            label: 'CVR (%)',
+                                            data: data.cvr,
+                                            borderColor: 'green',
+                                            backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                                            yAxisID: 'y3',
+                                            tension: 0.4,
+                                            fill: false,
+                                        }
+                                    ]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    interaction: {
+                                        mode: 'index',
+                                        intersect: false
+                                    },
+                                    plugins: {
+                                        tooltip: {
+                                            mode: 'index',
+                                            intersect: false,
+                                            callbacks: {
+                                                label: function(context) {
+                                                    let label = context.dataset.label || '';
+                                                    let value = context.parsed.y;
+                                                    
+                                                    if (label.includes("Spent") || label.includes("Sales")) {
+                                                        return label + ': $' + Number(value).toFixed(2);
+                                                    }
+                                                    if (label.includes("ACOS") || label.includes("CVR")) {
+                                                        return label + ': ' + Number(value).toFixed(2) + '%';
+                                                    }
+                                                    return label + ': ' + value;
+                                                }
+                                            }
+                                        },
+                                        legend: {
+                                            labels: {
+                                                usePointStyle: true,
+                                                boxWidth: 10,
+                                                padding: 20
+                                            }
+                                        }
+                                    },
+                                    scales: {
+                                        y1: {
+                                            type: 'linear',
+                                            position: 'left',
+                                            beginAtZero: true,
+                                            title: {
+                                                display: true,
+                                                text: 'Clicks / Ad Sold'
+                                            }
+                                        },
+                                        y2: {
+                                            type: 'linear',
+                                            position: 'right',
+                                            beginAtZero: true,
+                                            grid: {
+                                                drawOnChartArea: false
+                                            },
+                                            title: {
+                                                display: true,
+                                                text: 'Spent / Sales (USD)'
+                                            }
+                                        },
+                                        y3: {
+                                            type: 'linear',
+                                            position: 'right',
+                                            beginAtZero: true,
+                                            max: 100,
+                                            grid: {
+                                                drawOnChartArea: false
+                                            },
+                                            title: {
+                                                display: true,
+                                                text: 'ACOS / CVR (%)'
+                                            }
+                                        },
+                                        x: {
+                                            grid: {
+                                                display: false
+                                            },
+                                            ticks: {
+                                                maxRotation: 45,
+                                                minRotation: 45
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                            
+                            // Show modal
+                            let modal = new bootstrap.Modal(document.getElementById('campaignChartModal'));
+                            modal.show();
+                        })
+                        .catch(error => {
+                            console.error('Error fetching campaign chart data:', error);
+                            alert('Error loading campaign chart data');
+                        });
                 }
             });
 
