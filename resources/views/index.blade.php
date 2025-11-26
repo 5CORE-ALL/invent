@@ -10,7 +10,7 @@
                     <div class="float-end">
                         <i class="ri-eye-line widget-icon"></i>
                     </div>
-                    <h6 class="text-uppercase mt-0" title="Customers">Shopify Products</h6>
+                    <h6 class="text-uppercase mt-0" title="Customers">Total Sales</h6>
                     <h2 class="my-2">8,652</h2>
                     <!-- <p class="mb-0">
                         <span class="badge bg-white bg-opacity-10 me-1">2.97%</span>
@@ -26,7 +26,7 @@
                     <div class="float-end">
                         <i class="ri-wallet-2-line widget-icon"></i>
                     </div>
-                    <h6 class="text-uppercase mt-0" title="Customers">Amazon products</h6>
+                    <h6 class="text-uppercase mt-0" title="Customers">Profit</h6>
                     <h2 class="my-2">254</h2>
                     <!-- <p class="mb-0">
                         <span class="badge bg-white bg-opacity-10 me-1">18.25%</span>
@@ -42,7 +42,7 @@
                     <div class="float-end">
                         <i class="ri-shopping-basket-line widget-icon"></i>
                     </div>
-                    <h6 class="text-uppercase mt-0" title="Customers">eBay Products</h6>
+                    <h6 class="text-uppercase mt-0" title="Customers">ROI</h6>
                     <h2 class="my-2">753</h2>
                     <!-- <p class="mb-0">
                         <span class="badge bg-white bg-opacity-25 me-1">-5.75%</span>
@@ -52,25 +52,10 @@
             </div>
         </div> <!-- end col-->
 
-        <div class="col-xxl-3 col-sm-6">
-            <div class="card widget-flat text-bg-primary">
-                <div class="card-body">
-                    <div class="float-end">
-                        <i class="ri-group-2-line widget-icon"></i>
-                    </div>
-                    <h6 class="text-uppercase mt-0" title="Customers">All Products</h6>
-                    <h2 class="my-2">63,154</h2>
-                    <!-- <p class="mb-0">
-                        <span class="badge bg-white bg-opacity-10 me-1">8.21%</span>
-                        <span class="text-nowrap">Since last month</span>
-                    </p> -->
-                </div>
-            </div>
-        </div> <!-- end col-->
     </div>
 
     <div class="row">
-        <div class="col-lg-8">
+        <div class="col-lg-4">
             <div class="card">
                 <div class="card-body">
                     <div class="card-widgets">
@@ -79,7 +64,7 @@
                             aria-controls="weeklysales-collapse"><i class="ri-subtract-line"></i></a>
                         <a href="#" data-bs-toggle="remove"><i class="ri-close-line"></i></a>
                     </div>
-                    <h5 class="header-title mb-0">Weekly Sales Report</h5>
+                    <h5 class="header-title mb-0">Sales by Channel's</h5>
 
                     <div id="weeklysales-collapse" class="collapse pt-3 show">
                         <div dir="ltr">
@@ -117,7 +102,7 @@
                 </div> <!-- end card-body-->
             </div> <!-- end card-->
         </div> <!-- end col-->
-        <div class="col-lg-4">
+        <div class="col-lg-8">
             <div class="card">
                 <div class="card-body">
                     <div class="card-widgets">
@@ -126,7 +111,7 @@
                             aria-controls="yearly-sales-collapse"><i class="ri-subtract-line"></i></a>
                         <a href="#" data-bs-toggle="remove"><i class="ri-close-line"></i></a>
                     </div>
-                    <h5 class="header-title mb-0">Yearly Sales Report</h5>
+                    <h5 class="header-title mb-0">Revenue</h5>
 
                     <div id="yearly-sales-collapse" class="collapse pt-3 show">
                         <div dir="ltr">
@@ -135,11 +120,11 @@
                         </div>
                         <div class="row text-center">
                             <div class="col">
-                                <p class="text-muted mt-3 mb-2">Quarter 1</p>
+                                <p class="text-muted mt-3 mb-2">Sales</p>
                                 <h4 class="mb-0">$56.2k</h4>
                             </div>
                             <div class="col">
-                                <p class="text-muted mt-3 mb-2">Quarter 2</p>
+                                <p class="text-muted mt-3 mb-2">Profit Margin</p>
                                 <h4 class="mb-0">$42.5k</h4>
                             </div>
                             <div class="col">
