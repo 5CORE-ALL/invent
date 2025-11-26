@@ -806,6 +806,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
     Route::post('/update-amazon-listed-live', [OverallAmazonController::class, 'updateListedLive']);
     Route::get('/amazon-export-pricing-cvr', [OverallAmazonController::class, 'exportAmazonPricingCVR'])->name('amazon.export.pricing.cvr');
+    Route::get('/amazon-ratings-sample', [OverallAmazonController::class, 'downloadAmazonRatingsSample'])->name('amazon.ratings.sample');
     Route::get('/amazon-pricing-increase-decrease', action: [OverallAmazonController::class, 'amazonPriceIncreaseDecrease'])->name('amazon.pricing.increase');
     Route::post('/amazon/save-manual-link', [OverallAmazonController::class, 'saveManualLink'])->name('amazon.saveManualLink');
     Route::get('/amazon-pricing-increase', action: [OverallAmazonController::class, 'amazonPriceIncrease'])->name('amazon.pricing.inc');
@@ -814,6 +815,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-analytics/import', [OverallAmazonController::class, 'importAmazonAnalytics'])->name('amazon.analytics.import');
     Route::get('/amazon-analytics/export', [OverallAmazonController::class, 'exportAmazonAnalytics'])->name('amazon.analytics.export');
     Route::get('/amazon-analytics/sample', [OverallAmazonController::class, 'downloadSample'])->name('amazon.analytics.sample');
+    Route::post('/import-amazon-ratings', [OverallAmazonController::class, 'importAmazonRatings']);
 
     //ebay 2 
     Route::get('/zero-ebay2', [Ebay2ZeroController::class, 'ebay2Zeroview'])->name('zero.ebay2');
@@ -2197,6 +2199,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/pmp/ads', 'index')->name('ebay.pmp.ads');
         Route::get('/ebay/pmp/ads/data', 'getEbayPmpAdsData');
         Route::get('/ebay/pmp/ads/filter', 'filterEbayPmpAds')->name('ebay.pmp.ads.filter');
+        Route::get('/ebay/pmp/ads/campaign-chart', 'getCampaignChartData')->name('ebay.pmp.ads.campaign-chart');
         Route::post('/update-ebay-pmt-percenatge', 'updateEbayPercentage');
         Route::post('/update-ebay-pmt-sprice', 'saveEbayPMTSpriceToDatabase');
     });
@@ -2205,6 +2208,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/keywords/ads', 'index')->name('ebay.keywords.ads');
         Route::get('/ebay/keywords/ads/data', 'getEbayKwAdsData');
         Route::get('/ebay/keywords/ads/filter', 'filterEbayKwAds')->name('ebay.keywords.ads.filter');
+        Route::get('/ebay/keywords/ads/campaign-chart', 'getCampaignChartData')->name('ebay.keywords.ads.campaign-chart');
 
         Route::get('/ebay/keywords/ads/less-than-twenty', 'ebayPriceLessThanTwentyAdsView')->name('ebay.keywords.ads.less-than-twenty');
         Route::get('/ebay/keywords/ads/less-than-twenty/data', 'ebayPriceLessThanTwentyAdsData');

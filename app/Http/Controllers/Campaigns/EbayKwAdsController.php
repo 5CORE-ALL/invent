@@ -543,4 +543,80 @@ class EbayKwAdsController extends Controller
             'status'  => 200,
         ]);
     }
+
+    public function getCampaignChartData(Request $request)
+    {
+        $campaignId = $request->campaignId;
+
+        // Get data for the last 30 days for this specific campaign
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+        
+        $data = DB::table('ebay_priority_reports')
+            ->selectRaw('
+                DATE(updated_at) as report_date,
+                SUM(cpc_clicks) as clicks,
+                SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as spend,
+                SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")) as ad_sales,
+                SUM(cpc_attributed_sales) as ad_sold
+            ')
+            ->where('report_range', 'L30')
+            ->where('campaign_name', $campaignId)
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->groupBy(DB::raw('DATE(updated_at)'))
+            ->orderBy('report_date', 'asc')
+            ->get()
+            ->keyBy('report_date');
+
+        // Create array for all 30 days
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $adSales = [];
+        $adSold = [];
+        $acos = [];
+        $cvr = [];
+
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+            $dates[] = $date;
+
+            if (isset($data[$date])) {
+                $row = $data[$date];
+                $clicksVal = (int) $row->clicks;
+                $spendVal = (float) $row->spend;
+                $salesVal = (float) $row->ad_sales;
+                $soldVal = (int) $row->ad_sold;
+
+                $clicks[] = $clicksVal;
+                $spend[] = $spendVal;
+                $adSales[] = $salesVal;
+                $adSold[] = $soldVal;
+
+                // ACOS = (Spend / Sales) * 100
+                $acosVal = $salesVal > 0 ? ($spendVal / $salesVal) * 100 : 0;
+                $acos[] = round($acosVal, 2);
+
+                // CVR = (Ad Sold / Clicks) * 100
+                $cvrVal = $clicksVal > 0 ? ($soldVal / $clicksVal) * 100 : 0;
+                $cvr[] = round($cvrVal, 2);
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $adSales[] = 0;
+                $adSold[] = 0;
+                $acos[] = 0;
+                $cvr[] = 0;
+            }
+        }
+
+        return response()->json([
+            'dates' => $dates,
+            'clicks' => $clicks,
+            'spend' => $spend,
+            'ad_sales' => $adSales,
+            'ad_sold' => $adSold,
+            'acos' => $acos,
+            'cvr' => $cvr,
+        ]);
+    }
 }

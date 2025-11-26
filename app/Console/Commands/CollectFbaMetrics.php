@@ -175,7 +175,7 @@ class CollectFbaMetrics extends Command
 
             // Store the metrics
             try {
-                FbaMetricsHistory::updateOrCreate(
+                $record = FbaMetricsHistory::updateOrCreate(
                     [
                         'sku' => $sku,
                         'record_date' => $today,
@@ -188,6 +188,14 @@ class CollectFbaMetrics extends Command
                         'tacos' => round($tacos, 2),
                     ]
                 );
+                
+                // Log for verification
+                if ($record->wasRecentlyCreated) {
+                    Log::info("Created new metrics record for SKU: $sku on {$today->toDateString()}");
+                } else {
+                    Log::info("Updated existing metrics record for SKU: $sku on {$today->toDateString()}");
+                }
+                
                 $collected++;
             } catch (\Exception $e) {
                 Log::error("Failed to collect metrics for SKU: $sku", ['error' => $e->getMessage()]);

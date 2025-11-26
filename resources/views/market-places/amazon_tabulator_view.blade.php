@@ -99,8 +99,16 @@
                         <strong>ROI%:</strong> <span id="roi-calc">0.00%</span>
                     </span>
 
+                    <button id="import-btn" class="btn btn-sm btn-primary me-2" data-bs-toggle="modal" data-bs-target="#importModal">
+                        <i class="fas fa-upload"></i> Import Ratings
+                    </button>
+
+                    <a href="{{ url('/amazon-ratings-sample') }}" class="btn btn-sm btn-info me-2">
+                        <i class="fas fa-download"></i> Sample Template
+                    </a>
+
                     <a href="{{ url('/amazon-export-pricing-cvr') }}" class="btn btn-sm btn-success me-2">
-                        <i class="fas fa-file-excel"></i> 
+                        <i class="fas fa-file-csv"></i> Export
                     </a>
                 </div>
             </div>
@@ -139,6 +147,39 @@
                 <div class="modal-body">
                     <div id="lmpDataList"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Import Amazon Ratings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="importForm">
+                    @csrf
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="csvFile" class="form-label">Choose CSV File</label>
+                            <input type="file" class="form-control" id="csvFile" name="file" accept=".csv" required>
+                        </div>
+                        <div class="mb-3">
+                            <h6>Sample CSV Format:</h6>
+                            <small class="text-muted">
+                                <i class="fa fa-info-circle"></i> CSV must have SKU in the first column, followed by rating column.<br>
+                                Example format:<br>
+                                <code>SKU,rating<br>ABC123,5<br>DEF456,4<br>GHI789,3</code>
+                            </small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="uploadBtn">Upload & Import</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -216,6 +257,9 @@
                                 <button class="btn btn-sm btn-link copy-sku-btn p-0" data-sku="${sku}" title="Copy SKU">
                                     <i class="fas fa-copy"></i>
                                 </button>
+                                &nbsp;
+                                &nbsp;
+                                ${rowData.rating ? `<i class="fas fa-star" style="color: orange;"></i> <span style="font-weight: bold;">${rowData.rating}</span>` : ''}
                             </div>`;
                         },
                         width: 180
@@ -1091,8 +1135,51 @@
                     ${item.image ? `<br><img src="${item.image}" alt="Product Image" style="max-width: 100px; max-height: 100px;">` : ''}
                 </div>`;
             });
-            $('#lmpDataList').html(html);
+        $('#lmpDataList').html(html);
             $('#lmpModal').modal('show');
         }
+
+        // Import Ratings Modal Handler
+        $('#importForm').on('submit', function(e) {
+            e.preventDefault();
+
+            const formData = new FormData();
+            const file = $('#csvFile')[0].files[0];
+
+            if (!file) {
+                showToast('error', 'Please select a CSV file');
+                return;
+            }
+
+            formData.append('file', file);
+            formData.append('_token', '{{ csrf_token() }}');
+
+            const uploadBtn = $('#uploadBtn');
+            uploadBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Importing...');
+
+            $.ajax({
+                url: '/import-amazon-ratings',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    uploadBtn.html('<i class="fa fa-spinner fa-spin"></i> Reloading...');
+                    table.reload(function() {
+                        showToast('success', response.success || 'Ratings imported successfully');
+                        $('#importModal').modal('hide');
+                        $('#importForm')[0].reset();
+                        uploadBtn.prop('disabled', false).html('Upload & Import');
+                    });
+                },
+                error: function(xhr) {
+                    const error = xhr.responseJSON?.error || 'Import failed';
+                    showToast('error', error);
+                },
+                complete: function() {
+                    uploadBtn.prop('disabled', false).html('Upload & Import');
+                }
+            });
+        });
     </script>
 @endsection
