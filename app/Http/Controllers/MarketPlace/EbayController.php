@@ -376,14 +376,18 @@ class EbayController extends Controller
             $AD_Units_L30 = $kw_sold_l30 + $pmt_sold_l30;
 
             $row["AD_Spend_L30"] = round($AD_Spend_L30, 2);
+            $row["kw_spend_L30"] = round($kw_spend_l30, 2);
+            $row["pmt_spend_L30"] = round($pmt_spend_l30, 2);
             $row["AD_Sales_L30"] = round($AD_Sales_L30, 2);
             $row["AD_Units_L30"] = $AD_Units_L30;
 
-            // AD% Formula = (pt_spend + kw_spend) / (l30_ads_sales_kw + l30_ads_sales_pt)
-            $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
+            // AD% Formula = (spend_l30 / (price * ebay_l30)) * 100
+            $price = floatval($row["eBay Price"] ?? 0);
+            $ebay_l30 = floatval($row["eBay L30"] ?? 0);
+            $totalRevenue = $price * $ebay_l30;
 
-            $row["AD%"] = $adDenominator > 0
-                ? round((($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100, 4)
+            $row["AD%"] = $totalRevenue > 0
+                ? round(($AD_Spend_L30 / $totalRevenue) * 100, 4)
                 : 0;
 
 
@@ -431,8 +435,10 @@ class EbayController extends Controller
             $row["PFT %"] = round($gpft - $row["AD%"], 2);
             $totalPercentage = $percentage + $adUpdates; 
 
+            // ROI% = ((price * (0.86 - AD%/100) - ship - lp) / lp) * 100
+            $adDecimal = $row["AD%"] / 100;
             $row["ROI%"] = round(
-                $lp > 0 ? (($price * 0.86 - $ship - $lp) / $lp) * 100 : 0,
+                $lp > 0 ? (($price * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
                 2
             );
 
@@ -490,9 +496,10 @@ class EbayController extends Controller
                 // Calculate SPFT = SGPFT - AD%
                 $row['SPFT'] = round($sgpft - $row["AD%"], 2);
                 
-                // Calculate SROI using ROI formula with SPRICE: ((SPRICE * 0.86 - ship - lp) / lp) * 100
+                // Calculate SROI using new formula: ((SPRICE * (0.86 - AD%/100) - ship - lp) / lp) * 100
+                $adDecimal = $row["AD%"] / 100;
                 $row['SROI'] = round(
-                    $lp > 0 ? (($price * 0.86 - $ship - $lp) / $lp) * 100 : 0,
+                    $lp > 0 ? (($price * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
                     2
                 );
             } else {
@@ -513,11 +520,12 @@ class EbayController extends Controller
                     $row['SPFT'] = round($row['SGPFT'] - $row["AD%"], 2);
                 }
                 
-                // Recalculate SROI using ROI formula with custom SPRICE
+                // Recalculate SROI using new formula: ((SPRICE * (0.86 - AD%/100) - ship - lp) / lp) * 100
                 if (!empty($row['SPRICE'])) {
                     $sprice = floatval($row['SPRICE']);
+                    $adDecimal = $row["AD%"] / 100;
                     $row['SROI'] = round(
-                        $lp > 0 ? (($sprice * 0.86 - $ship - $lp) / $lp) * 100 : 0,
+                        $lp > 0 ? (($sprice * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
                         2
                     );
                 }
@@ -768,8 +776,12 @@ class EbayController extends Controller
         
         // SPFT = SGPFT - AD%
         $spft = round($sgpft - $adPercent, 2);
-        // SROI = same formula as ROI% but with SPRICE: ((SPRICE * 0.86 - ship - lp) / lp) * 100
-        $sroi = $lp > 0 ? round((($spriceFloat * 0.86 - $ship - $lp) / $lp) * 100, 2) : 0;
+        // SROI = ((SPRICE * (0.86 - AD%/100) - ship - lp) / lp) * 100
+        $adDecimal = $adPercent / 100;
+        $sroi = round(
+            $lp > 0 ? (($spriceFloat * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+            2
+        );
         Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
 
         $ebayDataView = EbayDataView::firstOrNew(['sku' => $sku]);

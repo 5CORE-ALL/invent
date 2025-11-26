@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'eBay Pricing Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'eBay Pricing Decrease', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -19,8 +19,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'eBay Pricing Data',
-        'sub_title' => 'eBay Pricing Data',
+        'page_title' => 'eBay Pricing Decrease',
+        'sub_title' => 'eBay Pricing Decrease',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -34,10 +34,12 @@
                         <option value="zero">0 Inventory</option>
                         <option value="more" selected>More than 0</option>
                     </select>
-                    <select id="parent-filter" class="form-select form-select-sm me-2"
+
+                    <select id="nrl-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
-                        <option value="show">Show Parent</option>
-                        <option value="hide" selected>Hide Parent</option>
+                        <option value="all">All NRL</option>
+                        <option value="REQ">REQ</option>
+                        <option value="NRL">NRL</option>
                     </select>
 
                     <select id="pft-filter" class="form-select form-select-sm me-2"
@@ -109,14 +111,14 @@
         $(document).ready(function() {
             const table = new Tabulator("#ebay-table", {
                 ajaxURL: "/ebay-data-json",
-                ajaxSorting: true,
+                ajaxSorting: false,
                 layout: "fitDataStretch",
                 pagination: true,
-                paginationSize: 50,
+                paginationSize: 100,
                 paginationCounter: "rows",
                 columnCalcs: "both",
                 initialSort: [{
-                    column: "E Dil%",
+                    column: "SCVR",
                     dir: "asc"
                 }],
                 rowFormatter: function(row) {
@@ -157,26 +159,39 @@
                         cssClass: "text-primary fw-bold",
                         tooltip: true,
                         frozen: true,
-                        width: 250
+                        width: 250,
+                        formatter: function(cell) {
+                            const sku = cell.getValue();
+                            return `
+                                <span>${sku}</span>
+                                <i class="fa fa-copy text-secondary copy-sku-btn" 
+                                   style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
+                                   data-sku="${sku}"
+                                   title="Copy SKU"></i>
+                            `;
+                        }
                     },
                     
                     {
                         title: "INV",
                         field: "INV",
                         hozAlign: "center",
-                        width: 80
+                        width: 80,
+                        sorter: "number"
                     },
                     {
                         title: "OV<br> L30",
                         field: "L30",
                         hozAlign: "center",
-                        width: 80
+                        width: 80,
+                        sorter: "number"
                     },
 
                      {
-                        title: "Dil%",
+                        title: "Dil",
                         field: "E Dil%",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const INV = parseFloat(rowData.INV) || 0;
@@ -195,13 +210,14 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
                         },
-                        width: 100
+                        width: 60
                     },
                     {
-                        title: "E L30",
+                        title: "E <br> L30",
                         field: "eBay L30",
                         hozAlign: "center",
-                        width: 100
+                        width: 60,
+                        sorter: "number"
                     },
 
                     
@@ -213,9 +229,23 @@
                     //     visible: false
                     // },
                     {
-                        title: "SCVR",
+                        title: "S <br> CVR",
                         field: "SCVR",
                         hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aData = aRow.getData();
+                            const bData = bRow.getData();
+                            
+                            const aViews = parseFloat(aData.views || 0);
+                            const bViews = parseFloat(bData.views || 0);
+                            const aL30 = parseFloat(aData['eBay L30'] || 0);
+                            const bL30 = parseFloat(bData['eBay L30'] || 0);
+                            
+                            const aValue = aViews === 0 ? 0 : (aL30 / aViews) * 100;
+                            const bValue = bViews === 0 ? 0 : (bL30 / bViews) * 100;
+                            
+                            return aValue - bValue;
+                        },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const views = parseFloat(rowData.views || 0);
@@ -240,9 +270,10 @@
                     },
 
                     {
-                        title: "Views",
+                        title: "View",
                         field: "views",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             let color = '';
@@ -253,12 +284,12 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span>`;
                         },
-                        width: 100
+                        width: 50
                     },
 
 
                      {
-                        title: "NR",
+                        title: "NRL",
                         field: "NR",
                         hozAlign: "center",
                         headerSort: false,
@@ -270,33 +301,25 @@
                                 value = 'REQ';
                             }
                             
-                            let bgColor = '#ffffff';
-                            let textColor = '#000000';
-                            
-                            if (value === 'NRL') {
-                                bgColor = '#dc3545';
-                                textColor = '#ffffff';
-                            } else if (value === 'REQ') {
-                                bgColor = '#28a745';
-                                textColor = '#ffffff';
-                            }
+                            let dotColor = value === 'NRL' ? '#dc3545' : '#28a745';
                             
                             return `<select class="form-select form-select-sm nr-select" 
-                                style="background-color: ${bgColor}; color: ${textColor}; border: none; text-align: center; cursor: pointer;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''} style="background-color: #28a745; color: #fff;">REQ</option>
-                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''} style="background-color: #dc3545; color: #fff;">NRL</option>
+                                style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 4px;">
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
                             </select>`;
                         },
                         cellClick: function(e, cell) {
                             e.stopPropagation();
                         },
-                        width: 120
+                        width: 70
                     },
                    
                     {
-                        title: "Price",
+                        title: "Prc",
                         field: "eBay Price",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             
@@ -312,9 +335,10 @@
                     },
 
                       {
-                        title: "GPFT%",
+                        title: "GPFT <br>%",
                         field: "GPFT%",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -338,18 +362,37 @@
                         title: "AD%",
                         field: "AD%",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
+                            
+                            const rowData = cell.getRow().getData();
+                            const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
+                            const adPercent = parseFloat(value || 0);
+                            
+                            // If KW ads spend > 0 but AD% is 0, show red alert
+                            if (kwSpend > 0 && adPercent === 0) {
+                                return `
+                                    <span style="color: #dc3545; font-weight: 600;">${adPercent.toFixed(0)}%</span>
+                                    <i class="fa fa-exclamation-triangle text-danger" 
+                                       style="cursor: pointer; margin-left: 5px;" 
+                                       title="There is KW ads spend data"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top"></i>
+                                `;
+                            }
+                            
                             return `${parseFloat(value).toFixed(0)}%`;
                         },
                         width: 100
                     },
 
                      {
-                        title: "PFT %",
+                        title: "PFT <br>%",
                         field: "PFT %",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const gpft = parseFloat(rowData['GPFT%'] || 0);
@@ -373,12 +416,13 @@
                             const value = cell.getValue();
                             return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                         },
-                        width: 100
+                        width: 70
                     },
                     {
                         title: "ROI%",
                         field: "ROI%",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -398,7 +442,7 @@
                             const value = cell.getValue();
                             return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                         },
-                        width: 100
+                        width: 70
                     },
                   
                     
@@ -406,6 +450,7 @@
                         title: "LMP",
                         field: "lmp_price",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -453,26 +498,27 @@
                     //     width: 120
                     // },
                    
-                    {
-                        title: "TACOS L30",
-                        field: "TacosL30",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value) * 100;
-                            let color = '';
+                    // {
+                    //     title: "TACOS <br> L30",
+                    //     field: "TacosL30",
+                    //     hozAlign: "center",
+                    //     sorter: "number",
+                    //     formatter: function(cell) {
+                    //         const value = cell.getValue();
+                    //         if (value === null || value === undefined) return '';
+                    //         const percent = parseFloat(value) * 100;
+                    //         let color = '';
                             
-                            // getTacosColor logic from inc/dec page
-                            if (percent <= 7) color = '#e83e8c'; // pink
-                            else if (percent > 7 && percent <= 14) color = '#28a745'; // green
-                            else if (percent > 14 && percent <= 21) color = '#ffc107'; // yellow
-                            else color = '#a00211'; // red
+                    //         // getTacosColor logic from inc/dec page
+                    //         if (percent <= 7) color = '#e83e8c'; // pink
+                    //         else if (percent > 7 && percent <= 14) color = '#28a745'; // green
+                    //         else if (percent > 14 && percent <= 21) color = '#ffc107'; // yellow
+                    //         else color = '#a00211'; // red
                             
-                            return `<span style="color: ${color}; font-weight: 600;">${parseFloat(value).toFixed(2)}%</span>`;
-                        },
-                        width: 120
-                    },
+                    //         return `<span style="color: ${color}; font-weight: 600;">${parseFloat(value).toFixed(2)}%</span>`;
+                    //     },
+                    //     width: 80
+                    // },
                     // {
                     //     title: "Total Sales L30",
                     //     field: "T_Sale_l30",
@@ -502,7 +548,7 @@
                    
                    
                     {
-                        title: "SPRICE",
+                        title: "S <br> PRC",
                         field: "SPRICE",
                         hozAlign: "center",
                         editor: "input",
@@ -526,7 +572,7 @@
                     },
 
                     {
-                        title: "SGPFT",
+                        title: "S <br> GPFT",
                         field: "SGPFT",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -548,7 +594,7 @@
                         width: 100
                     },
                     {
-                        title: "SPFT",
+                        title: "S <br> PFT",
                         field: "SPFT",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -577,15 +623,9 @@
                         field: "SROI",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const sprice = parseFloat(rowData.SPRICE || 0);
-                            const lp = parseFloat(rowData.LP_productmaster || 0);
-                            const ship = parseFloat(rowData.Ship_productmaster || 0);
-                            
-                            if (lp === 0) return '';
-                            
-                            // SROI = ((SPRICE * 0.86 - ship - lp) / lp) * 100 (same as ROI% but with SPRICE)
-                            const percent = ((sprice * 0.86 - ship - lp) / lp) * 100;
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
                             if (isNaN(percent)) return '';
                             
                             let color = '';
@@ -599,6 +639,65 @@
                         },
                         width: 100
                     },
+
+
+                        {
+                        title: "SPEND<br>L30",
+                        field: "AD_Spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `
+                                <span>$${value.toFixed(2)}</span>
+                                <i class="fa fa-info-circle text-primary toggle-spendL30-btn" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                        },
+                        width: 120
+                    },
+
+                    {
+                        title: "KW<br>SPEND<br>L30",
+                        field: "kw_spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `$${value.toFixed(2)}`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                        },
+                        width: 100
+                    },
+
+                    {
+                        title: "PMT<br>SPEND<br>L30",
+                        field: "pmt_spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `$${value.toFixed(2)}`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                        },
+                        width: 100
+                    },
+                  
                     // {
                     //     title: "Listed",
                     //     field: "Listed",
@@ -640,20 +739,8 @@
                 const row = cell.getRow();
                 const sku = row.getData()['(Child) sku'];
                 
-                let bgColor = value === 'NRL' ? '#dc3545' : '#28a745';
-                let textColor = '#ffffff';
-                
-                // Immediately update background color
-                $select.css({'background-color': bgColor, 'color': textColor});
-                
                 // Update the row data
                 row.update({NR: value});
-                
-                // Force cell redraw
-                const cellElement = cell.getElement();
-                if (cellElement) {
-                    cellElement.style.backgroundColor = bgColor;
-                }
                 
                 // Save to database
                 $.ajax({
@@ -665,13 +752,13 @@
                         nr: value
                     },
                     success: function(response) {
-                        console.log('NR saved successfully for', sku, 'value:', value);
-                        const message = response.message || `NR updated to "${value}" for ${sku}`;
+                        console.log('NRL saved successfully for', sku, 'value:', value);
+                        const message = response.message || `NRL updated to "${value}" for ${sku}`;
                         showToast('success', message);
                     },
                     error: function(xhr) {
-                        console.error('Failed to save NR for', sku, 'Error:', xhr.responseText);
-                        showToast('error', `Failed to save NR for ${sku}`);
+                        console.error('Failed to save NRL for', sku, 'Error:', xhr.responseText);
+                        showToast('error', `Failed to save NRL for ${sku}`);
                     }
                 });
             });
@@ -729,7 +816,7 @@
             // Apply filters
             function applyFilters() {
                 const inventoryFilter = $('#inventory-filter').val();
-                const parentFilter = $('#parent-filter').val();
+                const nrlFilter = $('#nrl-filter').val();
                 const pftFilter = $('#pft-filter').val();
 
                 table.clearFilter(true);
@@ -740,10 +827,16 @@
                     table.addFilter('INV', '>', 0);
                 }
 
-                if (parentFilter === 'hide') {
-                    table.addFilter(function(data) {
-                        return !data.Parent || !data.Parent.startsWith('PARENT');
-                    });
+                if (nrlFilter !== 'all') {
+                    if (nrlFilter === 'REQ') {
+                        // Show all data except NRL
+                        table.addFilter(function(data) {
+                            return data.NR !== 'NRL';
+                        });
+                    } else {
+                        // Show only NRL
+                        table.addFilter('NR', '=', nrlFilter);
+                    }
                 }
 
                 if (pftFilter !== 'all') {
@@ -763,7 +856,7 @@
                 updateCalcValues();
             }
 
-            $('#inventory-filter, #parent-filter, #pft-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #pft-filter').on('change', function() {
                 applyFilters();
             });
             
@@ -792,10 +885,6 @@
                 $('#pft-calc').text(avgPft.toFixed(2) + '%');
                 $('#roi-calc').text(avgRoi.toFixed(2) + '%');
             }
-
-            $('#inventory-filter, #parent-filter, #pft-filter').on('change', function() {
-                applyFilters();
-            });
 
             // Build Column Visibility Dropdown
             function buildColumnDropdown() {
@@ -884,6 +973,23 @@
 
             table.on('dataLoaded', function() {
                 updateCalcValues();
+                // Initialize Bootstrap tooltips for dynamically created elements
+                setTimeout(function() {
+                    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+                        new bootstrap.Tooltip(tooltipTriggerEl);
+                    });
+                }, 100);
+            });
+
+            // Also initialize tooltips when table is rendered
+            table.on('renderComplete', function() {
+                setTimeout(function() {
+                    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+                        new bootstrap.Tooltip(tooltipTriggerEl);
+                    });
+                }, 100);
             });
 
             // Toggle column from dropdown
@@ -907,6 +1013,43 @@
                 });
                 buildColumnDropdown();
                 saveColumnVisibilityToServer();
+            });
+
+            // Toggle SPEND L30 breakdown columns
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-spendL30-btn")) {
+                    let colsToToggle = ["kw_spend_L30", "pmt_spend_L30"];
+
+                    colsToToggle.forEach(colField => {
+                        let col = table.getColumn(colField);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                    
+                    // Update column visibility in cache
+                    saveColumnVisibilityToServer();
+                    buildColumnDropdown();
+                }
+
+                // Copy SKU to clipboard
+                if (e.target.classList.contains("copy-sku-btn")) {
+                    const sku = e.target.getAttribute("data-sku");
+                    
+                    // Copy to clipboard
+                    navigator.clipboard.writeText(sku).then(function() {
+                        showToast('success', `SKU "${sku}" copied to clipboard!`);
+                    }).catch(function(err) {
+                        // Fallback for older browsers
+                        const textarea = document.createElement('textarea');
+                        textarea.value = sku;
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        showToast('success', `SKU "${sku}" copied to clipboard!`);
+                    });
+                }
             });
 
             // Toast notification

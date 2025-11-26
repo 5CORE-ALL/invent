@@ -174,6 +174,9 @@
                             <!-- Stats -->
                             <div class="col-md-6">
                                 <div class="d-flex gap-2 justify-content-end">
+                                    <button id="export-btn" class="btn btn-success btn-sm">
+                                        <i class="fa fa-file-excel"></i> Export to Excel
+                                    </button>
                                     <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none">
                                         APR ALL SBID
                                     </button>
@@ -226,6 +229,8 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             document.body.style.zoom = "85%";
@@ -674,6 +679,55 @@
                     overlay.style.display = "none";
                 });
             }
+
+            document.getElementById("export-btn").addEventListener("click", function () {
+                let filteredData = table.getData("active");
+
+                let exportData = filteredData.map(row => {
+                    let l7_spend = parseFloat(row.l7_spend) || 0;
+                    let l1_spend = parseFloat(row.l1_spend) || 0;
+                    let budget = parseFloat(row.campaignBudgetAmount) || 0;
+                    let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                    let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                    let sbid = parseFloat(row.sbid || 0).toFixed(2);
+                    
+                    let l30 = parseFloat(row.L30);
+                    let inv = parseFloat(row.INV);
+                    let dilPercent = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? Math.round((l30 / inv) * 100) + "%" : "0%";
+                    
+                    let e_l30 = parseFloat(row.e_l30);
+                    let eDilPercent = (!isNaN(e_l30) && !isNaN(inv) && inv !== 0) ? Math.round((e_l30 / inv) * 100) + "%" : "0%";
+
+                    return {
+                        Parent: row.parent,
+                        SKU: row.sku,
+                        INV: row.INV || 0,
+                        'OV L30': row.L30 || 0,
+                        'DIL %': dilPercent,
+                        'E DIL %': eDilPercent,
+                        Price: row.price,
+                        NRA: row.NR || '',
+                        Campaign: row.campaignName,
+                        '7 UB%': ub7.toFixed(0) + "%",
+                        '1 UB%': ub1.toFixed(0) + "%",
+                        'L7 CPC': parseFloat(row.l7_cpc || 0).toFixed(2),
+                        'L1 CPC': parseFloat(row.l1_cpc || 0).toFixed(2),
+                        SBID: sbid,
+                        Status: row.campaignStatus
+                    };
+                });
+
+                if (exportData.length === 0) {
+                    alert("No data available to export!");
+                    return;
+                }
+
+                let ws = XLSX.utils.json_to_sheet(exportData);
+                let wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Campaigns");
+
+                XLSX.writeFile(wb, "ebay_kw_ads_price_less_than_30.xlsx");
+            });
 
         });
     </script>

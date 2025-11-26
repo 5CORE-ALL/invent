@@ -81,7 +81,7 @@ class UpdateEbaySuggestedBid extends Command
                 $sbidColor = "pink";
             }
 
-            $viewsLow = $views < 300;
+            $viewsLow = $views < 150;
             $noSale = $ebay_l30 === 0;
 
             if ($sbidColor === "pink") {
@@ -102,7 +102,7 @@ class UpdateEbaySuggestedBid extends Command
 
             if ($sbidColor === "yellow") {
                 if ($noSale) {
-                    $sbid = $viewsLow ? 12 : 10;
+                    $sbid = $viewsLow ? 10 : 10;
                 } else {
                     $sbid = $viewsLow ? 10 : 8;
                 }
@@ -110,14 +110,19 @@ class UpdateEbaySuggestedBid extends Command
 
             if ($sbidColor === "red") {
                 if ($noSale) {
-                    $sbid = $viewsLow ? 15 : 12;
+                    $sbid = $viewsLow ? 10 : 10;
                 } else {
-                    $sbid = $viewsLow ? 12 : 10;
+                    $sbid = $viewsLow ? 10 : 10;
                 }
             }
 
             if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
                 $campaignListings[$ebayMetric->item_id]->sbid = $sbid;
+                
+                // Debug logging for specific SKU
+                if ($pm->sku === 'SP 12120 8OHMS 2PCS') {
+                    Log::info("Processing SKU: {$pm->sku}, item_id: {$ebayMetric->item_id}, sbid: {$sbid}, campaign: {$campaignListings[$ebayMetric->item_id]->campaign_id}");
+                }
             }
         }
 
