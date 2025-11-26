@@ -771,25 +771,25 @@
                             },
                         },
 
-                        {
-                            title: "PFT AMT",
-                            field: "PFT_AMT",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue()) || 0;
-                                return '$' + value.toFixed(2);
-                            },
-                        },
+                        // {
+                        //     title: "PFT AMT",
+                        //     field: "PFT_AMT",
+                        //     hozAlign: "center",
+                        //     formatter: function(cell) {
+                        //         const value = parseFloat(cell.getValue()) || 0;
+                        //         return '$' + value.toFixed(2);
+                        //     },
+                        // },
 
-                        {
-                            title: "SALES AMT",
-                            field: "SALES_AMT",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue()) || 0;
-                                return '$' + value.toFixed(2);
-                            },
-                        },
+                        // {
+                        //     title: "SALES AMT",
+                        //     field: "SALES_AMT",
+                        //     hozAlign: "center",
+                        //     formatter: function(cell) {
+                        //         const value = parseFloat(cell.getValue()) || 0;
+                        //         return '$' + value.toFixed(2);
+                        //     },
+                        // },
 
                         {
                             title: "LP AMT",
