@@ -1401,7 +1401,7 @@
                     initEnhancedDropdowns();
 
                     // Set default INV filter to "INV Only" on page load
-                    $('#inv-filter').val('inv-only').trigger('change');
+                    // $('#inv-filter').val('inv-only').trigger('change');
                 });
             }
 
@@ -1538,9 +1538,9 @@
             // Helper function to create a table row
             function createTableRow(item, index) {
                 const $row = $('<tr>');
-                if(item.nr_req === 'NR'){
-                    $row.addClass('nr-hide');
-                }
+                // if(item.nr_req === 'NR'){
+                //     $row.addClass('nr-hide');
+                // }
                 // Add a blue background color if the SKU contains "PARENT"
                 if (item.sku.includes('PARENT')) {
                     $row.addClass('parent-row');

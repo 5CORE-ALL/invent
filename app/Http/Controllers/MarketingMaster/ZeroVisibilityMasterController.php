@@ -472,37 +472,122 @@ class ZeroVisibilityMasterController extends Controller
         $channelName = $request->input('channel');
         $startDate = $request->input('start_date');
         $endDate = $request->input('end_date');
+        $days = (int) $request->input('days', 7);
 
         $record = ChannelDailyCount::where('channel_name', $channelName)->first();
 
-        if (!$record || !$record->counts) {
+        if (!$record) {
             return response()->json(['dates' => [], 'counts' => []]);
         }
 
-        $counts = $record->counts;
-        ksort($counts); // Sort by date
-
-        // Filter by date range
-        if ($startDate && $endDate) {
-            $counts = array_filter($counts, function ($date) use ($startDate, $endDate) {
-                return $date >= $startDate && $date <= $endDate;
-            }, ARRAY_FILTER_USE_KEY);
+        // Normalize counts to associative array (date => value)
+        $countsRaw = $record->counts ?? [];
+        if (is_string($countsRaw)) {
+            $decoded = json_decode($countsRaw, true);
+            $countsArr = is_array($decoded) ? $decoded : [];
+        } elseif (is_array($countsRaw)) {
+            $countsArr = $countsRaw;
         } else {
-            // Default: Show last 7 days
-            $today = now()->toDateString();
-            $sevenDaysAgo = now()->subDays(6)->toDateString();
-
-            $counts = array_filter($counts, function ($date) use ($sevenDaysAgo, $today) {
-                return $date >= $sevenDaysAgo && $date <= $today;
-            }, ARRAY_FILTER_USE_KEY);
+            $countsArr = [];
         }
 
-        $dates = array_keys($counts);
-        $values = array_values($counts);
+        // Ensure keys are sorted
+        ksort($countsArr);
+
+        // If explicit start/end provided, use them; otherwise create last $days dates
+        if ($startDate && $endDate) {
+            $start = $startDate;
+            $end = $endDate;
+        } else {
+            $end = now()->toDateString();
+            $start = now()->subDays(max(1, $days - 1))->toDateString();
+        }
+
+        // Build full date range and fill missing days with 0
+        $period = [];
+        $current = \Carbon\Carbon::parse($start);
+        $endDt = \Carbon\Carbon::parse($end);
+        while ($current->lte($endDt)) {
+            $period[] = $current->toDateString();
+            $current->addDay();
+        }
+
+        // Build raw values array (as stored)
+        $rawValues = [];
+        foreach ($period as $d) {
+            $v = $countsArr[$d] ?? 0;
+            if (is_numeric($v)) {
+                $rawValues[] = (int) $v;
+            } else {
+                $clean = preg_replace('/[^0-9.-]/', '', (string) $v);
+                $rawValues[] = $clean === '' ? 0 : (int) $clean;
+            }
+        }
+
+        // Compute totals array by attempting anchor reconstruction if raw contains negatives,
+        // otherwise totals == rawValues (already absolute).
+        $hasNegative = false;
+        foreach ($rawValues as $v) { if ($v < 0) { $hasNegative = true; break; } }
+
+        $totals = $rawValues;
+
+        if ($hasNegative) {
+            // Try to find an absolute anchor value from stored counts at the end date or nearest prior date
+            $anchor = null;
+            $anchorIndex = null;
+            $lastIndex = count($period) - 1;
+            if (isset($countsArr[$period[$lastIndex]]) && is_numeric($countsArr[$period[$lastIndex]]) && (int)$countsArr[$period[$lastIndex]] >= 0) {
+                $anchor = (int)$countsArr[$period[$lastIndex]];
+                $anchorIndex = $lastIndex;
+            } else {
+                for ($i = $lastIndex; $i >= 0; $i--) {
+                    $d = $period[$i];
+                    if (isset($countsArr[$d]) && is_numeric($countsArr[$d]) && (int)$countsArr[$d] >= 0) {
+                        $anchor = (int)$countsArr[$d];
+                        $anchorIndex = $i;
+                        break;
+                    }
+                }
+            }
+
+            if ($anchor !== null && $anchorIndex !== null) {
+                // Reconstruct totals anchored at anchorIndex
+                $reconstructed = array_fill(0, count($period), 0);
+                $reconstructed[$anchorIndex] = $anchor;
+
+                // Go backwards from anchor to start
+                for ($i = $anchorIndex - 1; $i >= 0; $i--) {
+                    $delta = isset($rawValues[$i+1]) ? (int)$rawValues[$i+1] : 0;
+                    $reconstructed[$i] = max(0, $reconstructed[$i+1] - $delta);
+                }
+
+                // Go forwards from anchor to end
+                for ($i = $anchorIndex + 1; $i < count($period); $i++) {
+                    $delta = isset($rawValues[$i]) ? (int)$rawValues[$i] : 0;
+                    $reconstructed[$i] = max(0, $reconstructed[$i-1] + $delta);
+                }
+
+                $totals = $reconstructed;
+            } else {
+                // Fallback: forward running sum
+                $cumulative = [];
+                $running = 0;
+                foreach ($rawValues as $i => $v) {
+                    if ($i === 0) {
+                        $running = max(0, (int)$v);
+                    } else {
+                        $running = max(0, $running + (int)$v);
+                    }
+                    $cumulative[] = $running;
+                }
+                $totals = $cumulative;
+            }
+        }
 
         return response()->json([
-            'dates' => $dates,
-            'counts' => $values
+            'dates' => $period,
+            'raw' => $rawValues,
+            'totals' => $totals
         ]);
     }
 

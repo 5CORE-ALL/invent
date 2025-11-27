@@ -672,6 +672,10 @@
         </div>
     </div>
     </div>
+
+    <!-- Toast container -->
+    <div id="toastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1060;"></div>
+
 @endsection
 
 @section('script')
@@ -692,8 +696,6 @@
     <script>
         window.totalSkuCount = {{ $totalSkuCount }};
         window.zeroInvCount = {{ $zeroInvCount }};
-        <!-- Toast container -->
-        <div id="toastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1060;"></div>
     </script>
 
 
@@ -819,14 +821,14 @@
         }
 
         function initializeDataTable() {
-            return jq('#channelTable').DataTable({
+                return jq('#channelTable').DataTable({
                 processing: true,
                 serverSide: false,
                 ordering: true,
                 searching: true,
                 pageLength: 50,
                 order: [
-                    [3, 'desc']
+                    [4, 'desc']
                 ],
                 ajax: {
                     url: '/show-zero-visibility-data',
@@ -847,7 +849,8 @@
                         }
                         setTimeout(() => {
                             const table = jq('#channelTable').DataTable();
-                            table.order([3, 'desc']).draw(false);
+                            // default order by Zero Visibility SKU Count (now column index 4)
+                            table.order([4, 'desc']).draw(false);
                         }, 300);
                         return json.data;
                     },
@@ -928,24 +931,29 @@
                             }
 
                             if (data && data.trim() !== '') {
-                                // show clickable icon (single-click opens) plus pencil for edit
                                 return `<div class="d-flex align-items-center justify-content-center">
                                     <a href="#" class="link-icon sheet-link-open me-2" data-href="${data}" data-channel="${channelName}" title="Open Sheet">
                                         <i class="mdi mdi-file-excel text-success" style="font-size: 1.5rem;"></i>
                                     </a>
-                                    <button type="button" class="btn btn-sm btn-link p-0 sheet-link-pencil" data-channel="${channelName}" title="Edit Sheet Link">
+                                    <button type="button" class="btn btn-sm btn-link p-0 sheet-link-pencil me-2" data-channel="${channelName}" title="Edit Sheet Link">
                                         <i class="mdi mdi-pencil" style="font-size:1.1rem;"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-link p-0 channel-graph" data-channel="${channelName}" title="Show Graph">
+                                        <i class="mdi mdi-chart-line" style="font-size:1.25rem;"></i>
                                     </button>
                                 </div>`;
                             }
 
-                            // no link: show pencil to allow adding one and a placeholder
+                            // no link: show pencil to allow adding one, graph button and a placeholder
                             return `<div class="d-flex align-items-center justify-content-center">
-                                <button type="button" class="btn btn-sm btn-link p-0 sheet-link-pencil" data-channel="${channelName}" title="Add Sheet Link">
-                                    <i class="mdi mdi-pencil" style="font-size:1.1rem;"></i>
-                                </button>
-                                <span class="text-muted ms-2">-</span>
-                            </div>`;
+                                    <button type="button" class="btn btn-sm btn-link p-0 sheet-link-pencil me-2" data-channel="${channelName}" title="Add Sheet Link">
+                                        <i class="mdi mdi-pencil" style="font-size:1.1rem;"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-link p-0 channel-graph" data-channel="${channelName}" title="Show Graph">
+                                        <i class="mdi mdi-chart-line" style="font-size:1.25rem;"></i>
+                                    </button>
+                                    <span class="text-muted ms-2">-</span>
+                                </div>`;
                         }
                     },
                     {
@@ -977,12 +985,12 @@
                         cell.innerHTML = i + 1;
                     });
 
-                    // ✅ Only calculate zero-visibility total now (column 4 now)
+                    // ✅ Only calculate zero-visibility total now (column 5 after adding Graph column)
                     let zeroVisibilityTotal = api.column(4, { search: 'applied' }).data()
                         .reduce((a, b) => (parseInt(a) || 0) + (parseInt(b) || 0), 0);
 
                     let zeroVisibilityHeader = api.column(4).header();
-                    
+
                     jq(zeroVisibilityHeader).html(
                         'Zero Visibility SKU Count<br><span style="color:white; font-weight:bold; font-size:1rem;">' +
                         zeroVisibilityTotal + '</span>'
@@ -993,8 +1001,9 @@
                     if (jq('#zeroViewsTotalDisplay').length) {
                         jq('#zeroViewsTotalDisplay').text((parseInt(zeroVisibilityTotal) || 0).toLocaleString('en-US'));
                     }
+                    // no inline sparklines — graphs open in modal on icon click
                 },                
-                responsive: true,
+                responsive: false,
                 language: {
                     processing: "Loading data, please wait...",
                     emptyTable: "",
@@ -1103,6 +1112,8 @@
             el.addEventListener('hidden.bs.toast', function () { el.remove(); });
             toast.show();
         }
+
+        /* Inline sparklines removed — graphs open in modal on icon click */
 
         //sheet link update with validation and toasts
         jq(document).on('change', '.sheet-link-input', function () {
@@ -1337,6 +1348,21 @@
 
                     const ctx = document.getElementById('zeroDailyTotalsCanvas').getContext('2d');
 
+                    // Compute dynamic y-axis min/max with padding so chart zooms to data
+                    const numericTotals = totals.map(v => Number(v) || 0);
+                    const dataMin = numericTotals.length ? Math.min(...numericTotals) : 0;
+                    const dataMax = numericTotals.length ? Math.max(...numericTotals) : 0;
+                    const rawRange = dataMax - dataMin;
+                    const padding = rawRange > 0 ? Math.ceil(rawRange * 0.1) : Math.ceil(dataMax * 0.05) || 1;
+                    let yMin = Math.floor(dataMin - padding);
+                    // if data are non-negative, don't show negative min
+                    if (dataMin >= 0 && yMin < 0) yMin = 0;
+                    const yMax = Math.ceil(dataMax + padding);
+
+                    // choose a reasonable step size (approx 5 steps)
+                    const range = Math.max(1, yMax - yMin);
+                    const approxStep = Math.ceil(range / 5);
+
                     zeroDailyChart = new Chart(ctx, {
                         type: 'line',
                         data: {
@@ -1369,8 +1395,9 @@
                             maintainAspectRatio: false,
                             scales: {
                                 y: {
-                                    beginAtZero: true,
-                                    ticks: { precision: 0 }
+                                    min: yMin,
+                                    max: yMax,
+                                    ticks: { precision: 0, stepSize: approxStep }
                                 }
                             },
                             plugins: {
@@ -1381,6 +1408,64 @@
                 })
                 .catch(err => {
                     console.error('Failed to load daily totals:', err);
+                    jq('#dailyTotalsLoading').text('Failed to load data.');
+                });
+        });
+
+        // Channel graph: open modal and render channel-specific 7-day chart
+        jq(document).on('click', '.channel-graph', function (e) {
+            e.preventDefault();
+            const $btn = jq(this);
+            const channel = $btn.data('channel');
+            if (!channel) return;
+
+            var modalEl = document.getElementById('dailyTotalsModal');
+            var modal = new bootstrap.Modal(modalEl);
+            modal.show();
+
+            jq('#dailyTotalsModalLabel').text('Zero Visibility - ' + channel);
+            jq('#dailyTotalsLoading').show();
+            jq('#zeroDailyTotalsCanvas').hide();
+
+            fetch('/zero-visibility/channel-chart?channel=' + encodeURIComponent(channel) + '&days=7', { headers: { 'Accept': 'application/json' } })
+                .then(response => response.json())
+                .then(json => {
+                    const dates = json.dates || [];
+                    const raw = json.raw || json.counts || [];
+                    const totals = json.totals || null;
+
+                    // If raw contains negatives, plot raw (deltas); otherwise prefer totals (absolute)
+                    const useRaw = raw.some(v => Number(v) < 0);
+                    const dataToPlot = useRaw ? raw : (Array.isArray(totals) ? totals : raw);
+
+                    jq('#dailyTotalsLoading').hide();
+                    jq('#zeroDailyTotalsCanvas').show();
+
+                    if (zeroDailyChart) zeroDailyChart.destroy();
+
+                    const ctx = document.getElementById('zeroDailyTotalsCanvas').getContext('2d');
+
+                    // compute dynamic y-axis with padding
+                    const numericTotals = (dataToPlot || []).map(v => Number(v) || 0);
+                    const dataMin = numericTotals.length ? Math.min(...numericTotals) : 0;
+                    const dataMax = numericTotals.length ? Math.max(...numericTotals) : 0;
+                    const rawRange = dataMax - dataMin;
+                    const padding = rawRange > 0 ? Math.ceil(rawRange * 0.1) : Math.ceil(Math.abs(dataMax) * 0.05) || 1;
+                    let yMin = Math.floor(dataMin - padding);
+                    // if data are non-negative, don't show negative min
+                    if (dataMin >= 0 && yMin < 0) yMin = 0;
+                    const yMax = Math.ceil(dataMax + padding);
+                    const range = Math.max(1, yMax - yMin);
+                    const approxStep = Math.ceil(range / 5);
+
+                    zeroDailyChart = new Chart(ctx, {
+                        type: 'line',
+                        data: { labels: dates, datasets: [{ label: channel, data: dataToPlot, fill: false, borderWidth: 3, tension: 0.3, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: 'rgba(54,162,235,1)' }] },
+                        options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: yMin, max: yMax, ticks: { precision: 0, stepSize: approxStep } } }, plugins: { legend: { display: false } } }
+                    });
+                })
+                .catch(err => {
+                    console.error('Failed to load channel totals:', err);
                     jq('#dailyTotalsLoading').text('Failed to load data.');
                 });
         });
@@ -1509,8 +1594,8 @@
             });
 
             // Initial sort
-            jq('#sortMetric').val('3'); // Default to L-60 Sales (column index 3)
-            table.order([3, sortDirection]).draw();
+            jq('#sortMetric').val('4'); // Default to Zero Visibility SKU Count (column index 4)
+            table.order([4, sortDirection]).draw();
         }
 
         // Dropdown functionality

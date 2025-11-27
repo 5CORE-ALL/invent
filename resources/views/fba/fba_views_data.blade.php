@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'FBA Pricing Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'FBA Pricing Data (> 0 INV)', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -13,14 +13,14 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'FBA pricing data',
-        'sub_title' => 'FBA pricing data',
+        'page_title' => 'FBA pricing data (> 0 INV)',
+        'sub_title' => 'FBA pricing data (> 0 INV)',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>FBA Data </h4>
+                <h4>FBA pricing data (> 0 INV)</h4>
                 <div>
                     <select id="inventory-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
@@ -70,38 +70,9 @@
                         <i class="fa fa-upload"></i>
                     </button>
                     
-                    <button id="toggle-metrics-btn" class="btn btn-sm btn-info me-2">
-                        <i class="fa fa-chart-line"></i> Show Metrics
-                    </button>
                     <button id="toggle-chart-btn" class="btn btn-sm btn-secondary me-2" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
                     </button>
-                </div>
-
-                <!-- Metrics Summary Section -->
-                <div id="metrics-summary" class="mt-2 p-2 rounded border" style="display: none; background-color: #edfdff;">
-                    <div class="row text-center">
-                        <div class="col">
-                            <small class="text-muted">Avg Price</small>
-                            <div class="fw-bold" id="metric-avg-price">$0</div>
-                        </div>
-                        <div class="col">
-                            <small class="text-muted">Total Views</small>
-                            <div class="fw-bold" id="metric-total-views">0</div>
-                        </div>
-                        <div class="col">
-                            <small class="text-muted">Avg GPFT%</small>
-                            <div class="fw-bold text-success" id="metric-avg-gprft">0%</div>
-                        </div>
-                        <div class="col">
-                            <small class="text-muted">Avg GROI%</small>
-                            <div class="fw-bold text-primary" id="metric-avg-groi">0%</div>
-                        </div>
-                        <div class="col">
-                            <small class="text-muted">Avg TACOS%</small>
-                            <div class="fw-bold text-danger" id="metric-avg-tacos">0%</div>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Metrics Chart Section -->
@@ -121,15 +92,30 @@
                 </div>
 
                 <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-2 p-2 bg-light rounded">
-                    <h6 class="mb-2">Summary</h6>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <strong>Total TCOS:</strong> <span id="total-tcos">0%</span>
-                        </div>
-                        <div class="col-md-6">
-                            <strong>Total Spend L30:</strong> <span id="total-spend-l30">0</span>
-                        </div>
+                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
+                    <h6 class="mb-3">All Calculations Summary</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <!-- Top Metrics -->
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
+                        
+                        <!-- FBA Metrics -->
+                        <span class="badge bg-primary fs-6 p-2" id="total-fba-inv-badge" style="color: black; font-weight: bold;">Total FBA INV: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total FBA L30: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
+                        
+                        <!-- Financial Metrics -->
+                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
                     </div>
                 </div>
             </div>
@@ -390,8 +376,6 @@
                             
                             // Update metrics summary with latest data
                             const latest = data[data.length - 1];
-                            $('#metric-avg-price').text('$' + latest.avg_price);
-                            $('#metric-total-views').text(latest.total_views.toLocaleString());
                             $('#metric-avg-gprft').text(latest.avg_gprft + '%');
                             $('#metric-avg-groi').text(latest.avg_groi_percent + '%');
                             $('#metric-avg-tacos').text(latest.avg_tacos + '%');
@@ -548,21 +532,6 @@
                 loadMetricsData(30);
                 initSkuMetricsChart();
 
-                // Toggle metrics summary button
-                $('#toggle-metrics-btn').on('click', function() {
-                    const $summary = $('#metrics-summary');
-                    const $btn = $(this);
-                    
-                    if ($summary.is(':visible')) {
-                        $summary.slideUp();
-                        $btn.html('<i class="fa fa-chart-line"></i> Show Metrics');
-                    } else {
-                        $summary.slideDown();
-                        $btn.html('<i class="fa fa-chart-line"></i> Hide Metrics');
-                        loadMetricsData($('#chart-days-filter').val());
-                    }
-                });
-
                 // Toggle chart button
                 $('#toggle-chart-btn').on('click', function() {
                     const $chartSection = $('#metrics-chart-section');
@@ -577,9 +546,7 @@
                     }
                 });
 
-                // Show metrics summary and chart button by default on first load
-                $('#metrics-summary').show();
-                $('#toggle-metrics-btn').html('<i class="fa fa-chart-line"></i> Hide Metrics');
+                // Show chart button by default on first load
                 $('#toggle-chart-btn').show();
 
                 // Chart days filter
@@ -801,6 +768,36 @@
                                     style = 'color: purple;';
                                 }
                                 return `<span style="${style}">${rawValue}</span>`;
+                            },
+                        },
+
+                        // {
+                        //     title: "PFT AMT",
+                        //     field: "PFT_AMT",
+                        //     hozAlign: "center",
+                        //     formatter: function(cell) {
+                        //         const value = parseFloat(cell.getValue()) || 0;
+                        //         return '$' + value.toFixed(2);
+                        //     },
+                        // },
+
+                        // {
+                        //     title: "SALES AMT",
+                        //     field: "SALES_AMT",
+                        //     hozAlign: "center",
+                        //     formatter: function(cell) {
+                        //         const value = parseFloat(cell.getValue()) || 0;
+                        //         return '$' + value.toFixed(2);
+                        //     },
+                        // },
+
+                        {
+                            title: "LP AMT",
+                            field: "LP_AMT",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue()) || 0;
+                                return '$' + value.toFixed(2);
                             },
                         },
 
@@ -1268,16 +1265,7 @@
                         //     hozAlign: "center"
                         // }
 
-                         {
-                            title: "Rating",
-                            field: "Rating",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const rating = cell.getValue();
-                                if (!rating || rating === 0 || rating === '0') return '';
-                                return `<span style="color: #FFA500;">★ ${rating}</span>`;
-                            }
-                        },
+                       
 
                     ]
                 });
@@ -1442,14 +1430,74 @@
                     const data = table.getData().filter(row => !row.is_parent); // Exclude parent rows
                     let totalTcos = 0;
                     let totalSpendL30 = 0;
+                    let totalPftAmt = 0;
+                    let totalSalesAmt = 0;
+                    let totalLpAmt = 0;
+                    let totalFbaInv = 0;
+                    let totalFbaL30 = 0;
+                    let totalDilPercent = 0;
+                    let dilCount = 0;
 
                     data.forEach(row => {
-                        totalTcos += parseFloat(row.TCOS_Percentage || 0);
-                        totalSpendL30 += parseFloat(row.Total_Spend_L30 || 0);
+                        if (parseFloat(row.FBA_Quantity) > 0) {
+                            totalTcos += parseFloat(row.TCOS_Percentage || 0);
+                            totalSpendL30 += parseFloat(row.Total_Spend_L30 || 0);
+                            totalPftAmt += parseFloat(row.PFT_AMT || 0);
+                            totalSalesAmt += parseFloat(row.SALES_AMT || 0);
+                            totalLpAmt += parseFloat(row.LP_AMT || 0);
+                            totalFbaInv += parseFloat(row.FBA_Quantity || 0);
+                            totalFbaL30 += parseFloat(row.l30_units || 0);
+                            
+                            const dil = parseFloat(row.FBA_Dil || 0);
+                            if (!isNaN(dil)) {
+                                totalDilPercent += dil;
+                                dilCount++;
+                            }
+                        }
                     });
 
-                    $('#total-tcos').text(totalTcos.toFixed(2) + '%');
-                    $('#total-spend-l30').text('$' + totalSpendL30.toFixed(2));
+                    let totalWeightedPrice = 0;
+                    let totalL30 = 0;
+                    data.forEach(row => {
+                        if (parseFloat(row.FBA_Quantity) > 0) {
+                            const price = parseFloat(row.FBA_Price) || 0;
+                            const l30 = parseFloat(row.l30_units) || 0;
+                            totalWeightedPrice += price * l30;
+                            totalL30 += l30;
+                        }
+                    });
+                    const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
+                    $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice));
+
+                    let totalViews = 0;
+                    data.forEach(row => {
+                        if (parseFloat(row.FBA_Quantity) > 0) {
+                            totalViews += parseFloat(row.Current_Month_Views) || 0;
+                        }
+                    });
+                    const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+                    $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
+                    $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+                    
+
+                    $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos) + '%');
+                    $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
+                    $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
+                    $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+                    $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
+                    const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
+                    $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
+                    $('#total-fba-inv-badge').text('Total FBA INV: ' + Math.round(totalFbaInv).toLocaleString());
+                    $('#total-fba-l30-badge').text('Total FBA L30: ' + Math.round(totalFbaL30).toLocaleString());
+                    const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
+                    $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
+                    $('#total-pft-amt').text('$' + Math.round(totalPftAmt));
+                    $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
+                    $('#total-sales-amt').text('$' + Math.round(totalSalesAmt));
+                    $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+                    const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
+                    $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
+                    $('#avg-gpft-summary').text(avgGpft + '%');
                 }
 
 

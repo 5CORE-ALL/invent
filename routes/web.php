@@ -344,6 +344,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channels-master-data', [ChannelMasterController::class, 'getViewChannelData']);
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
+    Route::get('/dashboard-metrics', [ChannelMasterController::class, 'getDashboardMetrics']);
 
     //Channel Ads Master
     Route::get('/channel/ads/master', [ChannelAdsMasterController::class, 'channelAdsMaster'])->name('channel.ads.master');
@@ -362,6 +363,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/save-channel-action', [ZeroVisibilityMasterController::class, 'saveChannelAction'])
         ->name('save.channel.action');
     Route::get('/show-zero-visibility-data', [ZeroVisibilityMasterController::class, 'getMergedChannelData']);
+    Route::get('/zero-visibility/channel-chart', [ZeroVisibilityMasterController::class, 'getChannelChartData']);
     Route::get('/export-zero-visibility-csv', [ZeroVisibilityMasterController::class, 'exportCsv'])->name('zero.export.csv');
     Route::post('/update-ra-checkbox', [ZeroVisibilityMasterController::class, 'updateRaCheckbox']);
     Route::post('/update-sheet-link', [ZeroVisibilityMasterController::class, 'updateSheetLink']);

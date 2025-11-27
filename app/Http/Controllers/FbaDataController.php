@@ -20,7 +20,7 @@ use App\Services\LmpaDataService;
 use App\Services\AmazonSpApiService;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
-
+use PhpOffice\PhpSpreadsheet\Calculation\MathTrig\Sum;
 
 class FbaDataController extends Controller
 {
@@ -598,8 +598,21 @@ class FbaDataController extends Controller
          $adsPTDataBySku[$sku] = $ptCampaign;
       }
 
+      // Calculate overall average price: sum(price) * sum(l30) / sum(l30) = sum(price)
+      $totalPrice = 0;
+      $totalL30 = 0;
+      foreach ($fbaData as $sku => $fba) {
+         $fbaPriceInfo = $fbaPriceData->get($sku);
+         $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
+         $monthlySales = $fbaMonthlySales->get($sku);
+         $l30Units = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
+         $totalPrice += $PRICE;
+         $totalL30 += $l30Units;
+      }
+      $overallAvgPrice = $totalL30 > 0 ? $totalPrice * $totalL30 / $totalL30 : 0;
+
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $adsKWDataBySku, $adsPTDataBySku) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -708,6 +721,13 @@ class FbaDataController extends Controller
             $groi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $LP;
          }
 
+         $avgprice = $overallAvgPrice;
+
+
+           $topgpft = 0;
+         if ($PRICE > 0) {
+            $topgpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+         }
 
          $gpftPercentage = round($gpft * 100);
          $sgpftPercentage = round($sgpft * 100);
@@ -717,6 +737,12 @@ class FbaDataController extends Controller
          $spftPercentage = round($spft * 100);
          $sroiPercentage = round($sroi);
          $sgroiPercentage = round($sgroi * 100);
+
+         $pft_amt = $l30Units * $PRICE * $gpft;
+
+         $sales_amt = $l30Units * $PRICE;
+
+         $lp_amt = $LP * $l30Units;
 
          return [
             'Parent' => $product ? ($product->parent ?? '') : '',
@@ -811,6 +837,9 @@ class FbaDataController extends Controller
             'Oct' => $monthlySales ? ($monthlySales->oct ?? 0) : 0,
             'Nov' => $monthlySales ? ($monthlySales->nov ?? 0) : 0,
             'Dec' => $monthlySales ? ($monthlySales->dec ?? 0) : 0,
+            'PFT_AMT' => round($pft_amt, 2),
+            'SALES_AMT' => round($sales_amt, 2),
+            'LP_AMT' => round($lp_amt, 2),
 
 
 
@@ -906,6 +935,9 @@ class FbaDataController extends Controller
             'RATING' => '',
             'LP' => '',
             'FBA_Ship_Calculation' => '',
+            'PFT_AMT' => round($children->sum('PFT_AMT'), 2),
+            'SALES_AMT' => round($children->sum('SALES_AMT'), 2),
+            'LP_AMT' => round($children->sum('LP_AMT'), 2),
          ];
 
          // Return children first, then parent
