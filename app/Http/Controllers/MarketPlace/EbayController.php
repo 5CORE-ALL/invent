@@ -493,9 +493,9 @@ class EbayController extends Controller
                 }
             }
 
-            // If SPRICE is null or empty, use eBay Price as default and calculate SPFT/SROI/SGPFT
+            // If SPRICE is null or empty, use eBay Price reduced by 1% as default and calculate SPFT/SROI/SGPFT
             if (empty($row['SPRICE']) && $price > 0) {
-                $row['SPRICE'] = $price;
+                $row['SPRICE'] = round($price * 0.99, 2);
                 $row['has_custom_sprice'] = false; // Flag to indicate using default price
                 
                 // Calculate SGPFT based on default price
