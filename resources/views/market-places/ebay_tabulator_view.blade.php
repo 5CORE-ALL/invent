@@ -131,6 +131,10 @@
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="ebay-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
+                    <!-- SKU Search -->
+                    <div class="p-2 bg-light border-bottom">
+                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    </div>
                     <!-- Table body (scrollable section) -->
                     <div id="ebay-table" style="flex: 1;"></div>
                 </div>
@@ -793,6 +797,12 @@
                     //     width: 100
                     // }
                 ]
+            });
+
+            // SKU Search functionality
+            $('#sku-search').on('keyup', function() {
+                const value = $(this).val();
+                table.setFilter("(Child) sku", "like", value);
             });
 
             // NR/REQ dropdown change handler
