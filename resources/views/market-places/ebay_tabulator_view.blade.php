@@ -222,14 +222,14 @@
                         title: "INV",
                         field: "INV",
                         hozAlign: "center",
-                        width: 80,
+                        width: 50,
                         sorter: "number"
                     },
                     {
                         title: "OV L30",
                         field: "L30",
                         hozAlign: "center",
-                        width: 80,
+                        width: 50,
                         sorter: "number"
                     },
 
@@ -256,13 +256,13 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
                         },
-                        width: 60
+                        width: 50
                     },
                     {
                         title: "E L30",
                         field: "eBay L30",
                         hozAlign: "center",
-                        width: 60,
+                        width: 30,
                         sorter: "number"
                     },
 
@@ -312,7 +312,7 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${scvrValue.toFixed(1)}%</span>`;
                         },
-                        width: 100
+                        width: 60
                     },
 
                     {
@@ -394,7 +394,7 @@
                             // Normal price formatting
                             return `$${value.toFixed(2)}`;
                         },
-                        width: 120
+                        width: 70
                     },
 
                       {
@@ -417,7 +417,7 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        width: 100
+                        width: 50
                     },
 
 
@@ -441,7 +441,7 @@
                             
                             return `${parseFloat(value).toFixed(0)}%`;
                         },
-                        width: 100
+                        width: 55
                     },
 
                      {
@@ -472,7 +472,7 @@
                             const value = cell.getValue();
                             return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                         },
-                        width: 70
+                        width: 50
                     },
                     {
                         title: "ROI%",
@@ -498,7 +498,7 @@
                             const value = cell.getValue();
                             return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                         },
-                        width: 70
+                        width: 65
                     },
                   
                     
@@ -519,12 +519,14 @@
                             }
                             return value ? `$${parseFloat(value).toFixed(2)}` : '';
                         },
+                        width: 70
                     
                     },
                     // {
                     //     title: "AD <br> Spend <br> L30",
                     //     field: "AD_Spend_L30",
                     //     hozAlign: "center",
+                    //     sorter: "number",
                     //     formatter: "money",
                     //     formatterParams: {
                     //         decimal: ".",
@@ -532,12 +534,13 @@
                     //         symbol: "$",
                     //         precision: 2
                     //     },
-                     
+                    //     width: 130
                     // },
                     // {
                     //     title: "AD Sales L30",
                     //     field: "AD_Sales_L30",
                     //     hozAlign: "center",
+                    //     sorter: "number",
                     //     formatter: "money",
                     //     formatterParams: {
                     //         decimal: ".",
@@ -551,6 +554,7 @@
                     //     title: "AD Units L30",
                     //     field: "AD_Units_L30",
                     //     hozAlign: "center",
+                    //     sorter: "number",
                     //     width: 120
                     // },
                    
@@ -579,6 +583,7 @@
                     //     title: "Total Sales L30",
                     //     field: "T_Sale_l30",
                     //     hozAlign: "center",
+                    //     sorter: "number",
                     //     formatter: "money",
                     //     formatterParams: {
                     //         decimal: ".",
@@ -592,6 +597,7 @@
                     //     title: "Total Profit",
                     //     field: "Total_pft",
                     //     hozAlign: "center",
+                    //     sorter: "number",
                     //     formatter: "money",
                     //     formatterParams: {
                     //         decimal: ".",
@@ -599,6 +605,8 @@
                     //         symbol: "$",
                     //         precision: 2
                     //     },
+                    //     width: 130
+                    // },
                     //     width: 130
                     // },
                    
@@ -624,7 +632,7 @@
                             
                             return formattedValue;
                         },
-                        width: 120
+                        width: 80
                     },
 
                     {
@@ -647,12 +655,13 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        width: 100
+                        width: 80
                     },
                     {
                         title: "S PFT",
                         field: "SPFT",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const sgpft = parseFloat(rowData.SGPFT || 0);
@@ -672,12 +681,13 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        width: 100
+                        width: 80
                     },
                     {
                         title: "SROI",
                         field: "SROI",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -693,7 +703,7 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        width: 100
+                        width: 80
                     },
 
 
@@ -715,7 +725,7 @@
                             const value = cell.getValue();
                             return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
                         },
-                        width: 120
+                        width: 90
                     },
 
                     {
