@@ -26,6 +26,10 @@
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
         }
+
+        .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0px !important;
+        }
     </style>
 @endsection
 
