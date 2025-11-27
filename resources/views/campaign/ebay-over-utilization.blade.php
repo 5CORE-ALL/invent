@@ -2,6 +2,7 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator .tabulator-header {
@@ -133,6 +134,86 @@
         'page_title' => 'Ebay - OVER UTILIZED',
         'sub_title' => 'Ebay - OVER UTILIZED',
     ])
+    
+    <!-- Stats and Chart Section -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <button id="daterange-btn" class="btn btn-outline-dark">
+                            <span>Date range: Select</span> <i class="fa-solid fa-chevron-down ms-1"></i>
+                        </button>
+                    </div>
+                    <!-- Stats Row -->
+                    <div class="row text-center mb-4">
+                        <!-- Clicks -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Clicks</div>
+                                <div class="h3 mb-0 fw-bold text-primary card-clicks">0</div>
+                            </div>
+                        </div>
+
+                        <!-- Spend -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Spent</div>
+                                <div class="h3 mb-0 fw-bold text-success card-spend">$0</div>
+                            </div>
+                        </div>
+
+                        <!-- Ad Sales -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Ad Sales</div>
+                                <div class="h3 mb-0 fw-bold text-info card-ad-sales">$0</div>
+                            </div>
+                        </div>
+
+                        <!-- Ad Sold -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Ad Sold</div>
+                                <div class="h3 mb-0 fw-bold text-warning card-ad-sold">0</div>
+                            </div>
+                        </div>
+
+                        <!-- ACOS -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">ACOS</div>
+                                <div class="h3 mb-0 fw-bold text-danger card-acos">0%</div>
+                            </div>
+                        </div>
+
+                        <!-- CVR -->
+                        <div class="col-md-2">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="text-muted small">CVR</div>
+                                        <div class="h3 mb-0 fw-bold text-secondary card-cvr">0%</div>
+                                    </div>
+                                    <!-- Arrow button -->
+                                    <button id="toggleChartBtn" class="btn btn-sm btn-info ms-2">
+                                        <i id="chartArrow" class="fa-solid fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chart (hidden by default) -->
+                    <div id="chartContainer" style="display: none;">
+                        <canvas id="campaignChart" height="120"></canvas>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
@@ -227,15 +308,424 @@
         </div>
     </div>
 
+    <!-- Campaign Chart Modal -->
+    <div class="modal fade" id="campaignChartModal" tabindex="-1" aria-labelledby="campaignChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="campaignChartModalLabel">Campaign Performance</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div style="height: 400px; position: relative;">
+                        <canvas id="singleCampaignChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <!-- SheetJS for Excel Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
+
+            // Chart data from backend
+            const chartDates = @json($dates);
+            const chartClicks = @json($clicks);
+            const chartSpend = @json($spend);
+            const chartAdSales = @json($ad_sales);
+            const chartAdSold = @json($ad_sold);
+            const chartAcos = @json($acos);
+            const chartCvr = @json($cvr);
+
+            // Calculate initial totals
+            const totalClicks = chartClicks.reduce((a, b) => a + b, 0);
+            const totalSpend = chartSpend.reduce((a, b) => a + b, 0);
+            const totalAdSales = chartAdSales.reduce((a, b) => a + b, 0);
+            const totalAdSold = chartAdSold.reduce((a, b) => a + b, 0);
+            const avgAcos = totalSpend > 0 ? ((totalSpend / totalAdSales) * 100) : 0;
+            const avgCvr = totalClicks > 0 ? ((totalAdSold / totalClicks) * 100) : 0;
+
+            // Update cards with initial data
+            document.querySelector('.card-clicks').innerHTML = totalClicks.toLocaleString();
+            document.querySelector('.card-spend').innerHTML = '$' + Math.round(totalSpend).toLocaleString();
+            document.querySelector('.card-ad-sales').innerHTML = '$' + Math.round(totalAdSales).toLocaleString();
+            document.querySelector('.card-ad-sold').innerHTML = totalAdSold.toLocaleString();
+            document.querySelector('.card-acos').innerHTML = Math.round(avgAcos) + '%';
+            document.querySelector('.card-cvr').innerHTML = Math.round(avgCvr) + '%';
+
+            // Main Chart initialization
+            const ctx = document.getElementById('campaignChart').getContext('2d');
+            let mainChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartDates,
+                    datasets: [
+                        {
+                            label: 'Clicks',
+                            data: chartClicks,
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            yAxisID: 'y',
+                            tension: 0.3
+                        },
+                        {
+                            label: 'Spend ($)',
+                            data: chartSpend,
+                            borderColor: 'rgba(34, 197, 94, 1)',
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            yAxisID: 'y',
+                            tension: 0.3
+                        },
+                        {
+                            label: 'Ad Sales ($)',
+                            data: chartAdSales,
+                            borderColor: 'rgba(99, 102, 241, 1)',
+                            backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                            yAxisID: 'y',
+                            tension: 0.3
+                        },
+                        {
+                            label: 'Ad Sold',
+                            data: chartAdSold,
+                            borderColor: 'rgba(251, 146, 60, 1)',
+                            backgroundColor: 'rgba(251, 146, 60, 0.1)',
+                            yAxisID: 'y1',
+                            tension: 0.3
+                        },
+                        {
+                            label: 'ACOS (%)',
+                            data: chartAcos,
+                            borderColor: 'rgba(239, 68, 68, 1)',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            yAxisID: 'y2',
+                            tension: 0.3
+                        },
+                        {
+                            label: 'CVR (%)',
+                            data: chartCvr,
+                            borderColor: 'rgba(168, 85, 247, 1)',
+                            backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                            yAxisID: 'y2',
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        if (label.includes('$')) {
+                                            label += '$' + context.parsed.y.toFixed(2);
+                                        } else if (label.includes('%')) {
+                                            label += context.parsed.y.toFixed(2) + '%';
+                                        } else {
+                                            label += context.parsed.y;
+                                        }
+                                    }
+                                    return label;
+                                }
+                            }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Clicks / Spend / Sales ($)'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Ad Sold (Units)'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        },
+                        y2: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'ACOS / CVR (%)'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Toggle chart visibility
+            document.getElementById('toggleChartBtn').addEventListener('click', function() {
+                const container = document.getElementById('chartContainer');
+                const arrow = document.getElementById('chartArrow');
+                
+                if (container.style.display === 'none') {
+                    container.style.display = 'block';
+                    arrow.classList.remove('fa-chevron-down');
+                    arrow.classList.add('fa-chevron-up');
+                } else {
+                    container.style.display = 'none';
+                    arrow.classList.remove('fa-chevron-up');
+                    arrow.classList.add('fa-chevron-down');
+                }
+            });
+
+            // Date range picker
+            const start = moment().subtract(29, 'days');
+            const end = moment();
+
+            $('#daterange-btn').daterangepicker({
+                startDate: start,
+                endDate: end,
+                ranges: {
+                    'Today': [moment(), moment()],
+                    'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+                    'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+                    'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+                    'This Month': [moment().startOf('month'), moment().endOf('month')],
+                    'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+                }
+            }, function(start, end) {
+                $('#daterange-btn span').html('Date range: ' + start.format('MMMM D, YYYY') + ' - ' + end.format('MMMM D, YYYY'));
+                
+                // Fetch filtered data
+                $.ajax({
+                    url: '{{ route("ebay-over-uti.filter") }}',
+                    method: 'GET',
+                    data: {
+                        startDate: start.format('YYYY-MM-DD'),
+                        endDate: end.format('YYYY-MM-DD')
+                    },
+                    success: function(response) {
+                        // Update chart
+                        mainChart.data.labels = response.dates;
+                        mainChart.data.datasets[0].data = response.clicks;
+                        mainChart.data.datasets[1].data = response.spend;
+                        mainChart.data.datasets[2].data = response.ad_sales;
+                        mainChart.data.datasets[3].data = response.ad_sold;
+                        mainChart.data.datasets[4].data = response.acos;
+                        mainChart.data.datasets[5].data = response.cvr;
+                        mainChart.update();
+
+                        // Update cards
+                        const totalClicks = response.totals.clicks || 0;
+                        const totalSpend = response.totals.spend || 0;
+                        const totalAdSales = response.totals.ad_sales || 0;
+                        const totalAdSold = response.totals.ad_sold || 0;
+                        const avgAcos = totalSpend > 0 ? ((totalSpend / totalAdSales) * 100) : 0;
+                        const avgCvr = totalClicks > 0 ? ((totalAdSold / totalClicks) * 100) : 0;
+
+                        document.querySelector('.card-clicks').innerHTML = totalClicks.toLocaleString();
+                        document.querySelector('.card-spend').innerHTML = '$' + Math.round(totalSpend).toLocaleString();
+                        document.querySelector('.card-ad-sales').innerHTML = '$' + Math.round(totalAdSales).toLocaleString();
+                        document.querySelector('.card-ad-sold').innerHTML = totalAdSold.toLocaleString();
+                        document.querySelector('.card-acos').innerHTML = Math.round(avgAcos) + '%';
+                        document.querySelector('.card-cvr').innerHTML = Math.round(avgCvr) + '%';
+                    }
+                });
+            });
+
+            $('#daterange-btn span').html('Date range: ' + start.format('MMMM D, YYYY') + ' - ' + end.format('MMMM D, YYYY'));
+
+            // Campaign chart handler
+            let singleCampaignChart = null;
+            $(document).on('click', '.campaign-chart-btn', function(e) {
+                e.stopPropagation();
+                const campaignName = $(this).data('campaign');
+                
+                // Always show last 30 days for campaign chart
+                const endDate = moment().format('YYYY-MM-DD');
+                const startDate = moment().subtract(30, 'days').format('YYYY-MM-DD');
+                
+                $.ajax({
+                    url: '{{ route("ebay-over-uti.campaign-chart") }}',
+                    method: 'GET',
+                    data: { 
+                        campaignName: campaignName,
+                        start_date: startDate,
+                        end_date: endDate
+                    },
+                    success: function(response) {
+                        $('#campaignChartModalLabel').text('Campaign: ' + campaignName + ' (Last 30 Days)');
+                        
+                        if (singleCampaignChart) {
+                            singleCampaignChart.destroy();
+                        }
+                        
+                        const ctx = document.getElementById('singleCampaignChart').getContext('2d');
+                        singleCampaignChart = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: response.dates,
+                                datasets: [
+                                    {
+                                        label: 'Clicks',
+                                        data: response.clicks,
+                                        borderColor: 'rgba(59, 130, 246, 1)',
+                                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                        yAxisID: 'y',
+                                        tension: 0.3
+                                    },
+                                    {
+                                        label: 'Spend ($)',
+                                        data: response.spend,
+                                        borderColor: 'rgba(34, 197, 94, 1)',
+                                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                                        yAxisID: 'y',
+                                        tension: 0.3
+                                    },
+                                    {
+                                        label: 'Ad Sales ($)',
+                                        data: response.ad_sales,
+                                        borderColor: 'rgba(99, 102, 241, 1)',
+                                        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                                        yAxisID: 'y',
+                                        tension: 0.3
+                                    },
+                                    {
+                                        label: 'Ad Sold',
+                                        data: response.ad_sold,
+                                        borderColor: 'rgba(251, 146, 60, 1)',
+                                        backgroundColor: 'rgba(251, 146, 60, 0.1)',
+                                        yAxisID: 'y1',
+                                        tension: 0.3
+                                    },
+                                    {
+                                        label: 'ACOS (%)',
+                                        data: response.acos,
+                                        borderColor: 'rgba(239, 68, 68, 1)',
+                                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                        yAxisID: 'y2',
+                                        tension: 0.3
+                                    },
+                                    {
+                                        label: 'CVR (%)',
+                                        data: response.cvr,
+                                        borderColor: 'rgba(168, 85, 247, 1)',
+                                        backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                                        yAxisID: 'y2',
+                                        tension: 0.3
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: {
+                                    mode: 'index',
+                                    intersect: false,
+                                },
+                                plugins: {
+                                    tooltip: {
+                                        enabled: true,
+                                        mode: 'index',
+                                        intersect: false,
+                                        callbacks: {
+                                            label: function(context) {
+                                                let label = context.dataset.label || '';
+                                                if (label) {
+                                                    label += ': ';
+                                                }
+                                                if (context.parsed.y !== null) {
+                                                    if (label.includes('$')) {
+                                                        label += '$' + context.parsed.y.toFixed(2);
+                                                    } else if (label.includes('%')) {
+                                                        label += context.parsed.y.toFixed(2) + '%';
+                                                    } else {
+                                                        label += context.parsed.y;
+                                                    }
+                                                }
+                                                return label;
+                                            }
+                                        }
+                                    },
+                                    legend: {
+                                        display: true,
+                                        position: 'top'
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        type: 'linear',
+                                        display: true,
+                                        position: 'left',
+                                        title: {
+                                            display: true,
+                                            text: 'Clicks / Spend / Sales ($)'
+                                        }
+                                    },
+                                    y1: {
+                                        type: 'linear',
+                                        display: true,
+                                        position: 'right',
+                                        title: {
+                                            display: true,
+                                            text: 'Ad Sold (Units)'
+                                        },
+                                        grid: {
+                                            drawOnChartArea: false
+                                        }
+                                    },
+                                    y2: {
+                                        type: 'linear',
+                                        display: true,
+                                        position: 'right',
+                                        title: {
+                                            display: true,
+                                            text: 'ACOS / CVR (%)'
+                                        },
+                                        grid: {
+                                            drawOnChartArea: false
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                        
+                        $('#campaignChartModal').modal('show');
+                    }
+                });
+            });
 
             const getDilColor = (value) => {
                 const percent = parseFloat(value) * 100;
@@ -336,7 +826,20 @@
                     },
                     {
                         title: "CAMPAIGN",
-                        field: "campaignName"
+                        field: "campaignName",
+                        formatter: function(cell) {
+                            const campaignName = cell.getValue();
+                            return `
+                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                    <span>${campaignName}</span>
+                                    <button class="btn btn-sm btn-outline-primary campaign-chart-btn" 
+                                            data-campaign="${campaignName}"
+                                            title="View Chart">
+                                        <i class="fa-solid fa-chart-line"></i>
+                                    </button>
+                                </div>
+                            `;
+                        }
                     },
                     {
                         title: "Price",
