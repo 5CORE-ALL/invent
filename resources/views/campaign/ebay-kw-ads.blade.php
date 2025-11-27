@@ -1795,11 +1795,15 @@
                 if (e.target.classList.contains("campaign-chart-btn")) {
                     let campaignName = e.target.getAttribute("data-campaign-name");
                     
+                    // Always show last 30 days for campaign chart
+                    const endDate = moment().format('YYYY-MM-DD');
+                    const startDate = moment().subtract(30, 'days').format('YYYY-MM-DD');
+                    
                     // Set modal title
-                    document.getElementById("campaignChartModalLabel").innerText = "Campaign: " + campaignName;
+                    document.getElementById("campaignChartModalLabel").innerText = "Campaign: " + campaignName + " (Last 30 Days)";
                     
                     // Fetch campaign-specific data
-                    fetch('/ebay/keywords/ads/campaign-chart?campaignId=' + encodeURIComponent(campaignName))
+                    fetch('/ebay/keywords/ads/campaign-chart?campaignId=' + encodeURIComponent(campaignName) + '&start_date=' + startDate + '&end_date=' + endDate)
                         .then(response => response.json())
                         .then(data => {
                             // Destroy existing chart if any
