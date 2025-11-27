@@ -2131,6 +2131,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/kw/ads', 'amazonKwAdsView')->name('amazon.kw.ads');
         Route::get('/amazon/kw/ads/data', 'getAmazonKwAdsData');
         Route::get('/amazon-kw-ads/filter', 'filterKwAds')->name('amazonKwAds.filter');
+        Route::get('/amazon/campaign/chart-data', 'getCampaignChartData');
 
         Route::get('/amazon/pt/ads', 'amazonPtAdsView')->name('amazon.pt.ads');
 
@@ -2139,6 +2140,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/hl/ads', 'amazonHlAdsView')->name('amazon.hl.ads');
         Route::get('/amazon/hl/ads/data', 'getAmazonHlAdsData');
         Route::get('/amazon-hl-ads/filter', 'filterHlAds')->name('amazonHlAds.filter');
+        Route::get('/amazon/hl/campaign/chart-data', 'getHlCampaignChartData');
 
         Route::get('/amazon/campaign/reports/data', 'getAmazonCampaignsData');
     });

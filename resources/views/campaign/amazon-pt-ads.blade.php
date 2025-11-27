@@ -130,6 +130,12 @@
         .parent-row-bg{
             background-color: #c3efff !important;
         }
+        #chartContainer {
+            max-height: 350px !important;
+        }
+        #campaignChart {
+            max-height: 300px !important;
+        }
     </style>
 @endsection
 @section('content')
@@ -161,7 +167,7 @@
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Spend</div>
                                 <div class="h3 mb-0 fw-bold text-success card-spend" id="total-spend-chart">
-                                    US${{ number_format(array_sum($spend), 2) }}
+                                    US${{ number_format(array_sum($spend), 0) }}
                                 </div>
                             </div>
                         </div>
@@ -181,7 +187,7 @@
                                     <div>
                                         <div class="text-muted small">Sales</div>
                                         <div class="h3 mb-0 fw-bold text-info card-sales" id="total-sales-chart">
-                                            US${{ number_format(array_sum($sales), 2) }}
+                                            US${{ number_format(array_sum($sales), 0) }}
                                         </div>
                                     </div>
                                     <!-- Arrow button -->
@@ -195,7 +201,7 @@
 
                     <!-- Chart (hidden by default) -->
                     <div id="chartContainer" style="display: none;">
-                        <canvas id="campaignChart" height="120"></canvas>
+                        <canvas id="campaignChart" height="80"></canvas>
                     </div>
 
                 </div>
@@ -481,7 +487,21 @@
                     },
                     {
                         title: "CAMPAIGN",
-                        field: "campaignName"
+                        field: "campaignName",
+                        formatter: function(cell) {
+                            let campaignName = cell.getValue();
+                            if (!campaignName) return '';
+                            return `
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <span>${campaignName}</span>
+                                    <button class="btn btn-sm btn-primary ms-2 campaign-chart-btn" 
+                                            data-campaign="${campaignName}" 
+                                            title="View Campaign Chart">
+                                        <i class="fa fa-chart-line"></i>
+                                    </button>
+                                </div>
+                            `;
+                        }
                     },
                     {
                         title: "7 UB%",
@@ -1236,6 +1256,14 @@
             });
 
             document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("campaign-chart-btn") || e.target.closest('.campaign-chart-btn')) {
+                    const btn = e.target.closest('.campaign-chart-btn') || e.target;
+                    const campaignName = btn.getAttribute('data-campaign');
+                    if (campaignName) {
+                        showCampaignChart(campaignName);
+                    }
+                }
+                
                 if (e.target.classList.contains("toggle-cols-btn")) {
                     let btn = e.target;
 
@@ -1553,6 +1581,241 @@
                 }
             });
         }
+
+        // Campaign Chart Modal Functions
+        let modalChart = null;
+        
+        function showCampaignChart(campaignName) {
+            // Set modal title
+            document.getElementById('modalCampaignName').textContent = campaignName;
+            
+            // Show loading
+            document.getElementById('modalClicks').textContent = 'Loading...';
+            document.getElementById('modalSpend').textContent = 'Loading...';
+            document.getElementById('modalOrders').textContent = 'Loading...';
+            document.getElementById('modalSales').textContent = 'Loading...';
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('campaignChartModal'));
+            modal.show();
+            
+            // Fetch campaign data
+            fetchCampaignChartData(campaignName);
+        }
+        
+        function fetchCampaignChartData(campaignName) {
+            const thirtyDaysAgo = moment().subtract(30, 'days').format('YYYY-MM-DD');
+            const today = moment().format('YYYY-MM-DD');
+            
+            $.ajax({
+                url: '/amazon/campaign/chart-data',
+                type: 'GET',
+                data: {
+                    campaignName: campaignName,
+                    startDate: thirtyDaysAgo,
+                    endDate: today
+                },
+                success: function(response) {
+                    updateModalChart(response);
+                },
+                error: function() {
+                    alert('Error loading campaign chart data');
+                }
+            });
+        }
+        
+        function updateModalChart(response) {
+            // Update stats cards
+            document.getElementById('modalClicks').textContent = Math.round(response.totals.clicks || 0);
+            document.getElementById('modalSpend').textContent = 'US$' + Math.round(response.totals.spend || 0);
+            document.getElementById('modalOrders').textContent = Math.round(response.totals.orders || 0);
+            document.getElementById('modalSales').textContent = 'US$' + Math.round(response.totals.sales || 0);
+            
+            // Create/update chart
+            const ctx = document.getElementById('modalCampaignChart').getContext('2d');
+            
+            if (modalChart) {
+                modalChart.destroy();
+            }
+            
+            const formattedDates = response.dates.map(d => moment(d).format('MMM DD'));
+            
+            modalChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: formattedDates,
+                    datasets: [
+                        {
+                            label: 'Clicks',
+                            data: response.clicks,
+                            borderColor: 'purple',
+                            backgroundColor: 'rgba(128, 0, 128, 0.1)',
+                            yAxisID: 'y1',
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            fill: false,
+                            spanGaps: true,
+                        },
+                        {
+                            label: 'Spend (USD)',
+                            data: response.spend,
+                            borderColor: 'teal',
+                            backgroundColor: 'rgba(0, 128, 128, 0.1)',
+                            yAxisID: 'y2',
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            fill: false,
+                            spanGaps: true,
+                        },
+                        {
+                            label: 'Orders',
+                            data: response.orders,
+                            borderColor: 'magenta',
+                            backgroundColor: 'rgba(255, 0, 255, 0.1)',
+                            yAxisID: 'y1',
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            fill: false,
+                            spanGaps: true,
+                        },
+                        {
+                            label: 'Sales (USD)',
+                            data: response.sales,
+                            borderColor: 'blue',
+                            backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                            yAxisID: 'y2',
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            fill: false,
+                            spanGaps: true,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        tooltip: {
+                            backgroundColor: "#fff",
+                            titleColor: "#111",
+                            bodyColor: "#333",
+                            borderColor: "#ddd",
+                            borderWidth: 1,
+                            padding: 10,
+                            titleFont: { size: 12, weight: 'bold' },
+                            bodyFont: { size: 11 },
+                            usePointStyle: true,
+                            callbacks: {
+                                label: function(context) {
+                                    let value = context.raw;
+                                    if (context.dataset.label.includes("Spend") || context.dataset.label.includes("Sales")) {
+                                        return `${context.dataset.label}: $${Math.round(Number(value))}`;
+                                    }
+                                    return `${context.dataset.label}: ${Math.round(Number(value))}`;
+                                }
+                            }
+                        },
+                        legend: {
+                            labels: {
+                                usePointStyle: true,
+                                boxWidth: 8,
+                                padding: 15
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'left',
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Clicks / Orders'
+                            }
+                        },
+                        y2: {
+                            type: 'linear',
+                            position: 'right',
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Spend / Sales (USD)'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
     </script>
+
+    <!-- Campaign Chart Modal -->
+    <div class="modal fade" id="campaignChartModal" tabindex="-1" aria-labelledby="campaignChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="campaignChartModalLabel">
+                        <i class="fa fa-chart-line me-2"></i>
+                        Campaign Chart - <span id="modalCampaignName"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Stats Cards -->
+                    <div class="row text-center mb-4">
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Clicks</div>
+                                <div class="h4 mb-0 fw-bold text-primary" id="modalClicks">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Spend</div>
+                                <div class="h4 mb-0 fw-bold text-success" id="modalSpend">US$0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Orders</div>
+                                <div class="h4 mb-0 fw-bold text-danger" id="modalOrders">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Sales</div>
+                                <div class="h4 mb-0 fw-bold text-info" id="modalSales">US$0</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Chart Container -->
+                    <div class="chart-container" style="height: 400px;">
+                        <canvas id="modalCampaignChart"></canvas>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
