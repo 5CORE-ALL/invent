@@ -1655,7 +1655,7 @@
                     $('#htiendamianm').text(`(${datainfo.tiendamia.notmatching})`);
                 }
 
-                $('#plsnotmatching').text(datainfo.pls.notmatching);
+                $('#plsmatching').text(datainfo.pls.notmatching);
                 if(datainfo.pls.notmatching==0){
                     $('#hplsnm').text(`(${datainfo.pls.notmatching})`).removeClass('text-danger').css('color', 'green');
                 }else{
