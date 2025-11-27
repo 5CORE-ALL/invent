@@ -1,0 +1,751 @@
+@extends('layouts.vertical', ['title' => 'Meta - ALL ADS', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@section('css')
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <style>
+        .tabulator .tabulator-header {
+            background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
+            border-bottom: 1px solid #403f3f;
+            box-shadow: 0 4px 16px rgba(37, 99, 235, 0.10);
+        }
+
+        .tabulator .tabulator-header .tabulator-col {
+            text-align: center;
+            background: #D8F3F3;
+            border-right: 1px solid #262626;
+            padding: 16px 15px;
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 1.08rem;
+            letter-spacing: 0.02em;
+            transition: background 0.2s;
+            white-space: nowrap;
+            overflow: visible;
+        }
+
+        .tabulator .tabulator-header .tabulator-col:hover {
+            background: #D8F3F3;
+            color: #2563eb;
+        }
+
+        .tabulator-row {
+            background-color: #fff !important;
+            transition: background 0.18s;
+        }
+
+        .tabulator-row:nth-child(even) {
+            background-color: #f8fafc !important;
+        }
+
+        .tabulator .tabulator-cell {
+            text-align: center;
+            padding: 14px 10px;
+            border-right: 1px solid #262626;
+            border-bottom: 1px solid #262626;
+            font-size: 1rem;
+            color: #22223b;
+            vertical-align: middle;
+            transition: background 0.18s, color 0.18s;
+        }
+
+        .tabulator .tabulator-cell:focus {
+            outline: 1px solid #262626;
+            background: #e0eaff;
+        }
+
+        .tabulator-row:hover {
+            background-color: #dbeafe !important;
+        }
+
+        .parent-row {
+            background-color: #e0eaff !important;
+            font-weight: 700;
+        }
+
+        #account-health-master .tabulator {
+            border-radius: 18px;
+            box-shadow: 0 6px 24px rgba(37, 99, 235, 0.13);
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+
+        .tabulator .tabulator-row .tabulator-cell:last-child,
+        .tabulator .tabulator-header .tabulator-col:last-child {
+            border-right: none;
+        }
+
+        .tabulator .tabulator-footer {
+            background: #f4f7fa;
+            border-top: 1px solid #262626;
+            font-size: 1rem;
+            color: #4b5563;
+            padding: 5px;
+            height: 100px;
+        }
+
+        .tabulator .tabulator-footer:hover {
+            background: #e0eaff;
+        }
+
+        @media (max-width: 768px) {
+
+            .tabulator .tabulator-header .tabulator-col,
+            .tabulator .tabulator-cell {
+                padding: 8px 2px;
+                font-size: 0.95rem;
+            }
+        }
+
+        /* Pagination styling */
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+            padding: 8px 16px;
+            margin: 0 4px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+            background: #e0eaff;
+            color: #2563eb;
+        }
+
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+            background: #2563eb;
+            color: white;
+        }
+
+        .green-bg {
+            color: #05bd30 !important;
+        }
+
+        .pink-bg {
+            color: #ff01d0 !important;
+        }
+
+        .red-bg {
+            color: #ff2727 !important;
+        }
+    </style>
+@endsection
+@section('content')
+    @include('layouts.shared.page-title', [
+        'page_title' => 'ALL ADS',
+        'sub_title' => 'ALL ADS',
+    ])
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body py-3">
+                    <div class="mb-4">
+                        <!-- Title -->
+                        <h4 class="fw-bold text-primary mb-3 d-flex align-items-center">
+                            <i class="fa-solid fa-chart-line me-2"></i>
+                            META ALL ADS
+                            @if(isset($latestUpdatedAt))
+                                <small class="text-muted ms-3" style="font-size: 0.75rem;">
+                                    Last Updated: {{ $latestUpdatedAt }}
+                                </small>
+                            @endif
+                        </h4>
+
+                        <!-- Filters Row -->
+                        <div class="row g-3 mb-3">
+                            <!-- Filters -->
+                            <div class="col-md-6">
+                                <div class="d-flex gap-2">
+                                    <select id="adtype-filter" class="form-select form-select-md">
+                                        <option value="">All Ad Types</option>
+                                        <option value="IMAGE">IMAGE</option>
+                                        <option value="VIDEO">VIDEO</option>
+                                        <option value="CAROUSEL">CAROUSEL</option>
+                                    </select>
+
+                                    <select id="status-filter" class="form-select form-select-md">
+                                        <option value="">All Status</option>
+                                        <option value="ACTIVE">Active</option>
+                                        <option value="PAUSED">Paused</option>
+                                        <option value="ARCHIVED">Archived</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Stats -->
+                            <div class="col-md-6">
+                                <div class="d-flex gap-2 justify-content-end">
+                                    <button type="button" class="btn btn-sm btn-info" id="import-btn">
+                                        <i class="fa fa-upload me-1"></i>Import
+                                    </button>
+                                    <button class="btn btn-success btn-md">
+                                        <i class="fa fa-bullhorn me-1"></i>
+                                        Total Ads: <span id="total-campaigns" class="fw-bold ms-1 fs-4">0</span>
+                                    </button>
+                                    <button class="btn btn-primary btn-md">
+                                        <i class="fa fa-percent me-1"></i>
+                                        Filtered: <span id="percentage-campaigns" class="fw-bold ms-1 fs-4">0%</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Search and Controls Row -->
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="d-flex gap-2">
+                                    <div class="input-group">
+                                        <input type="text" id="global-search" class="form-control form-control-md"
+                                            placeholder="Search campaign...">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Import Modal -->
+                    <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Import Meta Ads Data</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+
+                                <div class="modal-body">
+                                    <a href="{{ asset('sample_excel/sample_meta_ads.csv') }}" download class="btn btn-outline-secondary mb-3">
+                                        <i class="fa fa-download me-1"></i> Download Sample File
+                                    </a>
+
+                                    <input type="file" id="importFile" name="file" accept=".xlsx,.xls,.csv" class="form-control" />
+                                    
+                                    <div class="mt-3">
+                                        <small class="text-muted">
+                                            <strong>Required Columns:</strong> Campaign name, Campaign delivery, Ad set budget, Impressions, Amount spent (USD), Link clicks, Campaign ID
+                                        </small>
+                                    </div>
+                                </div>
+
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-primary" id="confirmImportBtn">
+                                        <i class="fa fa-upload me-1"></i>Import
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Table Section -->
+                    <div id="budget-under-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@section('script')
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+
+            const getDilColor = (value) => {
+                const percent = parseFloat(value) * 100;
+                if (percent < 16.66) return 'red';
+                if (percent >= 16.66 && percent < 25) return 'yellow';
+                if (percent >= 25 && percent < 50) return 'green';
+                return 'pink';
+            };
+
+            var table = new Tabulator("#budget-under-table", {
+                index: "campaign_id",
+                ajaxURL: "/meta-all-ads-control/data",
+                layout: "fitColumns",
+                pagination: "local",
+                paginationSize: 25,
+                movableColumns: true,
+                resizableColumns: true,
+                columns: [
+                    {
+                        title: "Campaign Name",
+                        field: "campaign_name",
+                        minWidth: 300,
+                        headerSort: true
+                    },
+                    {
+                        title: "Campaign ID",
+                        field: "campaign_id",
+                        minWidth: 180,
+                        headerSort: true
+                    },
+                    {
+                        title: "AD Type",
+                        field: "ad_type",
+                        minWidth: 120,
+                        headerSort: true
+                    },
+                    {
+                        title: "BGT",
+                        field: "budget",
+                        minWidth: 100,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) : '0.00';
+                        }
+                    },
+                    {
+                        title: "IMP L30",
+                        field: "impressions_l30",
+                        minWidth: 120,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const formatted = value ? parseInt(value).toLocaleString() : '0';
+                            return `
+                                <span>${formatted}</span>
+                                <i class="fa fa-info-circle text-primary toggle-imp-cols-btn" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "IMP L60",
+                        field: "impressions_l60",
+                        minWidth: 120,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseInt(value).toLocaleString() : '0';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "IMP L7",
+                        field: "impressions_l7",
+                        minWidth: 120,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseInt(value).toLocaleString() : '0';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "SPENT L30",
+                        field: "spend_l30",
+                        minWidth: 130,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const formatted = value ? parseFloat(value).toFixed(2) : '0.00';
+                            return `
+                                <span>${formatted}</span>
+                                <i class="fa fa-info-circle text-primary toggle-spent-cols-btn" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "SPENT L60",
+                        field: "spend_l60",
+                        minWidth: 130,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) : '0.00';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "SPENT L7",
+                        field: "spend_l7",
+                        minWidth: 130,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) : '0.00';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CLKS L30",
+                        field: "clicks_l30",
+                        minWidth: 125,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const formatted = value ? parseInt(value).toLocaleString() : '0';
+                            return `
+                                <span>${formatted}</span>
+                                <i class="fa fa-info-circle text-primary toggle-clks-cols-btn" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "CLKS L60",
+                        field: "clicks_l60",
+                        minWidth: 125,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseInt(value).toLocaleString() : '0';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CLKS L7",
+                        field: "clicks_l7",
+                        minWidth: 125,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseInt(value).toLocaleString() : '0';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "AD SLS L30",
+                        field: "sales_l30",
+                        minWidth: 110,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const formatted = value ? parseFloat(value).toFixed(2) : '0.00';
+                            return `
+                                <span>${formatted}</span>
+                                <i class="fa fa-info-circle text-primary toggle-sales-cols-btn" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "AD SLS L60",
+                        field: "sales_l60",
+                        minWidth: 110,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) : '0.00';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "AD SLS L7",
+                        field: "sales_l7",
+                        minWidth: 110,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) : '0.00';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "AD SLD L30",
+                        field: "sales_delivered_l30",
+                        minWidth: 110,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const formatted = value ? parseFloat(value).toFixed(2) : '0.00';
+                            return `
+                                <span>${formatted}</span>
+                                <i class="fa fa-info-circle text-primary toggle-sld-cols-btn" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "AD SLD L60",
+                        field: "sales_delivered_l60",
+                        minWidth: 110,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) : '0.00';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "AD SLD L7",
+                        field: "sales_delivered_l7",
+                        minWidth: 110,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) : '0.00';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "ACOS L30",
+                        field: "acos_l30",
+                        minWidth: 125,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const formatted = value ? parseFloat(value).toFixed(2) + '%' : '0.00%';
+                            return `
+                                <span>${formatted}</span>
+                                <i class="fa fa-info-circle text-primary toggle-acos-cols-btn" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "ACOS L60",
+                        field: "acos_l60",
+                        minWidth: 125,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) + '%' : '0.00%';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "ACOS L7",
+                        field: "acos_l7",
+                        minWidth: 125,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) + '%' : '0.00%';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CVR L30",
+                        field: "cvr_l30",
+                        minWidth: 120,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const formatted = value ? parseFloat(value).toFixed(2) + '%' : '0.00%';
+                            return `
+                                <span>${formatted}</span>
+                                <i class="fa fa-info-circle text-primary toggle-cvr-cols-btn" 
+                                style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "CVR L60",
+                        field: "cvr_l60",
+                        minWidth: 120,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) + '%' : '0.00%';
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "CVR L7",
+                        field: "cvr_l7",
+                        minWidth: 120,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value ? parseFloat(value).toFixed(2) + '%' : '0.00%';
+                        },
+                        visible: false
+                    }
+                ],
+                ajaxResponse: function(url, params, response) {
+                    return response.data;
+                }
+            });
+
+            table.on("tableBuilt", function() {
+                function combinedFilter(data) {
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(data.campaign_name?.toLowerCase().includes(searchVal))) {
+                        return false;
+                    }
+
+                    let statusVal = $("#status-filter").val();
+                    if (statusVal && data.status !== statusVal) {
+                        return false;
+                    }
+
+                    let adTypeVal = $("#adtype-filter").val();
+                    if (adTypeVal && data.ad_type !== adTypeVal) {
+                        return false;
+                    }
+
+                    return true;
+                }
+
+                table.setFilter(combinedFilter);
+
+                function updateCampaignStats() {
+                    let allRows = table.getData();
+                    let filteredRows = allRows.filter(combinedFilter);
+
+                    let total = allRows.length;
+                    let filtered = filteredRows.length;
+
+                    let percentage = total > 0 ? ((filtered / total) * 100).toFixed(0) : 0;
+
+                    document.getElementById("total-campaigns").innerText = filtered;
+                    document.getElementById("percentage-campaigns").innerText = percentage + "%";
+                }
+
+                table.on("dataFiltered", updateCampaignStats);
+                table.on("pageLoaded", updateCampaignStats);
+                table.on("dataProcessed", updateCampaignStats);
+
+                $("#global-search").on("keyup", function() {
+                    table.setFilter(combinedFilter);
+                });
+
+                $("#status-filter, #adtype-filter").on("change", function() {
+                    table.setFilter(combinedFilter);
+                });
+
+                updateCampaignStats();
+            });
+
+            $('#import-btn').on('click', function () {
+                $('#importModal').modal('show');
+            });
+
+            $(document).on('click', '#confirmImportBtn', function () {
+                let file = $('#importFile')[0].files[0];
+                if (!file) {
+                    alert('Please select a file to import.');
+                    return;
+                }
+
+                let formData = new FormData();
+                formData.append('file', file);
+
+                // Show loading state
+                $('#confirmImportBtn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Importing...');
+
+                $.ajax({
+                    url: "{{ route('meta.ads.import') }}",
+                    type: "POST",
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    success: function (response) {
+                        $('#importModal').modal('hide');
+                        $('#importFile').val('');
+                        $('#confirmImportBtn').prop('disabled', false).html('<i class="fa fa-upload me-1"></i>Import');
+                        
+                        alert('Import successful! Processed: ' + response.processed + ' campaigns.');
+                        table.replaceData();
+                    },
+                    error: function (xhr) {
+                        $('#confirmImportBtn').prop('disabled', false).html('<i class="fa fa-upload me-1"></i>Import');
+                        
+                        let message = 'Import failed';
+
+                        if (xhr.responseJSON) {
+                            if (xhr.responseJSON.error) {
+                                message = xhr.responseJSON.error;
+                            } else if (xhr.responseJSON.errors && Array.isArray(xhr.responseJSON.errors)) {
+                                message = xhr.responseJSON.errors.join('\n');
+                            }
+                        }
+
+                        alert(message);
+                    }
+                });
+            });
+
+            // Toggle handlers for column visibility
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-imp-cols-btn")) {
+                    let colsToToggle = ["impressions_l60", "impressions_l7"];
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-spent-cols-btn")) {
+                    let colsToToggle = ["spend_l60", "spend_l7"];
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-clks-cols-btn")) {
+                    let colsToToggle = ["clicks_l60", "clicks_l7"];
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-sales-cols-btn")) {
+                    let colsToToggle = ["sales_l60", "sales_l7"];
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-sld-cols-btn")) {
+                    let colsToToggle = ["sales_delivered_l60", "sales_delivered_l7"];
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-acos-cols-btn")) {
+                    let colsToToggle = ["acos_l60", "acos_l7"];
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target.classList.contains("toggle-cvr-cols-btn")) {
+                    let colsToToggle = ["cvr_l60", "cvr_l7"];
+                    colsToToggle.forEach(colName => {
+                        let col = table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+            });
+
+            document.body.style.zoom = "70%";
+        });
+    </script>
+@endsection

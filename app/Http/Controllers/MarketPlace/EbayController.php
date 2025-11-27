@@ -6,20 +6,17 @@ use App\Models\EbayMetric;
 use App\Models\ShopifySku;
 use App\Models\EbayDataView;
 use Illuminate\Http\Request;
-use App\Services\EbayApiService;
 use App\Models\EbayGeneralReport;
 use App\Http\Controllers\Controller;
 use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\ApiController;
-use App\Jobs\UpdateEbaySPriceJob;
 use App\Models\ChannelMaster;
 use App\Models\ADVMastersData;
 use App\Models\EbayPriorityReport;
-use App\Models\ProductMaster; // Add this at the top with other use statements
+use App\Models\ProductMaster; 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Models\EbayGeneralReports;
 use App\Models\EbayListingStatus;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -57,6 +54,11 @@ class EbayController extends Controller
     public function ebayTabulatorView(Request $request)
     {
         return view("market-places.ebay_tabulator_view");
+    }
+
+       public function ebayViewData(Request $request)
+    {
+        return view("market-places.ebay_pricing_data");
     }
 
     public function ebayDataJson(Request $request)
@@ -209,15 +211,6 @@ class EbayController extends Controller
             ->all();
 
             $nonParentSkus = $skus;
-
-        // $nonParentSkus = $productMasters->pluck("sku")
-        //     ->filter()
-        //     ->filter(function ($sku) {
-        //         return stripos($sku, 'PARENT') === false;
-        //     })
-        //     ->unique()
-        //     ->values()
-        //     ->all();
 
         // 3. Related Models
         $shopifyData = ShopifySku::whereIn("sku", $skus)

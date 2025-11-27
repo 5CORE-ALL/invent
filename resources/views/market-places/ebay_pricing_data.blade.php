@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'eBay Pricing Decrease', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Ebay Pricing Data', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -41,8 +41,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'eBay Pricing Decrease',
-        'sub_title' => 'eBay Pricing Decrease',
+        'page_title' => 'Ebay Pricing Data',
+        'sub_title' => 'Ebay Pricing Data',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -52,9 +52,9 @@
                 <div>
                     <select id="inventory-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Inventory</option>
+                        <option value="all" selected>All Inventory</option>
                         <option value="zero">0 Inventory</option>
-                        <option value="more" selected>More than 0</option>
+                        <option value="more">More than 0</option>
                     </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm me-2"
@@ -171,10 +171,6 @@
                 paginationSize: 100,
                 paginationCounter: "rows",
                 columnCalcs: "both",
-                initialSort: [{
-                    column: "SCVR",
-                    dir: "asc"
-                }],
                 rowFormatter: function(row) {
                     if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
                         row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
@@ -979,7 +975,7 @@
 
             // Update summary badges for INV > 0
             function updateSummary() {
-                const data = table.getData("active");
+                const data = table.getData();
                 let totalTcos = 0;
                 let totalSpendL30 = 0;
                 let totalPftAmt = 0;
@@ -991,41 +987,35 @@
                 let dilCount = 0;
 
                 data.forEach(row => {
-                    if (parseFloat(row.INV) > 0) {
-                        totalTcos += parseFloat(row['AD%'] || 0);
-                        totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
-                        totalPftAmt += parseFloat(row['Total_pft'] || 0);
-                        totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
-                        totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
-                        totalFbaInv += parseFloat(row.INV || 0);
-                        totalFbaL30 += parseFloat(row['eBay L30'] || 0);
-                        
-                        const dil = parseFloat(row['E Dil%'] || 0);
-                        if (!isNaN(dil)) {
-                            totalDilPercent += dil;
-                            dilCount++;
-                        }
+                    totalTcos += parseFloat(row['AD%'] || 0);
+                    totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
+                    totalPftAmt += parseFloat(row['Total_pft'] || 0);
+                    totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
+                    totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
+                    totalFbaInv += parseFloat(row.INV || 0);
+                    totalFbaL30 += parseFloat(row['eBay L30'] || 0);
+                    
+                    const dil = parseFloat(row['E Dil%'] || 0);
+                    if (!isNaN(dil)) {
+                        totalDilPercent += dil;
+                        dilCount++;
                     }
                 });
 
                 let totalWeightedPrice = 0;
                 let totalL30 = 0;
                 data.forEach(row => {
-                    if (parseFloat(row.INV) > 0) {
-                        const price = parseFloat(row['eBay Price'] || 0);
-                        const l30 = parseFloat(row['eBay L30'] || 0);
-                        totalWeightedPrice += price * l30;
-                        totalL30 += l30;
-                    }
+                    const price = parseFloat(row['eBay Price'] || 0);
+                    const l30 = parseFloat(row['eBay L30'] || 0);
+                    totalWeightedPrice += price * l30;
+                    totalL30 += l30;
                 });
                 const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
                 $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice));
 
                 let totalViews = 0;
                 data.forEach(row => {
-                    if (parseFloat(row.INV) > 0) {
-                        totalViews += parseFloat(row.views || 0);
-                    }
+                    totalViews += parseFloat(row.views || 0);
                 });
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
                 $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
