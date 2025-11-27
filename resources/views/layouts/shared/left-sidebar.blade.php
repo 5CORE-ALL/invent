@@ -1858,6 +1858,11 @@
                                         <a href="{{ url('ebay-tabulator-view') }}">Ebay Pricing
                                             Decrease </a>
                                     </li>
+
+                                    <li>
+                                        <a href="{{ url('ebay-pricing-data') }}">Ebay Pricing Data</a>
+                                    </li>
+
                                     <li>
                                         <a href="{{ url('ebay-pricing-increase') }}">Ebay Pricing
                                             Increase </a>

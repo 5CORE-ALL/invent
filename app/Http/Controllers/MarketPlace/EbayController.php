@@ -59,6 +59,11 @@ class EbayController extends Controller
         return view("market-places.ebay_tabulator_view");
     }
 
+       public function ebayViewData(Request $request)
+    {
+        return view("market-places.ebay_pricing_data");
+    }
+
     public function ebayDataJson(Request $request)
     {
         try {
