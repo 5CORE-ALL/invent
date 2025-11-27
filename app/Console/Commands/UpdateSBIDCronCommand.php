@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Log;
 use App\Services\GoogleAdsSbidService;
 use App\Models\ProductMaster;
 use App\Models\GoogleAdsCampaign;
-
+use App\Models\ShopifySku;
 
 class UpdateSBIDCronCommand extends Command
 {
@@ -28,6 +28,7 @@ class UpdateSBIDCronCommand extends Command
         $this->info('Starting SBID update cron for Google campaigns (L1/L7 with SKU matching)...');
 
         $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+        $this->info("Customer ID: {$customerId}");
 
         // Calculate date ranges
         $today = now();
@@ -42,11 +43,20 @@ class UpdateSBIDCronCommand extends Command
             ],
         ];
 
+        $this->info("Date ranges - L1: {$dateRanges['L1']['start']} to {$dateRanges['L1']['end']}");
+        $this->info("Date ranges - L7: {$dateRanges['L7']['start']} to {$dateRanges['L7']['end']}");
+
         // Fetch product masters
         $productMasters = ProductMaster::orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
+
+        // Get all SKUs to fetch Shopify inventory data
+        $skus = $productMasters->pluck('sku')->toArray();
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $this->info("Found " . $productMasters->count() . " product masters");
 
         // Fetch campaigns data within L7 range
         $googleCampaigns = GoogleAdsCampaign::select(
@@ -62,18 +72,26 @@ class UpdateSBIDCronCommand extends Command
             ->whereBetween('date', [$dateRanges['L7']['start'], $dateRanges['L7']['end']])
             ->get();
 
+        $this->info("Found " . $googleCampaigns->count() . " Google Ads campaigns in L7 range");
+
         $ranges = ['L1', 'L7']; 
 
         $campaignUpdates = []; 
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper(trim($pm->sku));
-            
-            // Find the latest campaign for this SKU
+
+            // Check inventory - skip if zero inventory
+            $shopify = $shopifyData[$sku] ?? null;
+            if ($shopify && $shopify->inv <= 0) {
+                $this->line("Skipping SKU {$sku} - Zero inventory (inv: {$shopify->inv})");
+                continue;
+            }
+
+            // Find the latest campaign for this SKU - use exact match
             $matchedCampaign = $googleCampaigns->filter(function ($c) use ($sku) {
                 $campaign = strtoupper(trim($c->campaign_name));
-                $parts = array_map('trim', explode(',', $campaign));
-                return in_array($sku, $parts) && $c->campaign_status === 'ENABLED';
+                return $campaign === $sku && $c->campaign_status === 'ENABLED';
             })->sortByDesc('date')->first();
 
             if (!$matchedCampaign) {
@@ -88,8 +106,7 @@ class UpdateSBIDCronCommand extends Command
             foreach ($ranges as $rangeName) {
                 $campaignRanges = $googleCampaigns->filter(function ($c) use ($sku, $dateRanges, $rangeName) {
                     $campaign = strtoupper(trim($c->campaign_name));
-                    $parts = array_map('trim', explode(',', $campaign));
-                    $matchesCampaign = in_array($sku, $parts);
+                    $matchesCampaign = $campaign === $sku; // Use exact match here too
                     $matchesStatus = $c->campaign_status === 'ENABLED';
                     $matchesDate = $c->date >= $dateRanges[$rangeName]['start'] && $c->date <= $dateRanges[$rangeName]['end'];
                     
@@ -105,7 +122,8 @@ class UpdateSBIDCronCommand extends Command
             }
     
             $ub7 = $row['campaignBudgetAmount'] > 0 ? ($row["spend_L7"] / ($row['campaignBudgetAmount'] * 7)) * 100 : 0;
-                
+            
+            // Budget analysis completed
 
             $sbid = 0;
             $cpc_L1 = isset($row["cpc_L1"]) ? floatval($row["cpc_L1"]) : 0;
@@ -118,6 +136,7 @@ class UpdateSBIDCronCommand extends Command
                 } else {
                     $sbid = floor($cpc_L7 * 0.90 * 100) / 100;
                 }
+                // Over utilized - decreasing SBID
             } elseif ($ub7 < 70) {
                 // Under Utilized - increase bid
                 if ($cpc_L1 === 0.0 && $cpc_L7 === 0.0) {
@@ -127,15 +146,27 @@ class UpdateSBIDCronCommand extends Command
                 } else {
                     $sbid = floor($cpc_L7 * 1.10 * 100) / 100;
                 }
+                // Under utilized - increasing SBID
             } else {
+                // Budget utilization within target range - no update needed
                 continue;
             }
             
             if ($sbid > 0 && !isset($campaignUpdates[$campaignId])) {
-                $this->sbidService->updateCampaignSbids($customerId, $campaignId, $sbid);
-
-                $campaignUpdates[$campaignId] = true;
-                $this->info("Updated campaign {$campaignId} (SKU: {$pm->sku}): SBID={$sbid}, UB7={$ub7}%");
+                try {
+                    $this->sbidService->updateCampaignSbids($customerId, $campaignId, $sbid);
+                    $campaignUpdates[$campaignId] = true;
+                    $this->info("Updated campaign {$campaignId} (SKU: {$pm->sku}): SBID=\${$sbid}, UB7={$ub7}%");
+                } catch (\Exception $e) {
+                    $this->error("Failed to update campaign {$campaignId}: " . $e->getMessage());
+                    Log::error("SBID Update Failed", [
+                        'campaign_id' => $campaignId,
+                        'sku' => $pm->sku,
+                        'sbid' => $sbid,
+                        'ub7' => $ub7,
+                        'error' => $e->getMessage()
+                    ]);
+                }
             }
         }
 
