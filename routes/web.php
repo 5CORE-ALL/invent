@@ -2065,6 +2065,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //FaceBook Adds Manager 
     Route::controller(FacebookAddsManagerController::class)->group(function () {
+        Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
+        Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
+        Route::post('/meta-all-ads-control/import', 'importMetaAds')->name('meta.ads.import');
+        Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
         Route::get('/facebook-ads-control/data', 'index')->name('facebook.ads.index');
         Route::get('/facebook-web-to-video', 'facebookWebToVideo')->name('facebook.web.to.video');
         Route::get('/facebook-web-to-video-data', 'facebookWebToVideoData')->name('facebook.web.to.video.data');
@@ -2386,6 +2390,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/running/chart/filter', 'filterGoogleShoppingRunningChart')->name('google.shopping.running.chart.filter');
         Route::get('/google/shopping/over/chart/filter', 'filterGoogleShoppingOverChart')->name('google.shopping.over.chart.filter');
         Route::get('/google/shopping/under/chart/filter', 'filterGoogleShoppingUnderChart')->name('google.shopping.under.chart.filter');
+        Route::get('/google/shopping/campaign/chart-data', 'getGoogleShoppingCampaignChartData');
         Route::get('/google/shopping/report/chart/filter', 'filterGoogleShoppingReportChart')->name('google.shopping.report.chart.filter');
         Route::get('/google/serp/chart/filter', 'filterGoogleSerpChart')->name('google.shopping.serp.chart.filter');
         Route::get('/google/serp/report/chart/filter', 'filterGoogleSerpReportChart')->name('google.serp.report.chart.filter');
@@ -2485,3 +2490,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Route::get('/auto-stock-balance-data-list', [AutoStockBalanceController::class, 'list']);
     
 });
+
+// Shopify Facebook Campaigns Routes
+Route::prefix('shopify/facebook-campaigns')->middleware(['auth'])->group(function () {
+    Route::get('/summary', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'summary'])->name('shopify.facebook.campaigns.summary');
+    Route::get('/compare/{campaignId}', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'compare'])->name('shopify.facebook.campaigns.compare');
+    Route::post('/fetch', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'fetch'])->name('shopify.facebook.campaigns.fetch');
+});
+

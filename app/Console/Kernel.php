@@ -320,6 +320,13 @@ class Kernel extends ConsoleKernel
             ->name('stock-mapping-daily-update')
             ->withoutOverlapping();
 
+        // Shopify Facebook Campaigns - Fetch daily at 2 AM PST
+        $schedule->command('shopify:fetch-facebook-campaigns')
+            ->dailyAt('02:00')
+            ->timezone('America/Los_Angeles')
+            ->name('fetch-shopify-fb-campaigns-7-30-60-days')
+            ->withoutOverlapping();
+
             // test scheduler for task manager report
 //               $schedule->call(function () {
 //     \Illuminate\Support\Facades\Log::info('Test Scheduler Executed at ' . now());
