@@ -4,6 +4,12 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <style>
+        /* Hide sorting icons in Tabulator */
+        .tabulator-col-sorter {
+            display: none !important;
+        }
+    </style>
 @endsection
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -80,9 +86,9 @@
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0">Metrics Trend</h6>
                         <select id="chart-days-filter" class="form-select form-select-sm" style="width: auto;">
-                            <option value="7">Last 7 Days</option>
+                            <option value="7" selected>Last 7 Days</option>
                             <option value="14">Last 14 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
+                            <option value="30">Last 30 Days</option>
                             <option value="60">Last 60 Days</option>
                         </select>
                     </div>
@@ -173,15 +179,17 @@
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Time Range:</label>
+                        <label class="form-label">Date Range:</label>
                         <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
-                            <option value="7">Last 7 Days</option>
+                            <option value="7" selected>Last 7 Days</option>
                             <option value="14">Last 14 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
-                            <option value="60">Last 60 Days</option>
+                            <option value="30">Last 30 Days</option>
                         </select>
                     </div>
-                    <div style="height: 350px;">
+                    <div id="chart-no-data-message" class="alert alert-info" style="display: none;">
+                        No historical data available for this SKU. Data will appear after running the metrics collection command.
+                    </div>
+                    <div style="height: 400px;">
                         <canvas id="skuMetricsChart"></canvas>
                     </div>
                 </div>
@@ -325,7 +333,26 @@
                             tooltip: {
                                 enabled: true,
                                 mode: 'index',
-                                intersect: false
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        let value = context.parsed.y || 0;
+                                        
+                                        // Format based on dataset label
+                                        if (label.includes('Price') || label.includes('price')) {
+                                            return label + ': $' + value.toFixed(2);
+                                        } else if (label.includes('Views') || label.includes('views')) {
+                                            return label + ': ' + value.toLocaleString();
+                                        } else if (label.includes('TACOS')) {
+                                            // TACOS: round figure (e.g., 100%, 15%)
+                                            return label + ': ' + Math.round(value) + '%';
+                                        } else if (label.includes('GPFT') || label.includes('GROI') || label.includes('%')) {
+                                            return label + ': ' + value.toFixed(2) + '%';
+                                        }
+                                        return label + ': ' + value;
+                                    }
+                                }
                             }
                         },
                         scales: {
@@ -337,7 +364,20 @@
                                     display: true,
                                     text: 'Price / Percentages'
                                 },
-                                beginAtZero: false
+                                beginAtZero: false,
+                                ticks: {
+                                    callback: function(value, index, values) {
+                                        // Format based on value range - prices are typically larger numbers
+                                        // Percentages are typically 0-100 range
+                                        if (value >= 0 && value <= 200) {
+                                            // Likely a percentage
+                                            return value.toFixed(0) + '%';
+                                        } else {
+                                            // Likely a price
+                                            return '$' + value.toFixed(0);
+                                        }
+                                    }
+                                }
                             },
                             y1: {
                                 type: 'linear',
@@ -350,6 +390,11 @@
                                 beginAtZero: true,
                                 grid: {
                                     drawOnChartArea: false,
+                                },
+                                ticks: {
+                                    callback: function(value) {
+                                        return value.toLocaleString();
+                                    }
                                 }
                             }
                         }
@@ -358,19 +403,19 @@
             }
 
             // Load Metrics Data
-            function loadMetricsData(days = 30) {
+            function loadMetricsData(days = 7) {
                 fetch(`/fba-metrics-history?days=${days}`)
                     .then(response => response.json())
                     .then(data => {
                         if (data.length > 0) {
                             // Update chart
                             if (metricsChart) {
-                                metricsChart.data.labels = data.map(d => d.date);
-                                metricsChart.data.datasets[0].data = data.map(d => d.avg_price);
-                                metricsChart.data.datasets[1].data = data.map(d => d.total_views);
-                                metricsChart.data.datasets[2].data = data.map(d => d.avg_gprft);
-                                metricsChart.data.datasets[3].data = data.map(d => d.avg_groi_percent);
-                                metricsChart.data.datasets[4].data = data.map(d => d.avg_tacos);
+                                metricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
+                                metricsChart.data.datasets[0].data = data.map(d => d.avg_price || 0);
+                                metricsChart.data.datasets[1].data = data.map(d => d.total_views || 0);
+                                metricsChart.data.datasets[2].data = data.map(d => d.avg_gprft || 0);
+                                metricsChart.data.datasets[3].data = data.map(d => d.avg_groi_percent || 0);
+                                metricsChart.data.datasets[4].data = data.map(d => d.avg_tacos || 0);
                                 metricsChart.update();
                             }
                             
@@ -398,58 +443,47 @@
                         labels: [],
                         datasets: [
                             {
-                                label: 'Price ($)',
+                                label: 'Price (USD)',
                                 data: [],
-                                borderColor: 'rgb(75, 192, 192)',
-                                backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                                borderWidth: 3,
-                                pointRadius: 5,
-                                pointHoverRadius: 7,
+                                borderColor: '#FF0000',
+                                backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
                                 yAxisID: 'y',
                                 tension: 0.4
                             },
                             {
                                 label: 'Views',
                                 data: [],
-                                borderColor: 'rgb(54, 162, 235)',
-                                backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                                borderWidth: 3,
-                                pointRadius: 5,
-                                pointHoverRadius: 7,
+                                borderColor: '#0000FF',
+                                backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'CVR%',
+                                data: [],
+                                borderColor: '#008000',
+                                backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
                                 yAxisID: 'y1',
-                                tension: 0.4
-                            },
-                            {
-                                label: 'GPFT%',
-                                data: [],
-                                borderColor: 'rgb(255, 206, 86)',
-                                backgroundColor: 'rgba(255, 206, 86, 0.1)',
-                                borderWidth: 3,
-                                pointRadius: 5,
-                                pointHoverRadius: 7,
-                                yAxisID: 'y',
-                                tension: 0.4
-                            },
-                            {
-                                label: 'GROI%',
-                                data: [],
-                                borderColor: 'rgb(153, 102, 255)',
-                                backgroundColor: 'rgba(153, 102, 255, 0.1)',
-                                borderWidth: 3,
-                                pointRadius: 5,
-                                pointHoverRadius: 7,
-                                yAxisID: 'y',
                                 tension: 0.4
                             },
                             {
                                 label: 'TACOS%',
                                 data: [],
-                                borderColor: 'rgb(255, 99, 132)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                                borderWidth: 3,
-                                pointRadius: 5,
-                                pointHoverRadius: 7,
-                                yAxisID: 'y',
+                                borderColor: '#FFD700',
+                                backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y1',
                                 tension: 0.4
                             }
                         ]
@@ -466,28 +500,95 @@
                                 position: 'top',
                                 labels: {
                                     usePointStyle: true,
-                                    padding: 15
+                                    padding: 15,
+                                    font: {
+                                        size: 12
+                                    }
                                 }
                             },
                             title: {
-                                display: false
+                                display: true,
+                                text: 'FBA SKU Metrics',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                },
+                                padding: {
+                                    top: 10,
+                                    bottom: 20
+                                }
                             },
                             tooltip: {
                                 enabled: true,
                                 mode: 'index',
-                                intersect: false
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        let value = context.parsed.y || 0;
+                                        
+                                        // Format based on dataset label
+                                        if (label.includes('Price')) {
+                                            return label + ': $' + value.toFixed(2);
+                                        } else if (label.includes('Views')) {
+                                            return label + ': ' + value.toLocaleString();
+                                        } else if (label.includes('CVR')) {
+                                            // CVR: 1 decimal point (e.g., 5.2%)
+                                            return label + ': ' + value.toFixed(1) + '%';
+                                        } else if (label.includes('TACOS')) {
+                                            // TACOS: round figure (e.g., 100%, 15%)
+                                            return label + ': ' + Math.round(value) + '%';
+                                        } else if (label.includes('%')) {
+                                            return label + ': ' + value.toFixed(2) + '%';
+                                        }
+                                        return label + ': ' + value;
+                                    }
+                                }
                             }
                         },
                         scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Date',
+                                    font: {
+                                        size: 12,
+                                        weight: 'bold'
+                                    }
+                                },
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    }
+                                }
+                            },
                             y: {
                                 type: 'linear',
                                 display: true,
                                 position: 'left',
                                 title: {
                                     display: true,
-                                    text: 'Price / Percentages'
+                                    text: 'Price/Views',
+                                    font: {
+                                        size: 12,
+                                        weight: 'bold'
+                                    }
                                 },
-                                beginAtZero: false
+                                beginAtZero: true,
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    },
+                                    callback: function(value, index, values) {
+                                        // Format price values with $ symbol
+                                        // Since this axis is shared, we'll format based on the value range
+                                        // If values are small (< 100), likely prices, else views
+                                        if (values.length > 0 && Math.max(...values.map(v => v.value)) < 1000) {
+                                            return '$' + value.toFixed(0);
+                                        }
+                                        return value.toLocaleString();
+                                    }
+                                }
                             },
                             y1: {
                                 type: 'linear',
@@ -495,11 +596,23 @@
                                 position: 'right',
                                 title: {
                                     display: true,
-                                    text: 'Views'
+                                    text: 'Percent (%)',
+                                    font: {
+                                        size: 12,
+                                        weight: 'bold'
+                                    }
                                 },
                                 beginAtZero: true,
                                 grid: {
                                     drawOnChartArea: false,
+                                },
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    },
+                                    callback: function(value) {
+                                        return value.toFixed(0) + '%';
+                                    }
                                 }
                             }
                         }
@@ -507,29 +620,60 @@
                 });
             }
 
-            function loadSkuMetricsData(sku, days = 30) {
+            function loadSkuMetricsData(sku, days = 7) {
+                console.log('Loading metrics data for SKU:', sku, 'Days:', days);
                 fetch(`/fba-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
-                    .then(response => response.json())
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
                     .then(data => {
+                        console.log('Metrics data received:', data);
                         if (skuMetricsChart) {
-                            skuMetricsChart.data.labels = data.map(d => d.date);
+                            if (!data || data.length === 0) {
+                                console.warn('No data returned for SKU:', sku);
+                                // Show message and clear chart
+                                $('#chart-no-data-message').show();
+                                skuMetricsChart.data.labels = [];
+                                skuMetricsChart.data.datasets.forEach(dataset => {
+                                    dataset.data = [];
+                                });
+                                skuMetricsChart.options.plugins.title.text = 'FBA Metrics';
+                                skuMetricsChart.update();
+                                return;
+                            }
+                            
+                            // Hide message if data exists
+                            $('#chart-no-data-message').hide();
+                            
+                            // Update chart title with days
+                            skuMetricsChart.options.plugins.title.text = `FBA Metrics (${days} Days)`;
+                            
+                            // Use actual dates instead of "Day X"
+                            skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
+                            
+                            // Update data
                             skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
                             skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
-                            skuMetricsChart.data.datasets[2].data = data.map(d => d.gprft || 0);
-                            skuMetricsChart.data.datasets[3].data = data.map(d => d.groi_percent || 0);
-                            skuMetricsChart.data.datasets[4].data = data.map(d => d.tacos || 0);
-                            skuMetricsChart.update();
+                            skuMetricsChart.data.datasets[2].data = data.map(d => d.cvr_percent || 0);
+                            skuMetricsChart.data.datasets[3].data = data.map(d => d.tacos_percent || 0);
+                            
+                            skuMetricsChart.update('active');
+                            console.log('Chart updated successfully with', data.length, 'data points');
                         }
                     })
                     .catch(error => {
                         console.error('Error loading SKU metrics data:', error);
+                        alert('Error loading metrics data. Please check console for details.');
                     });
             }
 
             $(document).ready(function() {
                 // Initialize charts
                 initMetricsChart();
-                loadMetricsData(30);
+                loadMetricsData(7);
                 initSkuMetricsChart();
 
                 // Toggle chart button
@@ -559,6 +703,11 @@
                 $('#sku-chart-days-filter').on('change', function() {
                     const days = $(this).val();
                     if (currentSku) {
+                        // Update chart title immediately
+                        if (skuMetricsChart) {
+                            skuMetricsChart.options.plugins.title.text = `FBA Metrics (${days} Days)`;
+                            skuMetricsChart.update();
+                        }
                         loadSkuMetricsData(currentSku, days);
                     }
                 });
@@ -570,8 +719,9 @@
                     const sku = $(this).data('sku');
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
-                    $('#sku-chart-days-filter').val('30');
-                    loadSkuMetricsData(sku, 30);
+                    $('#sku-chart-days-filter').val('7');
+                    $('#chart-no-data-message').hide(); // Hide message initially
+                    loadSkuMetricsData(sku, 7);
                     $('#skuMetricsModal').modal('show');
                 });
 
