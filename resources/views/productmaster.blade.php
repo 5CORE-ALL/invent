@@ -1540,8 +1540,10 @@
             }
 
             // Load product data from server
-            function loadData() {
-                makeRequest('/product-master-data-view', 'GET')
+            function loadData(callback) {
+                // Add cache-busting parameter to ensure fresh data
+                const cacheParam = '?ts=' + new Date().getTime();
+                makeRequest('/product-master-data-view' + cacheParam, 'GET')
                     .then(response => {
                         if (!response.ok) {
                             throw new Error(`HTTP error! status: ${response.status}`);
@@ -1560,7 +1562,13 @@
                                 }
                             });
                             
-                            renderTable(tableData);
+                            // If callback is provided, use it for custom rendering (e.g., with filters)
+                            // Otherwise render all data normally
+                            if (typeof callback === 'function') {
+                                callback();
+                            } else {
+                                renderTable(tableData);
+                            }
                             updateParentOptions();
                             initProductPlaybackControls();
                             // Add this block to update counts
@@ -2943,7 +2951,14 @@
                         // Show success message
                         showToast('success', 'Product successfully added to database!');
                         bootstrap.Modal.getInstance(modal).hide();
-                        loadData();
+                        // Load data and reapply filters after successful creation
+                        loadData(function() {
+                            const currentFilters = getCurrentFilters();
+                            const filteredData = applyFiltersToData(currentFilters);
+                            renderTable(filteredData);
+                            setupEditButtons();
+                            setupDeleteButtons();
+                        });
                         resetProductForm();
                     } catch (error) {
                         showAlert('danger', error.message);
@@ -3197,7 +3212,17 @@
                         // Show specific success message for update
                         showToast('success', `Product ${formData.get('sku')} updated successfully!`);
                         modal.hide();
-                        loadData();
+                        // Small delay to ensure server has processed the update
+                        setTimeout(() => {
+                            // Load data and reapply filters after successful update
+                            loadData(function() {
+                                const currentFilters = getCurrentFilters();
+                                const filteredData = applyFiltersToData(currentFilters);
+                                renderTable(filteredData);
+                                setupEditButtons();
+                                setupDeleteButtons();
+                            });
+                        }, 500);
                         resetProductForm();
                     } catch (error) {
                         showAlert('danger', error.message);
