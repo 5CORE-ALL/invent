@@ -156,13 +156,6 @@
                             <!-- Filters -->
                             <div class="col-md-6">
                                 <div class="d-flex gap-2">
-                                    <select id="adtype-filter" class="form-select form-select-md">
-                                        <option value="">All Ad Types</option>
-                                        <option value="IMAGE">IMAGE</option>
-                                        <option value="VIDEO">VIDEO</option>
-                                        <option value="CAROUSEL">CAROUSEL</option>
-                                    </select>
-
                                     <select id="status-filter" class="form-select form-select-md">
                                         <option value="">All Status</option>
                                         <option value="ACTIVE">Active</option>
@@ -282,8 +275,40 @@
                     {
                         title: "AD Type",
                         field: "ad_type",
-                        minWidth: 120,
-                        headerSort: true
+                        minWidth: 180,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const campaignName = row.getData().campaign_name;
+                            const value = cell.getValue() || '';
+
+                            let bgColor = "";
+                            if (value === "Single Image") {
+                                bgColor = "background-color:#17a2b8;color:#fff;";
+                            } else if (value === "Single Video") {
+                                bgColor = "background-color:#6610f2;color:#fff;";
+                            } else if (value === "Carousal") {
+                                bgColor = "background-color:#fd7e14;color:#fff;";
+                            } else if (value === "Existing Post") {
+                                bgColor = "background-color:#20c997;color:#fff;";
+                            } else if (value === "Catalogue Ad") {
+                                bgColor = "background-color:#e83e8c;color:#fff;";
+                            }
+
+                            return `
+                                <select class="form-select form-select-sm editable-ad-type" 
+                                        data-campaign-name="${campaignName}" 
+                                        style="width: 160px; ${bgColor} cursor:pointer;">
+                                    <option value="">Select Type</option>
+                                    <option value="Single Image" ${value === 'Single Image' ? 'selected' : ''}>Single Image</option>
+                                    <option value="Single Video" ${value === 'Single Video' ? 'selected' : ''}>Single Video</option>
+                                    <option value="Carousal" ${value === 'Carousal' ? 'selected' : ''}>Carousal</option>
+                                    <option value="Existing Post" ${value === 'Existing Post' ? 'selected' : ''}>Existing Post</option>
+                                    <option value="Catalogue Ad" ${value === 'Catalogue Ad' ? 'selected' : ''}>Catalogue Ad</option>
+                                </select>
+                            `;
+                        },
+                        hozAlign: "center"
                     },
                     {
                         title: "BGT",
@@ -335,7 +360,6 @@
                     {
                         title: "SPENT L30",
                         field: "spend_l30",
-                        minWidth: 130,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -350,7 +374,6 @@
                     {
                         title: "SPENT L60",
                         field: "spend_l60",
-                        minWidth: 130,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -361,7 +384,6 @@
                     {
                         title: "SPENT L7",
                         field: "spend_l7",
-                        minWidth: 130,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -372,7 +394,6 @@
                     {
                         title: "CLKS L30",
                         field: "clicks_l30",
-                        minWidth: 125,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -387,7 +408,6 @@
                     {
                         title: "CLKS L60",
                         field: "clicks_l60",
-                        minWidth: 125,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -398,7 +418,6 @@
                     {
                         title: "CLKS L7",
                         field: "clicks_l7",
-                        minWidth: 125,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -409,7 +428,6 @@
                     {
                         title: "AD SLS L30",
                         field: "sales_l30",
-                        minWidth: 110,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -424,7 +442,6 @@
                     {
                         title: "AD SLS L60",
                         field: "sales_l60",
-                        minWidth: 110,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -435,7 +452,6 @@
                     {
                         title: "AD SLS L7",
                         field: "sales_l7",
-                        minWidth: 110,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -446,7 +462,6 @@
                     {
                         title: "AD SLD L30",
                         field: "sales_delivered_l30",
-                        minWidth: 110,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -461,7 +476,6 @@
                     {
                         title: "AD SLD L60",
                         field: "sales_delivered_l60",
-                        minWidth: 110,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -472,7 +486,6 @@
                     {
                         title: "AD SLD L7",
                         field: "sales_delivered_l7",
-                        minWidth: 110,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -483,7 +496,6 @@
                     {
                         title: "ACOS L30",
                         field: "acos_l30",
-                        minWidth: 125,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -498,7 +510,6 @@
                     {
                         title: "ACOS L60",
                         field: "acos_l60",
-                        minWidth: 125,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -509,7 +520,6 @@
                     {
                         title: "ACOS L7",
                         field: "acos_l7",
-                        minWidth: 125,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -520,7 +530,6 @@
                     {
                         title: "CVR L30",
                         field: "cvr_l30",
-                        minWidth: 120,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -535,7 +544,6 @@
                     {
                         title: "CVR L60",
                         field: "cvr_l60",
-                        minWidth: 120,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -546,7 +554,6 @@
                     {
                         title: "CVR L7",
                         field: "cvr_l7",
-                        minWidth: 120,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -569,11 +576,6 @@
 
                     let statusVal = $("#status-filter").val();
                     if (statusVal && data.status !== statusVal) {
-                        return false;
-                    }
-
-                    let adTypeVal = $("#adtype-filter").val();
-                    if (adTypeVal && data.ad_type !== adTypeVal) {
                         return false;
                     }
 
@@ -603,7 +605,7 @@
                     table.setFilter(combinedFilter);
                 });
 
-                $("#status-filter, #adtype-filter").on("change", function() {
+                $("#status-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                 });
 
@@ -743,6 +745,46 @@
                         }
                     });
                 }
+            });
+
+            // Handle AD Type dropdown changes
+            $(document).on('change', '.editable-ad-type', function() {
+                const campaignName = $(this).data('campaign-name');
+                const newAdType = $(this).val();
+                const selectElement = $(this);
+
+                $.ajax({
+                    url: "/meta-all-ads-control/update-ad-type",
+                    type: "POST",
+                    data: {
+                        campaign_name: campaignName,
+                        ad_type: newAdType
+                    },
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    success: function(response) {
+                        console.log('Ad Type updated successfully');
+                        
+                        // Update background color based on selection
+                        let bgColor = "";
+                        if (newAdType === "Single Image") {
+                            bgColor = "background-color:#17a2b8;color:#fff;";
+                        } else if (newAdType === "Single Video") {
+                            bgColor = "background-color:#6610f2;color:#fff;";
+                        } else if (newAdType === "Carousal") {
+                            bgColor = "background-color:#fd7e14;color:#fff;";
+                        } else if (newAdType === "Existing Post") {
+                            bgColor = "background-color:#20c997;color:#fff;";
+                        } else if (newAdType === "Catalogue Ad") {
+                            bgColor = "background-color:#e83e8c;color:#fff;";
+                        }
+                        
+                        selectElement.attr('style', `width: 160px; ${bgColor} cursor:pointer;`);
+                    },
+                    error: function(xhr) {
+                        console.error('Failed to update Ad Type');
+                        alert('Failed to update Ad Type');
+                    }
+                });
             });
 
             document.body.style.zoom = "70%";

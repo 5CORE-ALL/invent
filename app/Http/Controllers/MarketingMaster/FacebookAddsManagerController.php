@@ -33,7 +33,7 @@ class FacebookAddsManagerController extends Controller
             $data[] = [
                 'campaign_name' => $ad->campaign_name,
                 'campaign_id' => $ad->campaign_id,
-                'ad_type' => 'IMAGE', // Default, update based on your logic
+                'ad_type' => $ad->ad_type ?? '',
                 'budget' => $ad->bgt ?? 0,
                 'impressions_l60' => $ad->imp_l30 ?? 0,
                 'impressions_l30' => $ad->imp_l30 ?? 0,
@@ -64,6 +64,28 @@ class FacebookAddsManagerController extends Controller
             'message' => 'Meta All Ads data fetched successfully',
             'data' => $data,
             'status' => 200,
+        ]);
+    }
+
+    public function updateAdType(Request $request)
+    {
+        $request->validate([
+            'campaign_name' => 'required|string',
+            'ad_type' => 'required|string',
+        ]);
+
+        $metaAd = MetaAllAd::where('campaign_name', $request->campaign_name)->first();
+
+        if (!$metaAd) {
+            return response()->json(['error' => 'Campaign not found'], 404);
+        }
+
+        $metaAd->ad_type = $request->ad_type;
+        $metaAd->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ad Type updated successfully',
         ]);
     }
 
