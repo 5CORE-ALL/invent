@@ -1181,7 +1181,7 @@
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#meta-ads-master" aria-expanded="false"
                                 aria-controls="meta-ads-master" class="side-nav-link">
-                                <span>Facebook Ads Manager</span>
+                                <span>Meta Ads Manager</span>
                                 <span class="menu-arrow"></span>
                             </a>
                             <div class="collapse" id="meta-ads-master">
