@@ -517,6 +517,11 @@ class EbayController extends Controller
             } else {
                 $row['has_custom_sprice'] = true; // Flag to indicate custom SPRICE
                 
+                // If SPRICE matches eBay Price, reduce it by 1%
+                if ($row['SPRICE'] == $price) {
+                    $row['SPRICE'] = round($price * 0.99, 2);
+                }
+                
                 // Calculate SGPFT using custom SPRICE if not already set
                 if (empty($row['SGPFT'])) {
                     $sprice = floatval($row['SPRICE']);
