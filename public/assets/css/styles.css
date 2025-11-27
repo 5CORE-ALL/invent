@@ -184,6 +184,10 @@
   align-items: center;
 }
 
+.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+    padding-right: 0px !important;
+}
+
 .show-all-columns:hover {
   opacity: 0.9;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
