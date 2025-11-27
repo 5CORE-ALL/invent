@@ -9,6 +9,9 @@ use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class EbayACOSController extends Controller
 {
@@ -148,6 +151,172 @@ class EbayACOSController extends Controller
             'message' => 'Data fetched successfully',
             'data'    => $result,
             'status'  => 200,
+        ]);
+    }
+
+    public function getCampaignChartData(Request $request)
+    {
+        try {
+            $campaignName = $request->get('campaignName');
+            $startDate = $request->get('start_date', Carbon::now()->subDays(30)->format('Y-m-d'));
+            $endDate = $request->get('end_date', Carbon::now()->format('Y-m-d'));
+            
+            Log::info('Campaign Chart Request', [
+                'campaign' => $campaignName,
+                'start_date' => $startDate,
+                'end_date' => $endDate
+            ]);
+            
+            // Initialize arrays
+            $dates = [];
+            $clicks = [];
+            $spend = [];
+            $ad_sales = [];
+            $ad_sold = [];
+            $acos = [];
+            $cvr = [];
+        
+        // Generate date range
+        $period = Carbon::createFromFormat('Y-m-d', $startDate);
+        $end = Carbon::createFromFormat('Y-m-d', $endDate);
+        
+        while ($period->lte($end)) {
+            $currentDate = $period->format('Y-m-d');
+            $dates[] = $currentDate;
+            
+            // For now, let's use simple data from ebay_priority_reports
+            $report = DB::table('ebay_priority_reports')
+                ->where('campaign_name', $campaignName)
+                ->where('report_range', 'L1') // Use daily data
+                ->whereDate('updated_at', $currentDate)
+                ->first();
+            
+            if ($report) {
+                $clicks[] = (int) ($report->cpc_clicks ?? 0);
+                $currentSpend = (float) str_replace(['USD ', '$', ','], '', $report->cpc_ad_fees_payout_currency ?? '0');
+                $spend[] = $currentSpend;
+                $currentSales = (float) str_replace(['USD ', '$', ','], '', $report->cpc_sale_amount_payout_currency ?? '0');
+                $ad_sales[] = $currentSales;
+                $ad_sold[] = (int) ($report->cpc_attributed_sales ?? 0);
+                
+                // Calculate ACOS (Advertising Cost of Sales)
+                $currentAcos = $currentSales > 0 ? ($currentSpend / $currentSales) * 100 : 0;
+                $acos[] = round($currentAcos, 2);
+                
+                // Calculate CVR
+                $currentClicks = (int) ($report->cpc_clicks ?? 0);
+                $currentSold = (int) ($report->cpc_attributed_sales ?? 0);
+                $currentCvr = $currentClicks > 0 ? ($currentSold / $currentClicks) * 100 : 0;
+                $cvr[] = round($currentCvr, 2);
+            } else {
+                // Fill with zeros if no data found
+                $clicks[] = 0;
+                $spend[] = 0;
+                $ad_sales[] = 0;
+                $ad_sold[] = 0;
+                $acos[] = 0;
+                $cvr[] = 0;
+            }
+            
+            $period->addDay();
+        }
+        
+            return response()->json([
+                'dates' => $dates,
+                'clicks' => $clicks,
+                'spend' => $spend,
+                'ad_sales' => $ad_sales,
+                'ad_sold' => $ad_sold,
+                'acos' => $acos,
+                'cvr' => $cvr
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Campaign Chart Error: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to load campaign data'], 500);
+        }
+    }
+
+    public function filterUnderUtilizedAds(Request $request)
+    {
+        $startDate = $request->get('startDate');
+        $endDate = $request->get('endDate');
+        
+        // Generate date-wise filtered data based on date range
+        $start = \Carbon\Carbon::parse($startDate);
+        $end = \Carbon\Carbon::parse($endDate);
+        
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $ad_sales = [];
+        $ad_sold = [];
+        $acos = [];
+        $cvr = [];
+        
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            $currentDate = $date->format('Y-m-d');
+            $dates[] = $currentDate;
+            
+            // Get data from ebay_metrics for this specific date
+            $dayData = DB::table('ebay_metrics')
+                ->where('report_date', $currentDate)
+                ->selectRaw('
+                    SUM(views) as total_views,
+                    SUM(organic_clicks) as total_clicks,
+                    COUNT(*) as total_items,
+                    AVG(ebay_price) as avg_price
+                ')
+                ->first();
+            
+            // Get data from ebay_general_reports (using L1 as daily proxy)
+            $reportData = DB::table('ebay_general_reports')
+                ->where('report_range', 'L1')
+                ->selectRaw('
+                    SUM(clicks) as report_clicks,
+                    SUM(impressions) as report_impressions,
+                    SUM(sales) as report_sales,
+                    SUM(CASE 
+                        WHEN ad_fees IS NOT NULL 
+                        THEN CAST(REPLACE(REPLACE(ad_fees, "USD ", ""), "$", "") AS DECIMAL(10,2)) 
+                        ELSE 0 
+                    END) as report_spend
+                ')
+                ->first();
+            
+            // Combine and calculate metrics
+            $dailyClicks = ($dayData->total_clicks ?? 0) + ($reportData->report_clicks ?? 0);
+            $dailySpend = $reportData->report_spend ?? 0;
+            $dailySales = ($reportData->report_sales ?? 0) * ($dayData->avg_price ?? 0);
+            $dailySold = $reportData->report_sales ?? 0;
+            
+            $clicks[] = $dailyClicks;
+            $spend[] = $dailySpend;
+            $ad_sales[] = $dailySales;
+            $ad_sold[] = $dailySold;
+            $acos[] = $dailySales > 0 ? (($dailySpend / $dailySales) * 100) : 0;
+            $cvr[] = $dailyClicks > 0 ? (($dailySold / $dailyClicks) * 100) : 0;
+        }
+        
+        // Calculate totals for cards
+        $totalClicks = array_sum($clicks);
+        $totalSpend = array_sum($spend);
+        $totalAdSales = array_sum($ad_sales);
+        $totalAdSold = array_sum($ad_sold);
+        
+        return response()->json([
+            'dates' => $dates,
+            'clicks' => $clicks,
+            'spend' => $spend,
+            'ad_sales' => $ad_sales,
+            'ad_sold' => $ad_sold,
+            'acos' => $acos,
+            'cvr' => $cvr,
+            'totals' => [
+                'clicks' => $totalClicks,
+                'spend' => $totalSpend,
+                'ad_sales' => $totalAdSales,
+                'ad_sold' => $totalAdSold
+            ]
         ]);
     }
 }

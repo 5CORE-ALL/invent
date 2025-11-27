@@ -2174,6 +2174,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/make-new/campaign/kw/data', 'getEbayMakeNewCampaignKw');
 
         Route::get('/ebay-over-uti/data', 'getEbayOverUtiData')->name('ebay-over-uti-data');
+        Route::get('/ebay-over-uti/filter', 'filterOverUtilizedAds')->name('ebay-over-uti.filter');
+        Route::get('/ebay-over-uti/campaign-chart', 'getCampaignChartData')->name('ebay-over-uti.campaign-chart');
         Route::post('/update-ebay-nr-data', 'updateNrData');
         Route::put('/update-ebay-keywords-bid-price', 'updateKeywordsBidDynamic');
     });
@@ -2187,6 +2189,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-under-uti-acos-red', 'ebayUnderUtiAcosRed')->name('ebay-under-uti-acos-red');
 
         Route::get('/ebay-uti-acos/data', 'getEbayUtilisationAcosData');
+        Route::get('/ebay-under-uti/campaign-chart', 'getCampaignChartData')->name('ebay-under-uti.campaign-chart');
+        Route::get('/ebay-under-uti/filter', 'filterUnderUtilizedAds')->name('ebay-under-uti.filter');
     });
 
     Route::controller(EbayPinkDilAdController::class)->group(function () {
@@ -2211,11 +2215,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/ebay/keywords/ads/less-than-twenty', 'ebayPriceLessThanTwentyAdsView')->name('ebay.keywords.ads.less-than-twenty');
         Route::get('/ebay/keywords/ads/less-than-twenty/data', 'ebayPriceLessThanTwentyAdsData');
+        Route::get('/ebay/keywords/ads/less-than-twenty/campaign-chart', 'getCampaignChartData')->name('ebay.keywords.ads.less-than-twenty.campaign-chart');
+        Route::get('/ebay/keywords/ads/less-than-twenty/filter', 'filterEbayKwAds')->name('ebay.keywords.ads.less-than-twenty.filter');
     });
 
     Route::controller(EbayRunningAdsController::class)->group(function () {
         Route::get('/ebay/ad-running/list', 'index')->name('ebay.running.ads');
         Route::get('/ebay/ad-running/data', 'getEbayRunningAdsData');
+        Route::get('/ebay/ad-running/filter', 'filterRunningAds')->name('ebay.running.ads.filter');
+        Route::get('/ebay/ad-running/campaign-chart', 'getCampaignChartData')->name('ebay.running.ads.campaign-chart');
         Route::get('/adv-ebay/ad-running/save-data', 'getEbayRunningDataSave')->name('adv-ebay.ad-running.save-data');
     });
 
@@ -2285,6 +2293,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-3/under-utilized', 'ebay3UnderUtilizedAdsView')->name('ebay3.under.utilized');
         Route::get('/ebay-3/correctly-utilized', 'ebay3CorrectlyUtilizedAdsView')->name('ebay3.correctly.utilized');
         Route::get('/ebay-3/utilized/ads/data', 'getEbay3UtilizedAdsData');
+        Route::get('/ebay-3/over-utilized/filter', 'filterOverUtilizedAds')->name('ebay3.over.utilized.filter');
+        Route::get('/ebay-3/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay3.over.utilized.campaign-chart');
         Route::post('/update-ebay3-nr-data', 'updateEbay3NrData');
     });
 
