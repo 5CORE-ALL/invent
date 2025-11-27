@@ -35,6 +35,8 @@ use App\Models\BestbuyUSAListingStatus;
 use App\Models\TiendamiaListingStatus;
 use App\Models\PlsListingStatus;
 use App\Models\Business5CoreListingStatus;
+use App\Models\Business5CoreDataView;
+use App\Models\PLSProduct;
 
 
 class StockMappingController extends Controller
@@ -87,33 +89,62 @@ class StockMappingController extends Controller
             'ebay3'   => [EbayThreeListingStatus::class,'inventory_ebay3'],
             'bestbuy' => [BestbuyUSAListingStatus::class,'inventory_bestbuy'],
             'tiendamia' => [TiendamiaListingStatus::class,'inventory_tiendamia'],
-            'pls' => [PlsListingStatus::class, 'inventory_pls'],
-            'business5core' => [Business5CoreListingStatus::class, 'inventory_business5core'],
+            'pls' => [PLSProduct::class, 'inventory_pls'],
+            'business5core' => [Business5CoreDataView::class, 'inventory_business5core'],
         ];
 
 
             foreach ($marketplaces as $key => [$model, $inventoryField]) {
-            $listingData = $model::whereIn('sku', $skusforNR)->where('value->nr_req', 'NR')->get()->unique()->keyBy('sku');
+                // Fetch all listings for these SKUs
+                $allListings = $model::whereIn('sku', $skusforNR)->get();
                 
-            foreach ($listingData as $sku => $listing) {
-                $sku = str_replace("\u{00A0}", ' ', $sku);
-                    // Trim and normalize spacing
+                foreach ($allListings as $listing) {
+                    $sku = $listing->sku ?? '';
+                    $sku = str_replace("\u{00A0}", ' ', $sku);
                     $sku = trim(preg_replace('/\s+/', ' ', $sku));
-                    // dd($sku);
-                if (
-                    isset($data[$sku]) &&
-                    Arr::get($listing->value, 'nr_req') === 'NR'
-                    && 
-                    $data[$sku]->$inventoryField>0 
-                    // && $data[$sku]->$inventoryField!="Not Listed"
-                ) {
-
-                    $data[$sku]->$inventoryField = 'NRL';
-                    // if($data[$sku]->$inventoryField != 'Not Listed'){
-                    // }
-                }        
+                    
+                    if (isset($data[$sku])) {
+                        $inventory = null;
+                        
+                        // Handle different data sources
+                        if ($key === 'pls') {
+                            // For PLS products, get price (which might represent stock or availability)
+                            // Use price field as inventory indicator (0 = not available, >0 = available)
+                            $inventory = $listing->price ?? null;
+                            
+                            // If price is empty/null, try to calculate from p_l30 or other fields
+                            if ($inventory === null || $inventory === '') {
+                                $inventory = !empty($listing->p_l30) ? 1 : 0;
+                            }
+                        } elseif ($key === 'business5core') {
+                            // For Business5Core data view, get inventory from value JSON
+                            $inventory = Arr::get($listing->value ?? [], 'inventory', null);
+                            
+                            // If inventory not found, try other common keys
+                            if ($inventory === null) {
+                                $inventory = Arr::get($listing->value ?? [], 'stock', null);
+                            }
+                            
+                            // If still empty, check if there's any data in value
+                            if ($inventory === null && isset($listing->value)) {
+                                $inventory = !empty($listing->value) ? 1 : 0;
+                            }
+                        } else {
+                            // For other marketplace statuses, get from value JSON
+                            $inventory = Arr::get($listing->value ?? [], 'inventory', null);
+                        }
+                        
+                        // If inventory value exists, update it in the mapping
+                        if ($inventory !== null && $inventory !== '') {
+                            // Store the actual inventory value
+                            $data[$sku]->$inventoryField = (int)$inventory;
+                            
+                            // Also save to database
+                            $data[$sku]->save();
+                        }
+                    }
+                }
             }
-        }
         
 
         $datainfo = $this->getDataInfo($data);
@@ -163,13 +194,13 @@ protected function getDataInfo($data)
 
     // Process each item
     foreach ($data as $item) {
-        $shopifyInventoryRaw = $item['inventory_shopify'] ?? 0;
+        // Handle both array and object access
+        $shopifyInventoryRaw = is_array($item) ? ($item['inventory_shopify'] ?? 0) : ($item->inventory_shopify ?? 0);
         $shopifyInventory = is_numeric($shopifyInventoryRaw) ? (int)$shopifyInventoryRaw : 0;
         
         // If Shopify inventory is negative, set it to 0
         if ($shopifyInventory < 0) {
             $shopifyInventory = 0;
-            $item['inventory_shopify'] = 0;
         }
 
         foreach ($platforms as $platform) {
@@ -177,11 +208,18 @@ protected function getDataInfo($data)
                 continue; // Skip comparison for Shopify itself
             }
 
-            $platformInventoryRaw = $item["inventory_{$platform}"] ?? 0;
+            $fieldName = "inventory_{$platform}";
+            $platformInventoryRaw = is_array($item) ? ($item[$fieldName] ?? 0) : ($item->$fieldName ?? 0);
             $platformInventory = is_numeric($platformInventoryRaw) ? (int)$platformInventoryRaw : 0;
 
-            // Skip invalid or placeholder values
-            if (in_array($platformInventoryRaw, ['Not Listed', 'NRL'], true) || $platformInventory === 0 || $shopifyInventory === 0) {
+            // Skip only if value is "Not Listed" or "NRL"
+            if (in_array($platformInventoryRaw, ['Not Listed', 'NRL'], true)) {
+                continue;
+            }
+
+            // Only count if at least one inventory is greater than 0
+            // If both are 0, we can skip (no actual inventory to match)
+            if ($platformInventory === 0 && $shopifyInventory === 0) {
                 continue;
             }
 
