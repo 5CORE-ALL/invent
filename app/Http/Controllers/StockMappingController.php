@@ -33,6 +33,8 @@ use App\Models\EbayTwoListingStatus;
 use App\Models\EbayThreeListingStatus;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\TiendamiaListingStatus;
+use App\Models\PlsListingStatus;
+use App\Models\Business5CoreListingStatus;
 
 
 class StockMappingController extends Controller
@@ -85,6 +87,8 @@ class StockMappingController extends Controller
             'ebay3'   => [EbayThreeListingStatus::class,'inventory_ebay3'],
             'bestbuy' => [BestbuyUSAListingStatus::class,'inventory_bestbuy'],
             'tiendamia' => [TiendamiaListingStatus::class,'inventory_tiendamia'],
+            'pls' => [PlsListingStatus::class, 'inventory_pls'],
+            'business5core' => [Business5CoreListingStatus::class, 'inventory_business5core'],
         ];
 
 
@@ -115,7 +119,7 @@ class StockMappingController extends Controller
         $datainfo = $this->getDataInfo($data);
 
         $totalNotMatching = 0;
-        foreach (['shopify','amazon','walmart','reverb','shein','doba','temu','macy','ebay1','ebay2','ebay3','bestbuy','tiendamia'] as $platform) {
+        foreach (['shopify','amazon','walmart','reverb','shein','doba','temu','macy','ebay1','ebay2','ebay3','bestbuy','tiendamia','pls','business5core'] as $platform) {
             $totalNotMatching += $datainfo[$platform]['notmatching'] ?? 0;
         }
         // dd($datainfo);
@@ -145,7 +149,7 @@ protected function getDataInfo($data)
 {
     $platforms = [
         'shopify', 'amazon', 'walmart', 'reverb', 'shein', 'doba',
-        'temu', 'macy', 'ebay1', 'ebay2', 'ebay3','bestbuy','tiendamia'
+        'temu', 'macy', 'ebay1', 'ebay2', 'ebay3','bestbuy','tiendamia','pls','business5core'
     ];
 
     // Initialize info array
