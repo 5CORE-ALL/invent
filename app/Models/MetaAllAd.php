@@ -14,6 +14,7 @@ class MetaAllAd extends Model
     protected $fillable = [
         'campaign_name',
         'campaign_id',
+        'ad_type',
         'campaign_delivery',
         'bgt',
         'imp_l30',

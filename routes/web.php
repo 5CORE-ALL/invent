@@ -2066,6 +2066,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
         Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
         Route::post('/meta-all-ads-control/import', 'importMetaAds')->name('meta.ads.import');
+        Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
         Route::get('/facebook-ads-control/data', 'index')->name('facebook.ads.index');
         Route::get('/facebook-web-to-video', 'facebookWebToVideo')->name('facebook.web.to.video');
         Route::get('/facebook-web-to-video-data', 'facebookWebToVideoData')->name('facebook.web.to.video.data');
