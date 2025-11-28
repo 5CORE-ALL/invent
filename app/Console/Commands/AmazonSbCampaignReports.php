@@ -20,37 +20,19 @@ class AmazonSbCampaignReports extends Command
 
         $today = now();
 
-        // Check if we need to do initial backfill (check if we have any daily data)
-        $existingDailyData = AmazonSbCampaignReport::where('profile_id', $profileId)
-            ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        // Fetch only yesterday's data for charts
+        $yesterday = $today->copy()->subDay()->toDateString();
+        
+        // Check if yesterday's data already exists
+        $yesterdayExists = AmazonSbCampaignReport::where('profile_id', $profileId)
+            ->where('report_date_range', $yesterday)
             ->exists();
-
-        if (!$existingDailyData) {
-            $this->info("🔄 No daily data found. Performing initial backfill for last 30 days...");
-            // Initial backfill - fetch last 30 days
-            for ($i = 1; $i <= 30; $i++) {
-                $date = $today->copy()->subDays($i)->toDateString();
-                $this->fetchReport($profileId, $adType, $reportTypeId, $date, $date, $date, true);
-                // Small delay to prevent rate limiting
-                sleep(2);
-            }
-            $this->info("✅ Initial backfill completed.");
-        } else {
-            $this->info("📈 Daily data exists. Fetching incremental data...");
-            // Incremental fetch - only yesterday's data
-            $yesterday = $today->copy()->subDay()->toDateString();
             
-            // Check if yesterday's data already exists
-            $yesterdayExists = AmazonSbCampaignReport::where('profile_id', $profileId)
-                ->where('report_date_range', $yesterday)
-                ->exists();
-                
-            if (!$yesterdayExists) {
-                $this->fetchReport($profileId, $adType, $reportTypeId, $yesterday, $yesterday, $yesterday, true);
-                $this->info("✅ Yesterday's data fetched: {$yesterday}");
-            } else {
-                $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
-            }
+        if (!$yesterdayExists) {
+            $this->fetchReport($profileId, $adType, $reportTypeId, $yesterday, $yesterday, $yesterday, true);
+            $this->info("✅ Yesterday's data fetched: {$yesterday}");
+        } else {
+            $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
         }
 
         // Always fetch summary ranges for backward compatibility with table data

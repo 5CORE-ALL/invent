@@ -3039,13 +3039,22 @@
                     const pmtClkL7 = parseFloat(item.raw_data.PmtClkL7) || 0;
 
                     if (pmtClkL7 < 70) {
-                        adjustedCbid = adjustedCbid + 0.05;
+                        adjustedCbid = adjustedCbid + 0.5;
                         cbidColor = "green"; // Increase bid
                     } else if (pmtClkL7 > 140) {
-                        adjustedCbid = adjustedCbid - 0.05;
+                        adjustedCbid = adjustedCbid - 0.5;
                         cbidColor = "red"; // Decrease bid
                     } else {
                         cbidColor = "yellow"; // Keep current bid
+                    }
+
+                    // Apply 15% cap and 2% minimum to adjusted CBID
+                    if (adjustedCbid > 15) {
+                        adjustedCbid = 15;
+                    }
+                    
+                    if (adjustedCbid < 2) {
+                        adjustedCbid = 2;
                     }
 
                     let reqViews = item.INV * 10;
@@ -3059,7 +3068,7 @@
 
                     $row.append($('<td data-field="sbid">').html(
                         `<span class="dil-percent-value ${cbidColor}">
-                           ${adjustedCbid.toFixed(2)}
+                           ${adjustedCbid.toFixed(1)}
                         </span>`
                     ));
 
