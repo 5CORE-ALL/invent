@@ -68,6 +68,7 @@ Route::get('/all-channels-chart-data', [ZeroVisibilityMasterController::class, '
 Route::post('/save-channel-action', [ZeroVisibilityMasterController::class, 'saveChannelAction']);
 Route::get('/test-channel-data', [ZeroVisibilityMasterController::class, 'testChannelData']);
 
+
 // TikTok Shop Webhook
-// Route::post('/webhooks/tiktok/orders', [\App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);
-// Route::get('/webhooks/tiktok/test', [\App\Http\Controllers\Api\TiktokWebhookController::class, 'testWebhook']);
+// Route::post('/webhooks/tiktok/orders', [App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);
+// Route::get('/webhooks/tiktok/test', [App\Http\Controllers\Api\TiktokWebhookController::class, 'testWebhook']);
