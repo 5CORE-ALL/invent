@@ -459,12 +459,14 @@ class EbayController extends Controller
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
 
-            // NR & Hide
+            // Calculate SCVR (CVR): (eBay L30 / views) * 100
+            $views = floatval($row['views'] ?? 0);
+            $ebayL30 = floatval($row["eBay L30"] ?? 0);
+            $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
+            $cvr = $row['SCVR']; // Use SCVR for SPRICE calculation
+
+            // NR & Hide (load from database, but not SPRICE/SPFT/SROI/SGPFT)
             $row['NR'] = "";
-            $row['SPRICE'] = null;
-            $row['SPFT'] = null;
-            $row['SROI'] = null;
-            $row['SGPFT'] = null;
             $row['Listed'] = null;
             $row['Live'] = null;
             $row['APlus'] = null;
@@ -477,25 +479,35 @@ class EbayController extends Controller
                 if (is_array($raw)) {
                     $row['NR'] = $raw['NR'] ?? null;
                     $row['NRL'] = $raw['NRL'] ?? null;
-                    $row['SPRICE'] = $raw['SPRICE'] ?? null;
-                    $row['SPFT'] = $raw['SPFT'] ?? null;
-                    $row['SROI'] = $raw['SROI'] ?? null;
-                    $row['SGPFT'] = $raw['SGPFT'] ?? null;
+                    // Don't load SPRICE, SPFT, SROI, SGPFT from database - always calculate
                     $row['spend_l30'] = $raw['Spend_L30'] ?? null;
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
                 }
             }
-
-            // If SPRICE is null or empty, use eBay Price reduced by 1% as default and calculate SPFT/SROI/SGPFT
-            if (empty($row['SPRICE']) && $price > 0) {
-                $row['SPRICE'] = round($price * 0.99, 2);
-                $row['has_custom_sprice'] = false; // Flag to indicate using default price
+            
+            // Always calculate SPRICE based on CVR (ignore saved values)
+            if ($price > 0) {
+                // Determine multiplier based on CVR
+                if ($cvr >= 0 && $cvr <= 1) {
+                    // 0-1%: multiply by 0.99
+                    $spriceMultiplier = 0.99;
+                } elseif ($cvr > 1 && $cvr <= 3) {
+                    // 1%-3%: multiply by 0.995
+                    $spriceMultiplier = 0.995;
+                } else {
+                    // >3%: increase by 1% (multiply by 1.01)
+                    $spriceMultiplier = 1.01;
+                }
                 
-                // Calculate SGPFT based on default price
+                $row['SPRICE'] = round($price * $spriceMultiplier, 2);
+                $row['has_custom_sprice'] = false; // Always calculated, never custom
+                
+                // Calculate SGPFT based on calculated SPRICE
+                $sprice = $row['SPRICE'];
                 $sgpft = round(
-                    $price > 0 ? (($price * 0.86 - $ship - $lp) / $price) * 100 : 0,
+                    $sprice > 0 ? (($sprice * 0.86 - $ship - $lp) / $sprice) * 100 : 0,
                     2
                 );
                 $row['SGPFT'] = $sgpft;
@@ -506,41 +518,16 @@ class EbayController extends Controller
                 // Calculate SROI using new formula: ((SPRICE * (0.86 - AD%/100) - ship - lp) / lp) * 100
                 $adDecimal = $row["AD%"] / 100;
                 $row['SROI'] = round(
-                    $lp > 0 ? (($price * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                    $lp > 0 ? (($sprice * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
                     2
                 );
             } else {
-                $row['has_custom_sprice'] = true; // Flag to indicate custom SPRICE
-                
-                // If SPRICE matches eBay Price, reduce it by 1%
-                if ($row['SPRICE'] == $price) {
-                    $row['SPRICE'] = round($price * 0.99, 2);
-                }
-                
-                // Calculate SGPFT using custom SPRICE if not already set
-                if (empty($row['SGPFT'])) {
-                    $sprice = floatval($row['SPRICE']);
-                    $sgpft = round(
-                        $sprice > 0 ? (($sprice * 0.86 - $ship - $lp) / $sprice) * 100 : 0,
-                        2
-                    );
-                    $row['SGPFT'] = $sgpft;
-                }
-                
-                // Recalculate SPFT if already set, to ensure it uses SGPFT - AD%
-                if (!empty($row['SGPFT'])) {
-                    $row['SPFT'] = round($row['SGPFT'] - $row["AD%"], 2);
-                }
-                
-                // Recalculate SROI using new formula: ((SPRICE * (0.86 - AD%/100) - ship - lp) / lp) * 100
-                if (!empty($row['SPRICE'])) {
-                    $sprice = floatval($row['SPRICE']);
-                    $adDecimal = $row["AD%"] / 100;
-                    $row['SROI'] = round(
-                        $lp > 0 ? (($sprice * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
-                        2
-                    );
-                }
+                // If price is 0, set all to null/0
+                $row['SPRICE'] = null;
+                $row['SPFT'] = null;
+                $row['SROI'] = null;
+                $row['SGPFT'] = null;
+                $row['has_custom_sprice'] = false;
             }
 
             // Image
