@@ -116,19 +116,19 @@
                         <i class="fas fa-eye"></i> Show All
                     </button>
 
-                    <span class="me-3 px-3 py-1" style="background-color: #e3f2fd; border-radius: 5px;">
+                    {{-- <span class="me-3 px-3 py-1" style="background-color: #e3f2fd; border-radius: 5px;">
                         <strong>PFT%:</strong> <span id="pft-calc">0.00%</span>
                     </span>
                     <span class="me-3 px-3 py-1" style="background-color: #e8f5e9; border-radius: 5px;">
                         <strong>ROI%:</strong> <span id="roi-calc">0.00%</span>
-                    </span>
+                    </span> --}}
 
                     <button id="import-btn" class="btn btn-sm btn-primary me-2" data-bs-toggle="modal" data-bs-target="#importModal">
                         <i class="fas fa-upload"></i> Import Ratings
                     </button>
 
                     <a href="{{ url('/amazon-ratings-sample') }}" class="btn btn-sm btn-info me-2">
-                        <i class="fas fa-download"></i> Sample Template
+                        <i class="fas fa-download"></i> Template
                     </a>
 
                     <a href="{{ url('/amazon-export-pricing-cvr') }}" class="btn btn-sm btn-success me-2">
@@ -1067,17 +1067,21 @@
                             const lmpEntries = rowData.lmp_entries || [];
                             const sku = rowData['(Child) sku'];
 
-                            if (!lmpPrice || lmpEntries.length === 0) {
+                            if (!lmpPrice) {
                                 return '<span style="color: #999;">N/A</span>';
                             }
 
                             const priceFormatted = '$' + parseFloat(lmpPrice).toFixed(2);
                             const entriesJson = JSON.stringify(lmpEntries).replace(/"/g, '&quot;');
 
-                            return `<a href="#" class="lmp-link" data-sku="${sku}" data-lmp-data="${entriesJson}" 
-                                style="color: #007bff; text-decoration: none; cursor: pointer;">
-                                ${priceFormatted} (${lmpEntries.length})
-                            </a>`;
+                            if (lmpEntries.length > 0) {
+                                return `<a href="#" class="lmp-link" data-sku="${sku}" data-lmp-data="${entriesJson}" 
+                                    style="color: #007bff; text-decoration: none; cursor: pointer;">
+                                    ${priceFormatted} (${lmpEntries.length})
+                                </a>`;
+                            } else {
+                                return priceFormatted;
+                            }
                         },
                         width: 100
                     },

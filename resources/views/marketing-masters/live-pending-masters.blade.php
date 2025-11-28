@@ -142,6 +142,7 @@
         #allChannelsChart {
             background: white;
             border-radius: 6px;
+            
             padding: 10px;
         }
         
@@ -240,6 +241,9 @@
                             Daily Changes - All Channels
                         </h5>
                         <div class="chart-controls">
+                            <button class="btn btn-sm btn-info me-2" id="zeroGraphBtn" title="Show daily totals graph">
+                                <i class="fas fa-chart-bar"></i> Daily Totals
+                            </button>
                             <button class="btn btn-sm btn-success me-2" onclick="refreshAllChannelsChart()">
                                 <i class="fas fa-sync-alt"></i> Refresh
                             </button>
@@ -307,6 +311,24 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Totals Modal -->
+    <div class="modal fade" id="dailyTotalsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Live Pending - Daily Totals</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="dailyTotalsLoading" class="text-center my-4">Loading chart, please wait...</div>
+                    <div style="height:400px;">
+                        <canvas id="livePendingDailyTotalsCanvas" style="display:none; width:100%; height:100%;"></canvas>
                     </div>
                 </div>
             </div>
@@ -821,6 +843,7 @@
         let chartModal = null;
         let allChannelsChart = null;
         let fullscreenChart = null;
+        let livePendingDailyChart = null;
 
         // Show chart function
         window.showChart = function(channelName) {
@@ -1169,8 +1192,22 @@
             }
             
             console.log('Creating new all channels chart...');
+            
+            // Update dataset for line chart
+            totalDataset.borderColor = 'rgb(102, 126, 234)';
+            totalDataset.borderWidth = 3;
+            totalDataset.backgroundColor = 'rgba(102, 126, 234, 0.1)';
+            totalDataset.fill = true;
+            totalDataset.tension = 0.4;
+            totalDataset.pointRadius = 5;
+            totalDataset.pointHoverRadius = 7;
+            totalDataset.pointBackgroundColor = 'rgb(102, 126, 234)';
+            totalDataset.pointBorderColor = '#fff';
+            totalDataset.pointBorderWidth = 2;
+            delete totalDataset.backgroundColor; // Remove bar-specific property
+            
             allChannelsChart = new Chart(ctx, {
-                type: 'bar',
+                type: 'line',
                 data: {
                     labels: extendedDates,
                     datasets: [totalDataset]
@@ -1299,9 +1336,7 @@
                     interaction: {
                         mode: 'index',
                         intersect: false
-                    },
-                    barPercentage: 0.9,
-                    categoryPercentage: 0.8
+                    }
                 }
             });
         }
@@ -1447,6 +1482,131 @@
        
         }
 
+        // Daily Totals Graph (zeroGraphBtn style)
+        jq(document).on('click', '#zeroGraphBtn', function() {
+            var modalEl = document.getElementById('dailyTotalsModal');
+            var modal = new bootstrap.Modal(modalEl);
+            modal.show();
+
+            jq('#dailyTotalsLoading').show();
+            jq('#livePendingDailyTotalsCanvas').hide();
+
+            fetch('/api/all-channels-chart-data?days=7', { headers: { 'Accept': 'application/json' } })
+                .then(response => response.json())
+                .then(json => {
+                    const dates = json.dates || [];
+                    const datasets = json.datasets || [];
+
+                    // Filter datasets to show only channels with data updates
+                    const filteredDatasets = datasets.filter(dataset => {
+                        return dataset.data.some(value => value !== 0);
+                    });
+
+                    // Calculate daily totals working backwards from current total
+                    let currentTotal = parseInt(jq('#livePendingCountBadge').text().replace(/,/g, '')) || 0;
+                    const dailyTotals = [];
+
+                    for (let i = dates.length - 1; i >= 0; i--) {
+                        if (i === dates.length - 1) {
+                            dailyTotals.unshift(currentTotal);
+                        } else {
+                            const nextDayDiff = filteredDatasets.reduce((sum, dataset) => {
+                                return sum + (dataset.data[i + 1] || 0);
+                            }, 0);
+                            currentTotal = currentTotal - nextDayDiff;
+                            dailyTotals.unshift(currentTotal);
+                        }
+                    }
+
+                    jq('#dailyTotalsLoading').hide();
+                    jq('#livePendingDailyTotalsCanvas').show();
+
+                    if (livePendingDailyChart) livePendingDailyChart.destroy();
+
+                    const ctx = document.getElementById('livePendingDailyTotalsCanvas').getContext('2d');
+
+                    // Compute dynamic y-axis min/max with padding
+                    const numericTotals = dailyTotals.map(v => Number(v) || 0);
+                    const dataMin = numericTotals.length ? Math.min(...numericTotals) : 0;
+                    const dataMax = numericTotals.length ? Math.max(...numericTotals) : 0;
+                    const rawRange = dataMax - dataMin;
+                    const padding = rawRange > 0 ? Math.ceil(rawRange * 0.1) : Math.ceil(dataMax * 0.05) || 1;
+                    let yMin = Math.floor(dataMin - padding);
+                    if (dataMin >= 0 && yMin < 0) yMin = 0;
+                    const yMax = Math.ceil(dataMax + padding);
+
+                    // choose a reasonable step size (approx 5 steps)
+                    const range = Math.max(1, yMax - yMin);
+                    const approxStep = Math.ceil(range / 5);
+
+                    livePendingDailyChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: dates,
+                            datasets: [{
+                                label: 'Daily Total - Live Pending',
+                                data: dailyTotals,
+                                borderColor: 'rgb(102, 126, 234)',
+                                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                                borderWidth: 3,
+                                tension: 0.3,
+                                pointRadius: 5,
+                                pointHoverRadius: 7,
+                                pointBackgroundColor: 'rgb(102, 126, 234)',
+                                fill: true,
+                                segment: {
+                                    borderColor: ctx => {
+                                        const i = ctx.p0DataIndex;
+                                        const current = dailyTotals[i];
+                                        const next = dailyTotals[i + 1];
+                                        if (next === undefined) return 'rgb(102, 126, 234)';
+                                        return next < current 
+                                            ? 'rgba(0,200,0,1)'   // green when value drops
+                                            : 'rgba(255,0,0,1)';  // red when value rises
+                                    }
+                                }
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    min: yMin,
+                                    max: yMax,
+                                    ticks: { 
+                                        precision: 0, 
+                                        stepSize: approxStep,
+                                        callback: function(value) {
+                                            return value.toLocaleString();
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: { display: true },
+                                tooltip: {
+                                    backgroundColor: 'rgba(0,0,0,0.9)',
+                                    titleColor: 'white',
+                                    bodyColor: 'white',
+                                    borderColor: '#667eea',
+                                    borderWidth: 2,
+                                    callbacks: {
+                                        label: function(context) {
+                                            return 'Total: ' + context.parsed.y.toLocaleString();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                })
+                .catch(err => {
+                    console.error('Failed to load daily totals:', err);
+                    jq('#dailyTotalsLoading').text('Failed to load data.');
+                });
+        });
+
         // Open fullscreen chart
         window.openFullscreenChart = function() {
             const modal = new bootstrap.Modal(document.getElementById('fullscreenChartModal'));
@@ -1514,9 +1674,16 @@
             const totalDataset = {
                 label: 'Total Live Pending',
                 data: dailyTotals,
-                backgroundColor: 'rgba(102, 126, 234, 0.7)',
                 borderColor: 'rgb(102, 126, 234)',
-                borderWidth: 2
+                borderWidth: 3,
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                pointBackgroundColor: 'rgb(102, 126, 234)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2
             };
             
             // Destroy previous chart if exists
@@ -1525,7 +1692,7 @@
             }
             
             fullscreenChart = new Chart(ctx, {
-                type: 'bar',
+                type: 'line',
                 data: {
                     labels: dates,
                     datasets: [totalDataset]
@@ -1630,9 +1797,7 @@
                     interaction: {
                         mode: 'index',
                         intersect: false
-                    },
-                    barPercentage: 0.9,
-                    categoryPercentage: 0.8
+                    }
                 }
             });
         }
