@@ -20,6 +20,9 @@ class MetaAllAd extends Model
         'imp_l30',
         'spent_l30',
         'clicks_l30',
+        'imp_l7',
+        'spent_l7',
+        'clicks_l7',
     ];
 
     protected $casts = [
@@ -27,5 +30,8 @@ class MetaAllAd extends Model
         'spent_l30' => 'decimal:2',
         'imp_l30' => 'integer',
         'clicks_l30' => 'integer',
+        'spent_l7' => 'decimal:2',
+        'imp_l7' => 'integer',
+        'clicks_l7' => 'integer',
     ];
 }

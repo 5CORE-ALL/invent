@@ -30,11 +30,23 @@ class FacebookAddsManagerController extends Controller
 
         $data = [];
         foreach ($metaAds as $ad) {
-            // Get values
+            // Get L30 values
             $spend_l30 = $ad->spent_l30 ?? 0;
             $clicks_l30 = $ad->clicks_l30 ?? 0;
             $sales_l30 = 0; // TODO: Add sales data when available
             $units_sold_l30 = 0; // TODO: Add units sold data when available
+            
+            // Get L7 values
+            $spend_l7 = $ad->spent_l7 ?? 0;
+            $clicks_l7 = $ad->clicks_l7 ?? 0;
+            $sales_l7 = 0; // TODO: Add sales data when available
+            $units_sold_l7 = 0; // TODO: Add units sold data when available
+            
+            // L60 data (currently using L30 values)
+            $spend_l60 = $ad->spent_l30 ?? 0;
+            $clicks_l60 = $ad->clicks_l30 ?? 0;
+            $sales_l60 = 0; // TODO: Add sales data when available
+            $units_sold_l60 = 0; // TODO: Add units sold data when available
             
             // Calculate ACOS L30 using Amazon formula: ACOS = (Spend / Sales) * 100
             $acos_l30 = 0;
@@ -44,10 +56,38 @@ class FacebookAddsManagerController extends Controller
                 $acos_l30 = 100;
             }
             
+            // Calculate ACOS L60
+            $acos_l60 = 0;
+            if ($sales_l60 > 0) {
+                $acos_l60 = round(($spend_l60 / $sales_l60) * 100, 2);
+            } elseif ($spend_l60 > 0 && $sales_l60 == 0) {
+                $acos_l60 = 100;
+            }
+            
+            // Calculate ACOS L7
+            $acos_l7 = 0;
+            if ($sales_l7 > 0) {
+                $acos_l7 = round(($spend_l7 / $sales_l7) * 100, 2);
+            } elseif ($spend_l7 > 0 && $sales_l7 == 0) {
+                $acos_l7 = 100;
+            }
+            
             // Calculate CVR L30 using Amazon formula: CVR = (Units Sold / Clicks) * 100
             $cvr_l30 = null;
             if ($clicks_l30 > 0 && $units_sold_l30 > 0) {
                 $cvr_l30 = number_format(($units_sold_l30 / $clicks_l30) * 100, 2);
+            }
+            
+            // Calculate CVR L60
+            $cvr_l60 = null;
+            if ($clicks_l60 > 0 && $units_sold_l60 > 0) {
+                $cvr_l60 = number_format(($units_sold_l60 / $clicks_l60) * 100, 2);
+            }
+            
+            // Calculate CVR L7
+            $cvr_l7 = null;
+            if ($clicks_l7 > 0 && $units_sold_l7 > 0) {
+                $cvr_l7 = number_format(($units_sold_l7 / $clicks_l7) * 100, 2);
             }
             
             $data[] = [
@@ -57,25 +97,25 @@ class FacebookAddsManagerController extends Controller
                 'budget' => $ad->bgt ?? 0,
                 'impressions_l60' => $ad->imp_l30 ?? 0,
                 'impressions_l30' => $ad->imp_l30 ?? 0,
-                'impressions_l7' => 0,
-                'spend_l60' => $ad->spent_l30 ?? 0,
+                'impressions_l7' => $ad->imp_l7 ?? 0,
+                'spend_l60' => $spend_l60,
                 'spend_l30' => $spend_l30,
-                'spend_l7' => 0,
-                'clicks_l60' => $ad->clicks_l30 ?? 0,
+                'spend_l7' => $spend_l7,
+                'clicks_l60' => $clicks_l60,
                 'clicks_l30' => $clicks_l30,
-                'clicks_l7' => 0,
-                'sales_l60' => 0,
+                'clicks_l7' => $clicks_l7,
+                'sales_l60' => $sales_l60,
                 'sales_l30' => $sales_l30,
-                'sales_l7' => 0,
+                'sales_l7' => $sales_l7,
                 'sales_delivered_l60' => 0,
                 'sales_delivered_l30' => 0,
                 'sales_delivered_l7' => 0,
-                'acos_l60' => 0,
+                'acos_l60' => $acos_l60,
                 'acos_l30' => $acos_l30,
-                'acos_l7' => 0,
-                'cvr_l60' => null,
+                'acos_l7' => $acos_l7,
+                'cvr_l60' => $cvr_l60,
                 'cvr_l30' => $cvr_l30,
-                'cvr_l7' => null,
+                'cvr_l7' => $cvr_l7,
                 'status' => strtoupper($ad->campaign_delivery)
             ];
         }
@@ -109,310 +149,194 @@ class FacebookAddsManagerController extends Controller
         ]);
     }
 
-    public function importMetaAds(Request $request)
+    public function syncMetaAdsFromGoogleSheets()
     {
-        $request->validate([
-            'file' => 'required|mimes:csv,txt,xlsx,xls',
-        ]);
-
-        $file = $request->file('file');
-        $extension = $file->getClientOriginalExtension();
-        
-        // Handle Excel files
-        if (in_array($extension, ['xlsx', 'xls'])) {
-            return $this->importExcelMetaAds($file);
+        try {
+            // Get Apps Script web app URLs from environment
+            $l30Url = env('META_ADS_L30_SCRIPT_URL');
+            $l7Url = env('META_ADS_L7_SCRIPT_URL');
+            
+            if (!$l30Url || !$l7Url) {
+                throw new \Exception('Apps Script URLs not configured. Please set META_ADS_L30_SCRIPT_URL and META_ADS_L7_SCRIPT_URL in .env');
+            }
+            
+            // Sync L30 data
+            $l30Count = $this->syncL30Data($l30Url);
+            
+            // Sync L7 data
+            $l7Count = $this->syncL7Data($l7Url);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Data synced successfully',
+                'l30_synced' => $l30Count,
+                'l7_synced' => $l7Count,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Google Sheets Sync Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Error syncing data: ' . $e->getMessage()
+            ], 500);
         }
-        
-        // Handle CSV files
-        return $this->importCsvMetaAds($file);
     }
 
-    private function importCsvMetaAds($file)
+    private function syncL30Data($csvUrl)
     {
-        $handle = fopen($file->getPathname(), 'r');
-        if ($handle === false) {
-            return response()->json(['error' => 'Unable to open uploaded file'], 500);
+        // Fetch CSV data from Google Sheets
+        $response = @file_get_contents($csvUrl);
+        
+        if ($response === false) {
+            throw new \Exception('Failed to fetch L30 data from Google Sheets. Make sure the sheet is shared as "Anyone with the link can view"');
         }
-
-        // Skip empty lines and find first non-empty line
-        $firstLine = null;
-        while (($line = fgets($handle)) !== false) {
-            $trim = trim($line);
-            if ($trim !== '') { 
-                $firstLine = $line; 
-                break; 
+        
+        // Parse CSV
+        $lines = explode("\n", $response);
+        
+        if (empty($lines)) {
+            throw new \Exception('Empty CSV data from L30 sheet');
+        }
+        
+        // Find header row
+        $header = null;
+        $dataStartIndex = 0;
+        
+        foreach ($lines as $index => $line) {
+            if (trim($line) === '') continue;
+            
+            $row = str_getcsv($line);
+            $rowStr = strtolower(implode(',', $row));
+            
+            if (strpos($rowStr, 'campaign name') !== false && strpos($rowStr, 'campaign id') !== false) {
+                $header = $row;
+                $dataStartIndex = $index + 1;
+                break;
             }
         }
         
-        if ($firstLine === null) {
-            fclose($handle);
-            return response()->json(['error' => 'Empty file'], 422);
+        if (!$header) {
+            throw new \Exception('Header row not found in L30 CSV. Expected columns: Campaign name, Campaign ID, etc.');
         }
-
-        // Detect delimiter
-        $possibleDelimiters = [',', ';', "\t", '|'];
-        $bestDelimiter = ',';
-        $maxCount = 0;
-        foreach ($possibleDelimiters as $del) {
-            $parts = str_getcsv($firstLine, $del);
-            if (count($parts) > $maxCount) {
-                $maxCount = count($parts);
-                $bestDelimiter = $del;
-            }
-        }
-
-        rewind($handle);
-
-        // Read header row - skip summary rows if present
-        $headerRow = [];
-        $rowCount = 0;
-        while (($row = fgetcsv($handle, 0, $bestDelimiter)) !== false) {
-            $rowCount++;
-            $allEmpty = true;
-            foreach ($row as $c) { 
-                if (trim($c) !== '') { 
-                    $allEmpty = false; 
-                    break; 
-                } 
-            }
-            if ($allEmpty) continue;
-            
-            // Check if this row contains the expected headers
-            $rowStr = strtolower(implode(',', array_map('trim', $row)));
-            if (strpos($rowStr, 'campaign name') !== false && strpos($rowStr, 'campaign id') !== false) {
-                $headerRow = $row;
-                break;
-            }
-            
-            // If we've checked more than 5 rows without finding headers, use first non-empty
-            if ($rowCount > 5 && empty($headerRow)) {
-                $headerRow = $row;
-                break;
-            }
-        }
-
-        if (empty($headerRow)) {
-            fclose($handle);
-            return response()->json(['error' => 'No header row found'], 422);
-        }
-
-        $header = array_map(fn($h) => trim(preg_replace('/^\xEF\xBB\xBF/', '', $h)), $headerRow);
-
-        $requiredHeaders = [
-            'Campaign name',
-            'Campaign delivery',
-            'Ad set budget',
-            'Impressions',
-            'Amount spent (USD)',
-            'Link clicks',
-            'Campaign ID',
-        ];
-
-        $missing = array_diff($requiredHeaders, $header);
-        if (!empty($missing)) {
-            fclose($handle);
-            return response()->json(['error' => 'Missing required headers: ' . implode(', ', $missing)], 422);
-        }
-
+        
         $processed = 0;
-        $errors = [];
-
-        while (($row = fgetcsv($handle, 0, $bestDelimiter)) !== false) {
-            $allEmpty = true;
-            foreach ($row as $c) { 
-                if (trim($c) !== '') { 
-                    $allEmpty = false; 
-                    break; 
-                } 
-            }
-            if ($allEmpty) continue;
-
-            if (count($row) !== count($header)) continue;
-
+        
+        for ($i = $dataStartIndex; $i < count($lines); $i++) {
+            $line = trim($lines[$i]);
+            if ($line === '') continue;
+            
+            $row = str_getcsv($line);
+            
+            // Skip if row doesn't match header length
+            if (count($row) < count($header)) continue;
+            
             $rowData = array_combine($header, $row);
             if ($rowData === false) continue;
-
+            
             $campaignName = trim($rowData['Campaign name'] ?? '');
             $campaignId = trim($rowData['Campaign ID'] ?? '');
             $campaignDelivery = strtolower(trim($rowData['Campaign delivery'] ?? 'inactive'));
             
-            // Skip rows with empty campaign name or ID
-            if (!$campaignName || !$campaignId) continue;
+            // Skip invalid rows
+            if (!$campaignName || !$campaignId || $campaignId === '-' || strlen($campaignId) < 5) {
+                continue;
+            }
             
-            // Skip rows with placeholder or invalid campaign IDs
-            if ($campaignId === '-' || strlen($campaignId) < 5) continue;
-
-            // Parse numeric values
             $bgt = $this->parseNumericValue($rowData['Ad set budget'] ?? '0');
             $impL30 = $this->parseNumericValue($rowData['Impressions'] ?? '0');
             $spentL30 = $this->parseNumericValue($rowData['Amount spent (USD)'] ?? '0');
             $clicksL30 = $this->parseNumericValue($rowData['Link clicks'] ?? '0');
-
-            try {
-                MetaAllAd::updateOrCreate(
-                    ['campaign_name' => $campaignName],
-                    [
-                        'campaign_id' => $campaignId,
-                        'campaign_delivery' => $campaignDelivery,
-                        'bgt' => $bgt,
-                        'imp_l30' => $impL30,
-                        'spent_l30' => $spentL30,
-                        'clicks_l30' => $clicksL30,
-                    ]
-                );
-                $processed++;
-            } catch (\Exception $e) {
-                $errors[] = "Error processing campaign {$campaignName} (ID: {$campaignId}): " . $e->getMessage();
-                Log::error('Meta Ads Import Error', ['campaign' => $campaignName, 'campaign_id' => $campaignId, 'error' => $e->getMessage()]);
-            }
+            
+            MetaAllAd::updateOrCreate(
+                ['campaign_name' => $campaignName],
+                [
+                    'campaign_id' => $campaignId,
+                    'campaign_delivery' => $campaignDelivery,
+                    'bgt' => $bgt,
+                    'imp_l30' => $impL30,
+                    'spent_l30' => $spentL30,
+                    'clicks_l30' => $clicksL30,
+                ]
+            );
+            $processed++;
         }
-
-        fclose($handle);
-
-        if (!empty($errors)) {
-            return response()->json([
-                'success' => false,
-                'processed' => $processed,
-                'errors' => $errors
-            ], 422);
-        }
-
-        return response()->json([
-            'success' => true,
-            'processed' => $processed,
-        ]);
+        
+        return $processed;
     }
 
-    private function importExcelMetaAds($file)
+    private function syncL7Data($csvUrl)
     {
-        try {
-            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getPathname());
-            $worksheet = $spreadsheet->getActiveSheet();
-            $rows = $worksheet->toArray();
-
-            if (empty($rows)) {
-                return response()->json(['error' => 'Empty file'], 422);
-            }
-
-            // Find header row - skip summary rows if present
-            $header = null;
-            $dataStartIndex = 0;
-            foreach ($rows as $index => $row) {
-                $allEmpty = true;
-                foreach ($row as $cell) {
-                    if (trim($cell) !== '' && $cell !== null) {
-                        $allEmpty = false;
-                        break;
-                    }
-                }
-                if ($allEmpty) continue;
-                
-                // Check if this row contains the expected headers
-                $rowStr = strtolower(implode(',', array_map(function($c) { return trim($c ?? ''); }, $row)));
-                if (strpos($rowStr, 'campaign name') !== false && strpos($rowStr, 'campaign id') !== false) {
-                    $header = $row;
-                    $dataStartIndex = $index + 1;
-                    break;
-                }
-                
-                // If we've checked more than 5 rows, use first non-empty
-                if ($index > 5 && !$header) {
-                    $header = $row;
-                    $dataStartIndex = $index + 1;
-                    break;
-                }
-            }
-
-            if (!$header) {
-                return response()->json(['error' => 'No header row found'], 422);
-            }
-
-            $requiredHeaders = [
-                'Campaign name',
-                'Campaign delivery',
-                'Ad set budget',
-                'Impressions',
-                'Amount spent (USD)',
-                'Link clicks',
-                'Campaign ID',
-            ];
-
-            $missing = array_diff($requiredHeaders, $header);
-            if (!empty($missing)) {
-                return response()->json(['error' => 'Missing required headers: ' . implode(', ', $missing)], 422);
-            }
-
-            $processed = 0;
-            $errors = [];
-
-            for ($i = $dataStartIndex; $i < count($rows); $i++) {
-                $row = $rows[$i];
-                
-                $allEmpty = true;
-                foreach ($row as $cell) {
-                    if (trim($cell) !== '' && $cell !== null) {
-                        $allEmpty = false;
-                        break;
-                    }
-                }
-                if ($allEmpty) continue;
-
-                if (count($row) !== count($header)) continue;
-
-                $rowData = array_combine($header, $row);
-                if ($rowData === false) continue;
-
-                $campaignName = trim($rowData['Campaign name'] ?? '');
-                $campaignId = trim($rowData['Campaign ID'] ?? '');
-                $campaignDelivery = strtolower(trim($rowData['Campaign delivery'] ?? 'inactive'));
-                
-                // Skip rows with empty campaign name or ID
-                if (!$campaignName || !$campaignId) continue;
-                
-                // Skip rows with placeholder or invalid campaign IDs
-                if ($campaignId === '-' || strlen($campaignId) < 5) continue;
-
-                // Parse numeric values
-                $bgt = $this->parseNumericValue($rowData['Ad set budget'] ?? '0');
-                $impL30 = $this->parseNumericValue($rowData['Impressions'] ?? '0');
-                $spentL30 = $this->parseNumericValue($rowData['Amount spent (USD)'] ?? '0');
-                $clicksL30 = $this->parseNumericValue($rowData['Link clicks'] ?? '0');
-
-                try {
-                    MetaAllAd::updateOrCreate(
-                        ['campaign_name' => $campaignName],
-                        [
-                            'campaign_id' => $campaignId,
-                            'campaign_delivery' => $campaignDelivery,
-                            'bgt' => $bgt,
-                            'imp_l30' => $impL30,
-                            'spent_l30' => $spentL30,
-                            'clicks_l30' => $clicksL30,
-                        ]
-                    );
-                    $processed++;
-                } catch (\Exception $e) {
-                    $errors[] = "Error processing campaign {$campaignName} (ID: {$campaignId}): " . $e->getMessage();
-                    Log::error('Meta Ads Import Error', ['campaign' => $campaignName, 'campaign_id' => $campaignId, 'error' => $e->getMessage()]);
-                }
-            }
-
-            if (!empty($errors)) {
-                return response()->json([
-                    'success' => false,
-                    'processed' => $processed,
-                    'errors' => $errors
-                ], 422);
-            }
-
-            return response()->json([
-                'success' => true,
-                'processed' => $processed,
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Error processing Excel file: ' . $e->getMessage()], 500);
+        // Fetch CSV data from Google Sheets
+        $response = @file_get_contents($csvUrl);
+        
+        if ($response === false) {
+            throw new \Exception('Failed to fetch L7 data from Google Sheets. Make sure the sheet is shared as "Anyone with the link can view"');
         }
+        
+        // Parse CSV
+        $lines = explode("\n", $response);
+        
+        if (empty($lines)) {
+            throw new \Exception('Empty CSV data from L7 sheet');
+        }
+        
+        // Find header row
+        $header = null;
+        $dataStartIndex = 0;
+        
+        foreach ($lines as $index => $line) {
+            if (trim($line) === '') continue;
+            
+            $row = str_getcsv($line);
+            $rowStr = strtolower(implode(',', $row));
+            
+            if (strpos($rowStr, 'campaign name') !== false) {
+                $header = $row;
+                $dataStartIndex = $index + 1;
+                break;
+            }
+        }
+        
+        if (!$header) {
+            throw new \Exception('Header row not found in L7 CSV. Expected columns: Campaign name, Impressions, etc.');
+        }
+        
+        $processed = 0;
+        
+        for ($i = $dataStartIndex; $i < count($lines); $i++) {
+            $line = trim($lines[$i]);
+            if ($line === '') continue;
+            
+            $row = str_getcsv($line);
+            
+            // Skip if row doesn't match header length
+            if (count($row) < count($header)) continue;
+            
+            $rowData = array_combine($header, $row);
+            if ($rowData === false) continue;
+            
+            $campaignName = trim($rowData['Campaign name'] ?? '');
+            
+            // Skip invalid rows
+            if (!$campaignName) {
+                continue;
+            }
+            
+            $impL7 = $this->parseNumericValue($rowData['Impressions'] ?? '0');
+            $spentL7 = $this->parseNumericValue($rowData['Amount spent (USD)'] ?? '0');
+            $clicksL7 = $this->parseNumericValue($rowData['Link clicks'] ?? '0');
+            
+            // Only update if campaign exists
+            $metaAd = MetaAllAd::where('campaign_name', $campaignName)->first();
+            if ($metaAd) {
+                $metaAd->update([
+                    'imp_l7' => $impL7,
+                    'spent_l7' => $spentL7,
+                    'clicks_l7' => $clicksL7,
+                ]);
+                $processed++;
+            }
+        }
+        
+        return $processed;
     }
 
     private function parseNumericValue($value)
