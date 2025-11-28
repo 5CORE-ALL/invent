@@ -817,6 +817,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-analytics/export', [OverallAmazonController::class, 'exportAmazonAnalytics'])->name('amazon.analytics.export');
     Route::get('/amazon-analytics/sample', [OverallAmazonController::class, 'downloadSample'])->name('amazon.analytics.sample');
     Route::post('/import-amazon-ratings', [OverallAmazonController::class, 'importAmazonRatings']);
+    Route::get('/amazon-metrics-history', [OverallAmazonController::class, 'getMetricsHistory'])->name('amazon.metrics.history');
 
     //ebay 2 
     Route::get('/zero-ebay2', [Ebay2ZeroController::class, 'ebay2Zeroview'])->name('zero.ebay2');
@@ -917,6 +918,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
     Route::get('/ebay-pricing-data', [EbayController::class, 'ebayViewData'])->name('ebay.pricing.data');
     Route::get('/ebay-data-json', [EbayController::class, 'ebayDataJson'])->name('ebay.data.json');
+    Route::get('/ebay-metrics-history', [EbayController::class, 'getMetricsHistory'])->name('ebay.metrics.history');
     Route::get('/ebay-column-visibility', [EbayController::class, 'getEbayColumnVisibility'])->name('ebay.column.visibility.get');
     Route::post('/ebay-column-visibility', [EbayController::class, 'setEbayColumnVisibility'])->name('ebay.column.visibility.set');
     Route::get('/ebay-export', [EbayController::class, 'exportEbayPricingData'])->name('ebay.export');

@@ -10,6 +10,7 @@ use App\Models\FbaManualData;
 use App\Models\FbaMonthlySale;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\FbaMetricsHistory;
+use App\Models\FbaSkuDailyData;
 use App\Models\ProductMaster;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -195,6 +196,33 @@ class CollectFbaMetrics extends Command
                 } else {
                     Log::info("Updated existing metrics record for SKU: $sku on {$today->toDateString()}");
                 }
+                
+                // Calculate CVR: (l30_units / views) * 100
+                $cvr = 0;
+                if ($views > 0) {
+                    $cvr = ($l30Units / $views) * 100;
+                }
+                
+                // Store in new JSON format table
+                $dailyData = [
+                    'price' => round($price, 2),
+                    'views' => $views,
+                    'cvr_percent' => round($cvr, 2),
+                    'tacos_percent' => round($tacos, 2),
+                    'l30_units' => $l30Units,
+                    'gpft' => round($gpft, 2),
+                    'groi_percent' => round($groi, 2),
+                ];
+                
+                FbaSkuDailyData::updateOrCreate(
+                    [
+                        'sku' => $sku,
+                        'record_date' => $today,
+                    ],
+                    [
+                        'daily_data' => $dailyData,
+                    ]
+                );
                 
                 $collected++;
             } catch (\Exception $e) {

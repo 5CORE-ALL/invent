@@ -15,12 +15,14 @@ use App\Models\ChannelMaster;
 use App\Models\ADVMastersData;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
+use App\Models\EbaySkuDailyData;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\EbayListingStatus;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Carbon\Carbon;
 use Exception;
 
 class EbayController extends Controller
@@ -1146,5 +1148,124 @@ class EbayController extends Controller
             Log::error('Error exporting eBay pricing data: ' . $e->getMessage());
             return back()->with('error', 'Failed to export data: ' . $e->getMessage());
         }
+    }
+
+    public function getMetricsHistory(Request $request)
+    {
+        $days = $request->input('days', 7); // Default to last 7 days
+        $sku = $request->input('sku'); // Optional SKU filter
+        
+        // Ensure minimum 7 days if pulling from today
+        $minDays = 7;
+        if ($days < $minDays) {
+            $days = $minDays;
+        }
+        
+        $startDate = Carbon::today()->subDays($days - 1); // -1 to include today
+        $endDate = Carbon::today();
+        
+        $chartData = [];
+        $dataByDate = []; // Store data by date for filling gaps
+        
+        try {
+            // Try to use the new table for JSON format data
+            $query = EbaySkuDailyData::where('record_date', '>=', $startDate)
+                ->where('record_date', '<=', $endDate)
+                ->orderBy('record_date', 'asc');
+            
+            // If SKU is provided, return data for specific SKU
+            if ($sku) {
+                $metricsData = $query->where('sku', strtoupper(trim($sku)))->get();
+                
+                foreach ($metricsData as $record) {
+                    $data = $record->daily_data;
+                    $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                        'price' => round($data['price'] ?? 0, 2),
+                        'views' => $data['views'] ?? 0,
+                        'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
+                        'ad_percent' => round($data['ad_percent'] ?? 0, 2),
+                    ];
+                }
+            } else {
+                // Aggregate data for all SKUs
+                $metricsData = $query->get()->groupBy('record_date');
+                
+                foreach ($metricsData as $date => $records) {
+                    $dateKey = Carbon::parse($date)->format('Y-m-d');
+                    
+                    // Calculate weighted average price (same as summary badge: price * ebay_l30 / sum ebay_l30)
+                    $totalWeightedPrice = 0;
+                    $totalL30 = 0;
+                    foreach ($records as $record) {
+                        $price = floatval($record->daily_data['price'] ?? 0);
+                        $ebayL30 = floatval($record->daily_data['ebay_l30'] ?? 0);
+                        $totalWeightedPrice += $price * $ebayL30;
+                        $totalL30 += $ebayL30;
+                    }
+                    $avgPrice = $totalL30 > 0 ? ($totalWeightedPrice / $totalL30) : 0;
+                    
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => Carbon::parse($date)->format('M d'),
+                        'avg_price' => round($avgPrice, 2),
+                        'total_views' => $records->sum(function($r) { return $r->daily_data['views'] ?? 0; }),
+                        'avg_cvr_percent' => round($records->avg(function($r) { return $r->daily_data['cvr_percent'] ?? 0; }), 2),
+                        'avg_ad_percent' => round($records->avg(function($r) { return $r->daily_data['ad_percent'] ?? 0; }), 2),
+                    ];
+                }
+            }
+            
+            // If no data found in new table, try fallback to ebay_one_metrics
+            if (empty($dataByDate)) {
+                throw new \Exception('No data in new table, trying fallback');
+            }
+            
+        } catch (\Exception $e) {
+            // Fallback: Since ebay_one_metrics doesn't have historical daily data,
+            // we'll just return empty data and let the frontend handle it
+            Log::info('No eBay daily metrics data available. Historical data will be populated by metrics collection command.');
+        }
+
+        // Fill in missing dates with zero values to ensure at least 7 days
+        $currentDate = Carbon::parse($startDate);
+        $today = Carbon::today();
+        
+        while ($currentDate->lte($today)) {
+            $dateKey = $currentDate->format('Y-m-d');
+            
+            if (!isset($dataByDate[$dateKey])) {
+                // Fill missing date with zero values
+                if ($sku) {
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'price' => 0,
+                        'views' => 0,
+                        'cvr_percent' => 0,
+                        'ad_percent' => 0,
+                    ];
+                } else {
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'avg_price' => 0,
+                        'total_views' => 0,
+                        'avg_cvr_percent' => 0,
+                        'avg_ad_percent' => 0,
+                    ];
+                }
+            }
+            
+            $currentDate->addDay();
+        }
+        
+        // Sort by date and convert to array
+        ksort($dataByDate);
+        $chartData = array_values($dataByDate);
+
+        return response()->json($chartData);
     }
 }

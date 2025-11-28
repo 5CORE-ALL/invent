@@ -2411,4 +2411,133 @@ class OverallAmazonController extends Controller
             return response()->json(['error' => 'Error importing ratings: ' . $e->getMessage()]);
         }
     }
+
+    public function getMetricsHistory(Request $request)
+    {
+        $days = $request->input('days', 7); // Default to last 7 days
+        $sku = $request->input('sku'); // Optional SKU filter
+        $skus = $request->input('skus'); // Optional array of SKUs to filter (for INV > 0)
+        
+        // Ensure minimum 7 days if pulling from today
+        $minDays = 7;
+        if ($days < $minDays) {
+            $days = $minDays;
+        }
+        
+        $startDate = \Carbon\Carbon::today()->subDays($days - 1); // -1 to include today
+        $endDate = \Carbon\Carbon::today();
+        
+        $chartData = [];
+        $dataByDate = []; // Store data by date for filling gaps
+        
+        try {
+            // Try to use the new table for JSON format data
+            $query = \App\Models\AmazonSkuDailyData::where('record_date', '>=', $startDate)
+                ->where('record_date', '<=', $endDate)
+                ->orderBy('record_date', 'asc');
+            
+            // If SKU is provided, return data for specific SKU
+            if ($sku) {
+                $metricsData = $query->where('sku', strtoupper(trim($sku)))->get();
+                
+                foreach ($metricsData as $record) {
+                    $data = $record->daily_data;
+                    $dateKey = \Carbon\Carbon::parse($record->record_date)->format('Y-m-d');
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => \Carbon\Carbon::parse($record->record_date)->format('M d'),
+                        'price' => round($data['price'] ?? 0, 2),
+                        'views' => $data['views'] ?? 0,
+                        'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
+                        'ad_percent' => round($data['ad_percent'] ?? 0, 2),
+                    ];
+                }
+            } else {
+                // If SKUs array is provided, filter by those SKUs (for INV > 0 filtering)
+                if ($skus) {
+                    $skuArray = is_string($skus) ? json_decode($skus, true) : $skus;
+                    if (is_array($skuArray) && count($skuArray) > 0) {
+                        $query->whereIn('sku', array_map(function($sku) {
+                            return strtoupper(trim($sku));
+                        }, $skuArray));
+                    }
+                }
+                
+                // Aggregate data for filtered SKUs
+                $metricsData = $query->get()->groupBy('record_date');
+                
+                foreach ($metricsData as $date => $records) {
+                    $dateKey = \Carbon\Carbon::parse($date)->format('Y-m-d');
+                    
+                    // Calculate weighted average price (same as summary badge: price * a_l30 / sum a_l30)
+                    $totalWeightedPrice = 0;
+                    $totalL30 = 0;
+                    foreach ($records as $record) {
+                        $price = floatval($record->daily_data['price'] ?? 0);
+                        $aL30 = floatval($record->daily_data['a_l30'] ?? 0);
+                        $totalWeightedPrice += $price * $aL30;
+                        $totalL30 += $aL30;
+                    }
+                    $avgPrice = $totalL30 > 0 ? ($totalWeightedPrice / $totalL30) : 0;
+                    
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => \Carbon\Carbon::parse($date)->format('M d'),
+                        'avg_price' => round($avgPrice, 2),
+                        'total_views' => $records->sum(function($r) { return $r->daily_data['views'] ?? 0; }),
+                        'avg_cvr_percent' => round($records->avg(function($r) { return $r->daily_data['cvr_percent'] ?? 0; }), 2),
+                        'avg_ad_percent' => round($records->avg(function($r) { return $r->daily_data['ad_percent'] ?? 0; }), 2),
+                    ];
+                }
+            }
+            
+            // If no data found in new table, try fallback
+            if (empty($dataByDate)) {
+                throw new \Exception('No data in new table, trying fallback');
+            }
+            
+        } catch (\Exception $e) {
+            // Fallback: Return empty data and let the frontend handle it
+            Log::info('No Amazon daily metrics data available. Historical data will be populated by metrics collection command.');
+        }
+
+        // Fill in missing dates with zero values to ensure at least 7 days
+        $currentDate = \Carbon\Carbon::parse($startDate);
+        $today = \Carbon\Carbon::today();
+        
+        while ($currentDate->lte($today)) {
+            $dateKey = $currentDate->format('Y-m-d');
+            
+            if (!isset($dataByDate[$dateKey])) {
+                // Fill missing date with zero values
+                if ($sku) {
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'price' => 0,
+                        'views' => 0,
+                        'cvr_percent' => 0,
+                        'ad_percent' => 0,
+                    ];
+                } else {
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'avg_price' => 0,
+                        'total_views' => 0,
+                        'avg_cvr_percent' => 0,
+                        'avg_ad_percent' => 0,
+                    ];
+                }
+            }
+            
+            $currentDate->addDay();
+        }
+        
+        // Sort by date and convert to array
+        ksort($dataByDate);
+        $chartData = array_values($dataByDate);
+
+        return response()->json($chartData);
+    }
 }
