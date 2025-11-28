@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Campaigns;
 use App\Http\Controllers\Controller;
 use App\Models\EbayDataView;
 use App\Models\EbayGeneralReport;
+use App\Models\EbayListingStatus;
 use App\Models\EbayMetric;
 use App\Models\EbayPriorityReport;
 use App\Models\MarketplacePercentage;
@@ -192,7 +193,8 @@ class EbayPMPAdsController extends Controller
             return [$normalizedSku => $item];
         });
         
-        $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
+        $nrValues = EbayListingStatus::whereIn("sku", $skus)->pluck("value", "sku");
+        $ebayDataValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
 
         $itemIdToSku = $ebayMetrics->pluck('sku', 'item_id')->toArray();
         $campaignIdToSku = $ebayMetrics->pluck('sku', 'campaign_id')->toArray();
@@ -388,19 +390,30 @@ class EbayPMPAdsController extends Controller
             $row['Live'] = null;
             $row['APlus'] = null;
 
+            // Get nr_req from EbayListingStatus
             if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
+                $nrRaw = $nrValues[$pm->sku];
+                if (!is_array($nrRaw)) {
+                    $nrRaw = json_decode($nrRaw, true);
                 }
-                if (is_array($raw)) {
-                    $row['NRL'] = $raw['NRL'] ?? null;
-                    $row['SPRICE'] = $raw['SPRICE'] ?? null;
-                    $row['SPFT'] = $raw['SPFT'] ?? null;
-                    $row['SROI'] = $raw['SROI'] ?? null;
-                    $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
-                    $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
-                    $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
+                if (is_array($nrRaw)) {
+                    $row['NRL'] = $nrRaw['nr_req'] ?? null;
+                }
+            }
+
+            // Get other fields from EbayDataView
+            if (isset($ebayDataValues[$pm->sku])) {
+                $ebayRaw = $ebayDataValues[$pm->sku];
+                if (!is_array($ebayRaw)) {
+                    $ebayRaw = json_decode($ebayRaw, true);
+                }
+                if (is_array($ebayRaw)) {
+                    $row['SPRICE'] = $ebayRaw['SPRICE'] ?? null;
+                    $row['SPFT'] = $ebayRaw['SPFT'] ?? null;
+                    $row['SROI'] = $ebayRaw['SROI'] ?? null;
+                    $row['Listed'] = isset($ebayRaw['Listed']) ? filter_var($ebayRaw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
+                    $row['Live'] = isset($ebayRaw['Live']) ? filter_var($ebayRaw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
+                    $row['APlus'] = isset($ebayRaw['APlus']) ? filter_var($ebayRaw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
                 }
             }
 

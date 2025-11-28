@@ -812,6 +812,34 @@ class EbayController extends Controller
 
     public function updateListedLive(Request $request)
     {
+        // Handle NRL updates
+        if ($request->has('nr_req')) {
+            Log::info('NRL Update Request', $request->all());
+            
+            $request->validate([
+                'sku'    => 'required|string',
+                'nr_req' => 'required|in:REQ,NR,LATER',
+            ]);
+
+            // Update EbayListingStatus for NRL
+            $listingStatus = EbayListingStatus::firstOrCreate(
+                ['sku' => $request->sku],
+                ['value' => []]
+            );
+
+            $currentValue = is_array($listingStatus->value)
+                ? $listingStatus->value
+                : (json_decode($listingStatus->value, true) ?? []);
+
+            $currentValue['nr_req'] = $request->nr_req;
+            $listingStatus->value = $currentValue;
+            $listingStatus->save();
+
+            Log::info('NRL Update Success', ['sku' => $request->sku, 'nr_req' => $request->nr_req]);
+            return response()->json(['success' => true]);
+        }
+
+        // Original validation for Listed/Live
         $request->validate([
             'sku'   => 'required|string',
             'field' => 'required|in:Listed,Live',

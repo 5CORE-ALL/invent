@@ -217,7 +217,7 @@
                                                 <option value="RA">RA</option>
                                                 <option value="NRA KW">NRA KW</option>
                                                 <option value="NRA PMT">NRA PMT</option>
-                                                <option value="NRA BOTH">NRA BOTH</option>
+                                                <option value="NRA">NRA BOTH</option>
                                                 <option value="LATER">Later</option>
                                             </select>
 
@@ -398,7 +398,7 @@
 
                             let bgColor =
                             "background-color:#28a745;color:#000;"; // Default green for RA
-                            if (value === "NRA KW" || value === "NRA PMT" || value === "NRA BOTH") {
+                            if (value === "NRA KW" || value === "NRA PMT" || value === "NRA") {
                                 bgColor = "background-color:#dc3545;color:#fff;"; // red for NRA variants
                             } else if (value === "LATER") {
                                 bgColor = "background-color:#ffc107;color:#000;"; // yellow
@@ -412,7 +412,7 @@
                                     <option value="RA" ${value === 'RA' ? 'selected' : ''}>RA</option>
                                     <option value="NRA KW" ${value === 'NRA KW' ? 'selected' : ''}>NRA KW</option>
                                     <option value="NRA PMT" ${value === 'NRA PMT' ? 'selected' : ''}>NRA PMT</option>
-                                    <option value="NRA BOTH" ${value === 'NRA BOTH' ? 'selected' : ''}>NRA BOTH</option>
+                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>NRA BOTH</option>
                                     <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
                                 </select>
                             `;
@@ -534,7 +534,7 @@
                     let value = e.target.value;
 
                     // Set background color if NRA
-                    if (field === "NRA" && (value === "NRA KW" || value === "NRA PMT" || value === "NRA BOTH")) {
+                    if (field === "NRA" && (value === "NRA KW" || value === "NRA PMT" || value === "NRA")) {
                         e.target.style.backgroundColor = "#dc3545";
                         e.target.style.color = "#fff";
                     } else if (field === "NRA" && value === "RA") {

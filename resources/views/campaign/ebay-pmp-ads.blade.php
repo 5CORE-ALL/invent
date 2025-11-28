@@ -1128,6 +1128,24 @@
                             </ul>
                         </div>
 
+                        <!-- PmtClkL7 Filter -->
+                        <div class="dropdown manual-dropdown-container ">
+                            <button class="btn btn-light dropdown-toggle" type="button" id="pmtClkL7FilterDropdown">
+                                <span class="status-circle default"></span> PmtClkL7
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="pmtClkL7FilterDropdown">
+                                <li><a class="dropdown-item column-filter" href="#" data-column="PmtClkL7"
+                                        data-color="all">
+                                        <span class="status-circle default"></span> All PmtClkL7</a></li>
+                                <li><a class="dropdown-item column-filter" href="#" data-column="PmtClkL7"
+                                        data-color="red">
+                                        <span class="status-circle red"></span> Red</a></li>
+                                <li><a class="dropdown-item column-filter" href="#" data-column="PmtClkL7"
+                                        data-color="green">
+                                        <span class="status-circle green"></span> Green </a></li>
+                            </ul>
+                        </div>
+
                         <!-- A Dil% Filter -->
                         <div class="dropdown manual-dropdown-container ">
                             <button class="btn btn-light dropdown-toggle" type="button" id="ovClicksFilterDropdown">
@@ -1444,8 +1462,8 @@
                                     <label for="nra-filter" class="mr-2">NRL:</label>
                                     <select id="nra-filter" class="form-control form-control-sm">
                                         <option value="all">All</option>
-                                        <option value="RL">RL</option>
-                                        <option value="NRL">NRL</option>
+                                        <option value="REQ">RL</option>
+                                        <option value="NR">NRL</option>
                                         <option value="LATER">LATER</option>
                                     </select>
                                 </div>
@@ -1582,6 +1600,15 @@
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="cvr-total">0%</div>
+                                        </div>
+                                    </th>
+                                    <th data-field="pmtclkl7" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                PmtClkL7 <span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="pmtclkl7-total">0</div>
                                         </div>
                                     </th>
                                     <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
@@ -2233,6 +2260,7 @@
                 filters: {
                     'ov_dil': 'all',
                     'E Dil%': 'all',
+                    'PmtClkL7': 'all',
                     'PmtClkL30': 'all',
                     'PFT %': 'all',
                     'Roi': 'all',
@@ -3005,57 +3033,19 @@
 
                     $row.append($('<td data-field="esbid">').text(item.ESBID));
                     
-                    let sbid = 0;
-                    let sbidColor = "";
-                    const percent = Math.round(item.ov_dil * 100);
+                    // Calculate adjusted CBID based on PmtClkL7
+                    let adjustedCbid = parseFloat(item.CBID) || 0;
+                    let cbidColor = "";
+                    const pmtClkL7 = parseFloat(item.raw_data.PmtClkL7) || 0;
 
-                    if (percent < 16.66) {
-                        sbid = 8;      
-                        sbidColor = "red";
-                    } else if (percent >= 16.66 && percent < 25) {
-                        sbid = 6;     
-                        sbidColor = "yellow";
-                    } else if (percent >= 25 && percent < 50) {
-                        sbid = 4;       
-                        sbidColor = "green";
+                    if (pmtClkL7 < 70) {
+                        adjustedCbid = adjustedCbid + 0.05;
+                        cbidColor = "green"; // Increase bid
+                    } else if (pmtClkL7 > 140) {
+                        adjustedCbid = adjustedCbid - 0.05;
+                        cbidColor = "red"; // Decrease bid
                     } else {
-                        sbid = 2;     
-                        sbidColor = "pink";
-                    }
-
-                    const viewsLow = item.VIEWS < 150;
-                    const noSale = item['eBay L30'] === 0;
-
-                    if (sbidColor === "pink") {
-                        if (viewsLow) {
-                            sbid = 4;
-                        } else {
-                            sbid = 2;
-                        }
-                    }
-
-                    if (sbidColor === "green") {
-                        if (noSale) {
-                            sbid = viewsLow ? 10 : 7;
-                        } else {
-                            sbid = viewsLow ? 7 : 5;
-                        }
-                    }
-
-                    if (sbidColor === "yellow") {
-                        if (noSale) {
-                            sbid = viewsLow ? 10 : 10;
-                        } else {
-                            sbid = viewsLow ? 10 : 8;
-                        }
-                    }
-
-                    if (sbidColor === "red") {
-                        if (noSale) {
-                            sbid = viewsLow ? 10 : 10;
-                        } else {
-                            sbid = viewsLow ? 10 : 10;
-                        }
+                        cbidColor = "yellow"; // Keep current bid
                     }
 
                     let reqViews = item.INV * 10;
@@ -3068,8 +3058,8 @@
                     }
 
                     $row.append($('<td data-field="sbid">').html(
-                        `<span class="dil-percent-value ${sbidColor}">
-                           ${sbid}
+                        `<span class="dil-percent-value ${cbidColor}">
+                           ${adjustedCbid.toFixed(2)}
                         </span>`
                     ));
 
@@ -3093,6 +3083,11 @@
                         `<span class="dil-percent-value" style="color: ${getCvrColor(scvr)}">
                            ${scvr.toFixed(0)}%
                         </span>`
+                    ));
+
+                    // PmtClkL7 with color coding
+                    $row.append($('<td>').html(
+                        `<span class="dil-percent-value ${getViewColor(item.raw_data.PmtClkL7 || 0)}">${Math.round(item.raw_data.PmtClkL7 || 0)}</span>`
                     ));
 
                     // PmtClkL30 with tooltip icon (no color coding)
@@ -3263,21 +3258,21 @@
                     if (item.is_parent) {
                         $row.append($('<td>')); // Empty cell for parent
                     } else {
-                        let currentNR = (item.NRL === 'RL' || item.NRL === 'NRL' || item.NRL === 'LATER') ? item.NRL : 'RL';
+                        let currentNR = (item.NRL === 'REQ' || item.NRL === 'NR' || item.NRL === 'LATER') ? item.NRL : 'REQ';
 
                         const $select = $(`
                             <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                                <option value="RL" ${currentNR === 'RL' ? 'selected' : ''}>RL</option>
-                                <option value="NRL" ${currentNR === 'NRL' ? 'selected' : ''}>NRL</option>
+                                <option value="REQ" ${currentNR === 'REQ' ? 'selected' : ''}>RL</option>
+                                <option value="NR" ${currentNR === 'NR' ? 'selected' : ''}>NRL</option>
                                 <option value="LATER" ${currentNR === 'LATER' ? 'selected' : ''}>LATER</option>
                             </select>
                         `);
 
                         // Set background color based on value
-                        if (currentNR === 'NRL') {
+                        if (currentNR === 'NR') {
                             $select.css('background-color', '#dc3545');
                             $select.css('color', '#ffffff');
-                        } else if (currentNR === 'RL') {
+                        } else if (currentNR === 'REQ') {
                             $select.css('background-color', '#28a745');
                             $select.css('color', '#ffffff');
                         }
@@ -3456,7 +3451,7 @@
                     const sku = $select.data('sku');
 
                     // Change background color based on selected value
-                    if (newValue === 'NRL') {
+                    if (newValue === 'NR') {
                         $select.css('background-color', '#dc3545').css('color', '#ffffff');
                     } else {
                         $select.css('background-color', '#28a745').css('color', '#ffffff');
@@ -3464,11 +3459,11 @@
 
                     // Send AJAX
                     $.ajax({
-                        url: '/ebay/save-nr',
+                        url: '/ebay/update-listed-live',
                         type: 'POST',
                         data: {
                             sku: sku,
-                            nrl: newValue,
+                            nr_req: newValue,
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
@@ -3489,7 +3484,10 @@
                             renderTable();
                         },
                         error: function(xhr) {
-                            showNotification('danger', 'Failed to update.');
+                            console.error('NRL Update Error:', xhr.responseText);
+                            console.error('Status:', xhr.status);
+                            console.error('Response JSON:', xhr.responseJSON);
+                            showNotification('danger', 'Failed to update NRL: ' + (xhr.responseJSON?.message || xhr.statusText));
                         }
                     });
                 });
@@ -3589,6 +3587,10 @@
                     switch (type.toLowerCase()) {
                         case 'conversion view':
                             fieldsToDisplay = [{
+                                    title: 'PmtClkL7',
+                                    content: selectedItem['PmtClkL7']
+                                },
+                                {
                                     title: 'PmtClkL30',
                                     content: selectedItem['PmtClkL30']
                                 },
@@ -5229,8 +5231,8 @@
                 if (nraFilter && nraFilter !== 'all') {
                     filteredData = filteredData.filter(item => {
                         const nra = (item.NRL || '').toUpperCase();
-                        if (nraFilter === 'RL') return nra === 'RL';
-                        if (nraFilter === 'NRL') return nra === 'NRL';
+                        if (nraFilter === 'REQ') return nra === 'REQ';
+                        if (nraFilter === 'NR') return nra === 'NR';
                         if (nraFilter === 'LATER') return nra === 'LATER';
                         return true;
                     });
@@ -5382,6 +5384,7 @@
                         ovDilTotal: 0,
                         el30Total: 0,
                         eDilTotal: 0,
+                        pmtClkL7Total: 0,
                         viewsTotal: 0,
                         profitSum: 0, // <-- new
                         salesL30Sum: 0, // <-- new
@@ -5428,6 +5431,7 @@
                         metrics.invTotal += parseFloat(item.INV) || 0;
                         metrics.ovL30Total += parseFloat(item.L30) || 0;
                         metrics.el30Total += parseFloat(item['eBay L30']) || 0;
+                        metrics.pmtClkL7Total += parseFloat(rawData.PmtClkL7) || 0;
                         metrics.viewsTotal += parseFloat(item['PmtClkL30']) || 0;
                         let views = parseFloat(item['PmtClkL30']) || 0;
                         if (item.NR !== 'NRA') {
@@ -5454,6 +5458,7 @@
                     $('#ovdil-total').text(Math.round(metrics.ovDilTotal) + '%');
                     $('#el30-total').text(metrics.el30Total.toLocaleString());
                     $('#eDil-total').text(Math.round(metrics.eDilTotal) + '%');
+                    $('#pmtclkl7-total').text(metrics.pmtClkL7Total.toLocaleString());
                     $('#views-total').text(metrics.viewsTotal.toLocaleString());
                     $('#listed-total').text(metrics.listedCount.toLocaleString());
                     $('#live-total').text(metrics.liveCount.toLocaleString());
@@ -5481,6 +5486,7 @@
                 $('#ovdil-total').text('0%');
                 $('#el30-total').text('0');
                 $('#eDil-total').text('0%');
+                $('#pmtclkl7-total').text('0');
                 $('#views-total').text('0');
                 $('#pft-total').text('0%');
                 $('#roi-total').text('0%');

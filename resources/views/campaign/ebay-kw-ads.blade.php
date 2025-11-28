@@ -844,8 +844,8 @@
                             }
 
                             let bgColor = "";
-                            if (value === "NRA") {
-                                bgColor = "background-color:#dc3545;color:#fff;"; // red
+                            if (value === "NRA KW" || value === "NRA PMT" || value === "NRA") {
+                                bgColor = "background-color:#dc3545;color:#fff;"; // red for NRA variants
                             } else if (value === "RA") {
                                 bgColor = "background-color:#28a745;color:#fff;"; // green
                             } else if (value === "LATER") {
@@ -856,9 +856,11 @@
                                 <select class="form-select form-select-sm editable-select" 
                                         data-sku="${sku}" 
                                         data-field="NR"
-                                        style="width: 100px; ${bgColor}">
+                                        style="width: 120px; ${bgColor}">
                                     <option value="RA" ${value === 'RA' ? 'selected' : ''}>RA</option>
-                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>NRA</option>
+                                    <option value="NRA KW" ${value === 'NRA KW' ? 'selected' : ''}>NRA KW</option>
+                                    <option value="NRA PMT" ${value === 'NRA PMT' ? 'selected' : ''}>NRA PMT</option>
+                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>NRA BOTH</option>
                                     <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
                                 </select>
                             `;
@@ -1478,6 +1480,18 @@
                     let sku = e.target.getAttribute("data-sku");
                     let field = e.target.getAttribute("data-field");
                     let value = e.target.value;
+
+                    // Set background color based on NRA value
+                    if (field === "NR" && (value === "NRA KW" || value === "NRA PMT" || value === "NRA")) {
+                        e.target.style.backgroundColor = "#dc3545";
+                        e.target.style.color = "#fff";
+                    } else if (field === "NR" && value === "RA") {
+                        e.target.style.backgroundColor = "#28a745";
+                        e.target.style.color = "#fff";
+                    } else if (field === "NR" && value === "LATER") {
+                        e.target.style.backgroundColor = "#ffc107";
+                        e.target.style.color = "#000";
+                    }
 
                     fetch('/update-ebay-nr-data', {
                             method: 'POST',
