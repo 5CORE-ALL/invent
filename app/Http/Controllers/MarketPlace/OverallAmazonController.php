@@ -1657,6 +1657,7 @@ class OverallAmazonController extends Controller
                     $row['SROI'] = $raw['SROI'] ?? null;
                     $row['SGPFT'] = $raw['SGPFT'] ?? null;
                     $row['ad_spend'] = $raw['Spend_L30'] ?? null;
+                    $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? null; // Status: 'pushed', 'applied', 'error'
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
@@ -2033,6 +2034,107 @@ class OverallAmazonController extends Controller
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
             'sgpft_percent' => $sgpft
+        ]);
+    }
+
+    public function applyAmazonPrice(Request $request)
+    {
+        $sku = strtoupper(trim($request->input('sku')));
+        $price = $request->input('price');
+
+        // ✅ Validate price before pushing to Amazon
+        if (!$price || $price <= 0 || !is_numeric($price)) {
+            // Save error status
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json([
+                'success' => false,
+                'error' => 'Invalid price. Price must be greater than 0.'
+            ], 400);
+        }
+
+        try {
+            $service = new AmazonSpApiService();
+            $result = $service->updateAmazonPriceUS($sku, $price);
+
+            // Check if the response indicates errors
+            if (isset($result['errors']) && !empty($result['errors'])) {
+                // Save error status
+                $this->saveSpriceStatus($sku, 'error');
+                return response()->json($result);
+            }
+
+            // Check if response indicates success (pushed)
+            // If no errors, consider it pushed initially
+            $this->saveSpriceStatus($sku, 'pushed');
+            
+            // Note: 'applied' status would be set later if we get confirmation from Amazon
+            // For now, we'll use 'pushed' for successful API calls
+            
+            return response()->json($result);
+        } catch (\Exception $e) {
+            // Save error status
+            $this->saveSpriceStatus($sku, 'error');
+            Log::error('Exception in applyAmazonPrice', [
+                'sku' => $sku,
+                'price' => $price,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'errors' => [['message' => $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    /**
+     * Save SPRICE status to database
+     * Status: 'pushed', 'applied', 'error'
+     */
+    private function saveSpriceStatus($sku, $status)
+    {
+        try {
+            $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+            
+            // Decode value column safely
+            $existing = is_array($amazonDataView->value)
+                ? $amazonDataView->value
+                : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+            
+            // Save status
+            $existing['SPRICE_STATUS'] = $status;
+            $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            
+            $amazonDataView->value = $existing;
+            $amazonDataView->save();
+            
+            Log::info('SPRICE status saved', ['sku' => $sku, 'status' => $status]);
+        } catch (\Exception $e) {
+            Log::error('Failed to save SPRICE status', [
+                'sku' => $sku,
+                'status' => $status,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Update SPRICE status manually
+     */
+    public function updateSpriceStatus(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'status' => 'required|in:pushed,applied,error'
+        ]);
+
+        $sku = strtoupper(trim($request->input('sku')));
+        $status = $request->input('status');
+
+        $this->saveSpriceStatus($sku, $status);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Status updated successfully',
+            'status' => $status
         ]);
     }
 
