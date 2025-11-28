@@ -168,8 +168,8 @@
                             <!-- Stats -->
                             <div class="col-md-6">
                                 <div class="d-flex gap-2 justify-content-end">
-                                    <button type="button" class="btn btn-sm btn-info" id="import-btn">
-                                        <i class="fa fa-upload me-1"></i>Import
+                                    <button type="button" class="btn btn-sm btn-success" id="sync-btn">
+                                        <i class="fa fa-sync me-1"></i>Sync from Google Sheets
                                     </button>
                                     <button class="btn btn-success btn-md">
                                         <i class="fa fa-bullhorn me-1"></i>
@@ -191,39 +191,6 @@
                                         <input type="text" id="global-search" class="form-control form-control-md"
                                             placeholder="Search campaign...">
                                     </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Import Modal -->
-                    <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-dialog-centered">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Import Meta Ads Data</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-
-                                <div class="modal-body">
-                                    <a href="{{ asset('sample_excel/sample_meta_ads.csv') }}" download class="btn btn-outline-secondary mb-3">
-                                        <i class="fa fa-download me-1"></i> Download Sample File
-                                    </a>
-
-                                    <input type="file" id="importFile" name="file" accept=".xlsx,.xls,.csv" class="form-control" />
-                                    
-                                    <div class="mt-3">
-                                        <small class="text-muted">
-                                            <strong>Required Columns:</strong> Campaign name, Campaign delivery, Ad set budget, Impressions, Amount spent (USD), Link clicks, Campaign ID
-                                        </small>
-                                    </div>
-                                </div>
-
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-primary" id="confirmImportBtn">
-                                        <i class="fa fa-upload me-1"></i>Import
-                                    </button>
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                 </div>
                             </div>
                         </div>
@@ -630,49 +597,32 @@
                 updateCampaignStats();
             });
 
-            $('#import-btn').on('click', function () {
-                $('#importModal').modal('show');
-            });
-
-            $(document).on('click', '#confirmImportBtn', function () {
-                let file = $('#importFile')[0].files[0];
-                if (!file) {
-                    alert('Please select a file to import.');
+            // Sync from Google Sheets
+            $('#sync-btn').on('click', function () {
+                if (!confirm('This will sync data from Google Sheets. Continue?')) {
                     return;
                 }
 
-                let formData = new FormData();
-                formData.append('file', file);
-
                 // Show loading state
-                $('#confirmImportBtn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Importing...');
+                $('#sync-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Syncing...');
 
                 $.ajax({
-                    url: "{{ route('meta.ads.import') }}",
+                    url: "{{ route('meta.ads.sync') }}",
                     type: "POST",
-                    data: formData,
-                    processData: false,
-                    contentType: false,
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                     success: function (response) {
-                        $('#importModal').modal('hide');
-                        $('#importFile').val('');
-                        $('#confirmImportBtn').prop('disabled', false).html('<i class="fa fa-upload me-1"></i>Import');
+                        $('#sync-btn').prop('disabled', false).html('<i class="fa fa-sync me-1"></i>Sync from Google Sheets');
                         
-                        alert('Import successful! Processed: ' + response.processed + ' campaigns.');
+                        alert('Sync successful!\nL30 synced: ' + response.l30_synced + ' campaigns\nL7 synced: ' + response.l7_synced + ' campaigns');
                         table.replaceData();
                     },
                     error: function (xhr) {
-                        $('#confirmImportBtn').prop('disabled', false).html('<i class="fa fa-upload me-1"></i>Import');
+                        $('#sync-btn').prop('disabled', false).html('<i class="fa fa-sync me-1"></i>Sync from Google Sheets');
                         
-                        let message = 'Import failed';
+                        let message = 'Sync failed';
 
-                        if (xhr.responseJSON) {
-                            if (xhr.responseJSON.error) {
-                                message = xhr.responseJSON.error;
-                            } else if (xhr.responseJSON.errors && Array.isArray(xhr.responseJSON.errors)) {
-                                message = xhr.responseJSON.errors.join('\n');
-                            }
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            message = xhr.responseJSON.error;
                         }
 
                         alert(message);
