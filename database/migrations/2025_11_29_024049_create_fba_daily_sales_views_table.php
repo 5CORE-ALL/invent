@@ -11,16 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('fba_sku_daily_data', function (Blueprint $table) {
+        Schema::create('fba_daily_sales_views', function (Blueprint $table) {
             $table->id();
-            $table->string('sku', 255);
-            $table->date('record_date');
-            $table->json('daily_data'); // JSON format for all metrics
             $table->timestamps();
-            
-            $table->index('sku');
-            $table->index('record_date');
-            $table->unique(['sku', 'record_date']);
         });
     }
 
@@ -29,10 +22,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('fba_sku_daily_data');
+        Schema::dropIfExists('fba_daily_sales_views');
     }
 };
-
-
-
-
