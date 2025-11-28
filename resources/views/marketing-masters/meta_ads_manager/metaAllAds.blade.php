@@ -515,13 +515,35 @@
                         width: 145,
                         headerSort: true,
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            const formatted = value ? parseFloat(value).toFixed(2) + '%' : '0.00%';
-                            return `
-                                <span>${formatted}</span>
-                                <i class="fa fa-info-circle text-primary toggle-cvr-cols-btn" 
-                                style="cursor:pointer; margin-left:8px;"></i>
-                            `;
+                            let value = parseFloat(cell.getValue()) || 0;
+                            let cvr = Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+                            let color = "";
+
+                            if (value < 5) {
+                                color = "red";
+                            } else if (value >= 5 && value <= 10) {
+                                color = "green";
+                            } else if (value > 10) {
+                                color = "pink";
+                            }
+
+                            if (color == "pink") {
+                                return `
+                                    <span class="dil-percent-value ${color}">
+                                        ${cvr}%
+                                    </span>
+                                    <i class="fa fa-info-circle text-primary toggle-cvr-cols-btn" 
+                                    style="cursor:pointer; margin-left:8px;"></i>
+                                `;
+                            } else {
+                                return `
+                                    <span style="font-weight:600; color:${color};">
+                                        ${cvr}%
+                                    </span>
+                                    <i class="fa fa-info-circle text-primary toggle-cvr-cols-btn" 
+                                    style="cursor:pointer; margin-left:8px;"></i>
+                                `;
+                            }
                         }
                     },
                     {
@@ -530,8 +552,31 @@
                         width: 145,
                         headerSort: true,
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            return value ? parseFloat(value).toFixed(2) + '%' : '0.00%';
+                            let value = parseFloat(cell.getValue()) || 0;
+                            let cvr = Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+                            let color = "";
+
+                            if (value < 5) {
+                                color = "red";
+                            } else if (value >= 5 && value <= 10) {
+                                color = "green";
+                            } else if (value > 10) {
+                                color = "pink";
+                            }
+
+                            if (color == "pink") {
+                                return `
+                                    <span class="dil-percent-value ${color}">
+                                        ${cvr}%
+                                    </span>
+                                `;
+                            } else {
+                                return `
+                                    <span style="font-weight:600; color:${color};">
+                                        ${cvr}%
+                                    </span>
+                                `;
+                            }
                         },
                         visible: false
                     },
@@ -541,8 +586,31 @@
                         width: 145,
                         headerSort: true,
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            return value ? parseFloat(value).toFixed(2) + '%' : '0.00%';
+                            let value = parseFloat(cell.getValue()) || 0;
+                            let cvr = Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+                            let color = "";
+
+                            if (value < 5) {
+                                color = "red";
+                            } else if (value >= 5 && value <= 10) {
+                                color = "green";
+                            } else if (value > 10) {
+                                color = "pink";
+                            }
+
+                            if (color == "pink") {
+                                return `
+                                    <span class="dil-percent-value ${color}">
+                                        ${cvr}%
+                                    </span>
+                                `;
+                            } else {
+                                return `
+                                    <span style="font-weight:600; color:${color};">
+                                        ${cvr}%
+                                    </span>
+                                `;
+                            }
                         },
                         visible: false
                     }
