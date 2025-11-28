@@ -1061,15 +1061,27 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
 
 document.getElementById("push-inventory-btn").addEventListener("click", async function () {
     const activeTab = document.querySelector(".nav-link.active");
-    if (!activeTab) return alert("No container tab selected.");
+    if (!activeTab) {
+        alert("⚠️ No container tab selected.");
+        console.error("No container tab selected.");
+        return;
+    }
 
     const tabId = activeTab.getAttribute("data-bs-target");
     const index = tabId.replace("#tab-", "");
     const table = window.tabTables[index];
-    if (!table) return alert("No data found for this container.");
+    if (!table) {
+        alert("⚠️ No data found for this container.");
+        console.error("No data found for this container.");
+        return;
+    }
 
     const selectedRows = table.getSelectedData();
-    if (selectedRows.length === 0) return alert("Please select at least one SKU to push.");
+    if (selectedRows.length === 0) {
+        alert("⚠️ Please select at least one SKU to push.");
+        console.warn("No SKUs selected to push.");
+        return;
+    }
 
     if (!confirm(`Are you sure you want to push ${selectedRows.length} selected SKU(s)?`)) return;
 
@@ -1080,6 +1092,12 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
         row_id: r.id,
         tab_name: tabName
     }));
+
+    console.log("🚀 Pushing SKUs:", {
+        tab: tabName,
+        count: rowsToSend.length,
+        skus: rowsToSend.map(r => r.our_sku)
+    });
 
     // Show processing overlay
     const overlay = document.createElement("div");
@@ -1106,8 +1124,11 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
         const response = await res.json();
         document.body.removeChild(overlay);
 
+        console.log("📥 Server response:", response);
+
         if (!response.success) {
-            alert(response.message || "Push failed!");
+            alert("❌ Push failed: " + (response.message || "Unknown error"));
+            console.error("❌ Push failed:", response.message);
             return;
         }
 
@@ -1115,27 +1136,47 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
         const skipped = response.skipped || [];
         const notFound = response.not_found || [];
 
+        console.log("✅ Pushed successfully:", pushed);
+        console.log("⚠️ Already pushed (skipped):", skipped);
+        console.log("❌ Not found in Shopify:", notFound);
+
         pushed.forEach(({ row_id }) => {
             const row = table.getRow(row_id);
             if (row) {
-                row.getElement().style.backgroundColor = "#d4edda"; // green
+                row.getElement().style.backgroundColor = "#d4edda";
                 row.deselect();
                 row.update({ pushed: 1 });
             }
         });
 
-        let msg = "";
-        if (pushed.length) msg += `✅ Pushed successfully:\n${pushed.map(r => r.sku).join(", ")}\n\n`;
-        if (skipped.length) msg += `⚠️ Already pushed (skipped):\n${skipped.join(", ")}\n\n`;
-        if (notFound.length) msg += `❌ Not found in Shopify:\n${notFound.join(", ")}`;
+        // Build success message
+        let message = "";
+        if (pushed.length > 0) {
+            message += `✅ Successfully pushed ${pushed.length} SKU(s) to Shopify:\n`;
+            message += pushed.map(r => r.sku).join(", ") + "\n\n";
+        }
+        if (skipped.length > 0) {
+            message += `⚠️ Already pushed (${skipped.length} SKU(s)):\n`;
+            message += skipped.join(", ") + "\n\n";
+        }
+        if (notFound.length > 0) {
+            message += `❌ Not found in Shopify (${notFound.length} SKU(s)):\n`;
+            message += notFound.join(", ");
+        }
 
-        alert(msg || "Push complete!");
-        location.reload(); // 🔄 Auto refresh
+        if (message) {
+            alert(message);
+        }
+
+        console.log(`✅ Push complete: ${pushed.length} succeeded, ${skipped.length} skipped, ${notFound.length} not found`);
+        location.reload();
 
     } catch (err) {
-        document.body.removeChild(overlay);
-        console.error("Push error:", err);
-        alert("Something went wrong while pushing inventory.");
+        if (document.getElementById("processing-overlay")) {
+            document.body.removeChild(document.getElementById("processing-overlay"));
+        }
+        alert("💥 Error: Something went wrong while pushing inventory. Please check console for details.");
+        console.error("💥 Push error:", err);
     }
 });
 
