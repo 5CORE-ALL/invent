@@ -30,6 +30,26 @@ class FacebookAddsManagerController extends Controller
 
         $data = [];
         foreach ($metaAds as $ad) {
+            // Get values
+            $spend_l30 = $ad->spent_l30 ?? 0;
+            $clicks_l30 = $ad->clicks_l30 ?? 0;
+            $sales_l30 = 0; // TODO: Add sales data when available
+            $units_sold_l30 = 0; // TODO: Add units sold data when available
+            
+            // Calculate ACOS L30 using Amazon formula: ACOS = (Spend / Sales) * 100
+            $acos_l30 = 0;
+            if ($sales_l30 > 0) {
+                $acos_l30 = round(($spend_l30 / $sales_l30) * 100, 2);
+            } elseif ($spend_l30 > 0 && $sales_l30 == 0) {
+                $acos_l30 = 100;
+            }
+            
+            // Calculate CVR L30 using Amazon formula: CVR = (Units Sold / Clicks) * 100
+            $cvr_l30 = null;
+            if ($clicks_l30 > 0 && $units_sold_l30 > 0) {
+                $cvr_l30 = number_format(($units_sold_l30 / $clicks_l30) * 100, 2);
+            }
+            
             $data[] = [
                 'campaign_name' => $ad->campaign_name,
                 'campaign_id' => $ad->campaign_id,
@@ -39,23 +59,23 @@ class FacebookAddsManagerController extends Controller
                 'impressions_l30' => $ad->imp_l30 ?? 0,
                 'impressions_l7' => 0,
                 'spend_l60' => $ad->spent_l30 ?? 0,
-                'spend_l30' => $ad->spent_l30 ?? 0,
+                'spend_l30' => $spend_l30,
                 'spend_l7' => 0,
                 'clicks_l60' => $ad->clicks_l30 ?? 0,
-                'clicks_l30' => $ad->clicks_l30 ?? 0,
+                'clicks_l30' => $clicks_l30,
                 'clicks_l7' => 0,
                 'sales_l60' => 0,
-                'sales_l30' => 0,
+                'sales_l30' => $sales_l30,
                 'sales_l7' => 0,
                 'sales_delivered_l60' => 0,
                 'sales_delivered_l30' => 0,
                 'sales_delivered_l7' => 0,
                 'acos_l60' => 0,
-                'acos_l30' => 0,
+                'acos_l30' => $acos_l30,
                 'acos_l7' => 0,
-                'cvr_l60' => 0,
-                'cvr_l30' => 0,
-                'cvr_l7' => 0,
+                'cvr_l60' => null,
+                'cvr_l30' => $cvr_l30,
+                'cvr_l7' => null,
                 'status' => strtoupper($ad->campaign_delivery)
             ];
         }
