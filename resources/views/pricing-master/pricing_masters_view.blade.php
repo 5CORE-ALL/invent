@@ -2338,7 +2338,6 @@ $.ajax({
                 <tr>
                      <th class="fw-bold">PP</th>
                     <th class="fw-bold" data-sort="string">Channel <i class="bi bi-arrow-down-up"></i></th>
-                    <th class="fw-bold" data-sort="number">L60 <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold default-sort" data-sort="number">L30 <i class="bi bi-arrow-down"></i></th>
                     <th class="fw-bold" data-sort="number">PRC <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">GPFT% <i class="bi bi-arrow-down-up"></i></th>
@@ -2506,12 +2505,7 @@ $.ajax({
                         <span class="small fw-bold">${r.label}</span>
                     </div>
                     </td>
-
-                    <td>
-                        <div class="value-indicator">
-                            ${l60 ?? "-"}
-                        </div>
-                    </td>
+                   
                     <td>
                         <div class="value-indicator">
                             ${l30 ?? "-"}
