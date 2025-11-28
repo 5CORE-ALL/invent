@@ -263,13 +263,13 @@
                     {
                         title: "Campaign Name",
                         field: "campaign_name",
-                        minWidth: 300,
+                        minWidth: 320,
                         headerSort: true
                     },
                     {
                         title: "Campaign ID",
                         field: "campaign_id",
-                        minWidth: 180,
+                        minWidth: 200,
                         headerSort: true
                     },
                     {
@@ -323,7 +323,7 @@
                     {
                         title: "IMP L30",
                         field: "impressions_l30",
-                        minWidth: 120,
+                        minWidth: 135,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -338,7 +338,7 @@
                     {
                         title: "IMP L60",
                         field: "impressions_l60",
-                        minWidth: 120,
+                        minWidth: 135,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -349,7 +349,7 @@
                     {
                         title: "IMP L7",
                         field: "impressions_l7",
-                        minWidth: 120,
+                        minWidth: 135,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -360,6 +360,7 @@
                     {
                         title: "SPENT L30",
                         field: "spend_l30",
+                        width: 155,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -374,6 +375,7 @@
                     {
                         title: "SPENT L60",
                         field: "spend_l60",
+                        width: 155,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -384,6 +386,7 @@
                     {
                         title: "SPENT L7",
                         field: "spend_l7",
+                        width: 155,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -394,6 +397,7 @@
                     {
                         title: "CLKS L30",
                         field: "clicks_l30",
+                        width: 150,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -408,6 +412,7 @@
                     {
                         title: "CLKS L60",
                         field: "clicks_l60",
+                        width: 150,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -418,6 +423,7 @@
                     {
                         title: "CLKS L7",
                         field: "clicks_l7",
+                        width: 150,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -428,6 +434,7 @@
                     {
                         title: "AD SLS L30",
                         field: "sales_l30",
+                        width: 160,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -442,6 +449,7 @@
                     {
                         title: "AD SLS L60",
                         field: "sales_l60",
+                        width: 160,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -452,6 +460,7 @@
                     {
                         title: "AD SLS L7",
                         field: "sales_l7",
+                        width: 160,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -462,6 +471,7 @@
                     {
                         title: "AD SLD L30",
                         field: "sales_delivered_l30",
+                        width: 160,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -476,6 +486,7 @@
                     {
                         title: "AD SLD L60",
                         field: "sales_delivered_l60",
+                        width: 160,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -486,6 +497,7 @@
                     {
                         title: "AD SLD L7",
                         field: "sales_delivered_l7",
+                        width: 160,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -496,6 +508,7 @@
                     {
                         title: "ACOS L30",
                         field: "acos_l30",
+                        width: 150,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -510,6 +523,7 @@
                     {
                         title: "ACOS L60",
                         field: "acos_l60",
+                        width: 150,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -520,6 +534,7 @@
                     {
                         title: "ACOS L7",
                         field: "acos_l7",
+                        width: 150,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -530,6 +545,7 @@
                     {
                         title: "CVR L30",
                         field: "cvr_l30",
+                        width: 145,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -544,6 +560,7 @@
                     {
                         title: "CVR L60",
                         field: "cvr_l60",
+                        width: 145,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -554,6 +571,7 @@
                     {
                         title: "CVR L7",
                         field: "cvr_l7",
+                        width: 145,
                         headerSort: true,
                         formatter: function(cell) {
                             const value = cell.getValue();

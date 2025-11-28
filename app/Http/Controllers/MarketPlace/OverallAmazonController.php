@@ -443,7 +443,7 @@ class OverallAmazonController extends Controller
             $row['amz_roi'] = $amazonSheet && $lp > 0 && ($amazonSheet->price ?? 0) > 0 ? (($amazonSheet->price * 0.70 - $lp - $ship) / $lp) : 0;
 
             $prices = DB::connection('repricer')
-                ->table('lmpa_data')
+                ->table('lmp_data')
                 ->where('sku', $sku)
                 ->where('price', '>', 0)
                 ->orderBy('price', 'asc')
@@ -1464,7 +1464,7 @@ class OverallAmazonController extends Controller
         $lmpDetailsLookup = collect();
         try {
             $lmpRecords = DB::connection('repricer')
-                ->table('lmp_data')
+                ->table('lmpa_data')
                 ->select('sku', 'price', 'link', 'image')
                 ->whereIn('sku', $skus)
                 ->orderBy('price', 'asc')

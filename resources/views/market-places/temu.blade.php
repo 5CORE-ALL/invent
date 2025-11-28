@@ -2586,9 +2586,9 @@
                     // T Sales column
                     $row.append($('<td>').html(`
                      <div class="sku-tooltip-container">
-                     <span class="sku-text">${item.sheet_l30 || 0}</span>
+                     <span class="sku-text">${item.sales_l30 || 0}</span>
                      <div class="sku-tooltip">
-                    <div class="sku-link"><strong>Sheet L30:</strong> ${item.sheet_l30 || 0}</div>
+                    <div class="sku-link"><strong>Sheet L30:</strong> ${item.sales_l30 || 0}</div>
                      </div>
                      </div>
                       `));
