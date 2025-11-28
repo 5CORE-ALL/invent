@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\InventoryWarehouse;
+use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,58 @@ class InventoryWarehouseController extends Controller
         $warehouses = InventoryWarehouse::with('user')->latest()->get();
 
         return view('purchase-master.transit_container.inventory_warehouse', compact('warehouses'));
+    }
+
+    public function debugSku($sku)
+    {
+        $normalized = $this->normalizeSku($sku);
+        $skuNoSpaces = str_replace([' ', '-', '_'], '', $normalized);
+        
+        $result = [
+            'original' => $sku,
+            'normalized' => $normalized,
+            'no_spaces' => $skuNoSpaces,
+            'table_total' => ShopifySku::count(),
+            'valid_variants' => ShopifySku::whereNotNull('variant_id')->where('variant_id', '!=', '')->where('variant_id', '!=', '0')->count(),
+        ];
+        
+        // Exact match
+        $exact = ShopifySku::where('sku', $normalized)->first();
+        if ($exact) {
+            $result['exact_match'] = [
+                'found' => true,
+                'db_sku' => $exact->sku,
+                'variant_id' => $exact->variant_id,
+                'is_valid' => !empty($exact->variant_id) && $exact->variant_id != '0'
+            ];
+        } else {
+            $result['exact_match'] = ['found' => false];
+            
+            // Fuzzy match
+            $fuzzy = ShopifySku::whereNotNull('variant_id')
+                ->where('variant_id', '!=', '')
+                ->where('variant_id', '!=', '0')
+                ->get()
+                ->first(function($item) use ($skuNoSpaces) {
+                    return str_replace([' ', '-', '_'], '', strtoupper(trim($item->sku))) === $skuNoSpaces;
+                });
+            
+            if ($fuzzy) {
+                $result['fuzzy_match'] = [
+                    'found' => true,
+                    'db_sku' => $fuzzy->sku,
+                    'variant_id' => $fuzzy->variant_id
+                ];
+            } else {
+                $result['fuzzy_match'] = ['found' => false];
+                
+                // Similar SKUs
+                $similar = ShopifySku::where('sku', 'LIKE', '%' . substr($normalized, 0, 5) . '%')->limit(5)->get(['sku', 'variant_id']);
+                $result['similar_skus'] = $similar->toArray();
+            }
+        }
+        
+        return response()->json($result, 200, [], JSON_PRETTY_PRINT);
     }
 
     // public function pushInventory(Request $request)
@@ -195,22 +248,44 @@ class InventoryWarehouseController extends Controller
 
    // Add this helper at the top of your controller
     private function normalizeSku($sku) {
-        return strtoupper(preg_replace('/\s+/u', ' ', trim($sku)));
+        // Trim, convert to uppercase, and normalize whitespace (including multiple spaces, tabs, etc.)
+        $normalized = strtoupper(preg_replace('/\s+/u', ' ', trim($sku)));
+        // Remove any non-printable characters
+        $normalized = preg_replace('/[\x00-\x1F\x7F]/u', '', $normalized);
+        return $normalized;
     }
 
     public function pushInventory(Request $request)
     {
         $tabName = $request->input('tab_name');
         $rows = $request->input('data', []);
-
         $userId = auth()->id();
 
-        // $alreadyPushedSkus = [];
-        // $notFoundSkus = [];
-        // $pushedRows = [];
         $alreadyPushed = [];
         $notFound = [];
         $pushedRows = [];
+        
+        Log::info('=== PUSH INVENTORY REQUEST STARTED ===', [
+            'tab_name' => $tabName,
+            'row_count' => count($rows),
+            'user_id' => $userId
+        ]);
+        
+        // Validate Shopify credentials exist
+        if (!config('services.shopify.api_key') || !config('services.shopify.password') || !config('services.shopify.store_url')) {
+            Log::error("Shopify credentials not configured");
+            return response()->json([
+                'success' => false,
+                'message' => 'Shopify API credentials are not configured. Please check your .env file.'
+            ]);
+        }
+
+        Log::info("Shopify config validated", [
+            'store_url' => config('services.shopify.store_url'),
+            'has_api_key' => !empty(config('services.shopify.api_key')),
+            'has_password' => !empty(config('services.shopify.password'))
+        ]);
+        
         // Get all already pushed SKUs for this tab
         $existingPushed = InventoryWarehouse::where('tab_name', $tabName)
             ->where('pushed', 1)
@@ -218,89 +293,258 @@ class InventoryWarehouseController extends Controller
             ->map(fn($v) => (int)$v)
             ->toArray();
 
+        // ✅ Build SKU lookup map from local database
+        $skuLookup = ShopifySku::whereNotNull('variant_id')
+            ->where('variant_id', '!=', '')
+            ->where('variant_id', '!=', '0')
+            ->where('variant_id', '!=', 0)
+            ->get()
+            ->mapWithKeys(function($item) {
+                $normalizedSku = $this->normalizeSku($item->sku);
+                return [$normalizedSku => $item->variant_id];
+            })
+            ->toArray();
+
+        $dbSkuCount = ShopifySku::count();
+        Log::info("SKU lookup map built", [
+            'tab' => $tabName,
+            'skus_to_push' => count($rows),
+            'lookup_size' => count($skuLookup),
+            'total_db_skus' => $dbSkuCount
+        ]);
+
+        // Cache for API-fetched variants to avoid repeated API calls
+        $apiCache = [];
+
         foreach ($rows as $row) {
             $rowId = (int)($row['id'] ?? 0);
-            // $rowId = isset($row['row_id']) ? (int)$row['row_id'] : (isset($row['id']) ? (int)$row['id'] : null);
             $sku = $this->normalizeSku($row['our_sku'] ?? '');
             $units = !empty($row['no_of_units']) ? (int) $row['no_of_units'] : 0;
             $ctns  = !empty($row['total_ctn']) ? (int) $row['total_ctn'] : 0;
             $qty = $units * $ctns;
 
-            if (!$rowId ||!$sku || $qty <= 0) continue;
+            if (!$rowId || !$sku || $qty <= 0) {
+                Log::warning("Invalid row data - skipping", ['row_id' => $rowId, 'sku' => $sku, 'qty' => $qty]);
+                continue;
+            }
 
             // Skip already pushed
             if (in_array($rowId, $existingPushed, true)) {
                 $alreadyPushed[] = $sku;
+                Log::info("Already pushed - skipping", ['sku' => $sku, 'row_id' => $rowId]);
                 continue;
             }
 
             try {
-                ini_set('max_execution_time', 60);
+                Log::info("Processing SKU", [
+                    'sku' => $sku,
+                    'row_id' => $rowId,
+                    'qty' => $qty
+                ]);
+                
+                // ✅ Get variant_id from local database lookup
+                $variantId = $skuLookup[$sku] ?? null;
 
-                // --- Get Shopify inventory_item_id ---
-                $inventoryItemId = null;
-                $pageInfo = null;
-                do {
-                    $queryParams = ['limit' => 250];
-                    if ($pageInfo) $queryParams['page_info'] = $pageInfo;
-
-                    $response = Http::withBasicAuth(config('services.shopify.api_key'), config('services.shopify.password'))
-                        ->get("https://" . config('services.shopify.store_url') . "/admin/api/2025-01/products.json", $queryParams);
-
-                    $products = $response->json('products') ?? [];
-
-                    foreach ($products as $product) {
-                        foreach ($product['variants'] as $variant) {
-                            if ($this->normalizeSku($variant['sku'] ?? '') === $sku) {
-                                $inventoryItemId = $variant['inventory_item_id'];
-                                break 2;
-                            }
+                if (!$variantId) {
+                        Log::info("Tier 1 exact match failed - trying fuzzy match", ['sku' => $sku]);
+                    
+                    // Try multiple matching strategies in database
+                    $skuNoSpaces = str_replace([' ', '-', '_'], '', $sku);
+                    
+                    // Strategy 1: Fuzzy collection match
+                    $flexibleMatch = ShopifySku::whereNotNull('variant_id')
+                        ->where('variant_id', '!=', '')
+                        ->where('variant_id', '!=', '0')
+                        ->where('variant_id', '!=', 0)
+                        ->get()
+                        ->first(function($item) use ($skuNoSpaces) {
+                            $itemNoSpaces = str_replace([' ', '-', '_'], '', strtoupper(trim($item->sku)));
+                            return $itemNoSpaces === $skuNoSpaces;
+                        });
+                    
+                    if ($flexibleMatch) {
+                        $variantId = $flexibleMatch->variant_id;
+                        Log::info("Tier 2 fuzzy match SUCCESS", [
+                            'sku' => $sku,
+                            'db_sku' => $flexibleMatch->sku,
+                            'variant_id' => $variantId
+                        ]);
+                    } else {
+                        // Strategy 2: Search Shopify API directly as fallback
+                        Log::info("Tier 2 fuzzy match failed - trying Tier 3 API search", ['sku' => $sku]);
+                        
+                        // Check if we already fetched this page in API cache
+                        if (empty($apiCache)) {
+                            Log::info("API cache empty - building cache from Shopify products endpoint");
+                            $pageInfo = null;
+                            
+                            do {
+                                $queryParams = ['limit' => 250];
+                                if ($pageInfo) $queryParams['page_info'] = $pageInfo;
+                                
+                                $response = Http::withBasicAuth(
+                                    config('services.shopify.api_key'),
+                                    config('services.shopify.password')
+                                )->timeout(30)->get(
+                                    "https://" . config('services.shopify.store_url') . "/admin/api/2025-01/products.json",
+                                    $queryParams
+                                );
+                                
+                                // Rate limiting for pagination
+                                usleep(600000);
+                                
+                                if (!$response->successful()) {
+                                    Log::error("API fetch failed for products page", [
+                                        'status' => $response->status(),
+                                        'body' => $response->body()
+                                    ]);
+                                    break;
+                                }
+                                
+                                $products = $response->json('products') ?? [];
+                                
+                                foreach ($products as $product) {
+                                    foreach ($product['variants'] as $variant) {
+                                        $variantSku = strtoupper(preg_replace('/\s+/u', ' ', trim($variant['sku'] ?? '')));
+                                        $variantSkuNoSpaces = str_replace([' ', '-', '_'], '', $variantSku);
+                                        $apiCache[$variantSku] = $variant['id'];
+                                        $apiCache[$variantSkuNoSpaces] = $variant['id'];
+                                    }
+                                }
+                                
+                                // Check for next page
+                                $linkHeader = $response->header('Link');
+                                $pageInfo = null;
+                                if ($linkHeader && preg_match('/<([^>]+page_info=([^&>]+)[^>]*)>; rel="next"/', $linkHeader, $matches)) {
+                                    $pageInfo = $matches[2];
+                                }
+                                
+                            } while ($pageInfo);
+                            
+                            Log::info("API cache built successfully", ['cached_variants' => count($apiCache)]);
+                        }
+                        
+                        // Check in API cache
+                        $variantId = $apiCache[$sku] ?? $apiCache[$skuNoSpaces] ?? null;
+                        
+                        if ($variantId) {
+                            Log::info("Tier 3 API cache match SUCCESS", ['sku' => $sku, 'variant_id' => $variantId]);
+                        } else {
+                            Log::error("All 3 tiers FAILED - SKU not found", [
+                                'sku' => $sku,
+                                'tried_db_exact' => true,
+                                'tried_db_fuzzy' => true,
+                                'tried_api' => true,
+                                'api_cache_size' => count($apiCache)
+                            ]);
+                            $notFound[] = $sku;
+                            continue;
                         }
                     }
+                }
 
-                    $linkHeader = $response->header('Link');
-                    $pageInfo = null;
-                    if ($linkHeader && preg_match('/<([^>]+page_info=([^&>]+)[^>]*)>; rel="next"/', $linkHeader, $matches)) {
-                        $pageInfo = $matches[2];
-                    }
-                } while (!$inventoryItemId && $pageInfo);
-
-                if (!$inventoryItemId) {
+                if (!$variantId) {
+                    Log::error("No variant_id after all lookup attempts", ['sku' => $sku]);
                     $notFound[] = $sku;
                     continue;
                 }
 
-                // --- Get location_id ---
-                $invLevelResponse = Http::withBasicAuth(config('services.shopify.api_key'), config('services.shopify.password'))
-                    ->get("https://" . config('services.shopify.store_url') . "/admin/api/2025-01/inventory_levels.json", [
-                        'inventory_item_ids' => $inventoryItemId,
+                Log::info("Variant ID confirmed - proceeding to update", [
+                    'sku' => $sku,
+                    'variant_id' => $variantId,
+                    'qty_adjustment' => $qty
+                ]);
+
+                // ✅ Rate limiting: Shopify allows 2 calls/second, so wait 0.6 seconds between calls
+                usleep(600000); // 600ms delay to stay under rate limit
+
+                // ✅ Get inventory_item_id from variant
+                $variantResponse = Http::withBasicAuth(
+                    config('services.shopify.api_key'), 
+                    config('services.shopify.password')
+                )->timeout(30)->get(
+                    "https://" . config('services.shopify.store_url') . "/admin/api/2025-01/variants/{$variantId}.json"
+                );
+
+                if (!$variantResponse->successful()) {
+                    Log::error("Shopify variant API failed", [
+                        'sku' => $sku, 
+                        'variant_id' => $variantId,
+                        'status' => $variantResponse->status(),
+                        'error' => $variantResponse->body()
                     ]);
+                    $notFound[] = $sku;
+                    continue;
+                }
+
+                $inventoryItemId = $variantResponse->json('variant.inventory_item_id');
+
+                if (!$inventoryItemId) {
+                    Log::error("No inventory_item_id in response", ['sku' => $sku, 'response' => $variantResponse->json()]);
+                    $notFound[] = $sku;
+                    continue;
+                }
+
+                // Rate limiting
+                usleep(600000);
+
+                // --- Get location_id ---
+                $invLevelResponse = Http::withBasicAuth(
+                    config('services.shopify.api_key'), 
+                    config('services.shopify.password')
+                )->timeout(30)->get(
+                    "https://" . config('services.shopify.store_url') . "/admin/api/2025-01/inventory_levels.json",
+                    ['inventory_item_ids' => $inventoryItemId]
+                );
 
                 $levels = $invLevelResponse->json('inventory_levels') ?? [];
                 $locationId = $levels[0]['location_id'] ?? null;
 
                 if (!$locationId) {
+                    Log::error("No location found", ['sku' => $sku, 'inventory_item_id' => $inventoryItemId]);
                     $notFound[] = $sku;
                     continue;
                 }
 
+                // Rate limiting
+                usleep(600000);
+
                 // --- Adjust Shopify qty ---
-                $adjustResponse = Http::withBasicAuth(config('services.shopify.api_key'), config('services.shopify.password'))
-                    ->post("https://" . config('services.shopify.store_url') . "/admin/api/2025-01/inventory_levels/adjust.json", [
+                $adjustResponse = Http::withBasicAuth(
+                    config('services.shopify.api_key'), 
+                    config('services.shopify.password')
+                )->timeout(30)->post(
+                    "https://" . config('services.shopify.store_url') . "/admin/api/2025-01/inventory_levels/adjust.json",
+                    [
                         'inventory_item_id' => $inventoryItemId,
                         'location_id' => $locationId,
                         'available_adjustment' => $qty,
-                    ]);
+                    ]
+                );
 
                 if (!$adjustResponse->successful()) {
-                    Log::error("Failed to adjust Shopify inventory for SKU: {$sku}", $adjustResponse->json());
+                    Log::error("Shopify inventory adjustment FAILED", [
+                        'sku' => $sku,
+                        'status' => $adjustResponse->status(),
+                        'error' => $adjustResponse->body(),
+                        'qty' => $qty,
+                        'inventory_item_id' => $inventoryItemId,
+                        'location_id' => $locationId
+                    ]);
+                    $notFound[] = $sku;
                     continue;
                 }
 
-                // --- Store in DB ---
+                Log::info("Shopify inventory updated successfully", [
+                    'sku' => $sku, 
+                    'qty_added' => $qty,
+                    'new_available' => $adjustResponse->json('inventory_level.available')
+                ]);
+
+                // --- Store in DB only after Shopify success ---
                 InventoryWarehouse::updateOrCreate(
-                    ['tab_name' => $tabName, 'transit_container_id' => $rowId], // only these for lookup
-                    [   // rest are values to store
+                    ['tab_name' => $tabName, 'transit_container_id' => $rowId],
+                    [
                         'our_sku' => $sku,
                         'pushed' => 1,
                         'created_by' => $userId,
@@ -325,14 +569,39 @@ class InventoryWarehouseController extends Controller
                     ]
                 );
 
-                // $pushedRows[] = $rowId;
                 $pushedRows[] = ['row_id' => $rowId, 'sku' => $sku];
-                $existingPushed[] = $rowId; // mark as pushed to skip duplicates in same request
+                $existingPushed[] = $rowId;
+
+                Log::info("SKU fully processed and saved to database", [
+                    'sku' => $sku,
+                    'row_id' => $rowId,
+                    'warehouse_record_created' => true
+                ]);
 
             } catch (\Exception $e) {
-                Log::error("PushInventory failed for SKU {$sku}: " . $e->getMessage());
+                Log::error("EXCEPTION while processing SKU", [
+                    'sku' => $sku,
+                    'row_id' => $rowId,
+                    'error_message' => $e->getMessage(),
+                    'error_line' => $e->getLine(),
+                    'error_file' => basename($e->getFile()),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                // Add to notFound so user knows it failed
+                if (!in_array($sku, $notFound)) {
+                    $notFound[] = $sku;
+                }
             }
         }
+
+        Log::info('=== PUSH INVENTORY REQUEST COMPLETED ===', [
+            'pushed_count' => count($pushedRows),
+            'skipped_count' => count($alreadyPushed),
+            'not_found_count' => count($notFound),
+            'pushed_skus' => array_column($pushedRows, 'sku'),
+            'skipped_skus' => $alreadyPushed,
+            'not_found_skus' => $notFound
+        ]);
 
         return response()->json([
             'success' => true,
