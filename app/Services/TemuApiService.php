@@ -69,6 +69,12 @@ private function generateSignValue($requestBody)
 
         Log::info("======================= Started Inventory Sync =======================");
 
+        // Define date range (last 90 days)
+        $toDate = \Carbon\Carbon::now();
+        $fromDate = $toDate->copy()->subDays(90);
+        
+        Log::info("Fetching Temu orders from {$fromDate->toDateString()} to {$toDate->toDateString()}");
+
         do {
             // OLD CODE (commented for reference):
             // $requestBody = [
@@ -79,13 +85,14 @@ private function generateSignValue($requestBody)
             //     "pageNumber" => $pageNumber,
             // ];
             
+            // NEW CODE: Using order API with status filter
             $requestBody = [
-                "type" => "bg.local.goods.list.query",
-                "goodsSearchType" => 1,
-                "goodsStatusFilterType" => 1,
+                "type" => "bg.order.list.v2.get",
                 "pageSize" => $pageSize,
                 "pageNumber" => $pageNumber,
                 "orderStatusFilterType" => [3, 4], // 3=Shipped, 4=Delivered
+                "createAfter" => $fromDate->timestamp,
+                "createBefore" => $toDate->timestamp,
             ];
 
             $signedRequest = $this->generateSignValue($requestBody);
@@ -119,15 +126,41 @@ private function generateSignValue($requestBody)
                 break;
             }
 
+            // OLD CODE (commented for reference):
+            // $result = $data['result'] ?? [];
+            // $items = $result['goodsList'] ?? [];
+            // if (empty($items)) {
+            //     break;
+            // }
+            // $this->allItems = array_merge($this->allItems, $items);
+            // Log::info("Temu Items: " . count($items) . " collected from page No: " . $pageNumber);
+            
+            // NEW CODE: Extract from orders and filter by status
             $result = $data['result'] ?? [];
-            $items = $result['goodsList'] ?? [];
+            $orders = $result['pageItems'] ?? [];
 
-            if (empty($items)) {
+            if (empty($orders)) {
                 break;
             }
 
-            $this->allItems = array_merge($this->allItems, $items);
-            Log::info("Temu Items: " . count($items) . " collected from page No: " . $pageNumber);
+            // Extract items from orders and filter by status
+            foreach ($orders as $order) {
+                $orderStatus = $order['orderStatus'] ?? null;
+                
+                // Filter: only include shipped (3) or delivered (4) orders
+                if (in_array($orderStatus, [3, 4])) {
+                    foreach ($order['orderList'] ?? [] as $item) {
+                        $this->allItems[] = [
+                            'sku' => $item['skuId'] ?? null,
+                            'quantity' => $item['quantity'] ?? 0,
+                            'orderStatus' => $orderStatus,
+                            'orderId' => $order['orderId'] ?? null,
+                        ];
+                    }
+                }
+            }
+            
+            Log::info("Temu Orders: " . count($orders) . " collected from page No: " . $pageNumber . " | Filtered items: " . count($this->allItems));
 
             // Set total pages once
             if ($totalPages === null) {
@@ -147,16 +180,36 @@ private function generateSignValue($requestBody)
         } while ($pageNumber <= $totalPages);
 
         Log::info("======================= Ended Inventory Sync =======================");
-        Log::info("Total Temu inventory items collected: " . count($this->allItems));
-        foreach($this->allItems as $titem){    
-            // ProductStockMapping::updateOrCreate(
-            //     ['sku' => $titem['outSkuSnList'][0]],
-            //     ['inventory_temu' => $titem['quantity']]
-            // );
-
-                                     ProductStockMapping::where('sku', $sku)->update(['inventory_temu' => (int) $quantity]); 
-                         ProductStockMapping::where('sku', $sku)->update(['inventory_temu' => (int) $quantity]);    
+        
+        // OLD CODE (commented for reference):
+        // Log::info("Total Temu inventory items collected: " . count($this->allItems));
+        // foreach($this->allItems as $titem){    
+        //     ProductStockMapping::where('sku', $sku)->update(['inventory_temu' => (int) $quantity]); 
+        //     ProductStockMapping::where('sku', $sku)->update(['inventory_temu' => (int) $quantity]);    
+        // }
+        
+        // NEW CODE: Group by SKU and update database
+        Log::info("Total Temu order items collected (Shipped/Delivered only): " . count($this->allItems));
+        
+        // Group by SKU and sum quantities
+        $skuQuantities = [];
+        foreach ($this->allItems as $item) {
+            $sku = $item['sku'];
+            if (!$sku) continue;
+            
+            if (!isset($skuQuantities[$sku])) {
+                $skuQuantities[$sku] = 0;
+            }
+            $skuQuantities[$sku] += (int)($item['quantity'] ?? 0);
         }
+        
+        // Update database
+        foreach ($skuQuantities as $sku => $quantity) {
+            ProductStockMapping::where('sku', $sku)
+                ->update(['inventory_temu' => (int) $quantity]);
+            Log::info("Updated SKU: {$sku} with quantity: {$quantity}");
+        }
+        
         Log::info($this->allItems);
         return $this->allItems;
     }
