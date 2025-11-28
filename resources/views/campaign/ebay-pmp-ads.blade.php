@@ -1128,6 +1128,24 @@
                             </ul>
                         </div>
 
+                        <!-- PmtClkL7 Filter -->
+                        <div class="dropdown manual-dropdown-container ">
+                            <button class="btn btn-light dropdown-toggle" type="button" id="pmtClkL7FilterDropdown">
+                                <span class="status-circle default"></span> PmtClkL7
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="pmtClkL7FilterDropdown">
+                                <li><a class="dropdown-item column-filter" href="#" data-column="PmtClkL7"
+                                        data-color="all">
+                                        <span class="status-circle default"></span> All PmtClkL7</a></li>
+                                <li><a class="dropdown-item column-filter" href="#" data-column="PmtClkL7"
+                                        data-color="red">
+                                        <span class="status-circle red"></span> Red</a></li>
+                                <li><a class="dropdown-item column-filter" href="#" data-column="PmtClkL7"
+                                        data-color="green">
+                                        <span class="status-circle green"></span> Green </a></li>
+                            </ul>
+                        </div>
+
                         <!-- A Dil% Filter -->
                         <div class="dropdown manual-dropdown-container ">
                             <button class="btn btn-light dropdown-toggle" type="button" id="ovClicksFilterDropdown">
@@ -1444,8 +1462,8 @@
                                     <label for="nra-filter" class="mr-2">NRL:</label>
                                     <select id="nra-filter" class="form-control form-control-sm">
                                         <option value="all">All</option>
-                                        <option value="RL">RL</option>
-                                        <option value="NRL">NRL</option>
+                                        <option value="REQ">RL</option>
+                                        <option value="NR">NRL</option>
                                         <option value="LATER">LATER</option>
                                     </select>
                                 </div>
@@ -1584,6 +1602,15 @@
                                             <div class="metric-total" id="cvr-total">0%</div>
                                         </div>
                                     </th>
+                                    <th data-field="pmtclkl7" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                PmtClkL7 <span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="pmtclkl7-total">0</div>
+                                        </div>
+                                    </th>
                                     <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -1688,6 +1715,21 @@
                             <div class="loader-text">Loading eBay data...</div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Campaign Chart Modal -->
+    <div class="modal fade" id="campaignChartModal" tabindex="-1" aria-labelledby="campaignChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="campaignChartModalLabel">Campaign Performance Chart</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <canvas id="singleCampaignChart" style="height: 400px;"></canvas>
                 </div>
             </div>
         </div>
@@ -1922,16 +1964,16 @@
                     chart.update();
 
                     // Update stat cards
-                    document.querySelector('.card-clicks').textContent = data.totals.clicks.toLocaleString();
-                    document.querySelector('.card-spend').textContent = '$' + Number(data.totals.spend).toFixed(0);
-                    document.querySelector('.card-ad-sales').textContent = '$' + Number(data.totals.ad_sales).toFixed(0);
-                    document.querySelector('.card-ad-sold').textContent = data.totals.ad_sold.toLocaleString();
+                    document.querySelector('.card-clicks').innerHTML = data.totals.clicks.toLocaleString();
+                    document.querySelector('.card-spend').innerHTML = '$' + Number(data.totals.spend).toFixed(0);
+                    document.querySelector('.card-ad-sales').innerHTML = '$' + Number(data.totals.ad_sales).toFixed(0);
+                    document.querySelector('.card-ad-sold').innerHTML = data.totals.ad_sold.toLocaleString();
                     
                     const acosVal = data.totals.ad_sales > 0 ? (data.totals.spend / data.totals.ad_sales * 100) : 0;
-                    document.querySelector('.card-acos').textContent = acosVal.toFixed(0) + '%';
+                    document.querySelector('.card-acos').innerHTML = acosVal.toFixed(0) + '%';
                     
                     const cvrVal = data.totals.clicks > 0 ? (data.totals.ad_sold / data.totals.clicks * 100) : 0;
-                    document.querySelector('.card-cvr').textContent = cvrVal.toFixed(1) + '%';
+                    document.querySelector('.card-cvr').innerHTML = cvrVal.toFixed(1) + '%';
                 })
                 .catch(error => console.error('Error fetching filtered data:', error));
         });
@@ -2218,6 +2260,7 @@
                 filters: {
                     'ov_dil': 'all',
                     'E Dil%': 'all',
+                    'PmtClkL7': 'all',
                     'PmtClkL30': 'all',
                     'PFT %': 'all',
                     'Roi': 'all',
@@ -2850,6 +2893,11 @@
                         $row.addClass('parent-row');
                     }
 
+                    // Debug: Log campaign_id for first 5 items
+                    if (filteredData.indexOf(item) < 5) {
+                        console.log('SKU:', item['(Child) sku'], 'Campaign ID:', item.campaign_id);
+                    }
+
                     let rawData = {};
                     if (typeof item.raw_data === 'string') {
                         try {
@@ -2922,7 +2970,7 @@
                     // $row.append($('<td>').text(item['Sl']));
                     $row.append($('<td>').text(item.Parent));
 
-                    // SKU with hover content for links
+                    // SKU with hover content for links and campaign chart button
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
                     if (item.is_parent) {
                         $skuCell.html(`<strong>${item['(Child) sku']}</strong>`);
@@ -2952,6 +3000,17 @@
                             style="margin-left:8px; cursor:pointer; color:#007bff;"
                             title="Show details"></i>
                         `);
+                        
+                        // Add campaign chart button - temporarily show for all items for testing
+                        // Later we'll add condition: if (item.campaign_id)
+                        $skuCell.append(`
+                            <button class="btn btn-sm btn-link p-0 ms-2 campaign-chart-btn" 
+                                    data-campaign-id="${item.campaign_id || 'test'}"
+                                    title="View campaign chart"
+                                    style="color: ${item.campaign_id ? '#0d6efd' : '#6c757d'};">
+                                <i class="fa-solid fa-chart-line"></i>
+                            </button>
+                        `);
                     }
 
                     $row.append($skuCell);
@@ -2974,57 +3033,28 @@
 
                     $row.append($('<td data-field="esbid">').text(item.ESBID));
                     
-                    let sbid = 0;
-                    let sbidColor = "";
-                    const percent = Math.round(item.ov_dil * 100);
+                    // Calculate adjusted CBID based on PmtClkL7
+                    let adjustedCbid = parseFloat(item.CBID) || 0;
+                    let cbidColor = "";
+                    const pmtClkL7 = parseFloat(item.raw_data.PmtClkL7) || 0;
 
-                    if (percent < 16.66) {
-                        sbid = 8;      
-                        sbidColor = "red";
-                    } else if (percent >= 16.66 && percent < 25) {
-                        sbid = 6;     
-                        sbidColor = "yellow";
-                    } else if (percent >= 25 && percent < 50) {
-                        sbid = 4;       
-                        sbidColor = "green";
+                    if (pmtClkL7 < 70) {
+                        adjustedCbid = adjustedCbid + 0.5;
+                        cbidColor = "green"; // Increase bid
+                    } else if (pmtClkL7 > 140) {
+                        adjustedCbid = adjustedCbid - 0.5;
+                        cbidColor = "red"; // Decrease bid
                     } else {
-                        sbid = 2;     
-                        sbidColor = "pink";
+                        cbidColor = "yellow"; // Keep current bid
                     }
 
-                    const viewsLow = item.VIEWS < 150;
-                    const noSale = item['eBay L30'] === 0;
-
-                    if (sbidColor === "pink") {
-                        if (viewsLow) {
-                            sbid = 4;
-                        } else {
-                            sbid = 2;
-                        }
+                    // Apply 15% cap and 2% minimum to adjusted CBID
+                    if (adjustedCbid > 15) {
+                        adjustedCbid = 15;
                     }
-
-                    if (sbidColor === "green") {
-                        if (noSale) {
-                            sbid = viewsLow ? 10 : 7;
-                        } else {
-                            sbid = viewsLow ? 7 : 5;
-                        }
-                    }
-
-                    if (sbidColor === "yellow") {
-                        if (noSale) {
-                            sbid = viewsLow ? 10 : 10;
-                        } else {
-                            sbid = viewsLow ? 10 : 8;
-                        }
-                    }
-
-                    if (sbidColor === "red") {
-                        if (noSale) {
-                            sbid = viewsLow ? 10 : 10;
-                        } else {
-                            sbid = viewsLow ? 10 : 10;
-                        }
+                    
+                    if (adjustedCbid < 2) {
+                        adjustedCbid = 2;
                     }
 
                     let reqViews = item.INV * 10;
@@ -3037,8 +3067,8 @@
                     }
 
                     $row.append($('<td data-field="sbid">').html(
-                        `<span class="dil-percent-value ${sbidColor}">
-                           ${sbid}
+                        `<span class="dil-percent-value ${cbidColor}">
+                           ${adjustedCbid.toFixed(1)}
                         </span>`
                     ));
 
@@ -3062,6 +3092,11 @@
                         `<span class="dil-percent-value" style="color: ${getCvrColor(scvr)}">
                            ${scvr.toFixed(0)}%
                         </span>`
+                    ));
+
+                    // PmtClkL7 with color coding
+                    $row.append($('<td>').html(
+                        `<span class="dil-percent-value ${getViewColor(item.raw_data.PmtClkL7 || 0)}">${Math.round(item.raw_data.PmtClkL7 || 0)}</span>`
                     ));
 
                     // PmtClkL30 with tooltip icon (no color coding)
@@ -3232,21 +3267,21 @@
                     if (item.is_parent) {
                         $row.append($('<td>')); // Empty cell for parent
                     } else {
-                        let currentNR = (item.NRL === 'RL' || item.NRL === 'NRL' || item.NRL === 'LATER') ? item.NRL : 'RL';
+                        let currentNR = (item.NRL === 'REQ' || item.NRL === 'NR' || item.NRL === 'LATER') ? item.NRL : 'REQ';
 
                         const $select = $(`
                             <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                                <option value="RL" ${currentNR === 'RL' ? 'selected' : ''}>RL</option>
-                                <option value="NRL" ${currentNR === 'NRL' ? 'selected' : ''}>NRL</option>
+                                <option value="REQ" ${currentNR === 'REQ' ? 'selected' : ''}>RL</option>
+                                <option value="NR" ${currentNR === 'NR' ? 'selected' : ''}>NRL</option>
                                 <option value="LATER" ${currentNR === 'LATER' ? 'selected' : ''}>LATER</option>
                             </select>
                         `);
 
                         // Set background color based on value
-                        if (currentNR === 'NRL') {
+                        if (currentNR === 'NR') {
                             $select.css('background-color', '#dc3545');
                             $select.css('color', '#ffffff');
-                        } else if (currentNR === 'RL') {
+                        } else if (currentNR === 'REQ') {
                             $select.css('background-color', '#28a745');
                             $select.css('color', '#ffffff');
                         }
@@ -3425,7 +3460,7 @@
                     const sku = $select.data('sku');
 
                     // Change background color based on selected value
-                    if (newValue === 'NRL') {
+                    if (newValue === 'NR') {
                         $select.css('background-color', '#dc3545').css('color', '#ffffff');
                     } else {
                         $select.css('background-color', '#28a745').css('color', '#ffffff');
@@ -3433,11 +3468,11 @@
 
                     // Send AJAX
                     $.ajax({
-                        url: '/ebay/save-nr',
+                        url: '/ebay/update-listed-live',
                         type: 'POST',
                         data: {
                             sku: sku,
-                            nrl: newValue,
+                            nr_req: newValue,
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
@@ -3458,7 +3493,10 @@
                             renderTable();
                         },
                         error: function(xhr) {
-                            showNotification('danger', 'Failed to update.');
+                            console.error('NRL Update Error:', xhr.responseText);
+                            console.error('Status:', xhr.status);
+                            console.error('Response JSON:', xhr.responseJSON);
+                            showNotification('danger', 'Failed to update NRL: ' + (xhr.responseJSON?.message || xhr.statusText));
                         }
                     });
                 });
@@ -3558,6 +3596,10 @@
                     switch (type.toLowerCase()) {
                         case 'conversion view':
                             fieldsToDisplay = [{
+                                    title: 'PmtClkL7',
+                                    content: selectedItem['PmtClkL7']
+                                },
+                                {
                                     title: 'PmtClkL30',
                                     content: selectedItem['PmtClkL30']
                                 },
@@ -5198,8 +5240,8 @@
                 if (nraFilter && nraFilter !== 'all') {
                     filteredData = filteredData.filter(item => {
                         const nra = (item.NRL || '').toUpperCase();
-                        if (nraFilter === 'RL') return nra === 'RL';
-                        if (nraFilter === 'NRL') return nra === 'NRL';
+                        if (nraFilter === 'REQ') return nra === 'REQ';
+                        if (nraFilter === 'NR') return nra === 'NR';
                         if (nraFilter === 'LATER') return nra === 'LATER';
                         return true;
                     });
@@ -5351,6 +5393,7 @@
                         ovDilTotal: 0,
                         el30Total: 0,
                         eDilTotal: 0,
+                        pmtClkL7Total: 0,
                         viewsTotal: 0,
                         profitSum: 0, // <-- new
                         salesL30Sum: 0, // <-- new
@@ -5397,6 +5440,7 @@
                         metrics.invTotal += parseFloat(item.INV) || 0;
                         metrics.ovL30Total += parseFloat(item.L30) || 0;
                         metrics.el30Total += parseFloat(item['eBay L30']) || 0;
+                        metrics.pmtClkL7Total += parseFloat(rawData.PmtClkL7) || 0;
                         metrics.viewsTotal += parseFloat(item['PmtClkL30']) || 0;
                         let views = parseFloat(item['PmtClkL30']) || 0;
                         if (item.NR !== 'NRA') {
@@ -5423,6 +5467,7 @@
                     $('#ovdil-total').text(Math.round(metrics.ovDilTotal) + '%');
                     $('#el30-total').text(metrics.el30Total.toLocaleString());
                     $('#eDil-total').text(Math.round(metrics.eDilTotal) + '%');
+                    $('#pmtclkl7-total').text(metrics.pmtClkL7Total.toLocaleString());
                     $('#views-total').text(metrics.viewsTotal.toLocaleString());
                     $('#listed-total').text(metrics.listedCount.toLocaleString());
                     $('#live-total').text(metrics.liveCount.toLocaleString());
@@ -5450,6 +5495,7 @@
                 $('#ovdil-total').text('0%');
                 $('#el30-total').text('0');
                 $('#eDil-total').text('0%');
+                $('#pmtclkl7-total').text('0');
                 $('#views-total').text('0');
                 $('#pft-total').text('0%');
                 $('#roi-total').text('0%');
@@ -6112,6 +6158,164 @@
             initTable();
             // Make the static Hide SKU modal draggable using the existing logic
             ModalSystem.makeDraggable(document.getElementById('customHideSkuModal'));
+
+            // Campaign Chart Handler
+            let campaignChart = null;
+            
+            $(document).on('click', '.campaign-chart-btn', function(e) {
+                e.preventDefault();
+                const campaignId = $(this).data('campaign-id');
+                
+                // Fetch campaign chart data
+                fetch(`/ebay/pmp/ads/campaign-chart?campaign_id=${campaignId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        // Destroy existing chart if any
+                        if (campaignChart) {
+                            campaignChart.destroy();
+                        }
+
+                        // Create new chart
+                        const ctx = document.getElementById('singleCampaignChart').getContext('2d');
+                        campaignChart = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: data.dates,
+                                datasets: [
+                                    {
+                                        label: 'Clicks',
+                                        data: data.clicks,
+                                        borderColor: 'rgb(153, 102, 255)',
+                                        backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                                        yAxisID: 'y1',
+                                        tension: 0.4
+                                    },
+                                    {
+                                        label: 'Spend ($)',
+                                        data: data.spend,
+                                        borderColor: 'rgb(75, 192, 192)',
+                                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                                        yAxisID: 'y2',
+                                        tension: 0.4
+                                    },
+                                    {
+                                        label: 'Ad Sales ($)',
+                                        data: data.ad_sales,
+                                        borderColor: 'rgb(54, 162, 235)',
+                                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                                        yAxisID: 'y2',
+                                        tension: 0.4
+                                    },
+                                    {
+                                        label: 'Ad Sold',
+                                        data: data.ad_sold,
+                                        borderColor: 'rgb(255, 159, 64)',
+                                        backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                                        yAxisID: 'y1',
+                                        tension: 0.4
+                                    },
+                                    {
+                                        label: 'ACOS (%)',
+                                        data: data.acos,
+                                        borderColor: 'rgb(255, 99, 132)',
+                                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                                        yAxisID: 'y3',
+                                        tension: 0.4
+                                    },
+                                    {
+                                        label: 'CVR (%)',
+                                        data: data.cvr,
+                                        borderColor: 'rgb(75, 192, 75)',
+                                        backgroundColor: 'rgba(75, 192, 75, 0.1)',
+                                        yAxisID: 'y3',
+                                        tension: 0.4
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: {
+                                    mode: 'index',
+                                    intersect: false
+                                },
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        position: 'top'
+                                    },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                let label = context.dataset.label || '';
+                                                if (label) {
+                                                    label += ': ';
+                                                }
+                                                if (label.includes('$')) {
+                                                    label += '$' + context.parsed.y.toFixed(2);
+                                                } else if (label.includes('%')) {
+                                                    label += context.parsed.y.toFixed(2) + '%';
+                                                } else {
+                                                    label += context.parsed.y;
+                                                }
+                                                return label;
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        display: true,
+                                        title: {
+                                            display: true,
+                                            text: 'Date'
+                                        }
+                                    },
+                                    y1: {
+                                        type: 'linear',
+                                        display: true,
+                                        position: 'left',
+                                        title: {
+                                            display: true,
+                                            text: 'Clicks / Ad Sold'
+                                        }
+                                    },
+                                    y2: {
+                                        type: 'linear',
+                                        display: true,
+                                        position: 'right',
+                                        title: {
+                                            display: true,
+                                            text: 'Spend / Sales ($)'
+                                        },
+                                        grid: {
+                                            drawOnChartArea: false
+                                        }
+                                    },
+                                    y3: {
+                                        type: 'linear',
+                                        display: true,
+                                        position: 'right',
+                                        title: {
+                                            display: true,
+                                            text: 'ACOS / CVR (%)'
+                                        },
+                                        grid: {
+                                            drawOnChartArea: false
+                                        }
+                                    }
+                                }
+                            }
+                        });
+
+                        // Show modal
+                        $('#campaignChartModal').modal('show');
+                    })
+                    .catch(error => {
+                        console.error('Error fetching campaign chart data:', error);
+                        alert('Failed to load campaign chart data');
+                    });
+            });
             
         });
     </script>

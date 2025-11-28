@@ -20,17 +20,21 @@ use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ChannelMaster;
 use Illuminate\Support\Facades\DB;
+use App\Services\AmazonDataService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use App\Models\AmazonFbmManual;
 
 class OverallAmazonController extends Controller
 {
     protected $apiController;
+    protected $amazonDataService;
 
-    public function __construct(ApiController $apiController)
+    public function __construct(ApiController $apiController, AmazonDataService $amazonDataService)
     {
         $this->apiController = $apiController;
+        $this->amazonDataService = $amazonDataService;
     }
 
     public function updatePrice(Request $request)
@@ -439,7 +443,7 @@ class OverallAmazonController extends Controller
             $row['amz_roi'] = $amazonSheet && $lp > 0 && ($amazonSheet->price ?? 0) > 0 ? (($amazonSheet->price * 0.70 - $lp - $ship) / $lp) : 0;
 
             $prices = DB::connection('repricer')
-                ->table('lmpa_data')
+                ->table('lmp_data')
                 ->where('sku', $sku)
                 ->where('price', '>', 0)
                 ->orderBy('price', 'asc')
@@ -1423,6 +1427,8 @@ class OverallAmazonController extends Controller
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
+        $ratings = AmazonFbmManual::whereIn('sku', $skus)->pluck('data', 'sku')->toArray();
+
         $parents = $productMasters->pluck('parent')->filter()->unique()->map('strtoupper')->values()->all();
 
         $jungleScoutData = JungleScoutProductData::whereIn('parent', $parents)
@@ -1458,7 +1464,7 @@ class OverallAmazonController extends Controller
         $lmpDetailsLookup = collect();
         try {
             $lmpRecords = DB::connection('repricer')
-                ->table('lmp_data')
+                ->table('lmpa_data')
                 ->select('sku', 'price', 'link', 'image')
                 ->whereIn('sku', $skus)
                 ->orderBy('price', 'asc')
@@ -1508,6 +1514,8 @@ class OverallAmazonController extends Controller
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $row = [];
+            $ratingData = isset($ratings[strtoupper($pm->sku)]) ? json_decode($ratings[strtoupper($pm->sku)], true) : null;
+            $row['rating'] = $ratingData['rating'] ?? null;
             $row['Parent'] = $parent;
             $row['(Child) sku'] = $pm->sku;
 
@@ -2346,77 +2354,190 @@ class OverallAmazonController extends Controller
 
     public function exportAmazonPricingCVR(Request $request)
     {
+        return $this->amazonDataService->exportPricingCVRToCSV($request);
+    }
+
+    public function downloadAmazonRatingsSample(Request $request)
+    {
+        return $this->amazonDataService->downloadRatingsSampleTemplate($request);
+    }
+
+    public function importAmazonRatings(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt'
+        ]);
+
         try {
-            $response = $this->getViewAmazonData($request);
-            $data = json_decode($response->getContent(), true);
-            $amazonData = collect($data['data'] ?? []);
+            $file = $request->file('file');
+            $content = file_get_contents($file->getRealPath());
+            $content = preg_replace('/^\x{FEFF}/u', '', $content); // Remove BOM
+            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8');
+            $csvData = array_map('str_getcsv', explode("\n", $content));
+            $csvData = array_filter($csvData, function($row) {
+                return count($row) > 0 && !empty(trim(implode('', $row)));
+            });
+            $header = array_shift($csvData); // Remove header
 
-            $spreadsheet = new Spreadsheet();
-            $sheet = $spreadsheet->getActiveSheet();
+            $imported = 0;
+            $skipped = 0;
 
-            // Header Row
-            $headers = [
-                'Parent', '(Child) SKU', 'INV', 'L30', 'Price', 'Price LMPA',
-                'A L30', 'Sess30', 'CVR L30', 'NRL', 'NRA', 'SPRICE',
-                'SGPFT%', 'SROI%', 'Listed', 'Live', 'A+',
-                'PFT%', 'ROI%', 'Total Profit', 'Total Sales L30', 'Total COGS'
-            ];
-            $sheet->fromArray($headers, NULL, 'A1');
+            foreach ($csvData as $row) {
+                $row = array_map('trim', $row); // Trim all elements
+                if (empty($row) || count($row) < 1 || empty($row[0])) {
+                    $skipped++;
+                    continue;
+                }
 
-            // Data Rows
-            $rowIndex = 2;
-            foreach ($amazonData as $item) {
-                $aL30 = $item['A_L30'] ?? 0;
-                $sess30 = $item['Sess30'] ?? 0;
-                $cvr = $sess30 > 0 ? ($aL30 / $sess30) * 100 : 0;
+                if (count($row) !== count($header)) {
+                    $skipped++;
+                    continue;
+                }
 
-                $rowData = [
-                    $item['Parent'] ?? '',
-                    $item['(Child) sku'] ?? '',
-                    $item['INV'] ?? 0,
-                    $item['L30'] ?? 0,
-                    $item['price'] ?? 0,
-                    $item['price_lmpa'] ?? 0,
-                    $aL30,
-                    $sess30,
-                    round($cvr, 2),
-                    $item['NRL'] ?? '',
-                    $item['NRA'] ?? '',
-                    $item['SPRICE'] ?? '',
-                    $item['Spft%'] ?? '',
-                    $item['SROI'] ?? '',
-                    $item['Listed'] ? 'TRUE' : 'FALSE',
-                    $item['Live'] ? 'TRUE' : 'FALSE',
-                    $item['APlus'] ? 'TRUE' : 'FALSE',
-                    $item['PFT_percentage'] ?? 0,
-                    $item['ROI_percentage'] ?? 0,
-                    $item['Total_pft'] ?? 0,
-                    $item['T_Sale_l30'] ?? 0,
-                    $item['T_COGS'] ?? 0
-                ];
+                $sku = strtoupper($row[0]);
+                $rowData = array_combine($header, $row);
+                unset($rowData['sku']);
 
-                $sheet->fromArray($rowData, NULL, 'A' . $rowIndex);
-                $rowIndex++;
+                AmazonFbmManual::create([
+                    'sku' => $sku,
+                    'data' => json_encode($rowData)
+                ]);
+
+                $imported++;
             }
 
-            // Set column widths
-            foreach (range('A', 'V') as $col) {
-                $sheet->getColumnDimension($col)->setAutoSize(true);
-            }
-
-            // Output Download
-            $fileName = 'Amazon_Pricing_CVR_Export_' . date('Y-m-d') . '.xlsx';
-
-            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            header('Content-Disposition: attachment;filename="' . $fileName . '"');
-            header('Cache-Control: max-age=0');
-
-            $writer = new Xlsx($spreadsheet);
-            $writer->save('php://output');
-            exit;
+            return response()->json(['success' => 'Imported ' . $imported . ' ratings successfully' . ($skipped > 0 ? ', skipped ' . $skipped . ' invalid rows' : '')]);
         } catch (\Exception $e) {
-            Log::error('Error exporting Amazon pricing CVR data: ' . $e->getMessage());
-            return back()->with('error', 'Failed to export data');
+            return response()->json(['error' => 'Error importing ratings: ' . $e->getMessage()]);
         }
+    }
+
+    public function getMetricsHistory(Request $request)
+    {
+        $days = $request->input('days', 7); // Default to last 7 days
+        $sku = $request->input('sku'); // Optional SKU filter
+        $skus = $request->input('skus'); // Optional array of SKUs to filter (for INV > 0)
+        
+        // Ensure minimum 7 days if pulling from today
+        $minDays = 7;
+        if ($days < $minDays) {
+            $days = $minDays;
+        }
+        
+        $startDate = \Carbon\Carbon::today()->subDays($days - 1); // -1 to include today
+        $endDate = \Carbon\Carbon::today();
+        
+        $chartData = [];
+        $dataByDate = []; // Store data by date for filling gaps
+        
+        try {
+            // Try to use the new table for JSON format data
+            $query = \App\Models\AmazonSkuDailyData::where('record_date', '>=', $startDate)
+                ->where('record_date', '<=', $endDate)
+                ->orderBy('record_date', 'asc');
+            
+            // If SKU is provided, return data for specific SKU
+            if ($sku) {
+                $metricsData = $query->where('sku', strtoupper(trim($sku)))->get();
+                
+                foreach ($metricsData as $record) {
+                    $data = $record->daily_data;
+                    $dateKey = \Carbon\Carbon::parse($record->record_date)->format('Y-m-d');
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => \Carbon\Carbon::parse($record->record_date)->format('M d'),
+                        'price' => round($data['price'] ?? 0, 2),
+                        'views' => $data['views'] ?? 0,
+                        'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
+                        'ad_percent' => round($data['ad_percent'] ?? 0, 2),
+                    ];
+                }
+            } else {
+                // If SKUs array is provided, filter by those SKUs (for INV > 0 filtering)
+                if ($skus) {
+                    $skuArray = is_string($skus) ? json_decode($skus, true) : $skus;
+                    if (is_array($skuArray) && count($skuArray) > 0) {
+                        $query->whereIn('sku', array_map(function($sku) {
+                            return strtoupper(trim($sku));
+                        }, $skuArray));
+                    }
+                }
+                
+                // Aggregate data for filtered SKUs
+                $metricsData = $query->get()->groupBy('record_date');
+                
+                foreach ($metricsData as $date => $records) {
+                    $dateKey = \Carbon\Carbon::parse($date)->format('Y-m-d');
+                    
+                    // Calculate weighted average price (same as summary badge: price * a_l30 / sum a_l30)
+                    $totalWeightedPrice = 0;
+                    $totalL30 = 0;
+                    foreach ($records as $record) {
+                        $price = floatval($record->daily_data['price'] ?? 0);
+                        $aL30 = floatval($record->daily_data['a_l30'] ?? 0);
+                        $totalWeightedPrice += $price * $aL30;
+                        $totalL30 += $aL30;
+                    }
+                    $avgPrice = $totalL30 > 0 ? ($totalWeightedPrice / $totalL30) : 0;
+                    
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => \Carbon\Carbon::parse($date)->format('M d'),
+                        'avg_price' => round($avgPrice, 2),
+                        'total_views' => $records->sum(function($r) { return $r->daily_data['views'] ?? 0; }),
+                        'avg_cvr_percent' => round($records->avg(function($r) { return $r->daily_data['cvr_percent'] ?? 0; }), 2),
+                        'avg_ad_percent' => round($records->avg(function($r) { return $r->daily_data['ad_percent'] ?? 0; }), 2),
+                    ];
+                }
+            }
+            
+            // If no data found in new table, try fallback
+            if (empty($dataByDate)) {
+                throw new \Exception('No data in new table, trying fallback');
+            }
+            
+        } catch (\Exception $e) {
+            // Fallback: Return empty data and let the frontend handle it
+            Log::info('No Amazon daily metrics data available. Historical data will be populated by metrics collection command.');
+        }
+
+        // Fill in missing dates with zero values to ensure at least 7 days
+        $currentDate = \Carbon\Carbon::parse($startDate);
+        $today = \Carbon\Carbon::today();
+        
+        while ($currentDate->lte($today)) {
+            $dateKey = $currentDate->format('Y-m-d');
+            
+            if (!isset($dataByDate[$dateKey])) {
+                // Fill missing date with zero values
+                if ($sku) {
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'price' => 0,
+                        'views' => 0,
+                        'cvr_percent' => 0,
+                        'ad_percent' => 0,
+                    ];
+                } else {
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'avg_price' => 0,
+                        'total_views' => 0,
+                        'avg_cvr_percent' => 0,
+                        'avg_ad_percent' => 0,
+                    ];
+                }
+            }
+            
+            $currentDate->addDay();
+        }
+        
+        // Sort by date and convert to array
+        ksort($dataByDate);
+        $chartData = array_values($dataByDate);
+
+        return response()->json($chartData);
     }
 }

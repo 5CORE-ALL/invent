@@ -1179,21 +1179,18 @@
 
 
                         <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#facebook-ads-master" aria-expanded="false"
-                                aria-controls="facebook-ads-master" class="side-nav-link">
-                                <span>Facebook Ads Manager</span>
+                            <a data-bs-toggle="collapse" href="#meta-ads-master" aria-expanded="false"
+                                aria-controls="meta-ads-master" class="side-nav-link">
+                                <span>Meta Ads Manager</span>
                                 <span class="menu-arrow"></span>
                             </a>
-                            <div class="collapse" id="facebook-ads-master">
+                            <div class="collapse" id="meta-ads-master">
                                 <ul class="side-nav-second-level">
                                     <li>
+                                        <a href="{{ route('meta.all.ads') }}">ALL ADS</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('facebook.ads.index') }}">Image Carousel Ad Running</a>
-                                    </li>
-                                    <li>
-                                        <a href="#">Image Carousel Ad Running</a>
-                                    </li>
-                                    <li>
-                                        <a href="#">Image Carousel Ad Running</a>
                                     </li>
                                 </ul>
                             </div>
@@ -1858,6 +1855,11 @@
                                         <a href="{{ url('ebay-tabulator-view') }}">Ebay Pricing
                                             Decrease </a>
                                     </li>
+
+                                    <li>
+                                        <a href="{{ url('ebay-pricing-data') }}">Ebay Pricing Data</a>
+                                    </li>
+
                                     <li>
                                         <a href="{{ url('ebay-pricing-increase') }}">Ebay Pricing
                                             Increase </a>

@@ -14,13 +14,14 @@ use App\Models\FbaManualData;
 use App\Models\FbaOrder;
 use App\Models\FbaShipCalculation;
 use App\Models\FbaMetricsHistory;
+use App\Models\FbaSkuDailyData;
 use App\Services\ColorService;
 use App\Services\FbaManualDataService;
 use App\Services\LmpaDataService;
 use App\Services\AmazonSpApiService;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
-
+use PhpOffice\PhpSpreadsheet\Calculation\MathTrig\Sum;
 
 class FbaDataController extends Controller
 {
@@ -598,8 +599,21 @@ class FbaDataController extends Controller
          $adsPTDataBySku[$sku] = $ptCampaign;
       }
 
+      // Calculate overall average price: sum(price) * sum(l30) / sum(l30) = sum(price)
+      $totalPrice = 0;
+      $totalL30 = 0;
+      foreach ($fbaData as $sku => $fba) {
+         $fbaPriceInfo = $fbaPriceData->get($sku);
+         $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
+         $monthlySales = $fbaMonthlySales->get($sku);
+         $l30Units = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
+         $totalPrice += $PRICE;
+         $totalL30 += $l30Units;
+      }
+      $overallAvgPrice = $totalL30 > 0 ? $totalPrice * $totalL30 / $totalL30 : 0;
+
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $adsKWDataBySku, $adsPTDataBySku) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -708,6 +722,13 @@ class FbaDataController extends Controller
             $groi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $LP;
          }
 
+         $avgprice = $overallAvgPrice;
+
+
+           $topgpft = 0;
+         if ($PRICE > 0) {
+            $topgpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+         }
 
          $gpftPercentage = round($gpft * 100);
          $sgpftPercentage = round($sgpft * 100);
@@ -717,6 +738,12 @@ class FbaDataController extends Controller
          $spftPercentage = round($spft * 100);
          $sroiPercentage = round($sroi);
          $sgroiPercentage = round($sgroi * 100);
+
+         $pft_amt = $l30Units * $PRICE * $gpft;
+
+         $sales_amt = $l30Units * $PRICE;
+
+         $lp_amt = $LP * $l30Units;
 
          return [
             'Parent' => $product ? ($product->parent ?? '') : '',
@@ -764,6 +791,7 @@ class FbaDataController extends Controller
             'Send_Cost' => $manual ? ($manual->data['send_cost'] ?? 0) : 0,
             'IN_Charges' => $manual ? ($manual->data['in_charges'] ?? 0) : 0,
             'Commission_Percentage' => $manual ? ($manual->data['commission_percentage'] ?? 0) : 0,
+            'Ratings' => $manual ? ($manual->data['ratings'] ?? 0) : 0,
             'Total_quantity_sent' => $manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0,
             'Done' => $manual ? ($manual->data['done'] ?? false) : false,
             'Warehouse_INV_Reduction' => $manual ? ($manual->data['warehouse_inv_reduction'] ?? false) : false,
@@ -810,6 +838,9 @@ class FbaDataController extends Controller
             'Oct' => $monthlySales ? ($monthlySales->oct ?? 0) : 0,
             'Nov' => $monthlySales ? ($monthlySales->nov ?? 0) : 0,
             'Dec' => $monthlySales ? ($monthlySales->dec ?? 0) : 0,
+            'PFT_AMT' => round($pft_amt, 2),
+            'SALES_AMT' => round($sales_amt, 2),
+            'LP_AMT' => round($lp_amt, 2),
 
 
 
@@ -859,6 +890,7 @@ class FbaDataController extends Controller
             'Send_Cost' => round($children->sum(fn($item) => is_numeric($item['Send_Cost']) ? $item['Send_Cost'] : 0), 2),
             'IN_Charges' => round($children->sum(fn($item) => is_numeric($item['IN_Charges']) ? $item['IN_Charges'] : 0), 2),
             'Commission_Percentage' => '',
+            'Ratings' => '',
             'Total_Spend_L30' => $children->sum('Total_Spend_L30'),
             'TCOS_Percentage' => '',
             'Done' => false,
@@ -904,6 +936,9 @@ class FbaDataController extends Controller
             'RATING' => '',
             'LP' => '',
             'FBA_Ship_Calculation' => '',
+            'PFT_AMT' => round($children->sum('PFT_AMT'), 2),
+            'SALES_AMT' => round($children->sum('SALES_AMT'), 2),
+            'LP_AMT' => round($children->sum('LP_AMT'), 2),
          ];
 
          // Return children first, then parent
@@ -984,6 +1019,17 @@ class FbaDataController extends Controller
       $value = $request->input('value') ?: 0;
       $fulfillmentFee = floatval($request->input('fulfillment_fee') ?? 0);
 
+      // Validate ratings field
+      if ($field === 'ratings') {
+         $numValue = floatval($value);
+         if ($numValue < 0 || $numValue > 5) {
+            return response()->json([
+               'success' => false,
+               'error' => 'Ratings must be between 0 and 5'
+            ], 400);
+         }
+         $value = $numValue; // Ensure it's stored as a number
+      }
 
       // Row find or create
       $manual = FbaManualData::where('sku', $sku)->first();
@@ -1181,42 +1227,201 @@ class FbaDataController extends Controller
       $days = $request->input('days', 30); // Default to last 30 days
       $sku = $request->input('sku'); // Optional SKU filter
       
-      $startDate = Carbon::today()->subDays($days);
+      // Ensure minimum 7 days if pulling from today
+      $minDays = 7;
+      if ($days < $minDays) {
+         $days = $minDays;
+      }
       
-      $query = FbaMetricsHistory::where('record_date', '>=', $startDate)
-         ->orderBy('record_date', 'asc');
+      $startDate = Carbon::today()->subDays($days - 1); // -1 to include today
+      $endDate = Carbon::today();
       
-      // If SKU is provided, return data for specific SKU
-      if ($sku) {
-         $metricsData = $query->where('sku', strtoupper(trim($sku)))->get();
+      $chartData = [];
+      $dataByDate = []; // Store data by date for filling gaps
+      
+      try {
+         // Try to use the new table for JSON format data
+         $query = FbaSkuDailyData::where('record_date', '>=', $startDate)
+            ->where('record_date', '<=', $endDate)
+            ->orderBy('record_date', 'asc');
          
-         $chartData = [];
-         foreach ($metricsData as $record) {
-            $chartData[] = [
-               'date' => Carbon::parse($record->record_date)->format('M d'),
-               'price' => round($record->price, 2),
-               'views' => $record->views,
-               'gprft' => round($record->gprft, 2),
-               'groi_percent' => round($record->groi_percent, 2),
-               'tacos' => round($record->tacos, 2),
-            ];
+         // If SKU is provided, return data for specific SKU
+         if ($sku) {
+            $metricsData = $query->where('sku', strtoupper(trim($sku)))->get();
+            
+            foreach ($metricsData as $record) {
+               $data = $record->daily_data;
+               $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+               $dataByDate[$dateKey] = [
+                  'date' => $dateKey,
+                  'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                  'price' => round($data['price'] ?? 0, 2),
+                  'views' => $data['views'] ?? 0,
+                  'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
+                  'tacos_percent' => round($data['tacos_percent'] ?? 0, 2),
+               ];
+            }
+         } else {
+            // Aggregate data for all SKUs
+            $metricsData = $query->get()->groupBy('record_date');
+            
+            foreach ($metricsData as $date => $records) {
+               $dateKey = Carbon::parse($date)->format('Y-m-d');
+               
+               // Calculate weighted average price (same as summary badge: price * l30_units / sum l30_units)
+               $totalWeightedPrice = 0;
+               $totalL30 = 0;
+               foreach ($records as $record) {
+                  $price = floatval($record->daily_data['price'] ?? 0);
+                  $l30Units = floatval($record->daily_data['l30_units'] ?? 0);
+                  $totalWeightedPrice += $price * $l30Units;
+                  $totalL30 += $l30Units;
+               }
+               $avgPrice = $totalL30 > 0 ? ($totalWeightedPrice / $totalL30) : 0;
+               
+               $dataByDate[$dateKey] = [
+                  'date' => $dateKey,
+                  'date_formatted' => Carbon::parse($date)->format('M d'),
+                  'avg_price' => round($avgPrice, 2),
+                  'total_views' => $records->sum(function($r) { return $r->daily_data['views'] ?? 0; }),
+                  'avg_cvr_percent' => round($records->avg(function($r) { return $r->daily_data['cvr_percent'] ?? 0; }), 2),
+                  'avg_tacos_percent' => round($records->avg(function($r) { return $r->daily_data['tacos_percent'] ?? 0; }), 2),
+               ];
+            }
          }
-      } else {
-         // Aggregate data for all SKUs
-         $metricsData = $query->get()->groupBy('record_date');
          
-         $chartData = [];
-         foreach ($metricsData as $date => $records) {
-            $chartData[] = [
-               'date' => Carbon::parse($date)->format('M d'),
-               'avg_price' => round($records->avg('price'), 2),
-               'total_views' => $records->sum('views'),
-               'avg_gprft' => round($records->avg('gprft'), 2),
-               'avg_groi_percent' => round($records->avg('groi_percent'), 2),
-               'avg_tacos' => round($records->avg('tacos'), 2),
-            ];
+         // If no data found in new table, try fallback to old table
+         if (empty($dataByDate)) {
+            throw new \Exception('No data in new table, trying fallback');
+         }
+         
+      } catch (\Exception $e) {
+         // Fallback to old table and calculate CVR
+         Log::info('Using fallback to FbaMetricsHistory table: ' . $e->getMessage());
+         
+         $query = FbaMetricsHistory::where('record_date', '>=', $startDate)
+            ->where('record_date', '<=', $endDate)
+            ->orderBy('record_date', 'asc');
+         
+         if ($sku) {
+            $metricsData = $query->where('sku', strtoupper(trim($sku)))->get();
+            
+            if ($metricsData->isEmpty()) {
+               Log::info('No metrics history data found for SKU: ' . $sku);
+            } else {
+               // Get monthly sales for CVR calculation
+               $monthlySales = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                  ->get()
+                  ->keyBy(function ($item) {
+                     $sku = $item->seller_sku;
+                     $base = preg_replace('/\s*FBA\s*/i', '', $sku);
+                     return strtoupper(trim($base));
+                  });
+               
+               $normalizedSku = strtoupper(trim($sku));
+               $monthlySale = $monthlySales->get($normalizedSku);
+               $l30Units = $monthlySale ? ($monthlySale->l30_units ?? 0) : 0;
+               
+               foreach ($metricsData as $record) {
+                  $views = $record->views ?? 0;
+                  
+                  // Calculate CVR from stored views and monthly sales
+                  // Note: This is an approximation since we're using monthly l30_units with daily views
+                  $cvr = 0;
+                  if ($views > 0 && $l30Units > 0) {
+                     // Estimate daily CVR: distribute monthly units across views proportionally
+                     // This gives an approximate CVR percentage
+                     $cvr = ($l30Units / $views) * 100;
+                  }
+                  
+                  $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                  $dataByDate[$dateKey] = [
+                     'date' => $dateKey,
+                     'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                     'price' => round($record->price ?? 0, 2),
+                     'views' => $views,
+                     'cvr_percent' => round($cvr, 2),
+                     'tacos_percent' => round($record->tacos ?? 0, 2),
+                  ];
+               }
+            }
+         } else {
+            // Aggregate data for all SKUs from old table
+            $metricsData = $query->get()->groupBy('record_date');
+            
+            // Get monthly sales for L30 data (for weighted average)
+            $monthlySales = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+               ->get()
+               ->keyBy(function ($item) {
+                  $sku = $item->seller_sku;
+                  $base = preg_replace('/\s*FBA\s*/i', '', $sku);
+                  return strtoupper(trim($base));
+               });
+            
+            foreach ($metricsData as $date => $records) {
+               $dateKey = Carbon::parse($date)->format('Y-m-d');
+               
+               // Calculate weighted average price (same as summary badge: price * l30_units / sum l30_units)
+               $totalWeightedPrice = 0;
+               $totalL30 = 0;
+               foreach ($records as $record) {
+                  $price = floatval($record->price ?? 0);
+                  $normalizedSku = strtoupper(trim($record->sku));
+                  $monthlySale = $monthlySales->get($normalizedSku);
+                  $l30Units = $monthlySale ? floatval($monthlySale->l30_units ?? 0) : 0;
+                  $totalWeightedPrice += $price * $l30Units;
+                  $totalL30 += $l30Units;
+               }
+               $avgPrice = $totalL30 > 0 ? ($totalWeightedPrice / $totalL30) : 0;
+               
+               $dataByDate[$dateKey] = [
+                  'date' => $dateKey,
+                  'date_formatted' => Carbon::parse($date)->format('M d'),
+                  'avg_price' => round($avgPrice, 2),
+                  'total_views' => $records->sum('views'),
+                  'avg_cvr_percent' => 0, // Can't calculate CVR from aggregated data easily
+                  'avg_tacos_percent' => round($records->avg('tacos'), 2),
+               ];
+            }
          }
       }
+
+      // Fill in missing dates with zero values to ensure at least 7 days
+      $currentDate = Carbon::parse($startDate);
+      $today = Carbon::today();
+      
+      while ($currentDate->lte($today)) {
+         $dateKey = $currentDate->format('Y-m-d');
+         
+         if (!isset($dataByDate[$dateKey])) {
+            // Fill missing date with zero values
+            if ($sku) {
+               $dataByDate[$dateKey] = [
+                  'date' => $dateKey,
+                  'date_formatted' => $currentDate->format('M d'),
+                  'price' => 0,
+                  'views' => 0,
+                  'cvr_percent' => 0,
+                  'tacos_percent' => 0,
+               ];
+            } else {
+               $dataByDate[$dateKey] = [
+                  'date' => $dateKey,
+                  'date_formatted' => $currentDate->format('M d'),
+                  'avg_price' => 0,
+                  'total_views' => 0,
+                  'avg_cvr_percent' => 0,
+                  'avg_tacos_percent' => 0,
+               ];
+            }
+         }
+         
+         $currentDate->addDay();
+      }
+      
+      // Sort by date and convert to array
+      ksort($dataByDate);
+      $chartData = array_values($dataByDate);
 
       return response()->json($chartData);
    }

@@ -6,24 +6,23 @@ use App\Models\EbayMetric;
 use App\Models\ShopifySku;
 use App\Models\EbayDataView;
 use Illuminate\Http\Request;
-use App\Services\EbayApiService;
 use App\Models\EbayGeneralReport;
 use App\Http\Controllers\Controller;
 use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\ApiController;
-use App\Jobs\UpdateEbaySPriceJob;
 use App\Models\ChannelMaster;
 use App\Models\ADVMastersData;
 use App\Models\EbayPriorityReport;
-use App\Models\ProductMaster; // Add this at the top with other use statements
+use App\Models\ProductMaster; 
+use App\Models\EbaySkuDailyData;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Models\EbayGeneralReports;
 use App\Models\EbayListingStatus;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Carbon\Carbon;
 use Exception;
 
 class EbayController extends Controller
@@ -57,6 +56,11 @@ class EbayController extends Controller
     public function ebayTabulatorView(Request $request)
     {
         return view("market-places.ebay_tabulator_view");
+    }
+
+       public function ebayViewData(Request $request)
+    {
+        return view("market-places.ebay_pricing_data");
     }
 
     public function ebayDataJson(Request $request)
@@ -209,15 +213,6 @@ class EbayController extends Controller
             ->all();
 
             $nonParentSkus = $skus;
-
-        // $nonParentSkus = $productMasters->pluck("sku")
-        //     ->filter()
-        //     ->filter(function ($sku) {
-        //         return stripos($sku, 'PARENT') === false;
-        //     })
-        //     ->unique()
-        //     ->values()
-        //     ->all();
 
         // 3. Related Models
         $shopifyData = ShopifySku::whereIn("sku", $skus)
@@ -464,12 +459,14 @@ class EbayController extends Controller
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
 
-            // NR & Hide
+            // Calculate SCVR (CVR): (eBay L30 / views) * 100
+            $views = floatval($row['views'] ?? 0);
+            $ebayL30 = floatval($row["eBay L30"] ?? 0);
+            $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
+            $cvr = $row['SCVR']; // Use SCVR for SPRICE calculation
+
+            // NR & Hide (load from database, but not SPRICE/SPFT/SROI/SGPFT)
             $row['NR'] = "";
-            $row['SPRICE'] = null;
-            $row['SPFT'] = null;
-            $row['SROI'] = null;
-            $row['SGPFT'] = null;
             $row['Listed'] = null;
             $row['Live'] = null;
             $row['APlus'] = null;
@@ -482,25 +479,35 @@ class EbayController extends Controller
                 if (is_array($raw)) {
                     $row['NR'] = $raw['NR'] ?? null;
                     $row['NRL'] = $raw['NRL'] ?? null;
-                    $row['SPRICE'] = $raw['SPRICE'] ?? null;
-                    $row['SPFT'] = $raw['SPFT'] ?? null;
-                    $row['SROI'] = $raw['SROI'] ?? null;
-                    $row['SGPFT'] = $raw['SGPFT'] ?? null;
+                    // Don't load SPRICE, SPFT, SROI, SGPFT from database - always calculate
                     $row['spend_l30'] = $raw['Spend_L30'] ?? null;
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
                 }
             }
-
-            // If SPRICE is null or empty, use eBay Price as default and calculate SPFT/SROI/SGPFT
-            if (empty($row['SPRICE']) && $price > 0) {
-                $row['SPRICE'] = $price;
-                $row['has_custom_sprice'] = false; // Flag to indicate using default price
+            
+            // Always calculate SPRICE based on CVR (ignore saved values)
+            if ($price > 0) {
+                // Determine multiplier based on CVR
+                if ($cvr >= 0 && $cvr <= 1) {
+                    // 0-1%: multiply by 0.99
+                    $spriceMultiplier = 0.99;
+                } elseif ($cvr > 1 && $cvr <= 3) {
+                    // 1%-3%: multiply by 0.995
+                    $spriceMultiplier = 0.995;
+                } else {
+                    // >3%: increase by 1% (multiply by 1.01)
+                    $spriceMultiplier = 1.01;
+                }
                 
-                // Calculate SGPFT based on default price
+                $row['SPRICE'] = round($price * $spriceMultiplier, 2);
+                $row['has_custom_sprice'] = false; // Always calculated, never custom
+                
+                // Calculate SGPFT based on calculated SPRICE
+                $sprice = $row['SPRICE'];
                 $sgpft = round(
-                    $price > 0 ? (($price * 0.86 - $ship - $lp) / $price) * 100 : 0,
+                    $sprice > 0 ? (($sprice * 0.86 - $ship - $lp) / $sprice) * 100 : 0,
                     2
                 );
                 $row['SGPFT'] = $sgpft;
@@ -511,36 +518,16 @@ class EbayController extends Controller
                 // Calculate SROI using new formula: ((SPRICE * (0.86 - AD%/100) - ship - lp) / lp) * 100
                 $adDecimal = $row["AD%"] / 100;
                 $row['SROI'] = round(
-                    $lp > 0 ? (($price * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                    $lp > 0 ? (($sprice * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
                     2
                 );
             } else {
-                $row['has_custom_sprice'] = true; // Flag to indicate custom SPRICE
-                
-                // Calculate SGPFT using custom SPRICE if not already set
-                if (empty($row['SGPFT'])) {
-                    $sprice = floatval($row['SPRICE']);
-                    $sgpft = round(
-                        $sprice > 0 ? (($sprice * 0.86 - $ship - $lp) / $sprice) * 100 : 0,
-                        2
-                    );
-                    $row['SGPFT'] = $sgpft;
-                }
-                
-                // Recalculate SPFT if already set, to ensure it uses SGPFT - AD%
-                if (!empty($row['SGPFT'])) {
-                    $row['SPFT'] = round($row['SGPFT'] - $row["AD%"], 2);
-                }
-                
-                // Recalculate SROI using new formula: ((SPRICE * (0.86 - AD%/100) - ship - lp) / lp) * 100
-                if (!empty($row['SPRICE'])) {
-                    $sprice = floatval($row['SPRICE']);
-                    $adDecimal = $row["AD%"] / 100;
-                    $row['SROI'] = round(
-                        $lp > 0 ? (($sprice * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
-                        2
-                    );
-                }
+                // If price is 0, set all to null/0
+                $row['SPRICE'] = null;
+                $row['SPFT'] = null;
+                $row['SROI'] = null;
+                $row['SGPFT'] = null;
+                $row['has_custom_sprice'] = false;
             }
 
             // Image
@@ -825,6 +812,34 @@ class EbayController extends Controller
 
     public function updateListedLive(Request $request)
     {
+        // Handle NRL updates
+        if ($request->has('nr_req')) {
+            Log::info('NRL Update Request', $request->all());
+            
+            $request->validate([
+                'sku'    => 'required|string',
+                'nr_req' => 'required|in:REQ,NR,LATER',
+            ]);
+
+            // Update EbayListingStatus for NRL
+            $listingStatus = EbayListingStatus::firstOrCreate(
+                ['sku' => $request->sku],
+                ['value' => []]
+            );
+
+            $currentValue = is_array($listingStatus->value)
+                ? $listingStatus->value
+                : (json_decode($listingStatus->value, true) ?? []);
+
+            $currentValue['nr_req'] = $request->nr_req;
+            $listingStatus->value = $currentValue;
+            $listingStatus->save();
+
+            Log::info('NRL Update Success', ['sku' => $request->sku, 'nr_req' => $request->nr_req]);
+            return response()->json(['success' => true]);
+        }
+
+        // Original validation for Listed/Live
         $request->validate([
             'sku'   => 'required|string',
             'field' => 'required|in:Listed,Live',
@@ -1120,5 +1135,124 @@ class EbayController extends Controller
             Log::error('Error exporting eBay pricing data: ' . $e->getMessage());
             return back()->with('error', 'Failed to export data: ' . $e->getMessage());
         }
+    }
+
+    public function getMetricsHistory(Request $request)
+    {
+        $days = $request->input('days', 7); // Default to last 7 days
+        $sku = $request->input('sku'); // Optional SKU filter
+        
+        // Ensure minimum 7 days if pulling from today
+        $minDays = 7;
+        if ($days < $minDays) {
+            $days = $minDays;
+        }
+        
+        $startDate = Carbon::today()->subDays($days - 1); // -1 to include today
+        $endDate = Carbon::today();
+        
+        $chartData = [];
+        $dataByDate = []; // Store data by date for filling gaps
+        
+        try {
+            // Try to use the new table for JSON format data
+            $query = EbaySkuDailyData::where('record_date', '>=', $startDate)
+                ->where('record_date', '<=', $endDate)
+                ->orderBy('record_date', 'asc');
+            
+            // If SKU is provided, return data for specific SKU
+            if ($sku) {
+                $metricsData = $query->where('sku', strtoupper(trim($sku)))->get();
+                
+                foreach ($metricsData as $record) {
+                    $data = $record->daily_data;
+                    $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                        'price' => round($data['price'] ?? 0, 2),
+                        'views' => $data['views'] ?? 0,
+                        'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
+                        'ad_percent' => round($data['ad_percent'] ?? 0, 2),
+                    ];
+                }
+            } else {
+                // Aggregate data for all SKUs
+                $metricsData = $query->get()->groupBy('record_date');
+                
+                foreach ($metricsData as $date => $records) {
+                    $dateKey = Carbon::parse($date)->format('Y-m-d');
+                    
+                    // Calculate weighted average price (same as summary badge: price * ebay_l30 / sum ebay_l30)
+                    $totalWeightedPrice = 0;
+                    $totalL30 = 0;
+                    foreach ($records as $record) {
+                        $price = floatval($record->daily_data['price'] ?? 0);
+                        $ebayL30 = floatval($record->daily_data['ebay_l30'] ?? 0);
+                        $totalWeightedPrice += $price * $ebayL30;
+                        $totalL30 += $ebayL30;
+                    }
+                    $avgPrice = $totalL30 > 0 ? ($totalWeightedPrice / $totalL30) : 0;
+                    
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => Carbon::parse($date)->format('M d'),
+                        'avg_price' => round($avgPrice, 2),
+                        'total_views' => $records->sum(function($r) { return $r->daily_data['views'] ?? 0; }),
+                        'avg_cvr_percent' => round($records->avg(function($r) { return $r->daily_data['cvr_percent'] ?? 0; }), 2),
+                        'avg_ad_percent' => round($records->avg(function($r) { return $r->daily_data['ad_percent'] ?? 0; }), 2),
+                    ];
+                }
+            }
+            
+            // If no data found in new table, try fallback to ebay_one_metrics
+            if (empty($dataByDate)) {
+                throw new \Exception('No data in new table, trying fallback');
+            }
+            
+        } catch (\Exception $e) {
+            // Fallback: Since ebay_one_metrics doesn't have historical daily data,
+            // we'll just return empty data and let the frontend handle it
+            Log::info('No eBay daily metrics data available. Historical data will be populated by metrics collection command.');
+        }
+
+        // Fill in missing dates with zero values to ensure at least 7 days
+        $currentDate = Carbon::parse($startDate);
+        $today = Carbon::today();
+        
+        while ($currentDate->lte($today)) {
+            $dateKey = $currentDate->format('Y-m-d');
+            
+            if (!isset($dataByDate[$dateKey])) {
+                // Fill missing date with zero values
+                if ($sku) {
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'price' => 0,
+                        'views' => 0,
+                        'cvr_percent' => 0,
+                        'ad_percent' => 0,
+                    ];
+                } else {
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'avg_price' => 0,
+                        'total_views' => 0,
+                        'avg_cvr_percent' => 0,
+                        'avg_ad_percent' => 0,
+                    ];
+                }
+            }
+            
+            $currentDate->addDay();
+        }
+        
+        // Sort by date and convert to array
+        ksort($dataByDate);
+        $chartData = array_values($dataByDate);
+
+        return response()->json($chartData);
     }
 }

@@ -506,63 +506,145 @@
 
             $(document).ready(function () {
 
+                // Helper function for retrying AJAX calls with exponential backoff
+                function ajaxWithRetry(options, maxRetries = 2) {
+                    return new Promise((resolve, reject) => {
+                        let attempt = 0;
+                        
+                        function makeRequest() {
+                            attempt++;
+                            
+                            $.ajax({
+                                ...options,
+                                timeout: 15000, // 15 second timeout per request
+                                success: function(response) {
+                                    resolve(response);
+                                },
+                                error: function(xhr) {
+                                    // Timeout error
+                                    if (xhr.statusText === 'timeout') {
+                                        if (attempt < maxRetries) {
+                                            const waitTime = attempt * 2; // 2, 4 seconds
+                                            console.log(`Request timeout. Retrying in ${waitTime}s (attempt ${attempt}/${maxRetries})`);
+                                            showRateLimitMessage(waitTime, attempt, maxRetries, 'Timeout - Retrying');
+                                            
+                                            setTimeout(() => {
+                                                makeRequest();
+                                            }, waitTime * 1000);
+                                        } else {
+                                            reject(xhr);
+                                        }
+                                        return;
+                                    }
+                                    
+                                    // Only retry on 429 (rate limit) errors
+                                    if (xhr.status === 429 && attempt < maxRetries) {
+                                        const waitTime = attempt * 2; // 2, 4 seconds
+                                        console.log(`Rate limited (429). Retrying in ${waitTime}s (attempt ${attempt}/${maxRetries})`);
+                                        
+                                        // Show a progress message to user
+                                        showRateLimitMessage(waitTime, attempt, maxRetries);
+                                        
+                                        setTimeout(() => {
+                                            makeRequest();
+                                        }, waitTime * 1000);
+                                    } else {
+                                        reject(xhr);
+                                    }
+                                }
+                            });
+                        }
+                        
+                        makeRequest();
+                    });
+                }
+                
+                // Show rate limit message to user
+                function showRateLimitMessage(waitSeconds, attempt, maxRetries, messageType = 'Rate Limit') {
+                    const progressContainer = document.getElementById('progress-container');
+                    if (!progressContainer) return;
+                    
+                    let message = document.getElementById('rate-limit-message');
+                    if (!message) {
+                        message = document.createElement('div');
+                        message.id = 'rate-limit-message';
+                        message.className = 'alert alert-warning';
+                        progressContainer.appendChild(message);
+                    }
+                    
+                    message.innerHTML = `
+                        <i class="fas fa-clock me-2"></i>
+                        <strong>Shopify ${messageType}:</strong> Retrying in ${waitSeconds}s... 
+                        (Attempt ${attempt}/${maxRetries})
+                    `;
+                }
+
                 $('#stockAdjustmentForm').on('submit', function (e) {
                     e.preventDefault();
 
                     const formData = $(this).serialize();
                     const $submitBtn = $('#saveStockAdjustmentBtn');
                     const originalText = $submitBtn.text();
+                    const sku = $('#sku option:selected').text();
                     
                     // Show loading state
                     $submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Processing...');
 
-                    $.ajax({
+                    // Use retry logic for the AJAX call with timeout handling
+                    ajaxWithRetry({
                         url: '{{ route("stock.adjustment.store") }}',
                         method: 'POST',
-                        data: formData,
-                        success: function (response) {
-                            $submitBtn.prop('disabled', false).text(originalText);
-                            $('#addWarehouseModal').modal('hide');
-                            loadData(); // Reload after store
-                            $('#stockAdjustmentForm')[0].reset();
-                            showSuccessAlert(response.message || 'Stock adjustment saved successfully!');
-                        },
-                        error: function (xhr) {
-                            $submitBtn.prop('disabled', false).text(originalText);
-                            console.log('Full Error Response:', xhr);
-                            
-                            let errorMessage = 'Error storing stock adjustment.';
-                            let errorDetails = '';
-                            
-                            if (xhr.responseJSON && xhr.responseJSON.error) {
-                                errorMessage = xhr.responseJSON.error;
-                                // Check if there are additional details
-                                if (xhr.responseJSON.details) {
-                                    errorDetails = xhr.responseJSON.details;
-                                }
-                            } else if (xhr.responseJSON && xhr.responseJSON.errors) {
-                                // Handle validation errors
-                                const errors = xhr.responseJSON.errors;
-                                errorMessage = Object.values(errors).flat().join('<br>');
-                            } else if (xhr.status === 429) {
-                                errorMessage = 'Shopify API rate limit exceeded!';
-                                errorDetails = 'Too many requests. Please wait 5-10 seconds and try again.';
-                            } else if (xhr.status === 500) {
-                                errorMessage = 'Server Error';
-                                errorDetails = xhr.responseJSON?.message || 'Please check the logs or contact support.';
-                            } else if (xhr.status === 0) {
-                                errorMessage = 'Connection Failed';
-                                errorDetails = 'Unable to connect to the server. Please check your internet connection.';
+                        data: formData
+                    }, 2).then(function (response) {
+                        // Success
+                        $submitBtn.prop('disabled', false).text(originalText);
+                        $('#addWarehouseModal').modal('hide');
+                        loadData(); // Reload after store
+                        $('#stockAdjustmentForm')[0].reset();
+                        
+                        // Show success message with more details
+                        showSuccessAlert(
+                            'Stock adjustment completed successfully for ' + sku + '!<br>' +
+                            'New quantity: ' + (response.new_stock_level || 'Updated')
+                        );
+                    }).catch(function (xhr) {
+                        // Error
+                        $submitBtn.prop('disabled', false).text(originalText);
+                        console.log('Full Error Response:', xhr);
+                        
+                        let errorMessage = 'Error storing stock adjustment.';
+                        let errorDetails = '';
+                        
+                        if (xhr.statusText === 'timeout' || xhr.status === 504) {
+                            errorMessage = 'Request Timeout';
+                            errorDetails = 'The request took too long. Please try again. Your SKU data may have already been updated.';
+                        } else if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMessage = xhr.responseJSON.error;
+                            // Check if there are additional details
+                            if (xhr.responseJSON.details) {
+                                errorDetails = xhr.responseJSON.details;
                             }
-                            
-                            // Add SKU info to error details
-                            const sku = $('#sku option:selected').text();
-                            if (sku) {
-                                errorDetails += (errorDetails ? '<br><br>' : '') + '<strong>SKU Attempted:</strong> ' + sku;
-                            }
-                            
-                            showLargeErrorAlert(errorMessage, errorDetails);
+                        } else if (xhr.responseJSON && xhr.responseJSON.errors) {
+                            // Handle validation errors
+                            const errors = xhr.responseJSON.errors;
+                            errorMessage = Object.values(errors).flat().join('<br>');
+                        } else if (xhr.status === 429) {
+                            errorMessage = 'Shopify API Rate Limit';
+                            errorDetails = 'Too many requests to Shopify. Please wait a moment and try again.';
+                        } else if (xhr.status === 500) {
+                            errorMessage = 'Server Error';
+                            errorDetails = xhr.responseJSON?.details || xhr.responseJSON?.message || 'Please try again or contact support.';
+                        } else if (xhr.status === 0) {
+                            errorMessage = 'Connection Failed';
+                            errorDetails = 'Unable to connect to the server. Please check your internet connection and try again.';
                         }
+                        
+                        // Add SKU info to error details
+                        if (sku) {
+                            errorDetails += (errorDetails ? '<br><br>' : '') + '<strong>SKU Attempted:</strong> ' + sku;
+                        }
+                        
+                        showLargeErrorAlert(errorMessage, errorDetails);
                     });
                 });
 

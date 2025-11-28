@@ -20,20 +20,29 @@ class AmazonSpCampaignReports extends Command
 
         $today = now();
 
-        // Fetch last 30 days of DAILY data for charts
-        for ($i = 1; $i <= 30; $i++) {
-            $date = $today->copy()->subDays($i)->toDateString();
-            $this->fetchReport($profileId, $adType, $reportTypeId, $date, $date, $date);
+        // Fetch only yesterday's data for charts
+        $yesterday = $today->copy()->subDay()->toDateString();
+        
+        // Check if yesterday's data already exists
+        $yesterdayExists = AmazonSpCampaignReport::where('profile_id', $profileId)
+            ->where('report_date_range', $yesterday)
+            ->exists();
+            
+        if (!$yesterdayExists) {
+            $this->fetchReport($profileId, $adType, $reportTypeId, $yesterday, $yesterday, $yesterday, true);
+            $this->info("✅ Yesterday's data fetched: {$yesterday}");
+        } else {
+            $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
         }
 
-        // Also fetch summary ranges for backward compatibility with table data
+        // Always fetch summary ranges for backward compatibility with table data
         $dateRanges = $this->getDateRanges();
 
         foreach ($dateRanges as $rangeLabel => [$startDate, $endDate]) {
-            $this->fetchReport($profileId, $adType, $reportTypeId, $startDate, $endDate, $rangeLabel);
+            $this->fetchReport($profileId, $adType, $reportTypeId, $startDate, $endDate, $rangeLabel, false);
         }
 
-        $this->info("✅ All Sponsored Products reports fetched successfully.");
+        $this->info("✅ All Sponsored Products reports processed successfully.");
     }
 
     private function getDateRanges()
@@ -51,13 +60,14 @@ class AmazonSpCampaignReports extends Command
         ];
     }
 
-    private function fetchReport($profileId, $adType, $reportTypeId, $startDate, $endDate, $rangeKey)
+    private function fetchReport($profileId, $adType, $reportTypeId, $startDate, $endDate, $rangeKey, $isDailyChart = false)
     {
         $accessToken = $this->getAccessToken();
         $reportName = "{$adType}_{$rangeKey}_Campaign";
 
+        $timeUnit = ($startDate === $endDate) ? 'DAILY' : 'SUMMARY';
+        
         $response = Http::timeout(30)
-            ->retry(5, 2000)
             ->withToken($accessToken)
             ->withHeaders([
                 'Amazon-Advertising-API-Scope' => $profileId,
@@ -72,16 +82,39 @@ class AmazonSpCampaignReports extends Command
                     'adProduct' => $adType,
                     'groupBy' => ['campaign'],
                     'reportTypeId' => $reportTypeId,
-                    'columns' => $this->getAllowedMetrics(),
+                    'columns' => $this->getAllowedMetrics($timeUnit),
                     'format' => 'GZIP_JSON',
-                    'timeUnit' => ($startDate === $endDate) ? 'DAILY' : 'SUMMARY',
+                    'timeUnit' => $timeUnit,
                 ]
             ]);
 
-        if (!$response->ok()) {
-            Log::error("Failed to request SP report {$rangeKey}: " . $response->body());
+        // 💥 Handle 425 Duplicate
+        if ($response->status() == 425) {
+            $detail = $response->json('detail');
+            $existingReportId = str_replace(
+                'The Request is a duplicate of : ',
+                '',
+                $detail
+            );
+
+            $this->warn("[$reportName] Duplicate request. Using existing reportId: $existingReportId");
+
+            $this->waitForReportReady($reportName, $profileId, trim($existingReportId), $adType, $startDate, $rangeKey, $isDailyChart);
             return;
         }
+
+        // 🚦 Handle 429 Rate Limiting
+        if ($response->status() == 429) {
+            $this->warn("[$reportName] Rate limited. Waiting 60 seconds before retry...");
+            sleep(60);
+            // Retry once after rate limit
+            $this->fetchReport($profileId, $adType, $reportTypeId, $startDate, $endDate, $rangeKey, $isDailyChart);
+            return;
+        }            if (!$response->ok()) {
+                Log::error("Failed to request SP report {$rangeKey}: " . $response->body());
+                return;
+            }
+
 
         $reportId = $response->json('reportId');
         if (!$reportId) {
@@ -89,10 +122,10 @@ class AmazonSpCampaignReports extends Command
             return;
         }
 
-        $this->waitForReportReady($reportName, $profileId, $reportId, $adType, $startDate, $rangeKey);
+        $this->waitForReportReady($reportName, $profileId, $reportId, $adType, $startDate, $rangeKey, $isDailyChart);
     }
 
-    protected function waitForReportReady($reportName, $profileId, $reportId, $adType, $startDate, $rangeKey)
+    protected function waitForReportReady($reportName, $profileId, $reportId, $adType, $startDate, $rangeKey, $isDailyChart = false)
     {
         $start = now();
         $timeoutSeconds = 3600; // 1 hour max
@@ -132,7 +165,7 @@ class AmazonSpCampaignReports extends Command
                     return;
                 }
 
-                $this->downloadAndParseReport($location, $reportName, $profileId, $adType, $startDate, $rangeKey);
+                $this->downloadAndParseReport($location, $reportName, $profileId, $adType, $startDate, $rangeKey, $isDailyChart);
                 return;
             }
 
@@ -145,7 +178,7 @@ class AmazonSpCampaignReports extends Command
         $this->error("[Report: {$reportId}] Report not ready after {$timeoutSeconds} seconds.");
     }
 
-    private function downloadAndParseReport($downloadUrl, $reportName, $profileId, $adType, $startDate, $rangeKey)
+    private function downloadAndParseReport($downloadUrl, $reportName, $profileId, $adType, $startDate, $rangeKey, $isDailyChart = false)
     {
         $this->info("[$reportName] Downloading and parsing report...");
 
@@ -171,21 +204,42 @@ class AmazonSpCampaignReports extends Command
         $this->info("[$reportName] Total rows: " . count($rows));
 
         foreach ($rows as $row) {
-            AmazonSpCampaignReport::updateOrCreate(
-                [
-                    'campaign_id' => $row['campaignId'] ?? null,
-                    'profile_id' => $profileId,
-                    'report_date_range' => $rangeKey,
-                ],
-                array_merge($row, [
-                    'profile_id' => $profileId,
-                    'report_date_range' => $rangeKey,
-                    'ad_type' => $adType,
-                ])
-            );
+            // For daily chart data, use actual date as range key
+            $finalRangeKey = $isDailyChart ? $startDate : $rangeKey;
+            
+            if ($isDailyChart) {
+                // For daily data, include date in unique key to prevent overwriting
+                AmazonSpCampaignReport::updateOrCreate(
+                    [
+                        'campaign_id' => $row['campaignId'] ?? null,
+                        'profile_id' => $profileId,
+                        'report_date_range' => $finalRangeKey, // This is the actual date
+                    ],
+                    array_merge($row, [
+                        'profile_id' => $profileId,
+                        'report_date_range' => $finalRangeKey,
+                        'ad_type' => $adType,
+                        'report_date' => $startDate, // Store actual report date
+                    ])
+                );
+            } else {
+                // For summary data, use range key as before
+                AmazonSpCampaignReport::updateOrCreate(
+                    [
+                        'campaign_id' => $row['campaignId'] ?? null,
+                        'profile_id' => $profileId,
+                        'report_date_range' => $finalRangeKey,
+                    ],
+                    array_merge($row, [
+                        'profile_id' => $profileId,
+                        'report_date_range' => $finalRangeKey,
+                        'ad_type' => $adType,
+                    ])
+                );
+            }
         }
 
-        $this->info("[SPONSORED_PRODUCTS - $rangeKey] Stored " . count($rows) . " rows to DB.");
+        $this->info("[SPONSORED_PRODUCTS - $finalRangeKey] Stored " . count($rows) . " rows to DB.");
         $this->info("[$reportName] Report saved successfully.");
     }
 
@@ -212,18 +266,27 @@ class AmazonSpCampaignReports extends Command
         return $tokenResponse['access_token'];
     }
 
-    private function getAllowedMetrics(): array
+    private function getAllowedMetrics($timeUnit = 'SUMMARY'): array
     {
-        return [
+        $baseMetrics = [
             'impressions', 'clicks', 'cost', 'spend', 'purchases1d', 'purchases7d',
-                'purchases14d', 'purchases30d', 'sales1d', 'sales7d', 'sales14d', 'sales30d',
-                'unitsSoldClicks1d', 'unitsSoldClicks7d', 'unitsSoldClicks14d', 'unitsSoldClicks30d',
-                'attributedSalesSameSku1d', 'attributedSalesSameSku7d', 'attributedSalesSameSku14d', 'attributedSalesSameSku30d',
-                'unitsSoldSameSku1d', 'unitsSoldSameSku7d', 'unitsSoldSameSku14d', 'unitsSoldSameSku30d',
-                'clickThroughRate', 'costPerClick', 'qualifiedBorrows', 'addToList',
-                'campaignId', 'campaignName', 'campaignBudgetAmount', 'campaignBudgetCurrencyCode',
-                'royaltyQualifiedBorrows', 'purchasesSameSku1d', 'purchasesSameSku7d', 'purchasesSameSku14d', 
-                'purchasesSameSku30d', 'kindleEditionNormalizedPagesRead14d', 'kindleEditionNormalizedPagesRoyalties14d', 'campaignBiddingStrategy', 'startDate', 'endDate', 'campaignStatus',
+            'purchases14d', 'purchases30d', 'sales1d', 'sales7d', 'sales14d', 'sales30d',
+            'unitsSoldClicks1d', 'unitsSoldClicks7d', 'unitsSoldClicks14d', 'unitsSoldClicks30d',
+            'attributedSalesSameSku1d', 'attributedSalesSameSku7d', 'attributedSalesSameSku14d', 'attributedSalesSameSku30d',
+            'unitsSoldSameSku1d', 'unitsSoldSameSku7d', 'unitsSoldSameSku14d', 'unitsSoldSameSku30d',
+            'clickThroughRate', 'costPerClick', 'qualifiedBorrows', 'addToList',
+            'campaignId', 'campaignName', 'campaignBudgetAmount', 'campaignBudgetCurrencyCode',
+            'royaltyQualifiedBorrows', 'purchasesSameSku1d', 'purchasesSameSku7d', 'purchasesSameSku14d', 
+            'purchasesSameSku30d', 'kindleEditionNormalizedPagesRead14d', 'kindleEditionNormalizedPagesRoyalties14d', 
+            'campaignBiddingStrategy', 'campaignStatus',
         ];
+
+        // Add date columns only for SUMMARY time unit, not for DAILY
+        if ($timeUnit !== 'DAILY') {
+            $baseMetrics[] = 'startDate';
+            $baseMetrics[] = 'endDate';
+        }
+
+        return $baseMetrics;
     }
 }

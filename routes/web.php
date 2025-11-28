@@ -363,6 +363,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/save-channel-action', [ZeroVisibilityMasterController::class, 'saveChannelAction'])
         ->name('save.channel.action');
     Route::get('/show-zero-visibility-data', [ZeroVisibilityMasterController::class, 'getMergedChannelData']);
+    Route::get('/zero-visibility/channel-chart', [ZeroVisibilityMasterController::class, 'getChannelChartData']);
     Route::get('/export-zero-visibility-csv', [ZeroVisibilityMasterController::class, 'exportCsv'])->name('zero.export.csv');
     Route::post('/update-ra-checkbox', [ZeroVisibilityMasterController::class, 'updateRaCheckbox']);
     Route::post('/update-sheet-link', [ZeroVisibilityMasterController::class, 'updateSheetLink']);
@@ -816,6 +817,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-analytics/export', [OverallAmazonController::class, 'exportAmazonAnalytics'])->name('amazon.analytics.export');
     Route::get('/amazon-analytics/sample', [OverallAmazonController::class, 'downloadSample'])->name('amazon.analytics.sample');
     Route::post('/import-amazon-ratings', [OverallAmazonController::class, 'importAmazonRatings']);
+    Route::get('/amazon-metrics-history', [OverallAmazonController::class, 'getMetricsHistory'])->name('amazon.metrics.history');
 
     //ebay 2 
     Route::get('/zero-ebay2', [Ebay2ZeroController::class, 'ebay2Zeroview'])->name('zero.ebay2');
@@ -914,7 +916,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     //Listing Audit ebay
     Route::get('/ebay', [EbayController::class, 'ebayView'])->name('ebay');
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
+    Route::get('/ebay-pricing-data', [EbayController::class, 'ebayViewData'])->name('ebay.pricing.data');
     Route::get('/ebay-data-json', [EbayController::class, 'ebayDataJson'])->name('ebay.data.json');
+    Route::get('/ebay-metrics-history', [EbayController::class, 'getMetricsHistory'])->name('ebay.metrics.history');
     Route::get('/ebay-column-visibility', [EbayController::class, 'getEbayColumnVisibility'])->name('ebay.column.visibility.get');
     Route::post('/ebay-column-visibility', [EbayController::class, 'setEbayColumnVisibility'])->name('ebay.column.visibility.set');
     Route::get('/ebay-export', [EbayController::class, 'exportEbayPricingData'])->name('ebay.export');
@@ -2061,6 +2065,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //FaceBook Adds Manager 
     Route::controller(FacebookAddsManagerController::class)->group(function () {
+        Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
+        Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
+        Route::post('/meta-all-ads-control/sync-google-sheets', 'syncMetaAdsFromGoogleSheets')->name('meta.ads.sync');
+        Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
         Route::get('/facebook-ads-control/data', 'index')->name('facebook.ads.index');
         Route::get('/facebook-web-to-video', 'facebookWebToVideo')->name('facebook.web.to.video');
         Route::get('/facebook-web-to-video-data', 'facebookWebToVideoData')->name('facebook.web.to.video.data');
@@ -2130,6 +2138,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/kw/ads', 'amazonKwAdsView')->name('amazon.kw.ads');
         Route::get('/amazon/kw/ads/data', 'getAmazonKwAdsData');
         Route::get('/amazon-kw-ads/filter', 'filterKwAds')->name('amazonKwAds.filter');
+        Route::get('/amazon/campaign/chart-data', 'getCampaignChartData');
 
         Route::get('/amazon/pt/ads', 'amazonPtAdsView')->name('amazon.pt.ads');
 
@@ -2138,6 +2147,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/hl/ads', 'amazonHlAdsView')->name('amazon.hl.ads');
         Route::get('/amazon/hl/ads/data', 'getAmazonHlAdsData');
         Route::get('/amazon-hl-ads/filter', 'filterHlAds')->name('amazonHlAds.filter');
+        Route::get('/amazon/hl/campaign/chart-data', 'getHlCampaignChartData');
 
         Route::get('/amazon/campaign/reports/data', 'getAmazonCampaignsData');
     });
@@ -2175,6 +2185,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/make-new/campaign/kw/data', 'getEbayMakeNewCampaignKw');
 
         Route::get('/ebay-over-uti/data', 'getEbayOverUtiData')->name('ebay-over-uti-data');
+        Route::get('/ebay-over-uti/filter', 'filterOverUtilizedAds')->name('ebay-over-uti.filter');
+        Route::get('/ebay-over-uti/campaign-chart', 'getCampaignChartData')->name('ebay-over-uti.campaign-chart');
         Route::post('/update-ebay-nr-data', 'updateNrData');
         Route::put('/update-ebay-keywords-bid-price', 'updateKeywordsBidDynamic');
     });
@@ -2188,6 +2200,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-under-uti-acos-red', 'ebayUnderUtiAcosRed')->name('ebay-under-uti-acos-red');
 
         Route::get('/ebay-uti-acos/data', 'getEbayUtilisationAcosData');
+        Route::get('/ebay-under-uti/campaign-chart', 'getCampaignChartData')->name('ebay-under-uti.campaign-chart');
+        Route::get('/ebay-under-uti/filter', 'filterUnderUtilizedAds')->name('ebay-under-uti.filter');
     });
 
     Route::controller(EbayPinkDilAdController::class)->group(function () {
@@ -2199,6 +2213,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/pmp/ads', 'index')->name('ebay.pmp.ads');
         Route::get('/ebay/pmp/ads/data', 'getEbayPmpAdsData');
         Route::get('/ebay/pmp/ads/filter', 'filterEbayPmpAds')->name('ebay.pmp.ads.filter');
+        Route::get('/ebay/pmp/ads/campaign-chart', 'getCampaignChartData')->name('ebay.pmp.ads.campaign-chart');
         Route::post('/update-ebay-pmt-percenatge', 'updateEbayPercentage');
         Route::post('/update-ebay-pmt-sprice', 'saveEbayPMTSpriceToDatabase');
     });
@@ -2211,11 +2226,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/ebay/keywords/ads/less-than-twenty', 'ebayPriceLessThanTwentyAdsView')->name('ebay.keywords.ads.less-than-twenty');
         Route::get('/ebay/keywords/ads/less-than-twenty/data', 'ebayPriceLessThanTwentyAdsData');
+        Route::get('/ebay/keywords/ads/less-than-twenty/campaign-chart', 'getCampaignChartData')->name('ebay.keywords.ads.less-than-twenty.campaign-chart');
+        Route::get('/ebay/keywords/ads/less-than-twenty/filter', 'filterEbayKwAds')->name('ebay.keywords.ads.less-than-twenty.filter');
     });
 
     Route::controller(EbayRunningAdsController::class)->group(function () {
         Route::get('/ebay/ad-running/list', 'index')->name('ebay.running.ads');
         Route::get('/ebay/ad-running/data', 'getEbayRunningAdsData');
+        Route::get('/ebay/ad-running/filter', 'filterRunningAds')->name('ebay.running.ads.filter');
+        Route::get('/ebay/ad-running/campaign-chart', 'getCampaignChartData')->name('ebay.running.ads.campaign-chart');
         Route::get('/adv-ebay/ad-running/save-data', 'getEbayRunningDataSave')->name('adv-ebay.ad-running.save-data');
     });
 
@@ -2285,6 +2304,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-3/under-utilized', 'ebay3UnderUtilizedAdsView')->name('ebay3.under.utilized');
         Route::get('/ebay-3/correctly-utilized', 'ebay3CorrectlyUtilizedAdsView')->name('ebay3.correctly.utilized');
         Route::get('/ebay-3/utilized/ads/data', 'getEbay3UtilizedAdsData');
+        Route::get('/ebay-3/over-utilized/filter', 'filterOverUtilizedAds')->name('ebay3.over.utilized.filter');
+        Route::get('/ebay-3/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay3.over.utilized.campaign-chart');
         Route::post('/update-ebay3-nr-data', 'updateEbay3NrData');
     });
 
@@ -2369,6 +2390,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/running/chart/filter', 'filterGoogleShoppingRunningChart')->name('google.shopping.running.chart.filter');
         Route::get('/google/shopping/over/chart/filter', 'filterGoogleShoppingOverChart')->name('google.shopping.over.chart.filter');
         Route::get('/google/shopping/under/chart/filter', 'filterGoogleShoppingUnderChart')->name('google.shopping.under.chart.filter');
+        Route::get('/google/shopping/campaign/chart-data', 'getGoogleShoppingCampaignChartData');
         Route::get('/google/shopping/report/chart/filter', 'filterGoogleShoppingReportChart')->name('google.shopping.report.chart.filter');
         Route::get('/google/serp/chart/filter', 'filterGoogleSerpChart')->name('google.shopping.serp.chart.filter');
         Route::get('/google/serp/report/chart/filter', 'filterGoogleSerpReportChart')->name('google.serp.report.chart.filter');
@@ -2468,3 +2490,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Route::get('/auto-stock-balance-data-list', [AutoStockBalanceController::class, 'list']);
     
 });
+
+// Shopify Facebook Campaigns Routes
+Route::prefix('shopify/facebook-campaigns')->middleware(['auth'])->group(function () {
+    Route::get('/summary', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'summary'])->name('shopify.facebook.campaigns.summary');
+    Route::get('/compare/{campaignId}', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'compare'])->name('shopify.facebook.campaigns.compare');
+    Route::post('/fetch', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'fetch'])->name('shopify.facebook.campaigns.fetch');
+});
+

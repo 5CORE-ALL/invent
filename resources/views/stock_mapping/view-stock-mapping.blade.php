@@ -1033,7 +1033,8 @@
                             <h5 class="text-uppercase mt-0" title="Customers">Ebay1: <span id="ebay1matching"></span></h5>
                             <h5 class="text-uppercase mt-0" title="Customers">Ebay2: <span id="ebay2matching"></span></h5>
                             <h5 class="text-uppercase mt-0" title="Customers">Ebay3: <span id="ebay3matching"></span></h5>
-                            {{-- <h5 class="text-uppercase mt-0" title="Customers">Ebay3: <span id="ebay3matching"></span></h5> --}}
+                            <h5 class="text-uppercase mt-0" title="Customers">PLS: <span id="plsmatching"></span></h5>
+                            <h5 class="text-uppercase mt-0" title="Customers">Business 5 Core: <span id="business5corematching"></span></h5>
                         </div>
                     </div>
                     
@@ -1099,6 +1100,8 @@
                                         <option value="ebay3">🔸Ebay3</option>
                                         <option value="bestbuy">🔹BestBuyUSA</option>
                                         <option value="tiendamia">🔸Tiendamia</option>
+                                        <option value="pls">🔹PLS</option>
+                                        <option value="business5core">🔸Business 5 Core</option>
                                     </select>
                                 </div>
                                 <div class="col">
@@ -1113,7 +1116,7 @@
                             <div class="table-container">
                         <table class="custom-resizable-table" id="inventory-table">
                             <thead>
-                                <tr><th colspan="17" class="text-center text-bg-success"><b>Inventory</b></th></tr>                                
+                                <tr><th colspan="19" class="text-center text-bg-success"><b>Inventory</b></th></tr>                                
                                 <tr>
                                      <th style="max-width: 30px;">Not Required</th>
                                     <th style="max-width: 30px;">Image</th>
@@ -1249,6 +1252,24 @@
                                                 Tiendamia <span class="sort-arrow">↓</span>
                                             </div>                                            
                                             <a href="{{ route('listing.tiendamia') }}" target="_blank"><span class="text-danger text-center mx-auto d-block" id="htiendamianm"></span></a>
+                                        </div>
+                                    </th>
+
+                                    <th style="vertical-align: middle; white-space: nowrap;">
+                                        <div data-field="INV_pls" class="d-flex flex-column align-items-center">
+                                            <div class="d-flex align-items-center">
+                                                PLS <span class="sort-arrow">↓</span>
+                                            </div>                                            
+                                            <span class="text-danger text-center mx-auto d-block" id="hplsnm"></span>
+                                        </div>
+                                    </th>
+
+                                    <th style="vertical-align: middle; white-space: nowrap;">
+                                        <div data-field="INV_business5core" class="d-flex flex-column align-items-center">
+                                            <div class="d-flex align-items-center">
+                                                Business 5 Core <span class="sort-arrow">↓</span>
+                                            </div>                                            
+                                            <span class="text-danger text-center mx-auto d-block" id="hbusiness5corenm"></span>
                                         </div>
                                     </th>
                                 </tr>
@@ -1390,6 +1411,26 @@
                                         <span class="text-danger text-center mx-auto d-block" id="filter-tiendamia-count"></span>
                                         </th>
 
+                                         <th><div class="d-flex align-items-center">
+                                                <select id="filter-pls" class="form-control form-control-sm">
+                                                    <option value="all">All</option>
+                                                    <option value="matching">Matching</option>
+                                                    <option value="notmatching">Not Matching</option>
+                                                </select>
+                                            </div>
+                                        <span class="text-danger text-center mx-auto d-block" id="filter-pls-count"></span>
+                                        </th>
+
+                                         <th><div class="d-flex align-items-center">
+                                                <select id="filter-business5core" class="form-control form-control-sm">
+                                                    <option value="all">All</option>
+                                                    <option value="matching">Matching</option>
+                                                    <option value="notmatching">Not Matching</option>
+                                                </select>
+                                            </div>
+                                        <span class="text-danger text-center mx-auto d-block" id="filter-business5core-count"></span>
+                                        </th>
+
                                 </tr>
                             </thead>
                             <tbody>
@@ -1512,7 +1553,7 @@
                 // Prefer server-calculated totalNotMatching to ensure consistency with sidebar
                 const serverTotal = parseInt(response.totalNotMatching) || 0;
                 // Fallback to client-side sum if server value is missing
-                const clientSum = (datainfo.shopify.notmatching||0) + (datainfo.amazon.notmatching||0) + (datainfo.walmart.notmatching||0) + (datainfo.reverb.notmatching||0) + (datainfo.shein.notmatching||0) + (datainfo.doba.notmatching||0) + (datainfo.temu.notmatching||0) + (datainfo.macy.notmatching||0) + (datainfo.ebay1.notmatching||0) + (datainfo.ebay2.notmatching||0) + (datainfo.ebay3.notmatching||0) + (datainfo.bestbuy.notmatching||0) + (datainfo.tiendamia.notmatching||0);
+                const clientSum = (datainfo.shopify.notmatching||0) + (datainfo.amazon.notmatching||0) + (datainfo.walmart.notmatching||0) + (datainfo.reverb.notmatching||0) + (datainfo.shein.notmatching||0) + (datainfo.doba.notmatching||0) + (datainfo.temu.notmatching||0) + (datainfo.macy.notmatching||0) + (datainfo.ebay1.notmatching||0) + (datainfo.ebay2.notmatching||0) + (datainfo.ebay3.notmatching||0) + (datainfo.bestbuy.notmatching||0) + (datainfo.tiendamia.notmatching||0) + (datainfo.pls.notmatching||0) + (datainfo.business5core.notmatching||0);
                 const totalNotMatching = serverTotal || clientSum;
                 $('#totalNotMatching').text(totalNotMatching.toLocaleString('en-US'));
                 // Also update sidebar badge (if present) to keep UI consistent while on this page
@@ -1614,6 +1655,20 @@
                     $('#htiendamianm').text(`(${datainfo.tiendamia.notmatching})`);
                 }
 
+                $('#plsmatching').text(datainfo.pls.notmatching);
+                if(datainfo.pls.notmatching==0){
+                    $('#hplsnm').text(`(${datainfo.pls.notmatching})`).removeClass('text-danger').css('color', 'green');
+                }else{
+                    $('#hplsnm').text(`(${datainfo.pls.notmatching})`);
+                }
+
+                $('#business5corenotmatching').text(datainfo.business5core.notmatching);
+                if(datainfo.business5core.notmatching==0){
+                    $('#hbusiness5corenm').text(`(${datainfo.business5core.notmatching})`).removeClass('text-danger').css('color', 'green');
+                }else{
+                    $('#hbusiness5corenm').text(`(${datainfo.business5core.notmatching})`);
+                }
+
 
 
 $('#shopifymatching').text(datainfo.shopify.notmatching);
@@ -1627,13 +1682,15 @@ $('#macymatching').text(datainfo.macy.notmatching);
 $('#ebay1matching').text(datainfo.ebay1.notmatching);
 $('#ebay2matching').text(datainfo.ebay2.notmatching);
 $('#ebay3matching').text(datainfo.ebay3.notmatching);
-$('#bestbuymatching').text(datainfo.bestbuy.matching);
-$('#tiendamiamatching').text(datainfo.tiendamia.matching);
+$('#bestbuymatching').text(datainfo.bestbuy.notmatching);
+$('#tiendamiamatching').text(datainfo.tiendamia.notmatching);
+$('#plsmatching').text(datainfo.pls.notmatching);
+$('#business5corematching').text(datainfo.business5core.notmatching);
 
                 
                 const platforms = [
   'amazon', 'walmart', 'reverb', 'shein', 'doba',
-  'temu', 'macy', 'ebay1', 'ebay2', 'ebay3','bestbuy','tiendamia'
+  'temu', 'macy', 'ebay1', 'ebay2', 'ebay3','bestbuy','tiendamia','pls','business5core'
 ];
 
 tableData = sheetData.map((item, index) => {
@@ -1726,9 +1783,11 @@ tableData = sheetData.map((item, index) => {
                const isMismatchMacy = item.INV_macy !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_macy) || isMatchWithTolerance(item.INV_shopify, item.INV_macy)) ? true:false;
                const isMismatchEbay1 = item.INV_ebay1 !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_ebay1) || isMatchWithTolerance(item.INV_shopify, item.INV_ebay1)) ? true:false;
                const isMismatchEbay2 = item.INV_ebay2 !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_ebay2) || isMatchWithTolerance(item.INV_shopify, item.INV_ebay2)) ? true:false;
-               const isMismatchEbay3 = item.INV_ebay3 !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_ebay3) || isMatchWithTolerance(item.INV_shopify, item.INV_ebay3)) ? true:false;
+               const isMismatchEbay3 = item.INV_ebay3 !== 'Not Listed' && (parseFloat(item.INV_ebay3) > 95 || parseFloat(item.INV_shopify) === parseFloat(item.INV_ebay3) || isMatchWithTolerance(item.INV_shopify, item.INV_ebay3)) ? true:false;
                const isMismatchbestbuy = item.INV_bestbuy !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_bestbuy) || isMatchWithTolerance(item.INV_shopify, item.INV_bestbuy)) ? true:false;
                const isMismatchtiendamia = item.INV_tiendamia !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_tiendamia) || isMatchWithTolerance(item.INV_shopify, item.INV_tiendamia)) ? true:false;
+               const isMismatchpls = item.INV_pls !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_pls) || isMatchWithTolerance(item.INV_shopify, item.INV_pls)) ? true:false;
+               const isMismatchbusiness5core = item.INV_business5core !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_business5core) || isMatchWithTolerance(item.INV_shopify, item.INV_business5core)) ? true:false;
 
 
 
@@ -1768,6 +1827,8 @@ tableData = sheetData.map((item, index) => {
         <td style="${isMismatchEbay3==true?'color:green':'color:red'}">${item.INV_ebay3}</td>
         <td style="${isMismatchbestbuy==true?'color:green':'color:red'}">${item.INV_bestbuy}</td>
         <td style="${isMismatchtiendamia==true?'color:green':'color:red'}">${item.INV_tiendamia}</td>
+        <td style="${isMismatchpls==true?'color:green':'color:red'}">${item.INV_pls}</td>
+        <td style="${isMismatchbusiness5core==true?'color:green':'color:red'}">${item.INV_business5core}</td>
     </tr>
     </tr>
     </tr>
@@ -1990,7 +2051,7 @@ function applyRowTypeFilterA(platform, filterType) {
 }
 
 // Generic event binding for all filters
-['shopify', 'walmart', 'amazon','reverb','shein','doba','temu','macy','ebay1','ebay2','ebay3','bestbuy','tiendamia'].forEach(platform => {
+['shopify', 'walmart', 'amazon','reverb','shein','doba','temu','macy','ebay1','ebay2','ebay3','bestbuy','tiendamia','pls','business5core'].forEach(platform => {
     $(`#filter-${platform}`).on('change', function(e) {
         e.preventDefault();
         const filterType = $(this).val();
@@ -2135,6 +2196,8 @@ function buildStockTable(data, showShopify = true) {
         { key: 'INV_ebay3', name: 'Ebay3', img: '3.png' },        
         { key: 'INV_bestbuy', name: 'BestBuyUSA', img: 'bestbuy.jpeg' },
         { key: 'INV_tiendamia', name: 'Tiendamia', img: 'ten.jpg' },
+        { key: 'INV_pls', name: 'PLS', img: 'pls.png' },
+        { key: 'INV_business5core', name: 'Business 5 Core', img: 'business5core.png' },
     ];
 
     channels.forEach(channel => {

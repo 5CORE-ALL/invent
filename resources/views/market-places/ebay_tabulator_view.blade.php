@@ -8,6 +8,28 @@
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
+        
+        /* Vertical column headers */
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            transform: rotate(180deg);
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .tabulator .tabulator-header .tabulator-col {
+            height: 80px !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0px !important;
+        }
     </style>
 @endsection
 
@@ -77,10 +99,62 @@
                     <a href="{{ url('/ebay-export') }}" class="btn btn-sm btn-success me-2">
                         <i class="fa fa-file-excel"></i> Export
                     </a>
+                    
+                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary me-2" style="display: none;">
+                        <i class="fa fa-eye-slash"></i> Hide Chart
+                    </button>
+                </div>
+
+                <!-- Metrics Chart Section -->
+                <div id="metrics-chart-section" class="mt-2 p-2 bg-white rounded border" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Metrics Trend</h6>
+                        <select id="chart-days-filter" class="form-select form-select-sm" style="width: auto;">
+                            <option value="7" selected>Last 7 Days</option>
+                            <option value="14">Last 14 Days</option>
+                            <option value="30">Last 30 Days</option>
+                            <option value="60">Last 60 Days</option>
+                        </select>
+                    </div>
+                    <div style="height: 200px;">
+                        <canvas id="metricsChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Summary Stats -->
+                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
+                    <h6 class="mb-3">All Calculations Summary</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <!-- Top Metrics -->
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
+                        
+                        <!-- eBay Metrics -->
+                        <span class="badge bg-primary fs-6 p-2" id="total-fba-inv-badge" style="color: black; font-weight: bold;">Total eBay INV: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total eBay L30: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
+                        
+                        <!-- Financial Metrics -->
+                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
+                    </div>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="ebay-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
+                    <!-- SKU Search -->
+                    <div class="p-2 bg-light border-bottom">
+                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    </div>
                     <!-- Table body (scrollable section) -->
                     <div id="ebay-table" style="flex: 1;"></div>
                 </div>
@@ -102,13 +176,464 @@
             </div>
         </div>
     </div>
+
+    <!-- SKU Metrics Chart Modal -->
+    <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Metrics Chart for <span id="modalSkuName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Date Range:</label>
+                        <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                            <option value="7" selected>Last 7 Days</option>
+                            <option value="14">Last 14 Days</option>
+                            <option value="30">Last 30 Days</option>
+                        </select>
+                    </div>
+                    <div id="chart-no-data-message" class="alert alert-info" style="display: none;">
+                        No historical data available for this SKU. Data will appear after running the metrics collection command.
+                    </div>
+                    <div style="height: 400px;">
+                        <canvas id="skuMetricsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
-@section('script-bottom')
+    @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "ebay_tabulator_column_visibility";
+        let metricsChart = null;
+        let skuMetricsChart = null;
+        let currentSku = null;
+
+        // Initialize Metrics Chart
+        function initMetricsChart() {
+            const ctx = document.getElementById('metricsChart').getContext('2d');
+            metricsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Avg Price ($)',
+                            data: [],
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Total Views',
+                            data: [],
+                            borderColor: 'rgb(54, 162, 235)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Avg CVR%',
+                            data: [],
+                            borderColor: 'rgb(255, 206, 86)',
+                            backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Avg AD%',
+                            data: [],
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 10
+                            }
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    let value = context.parsed.y || 0;
+                                    
+                                    // Format based on dataset label
+                                    if (label.includes('Price') || label.includes('price')) {
+                                        return label + ': $' + value.toFixed(2);
+                                    } else if (label.includes('Views') || label.includes('views')) {
+                                        return label + ': ' + value.toLocaleString();
+                                    } else if (label.includes('CVR')) {
+                                        return label + ': ' + value.toFixed(1) + '%';
+                                    } else if (label.includes('AD') || label.includes('%')) {
+                                        return label + ': ' + Math.round(value) + '%';
+                                    }
+                                    return label + ': ' + value;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Price / Percentages'
+                            },
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value, index, values) {
+                                    // Format based on value range
+                                    if (value >= 0 && value <= 200) {
+                                        return value.toFixed(0) + '%';
+                                    } else {
+                                        return '$' + value.toFixed(0);
+                                    }
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Views'
+                            },
+                            beginAtZero: true,
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load Metrics Data
+        function loadMetricsData(days = 7) {
+            fetch(`/ebay-metrics-history?days=${days}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.length > 0 && metricsChart) {
+                        metricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
+                        metricsChart.data.datasets[0].data = data.map(d => d.avg_price || 0);
+                        metricsChart.data.datasets[1].data = data.map(d => d.total_views || 0);
+                        metricsChart.data.datasets[2].data = data.map(d => d.avg_cvr_percent || 0);
+                        metricsChart.data.datasets[3].data = data.map(d => d.avg_ad_percent || 0);
+                        metricsChart.update();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading metrics data:', error);
+                });
+        }
+
+        // SKU-specific chart
+        function initSkuMetricsChart() {
+            const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+            skuMetricsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Price (USD)',
+                            data: [],
+                            borderColor: '#FF0000',
+                            backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Views',
+                            data: [],
+                            borderColor: '#0000FF',
+                            backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'CVR%',
+                            data: [],
+                            borderColor: '#008000',
+                            backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'AD%',
+                            data: [],
+                            borderColor: '#FFD700',
+                            backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'eBay SKU Metrics',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: {
+                                top: 10,
+                                bottom: 20
+                            }
+                        },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    let value = context.parsed.y || 0;
+                                    
+                                    // Format based on dataset label
+                                    if (label.includes('Price')) {
+                                        return label + ': $' + value.toFixed(2);
+                                    } else if (label.includes('Views')) {
+                                        return label + ': ' + value.toLocaleString();
+                                    } else if (label.includes('CVR')) {
+                                        return label + ': ' + value.toFixed(1) + '%';
+                                    } else if (label.includes('AD')) {
+                                        return label + ': ' + Math.round(value) + '%';
+                                    }
+                                    return label + ': ' + value;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Price/Views',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            beginAtZero: true,
+                            ticks: {
+                                font: {
+                                    size: 11
+                                },
+                                callback: function(value, index, values) {
+                                    if (values.length > 0 && Math.max(...values.map(v => v.value)) < 1000) {
+                                        return '$' + value.toFixed(0);
+                                    }
+                                    return value.toLocaleString();
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Percent (%)',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            beginAtZero: true,
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                },
+                                callback: function(value) {
+                                    return value.toFixed(0) + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function loadSkuMetricsData(sku, days = 7) {
+            console.log('Loading metrics data for SKU:', sku, 'Days:', days);
+            fetch(`/ebay-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Metrics data received:', data);
+                    if (skuMetricsChart) {
+                        if (!data || data.length === 0) {
+                            console.warn('No data returned for SKU:', sku);
+                            $('#chart-no-data-message').show();
+                            skuMetricsChart.data.labels = [];
+                            skuMetricsChart.data.datasets.forEach(dataset => {
+                                dataset.data = [];
+                            });
+                            skuMetricsChart.options.plugins.title.text = 'eBay Metrics';
+                            skuMetricsChart.update();
+                            return;
+                        }
+                        
+                        $('#chart-no-data-message').hide();
+                        skuMetricsChart.options.plugins.title.text = `eBay Metrics (${days} Days)`;
+                        skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
+                        skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
+                        skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
+                        skuMetricsChart.data.datasets[2].data = data.map(d => d.cvr_percent || 0);
+                        skuMetricsChart.data.datasets[3].data = data.map(d => d.ad_percent || 0);
+                        skuMetricsChart.update('active');
+                        console.log('Chart updated successfully with', data.length, 'data points');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading SKU metrics data:', error);
+                    alert('Error loading metrics data. Please check console for details.');
+                });
+        }
 
         $(document).ready(function() {
+            // Initialize charts
+            initMetricsChart();
+            loadMetricsData(7);
+            initSkuMetricsChart();
+
+            // Toggle chart button
+            $('#toggle-chart-btn').on('click', function() {
+                const $chartSection = $('#metrics-chart-section');
+                const $btn = $(this);
+                
+                if ($chartSection.is(':visible')) {
+                    $chartSection.slideUp();
+                    $btn.html('<i class="fa fa-eye"></i> Show Chart');
+                } else {
+                    $chartSection.slideDown();
+                    $btn.html('<i class="fa fa-eye-slash"></i> Hide Chart');
+                }
+            });
+
+            // Show chart button by default on first load
+            $('#toggle-chart-btn').show();
+
+            // Chart days filter
+            $('#chart-days-filter').on('change', function() {
+                const days = $(this).val();
+                loadMetricsData(days);
+            });
+
+            // SKU chart days filter
+            $('#sku-chart-days-filter').on('change', function() {
+                const days = $(this).val();
+                if (currentSku) {
+                    if (skuMetricsChart) {
+                        skuMetricsChart.options.plugins.title.text = `eBay Metrics (${days} Days)`;
+                        skuMetricsChart.update();
+                    }
+                    loadSkuMetricsData(currentSku, days);
+                }
+            });
+
+            // Event delegation for eye button clicks (add to SKU column formatter)
             const table = new Tabulator("#ebay-table", {
                 ajaxURL: "/ebay-data-json",
                 ajaxSorting: false,
@@ -162,12 +687,22 @@
                         width: 250,
                         formatter: function(cell) {
                             const sku = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
+                            
+                            if (isParent) {
+                                return `<span>${sku}</span>`;
+                            }
+                            
                             return `
                                 <span>${sku}</span>
                                 <i class="fa fa-copy text-secondary copy-sku-btn" 
                                    style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
                                    data-sku="${sku}"
                                    title="Copy SKU"></i>
+                                <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;">
+                                    <i class="fa fa-info-circle"></i>
+                                </button>
                             `;
                         }
                     },
@@ -176,14 +711,14 @@
                         title: "INV",
                         field: "INV",
                         hozAlign: "center",
-                        width: 80,
+                        width: 50,
                         sorter: "number"
                     },
                     {
-                        title: "OV<br> L30",
+                        title: "OV L30",
                         field: "L30",
                         hozAlign: "center",
-                        width: 80,
+                        width: 50,
                         sorter: "number"
                     },
 
@@ -210,13 +745,13 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
                         },
-                        width: 60
+                        width: 50
                     },
                     {
-                        title: "E <br> L30",
+                        title: "E L30",
                         field: "eBay L30",
                         hozAlign: "center",
-                        width: 60,
+                        width: 30,
                         sorter: "number"
                     },
 
@@ -229,7 +764,7 @@
                     //     visible: false
                     // },
                     {
-                        title: "S <br> CVR",
+                        title: "S CVR",
                         field: "SCVR",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
@@ -266,7 +801,7 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${scvrValue.toFixed(1)}%</span>`;
                         },
-                        width: 100
+                        width: 60
                     },
 
                     {
@@ -348,11 +883,11 @@
                             // Normal price formatting
                             return `$${value.toFixed(2)}`;
                         },
-                        width: 120
+                        width: 70
                     },
 
                       {
-                        title: "GPFT <br>%",
+                        title: "GPFT %",
                         field: "GPFT%",
                         hozAlign: "center",
                         sorter: "number",
@@ -371,7 +906,7 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        width: 100
+                        width: 50
                     },
 
 
@@ -390,23 +925,16 @@
                             
                             // If KW ads spend > 0 but AD% is 0, show red alert
                             if (kwSpend > 0 && adPercent === 0) {
-                                return `
-                                    <span style="color: #dc3545; font-weight: 600;">${adPercent.toFixed(0)}%</span>
-                                    <i class="fa fa-exclamation-triangle text-danger" 
-                                       style="cursor: pointer; margin-left: 5px;" 
-                                       title="There is KW ads spend data"
-                                       data-bs-toggle="tooltip"
-                                       data-bs-placement="top"></i>
-                                `;
+                                return `<span style="color: #dc3545; font-weight: 600;">100%</span>`;
                             }
                             
                             return `${parseFloat(value).toFixed(0)}%`;
                         },
-                        width: 100
+                        width: 55
                     },
 
                      {
-                        title: "PFT <br>%",
+                        title: "PFT %",
                         field: "PFT %",
                         hozAlign: "center",
                         sorter: "number",
@@ -433,7 +961,7 @@
                             const value = cell.getValue();
                             return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                         },
-                        width: 70
+                        width: 50
                     },
                     {
                         title: "ROI%",
@@ -459,7 +987,7 @@
                             const value = cell.getValue();
                             return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                         },
-                        width: 70
+                        width: 65
                     },
                   
                     
@@ -480,12 +1008,14 @@
                             }
                             return value ? `$${parseFloat(value).toFixed(2)}` : '';
                         },
+                        width: 70
                     
                     },
                     // {
                     //     title: "AD <br> Spend <br> L30",
                     //     field: "AD_Spend_L30",
                     //     hozAlign: "center",
+                    //     sorter: "number",
                     //     formatter: "money",
                     //     formatterParams: {
                     //         decimal: ".",
@@ -493,12 +1023,13 @@
                     //         symbol: "$",
                     //         precision: 2
                     //     },
-                     
+                    //     width: 130
                     // },
                     // {
                     //     title: "AD Sales L30",
                     //     field: "AD_Sales_L30",
                     //     hozAlign: "center",
+                    //     sorter: "number",
                     //     formatter: "money",
                     //     formatterParams: {
                     //         decimal: ".",
@@ -512,6 +1043,7 @@
                     //     title: "AD Units L30",
                     //     field: "AD_Units_L30",
                     //     hozAlign: "center",
+                    //     sorter: "number",
                     //     width: 120
                     // },
                    
@@ -540,6 +1072,7 @@
                     //     title: "Total Sales L30",
                     //     field: "T_Sale_l30",
                     //     hozAlign: "center",
+                    //     sorter: "number",
                     //     formatter: "money",
                     //     formatterParams: {
                     //         decimal: ".",
@@ -553,6 +1086,7 @@
                     //     title: "Total Profit",
                     //     field: "Total_pft",
                     //     hozAlign: "center",
+                    //     sorter: "number",
                     //     formatter: "money",
                     //     formatterParams: {
                     //         decimal: ".",
@@ -562,10 +1096,12 @@
                     //     },
                     //     width: 130
                     // },
+                    //     width: 130
+                    // },
                    
                    
                     {
-                        title: "S <br> PRC",
+                        title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
                         editor: "input",
@@ -585,11 +1121,11 @@
                             
                             return formattedValue;
                         },
-                        width: 120
+                        width: 80
                     },
 
                     {
-                        title: "S <br> GPFT",
+                        title: "S GPFT",
                         field: "SGPFT",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -608,12 +1144,13 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        width: 100
+                        width: 80
                     },
                     {
-                        title: "S <br> PFT",
+                        title: "S PFT",
                         field: "SPFT",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const sgpft = parseFloat(rowData.SGPFT || 0);
@@ -633,12 +1170,13 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        width: 100
+                        width: 80
                     },
                     {
                         title: "SROI",
                         field: "SROI",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -654,12 +1192,12 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        width: 100
+                        width: 80
                     },
 
 
                         {
-                        title: "SPEND<br>L30",
+                        title: "SPEND L30",
                         field: "AD_Spend_L30",
                         hozAlign: "center",
                         sorter: "number",
@@ -676,11 +1214,11 @@
                             const value = cell.getValue();
                             return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
                         },
-                        width: 120
+                        width: 90
                     },
 
                     {
-                        title: "KW<br>SPEND<br>L30",
+                        title: "KW SPEND L30",
                         field: "kw_spend_L30",
                         hozAlign: "center",
                         sorter: "number",
@@ -698,7 +1236,7 @@
                     },
 
                     {
-                        title: "PMT<br>SPEND<br>L30",
+                        title: "PMT SPEND L30",
                         field: "pmt_spend_L30",
                         hozAlign: "center",
                         sorter: "number",
@@ -740,6 +1278,12 @@
                     //     width: 100
                     // }
                 ]
+            });
+
+            // SKU Search functionality
+            $('#sku-search').on('keyup', function() {
+                const value = $(this).val();
+                table.setFilter("(Child) sku", "like", value);
             });
 
             // NR/REQ dropdown change handler
@@ -881,6 +1425,7 @@
                 }
                 
                 updateCalcValues();
+                updateSummary();
             }
 
             $('#inventory-filter, #nrl-filter, #pft-filter').on('change', function() {
@@ -911,6 +1456,82 @@
                 
                 $('#pft-calc').text(avgPft.toFixed(2) + '%');
                 $('#roi-calc').text(avgRoi.toFixed(2) + '%');
+            }
+
+            // Update summary badges for INV > 0
+            function updateSummary() {
+                const data = table.getData("active");
+                let totalTcos = 0;
+                let totalSpendL30 = 0;
+                let totalPftAmt = 0;
+                let totalSalesAmt = 0;
+                let totalLpAmt = 0;
+                let totalFbaInv = 0;
+                let totalFbaL30 = 0;
+                let totalDilPercent = 0;
+                let dilCount = 0;
+
+                data.forEach(row => {
+                    if (parseFloat(row.INV) > 0) {
+                        totalTcos += parseFloat(row['AD%'] || 0);
+                        totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
+                        totalPftAmt += parseFloat(row['Total_pft'] || 0);
+                        totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
+                        totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
+                        totalFbaInv += parseFloat(row.INV || 0);
+                        totalFbaL30 += parseFloat(row['eBay L30'] || 0);
+                        
+                        const dil = parseFloat(row['E Dil%'] || 0);
+                        if (!isNaN(dil)) {
+                            totalDilPercent += dil;
+                            dilCount++;
+                        }
+                    }
+                });
+
+                let totalWeightedPrice = 0;
+                let totalL30 = 0;
+                data.forEach(row => {
+                    if (parseFloat(row.INV) > 0) {
+                        const price = parseFloat(row['eBay Price'] || 0);
+                        const l30 = parseFloat(row['eBay L30'] || 0);
+                        totalWeightedPrice += price * l30;
+                        totalL30 += l30;
+                    }
+                });
+                const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
+                $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice));
+
+                let totalViews = 0;
+                data.forEach(row => {
+                    if (parseFloat(row.INV) > 0) {
+                        totalViews += parseFloat(row.views || 0);
+                    }
+                });
+                const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+                $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
+                $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+                $('#cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
+                
+
+                $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos) + '%');
+                $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
+                $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
+                $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+                $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
+                const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
+                $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
+                $('#total-fba-inv-badge').text('Total eBay INV: ' + Math.round(totalFbaInv).toLocaleString());
+                $('#total-fba-l30-badge').text('Total eBay L30: ' + Math.round(totalFbaL30).toLocaleString());
+                const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
+                $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
+                $('#total-pft-amt').text('$' + Math.round(totalPftAmt));
+                $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
+                $('#total-sales-amt').text('$' + Math.round(totalSalesAmt));
+                $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+                const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
+                $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
+                $('#avg-gpft-summary').text(avgGpft + '%');
             }
 
             // Build Column Visibility Dropdown
@@ -1000,6 +1621,7 @@
 
             table.on('dataLoaded', function() {
                 updateCalcValues();
+                updateSummary();
                 // Initialize Bootstrap tooltips for dynamically created elements
                 setTimeout(function() {
                     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
@@ -1076,6 +1698,19 @@
                         document.body.removeChild(textarea);
                         showToast('success', `SKU "${sku}" copied to clipboard!`);
                     });
+                }
+
+                // View SKU chart
+                if (e.target.closest('.view-sku-chart')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const sku = e.target.closest('.view-sku-chart').getAttribute('data-sku');
+                    currentSku = sku;
+                    $('#modalSkuName').text(sku);
+                    $('#sku-chart-days-filter').val('7');
+                    $('#chart-no-data-message').hide();
+                    loadSkuMetricsData(sku, 7);
+                    $('#skuMetricsModal').modal('show');
                 }
             });
 

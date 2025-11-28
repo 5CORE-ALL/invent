@@ -57,6 +57,7 @@ class Kernel extends ConsoleKernel
         AmazonSbCampaignReports::class,
         AmazonSdCampaignReports::class,
         FetchGoogleAdsCampaigns::class,
+        \App\Console\Commands\SyncMetaAllAds::class,
 
     ];
 
@@ -125,6 +126,16 @@ class Kernel extends ConsoleKernel
         // Collect FBA metrics for historical tracking
         $schedule->command('fba:collect-metrics')
             ->dailyAt('23:30')
+            ->timezone('UTC');
+
+        // Collect eBay metrics for historical tracking
+        $schedule->command('ebay:collect-metrics')
+            ->dailyAt('23:35')
+            ->timezone('UTC');
+
+        // Collect Amazon metrics for historical tracking
+        $schedule->command('amazon:collect-metrics')
+            ->dailyAt('23:40')
             ->timezone('UTC');
 
         // Sync Main sheet update command
@@ -308,6 +319,20 @@ class Kernel extends ConsoleKernel
             ->dailyAt('01:00')
             ->timezone('America/Los_Angeles')
             ->name('stock-mapping-daily-update')
+            ->withoutOverlapping();
+
+        // Shopify Facebook Campaigns - Fetch daily at 2 AM PST
+        $schedule->command('shopify:fetch-facebook-campaigns')
+            ->dailyAt('02:00')
+            ->timezone('America/Los_Angeles')
+            ->name('fetch-shopify-fb-campaigns-7-30-60-days')
+            ->withoutOverlapping();
+
+        // Meta All Ads - Sync from Google Sheets daily at 3 AM PST
+        $schedule->command('meta:sync-all-ads')
+            ->dailyAt('03:00')
+            ->timezone('America/Los_Angeles')
+            ->name('sync-meta-all-ads-from-google-sheets')
             ->withoutOverlapping();
 
             // test scheduler for task manager report

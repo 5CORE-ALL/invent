@@ -68,19 +68,15 @@ Route::get('/all-channels-chart-data', [ZeroVisibilityMasterController::class, '
 Route::post('/save-channel-action', [ZeroVisibilityMasterController::class, 'saveChannelAction']);
 Route::get('/test-channel-data', [ZeroVisibilityMasterController::class, 'testChannelData']);
 
-// TikTok Shop Webhook
-Route::post('/webhooks/tiktok/orders', [\App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);
-Route::get('/webhooks/tiktok/test', [\App\Http\Controllers\Api\TiktokWebhookController::class, 'testWebhook']);
-
 // Temu API Test Route
-Route::get('/test-temu-inventory', function() {
+Route::get('/test-temu-inventory', function () {
     try {
         $service = new \App\Services\TemuApiService();
         $result = $service->getInventory();
-        
+
         return response()->json([
             'success' => true,
-            'message' => 'Temu inventory fetched successfully',
+            'message' => 'Temu inventory fetched successfully!',
             'total_items' => count($result),
             'data' => $result
         ]);
@@ -92,3 +88,7 @@ Route::get('/test-temu-inventory', function() {
         ], 500);
     }
 });
+
+// TikTok Shop Webhook
+// Route::post('/webhooks/tiktok/orders', [App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);
+// Route::get('/webhooks/tiktok/test', [App\Http\Controllers\Api\TiktokWebhookController::class, 'testWebhook']);

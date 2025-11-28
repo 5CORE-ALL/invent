@@ -385,92 +385,185 @@ class SyncLinkedProducts extends Command
     {
         $inventoryItemId = null;
         $pageInfo = null;
+        $maxRetries = 3;
+        $retryCount = 0;
 
         do {
-            $queryParams = ['limit' => 250];
-            if ($pageInfo) $queryParams['page_info'] = $pageInfo;
+            try {
+                $queryParams = ['limit' => 250];
+                if ($pageInfo) $queryParams['page_info'] = $pageInfo;
 
-            $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                ->get("https://{$this->shopifyDomain}/admin/api/2025-01/products.json", $queryParams);
+                $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                    ->timeout(30)
+                    ->get("https://{$this->shopifyDomain}/admin/api/2025-01/products.json", $queryParams);
 
-            if (!$response->successful()) return 0;
+                if (!$response->successful()) {
+                    Log::warning("Shopify API failed for SKU {$sku}: " . $response->status());
+                    if ($retryCount < $maxRetries) {
+                        $retryCount++;
+                        sleep(2);
+                        continue;
+                    }
+                    return 0;
+                }
 
-            $products = $response->json('products');
-            foreach ($products as $product) {
-                foreach ($product['variants'] as $variant) {
-                    $variantSku = $normalizeSku($variant['sku'] ?? '');
-                    if ($variantSku === $sku) {
-                        $inventoryItemId = $variant['inventory_item_id'];
-                        break 2;
+                $retryCount = 0;
+                $products = $response->json('products') ?? [];
+                
+                foreach ($products as $product) {
+                    foreach ($product['variants'] ?? [] as $variant) {
+                        $variantSku = $normalizeSku($variant['sku'] ?? '');
+                        if ($variantSku === $sku) {
+                            $inventoryItemId = $variant['inventory_item_id'];
+                            break 2;
+                        }
                     }
                 }
+
+                if ($inventoryItemId) break;
+
+                $linkHeader = $response->header('Link');
+                $pageInfo = null;
+                if ($linkHeader && preg_match('/<[^>]+page_info=([^&>]+)[^>]*>; rel="next"/', $linkHeader, $matches)) {
+                    $pageInfo = $matches[1];
+                } else {
+                    $pageInfo = null;
+                }
+            } catch (\Exception $e) {
+                Log::error("Error fetching Shopify inventory for SKU {$sku}: " . $e->getMessage());
+                if ($retryCount < $maxRetries) {
+                    $retryCount++;
+                    sleep(2);
+                    continue;
+                }
+                return 0;
+            }
+        } while ($pageInfo);
+
+        if (!$inventoryItemId) {
+            Log::warning("Inventory item ID not found for SKU: {$sku}");
+            return 0;
+        }
+
+        try {
+            $invLevelResponse = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                ->timeout(30)
+                ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
+                    'inventory_item_ids' => $inventoryItemId
+                ]);
+
+            if (!$invLevelResponse->successful()) {
+                Log::error("Failed to get inventory levels for SKU {$sku}");
+                return 0;
             }
 
-            $linkHeader = $response->header('Link');
-            $pageInfo = null;
-            if ($linkHeader && preg_match('/<[^>]+page_info=([^&>]+)[^>]*>; rel="next"/', $linkHeader, $matches)) {
-                $pageInfo = $matches[1];
-            }
-        } while (!$inventoryItemId && $pageInfo);
-
-        if (!$inventoryItemId) return 0;
-
-        $invLevelResponse = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-            ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
-                'inventory_item_ids' => $inventoryItemId
-            ]);
-
-        return collect($invLevelResponse->json('inventory_levels') ?? [])->sum('available');
+            return collect($invLevelResponse->json('inventory_levels') ?? [])->sum('available');
+        } catch (\Exception $e) {
+            Log::error("Error fetching inventory levels for SKU {$sku}: " . $e->getMessage());
+            return 0;
+        }
     }
 
     private function updateShopifyQty($sku, $newQty, $normalizeSku)
     {
         $inventoryItemId = null;
         $pageInfo = null;
+        $maxRetries = 3;
+        $retryCount = 0;
 
         do {
-            $queryParams = ['limit' => 250];
-            if ($pageInfo) $queryParams['page_info'] = $pageInfo;
+            try {
+                $queryParams = ['limit' => 250];
+                if ($pageInfo) $queryParams['page_info'] = $pageInfo;
 
-            $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                ->get("https://{$this->shopifyDomain}/admin/api/2025-01/products.json", $queryParams);
+                $response = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                    ->timeout(30)
+                    ->get("https://{$this->shopifyDomain}/admin/api/2025-01/products.json", $queryParams);
 
-            if (!$response->successful()) return;
+                if (!$response->successful()) {
+                    Log::warning("Shopify API failed when updating SKU {$sku}: " . $response->status());
+                    if ($retryCount < $maxRetries) {
+                        $retryCount++;
+                        sleep(2);
+                        continue;
+                    }
+                    return;
+                }
 
-            $products = $response->json('products');
-            foreach ($products as $product) {
-                foreach ($product['variants'] as $variant) {
-                    $variantSku = $normalizeSku($variant['sku'] ?? '');
-                    if ($variantSku === $sku) {
-                        $inventoryItemId = $variant['inventory_item_id'];
-                        break 2;
+                $retryCount = 0;
+                $products = $response->json('products') ?? [];
+                
+                foreach ($products as $product) {
+                    foreach ($product['variants'] ?? [] as $variant) {
+                        $variantSku = $normalizeSku($variant['sku'] ?? '');
+                        if ($variantSku === $sku) {
+                            $inventoryItemId = $variant['inventory_item_id'];
+                            break 2;
+                        }
                     }
                 }
+
+                if ($inventoryItemId) break;
+
+                $linkHeader = $response->header('Link');
+                $pageInfo = null;
+                if ($linkHeader && preg_match('/<[^>]+page_info=([^&>]+)[^>]*>; rel="next"/', $linkHeader, $matches)) {
+                    $pageInfo = $matches[1];
+                } else {
+                    $pageInfo = null;
+                }
+            } catch (\Exception $e) {
+                Log::error("Error updating Shopify stock for SKU {$sku}: " . $e->getMessage());
+                if ($retryCount < $maxRetries) {
+                    $retryCount++;
+                    sleep(2);
+                    continue;
+                }
+                return;
+            }
+        } while ($pageInfo);
+
+        if (!$inventoryItemId) {
+            Log::warning("Inventory item ID not found when updating SKU: {$sku}");
+            return;
+        }
+
+        try {
+            $invLevelResponse = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                ->timeout(30)
+                ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
+                    'inventory_item_ids' => $inventoryItemId
+                ]);
+
+            if (!$invLevelResponse->successful()) {
+                Log::error("Failed to get inventory levels for SKU {$sku}");
+                return;
             }
 
-            $linkHeader = $response->header('Link');
-            $pageInfo = null;
-            if ($linkHeader && preg_match('/<[^>]+page_info=([^&>]+)[^>]*>; rel="next"/', $linkHeader, $matches)) {
-                $pageInfo = $matches[1];
+            $locationId = $invLevelResponse->json('inventory_levels.0.location_id') ?? null;
+            if (!$locationId) {
+                Log::warning("No location ID found for inventory item {$inventoryItemId} (SKU: {$sku})");
+                return;
             }
-        } while (!$inventoryItemId && $pageInfo);
 
-        if (!$inventoryItemId) return;
+            $updateResponse = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                ->timeout(30)
+                ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/set.json", [
+                    'location_id'       => $locationId,
+                    'inventory_item_id' => $inventoryItemId,
+                    'available'         => $newQty,
+                ]);
 
-        $invLevelResponse = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-            ->get("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json", [
-                'inventory_item_ids' => $inventoryItemId
-            ]);
+            if (!$updateResponse->successful()) {
+                Log::error("Failed to update Shopify stock for SKU {$sku}: " . $updateResponse->status());
+                return;
+            }
 
-        $locationId = $invLevelResponse->json('inventory_levels.0.location_id') ?? null;
-        if (!$locationId) return;
-
-        Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-            ->post("https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/set.json", [
-                'location_id'       => $locationId,
-                'inventory_item_id' => $inventoryItemId,
-                'available'         => $newQty,
-            ]);
+            Log::info("Successfully updated SKU {$sku} in Shopify to quantity {$newQty}");
+        } catch (\Exception $e) {
+            Log::error("Error updating inventory levels for SKU {$sku}: " . $e->getMessage());
+            return;
+        }
     }
 
     

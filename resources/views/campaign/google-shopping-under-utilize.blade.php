@@ -129,6 +129,12 @@
         #campaignChart {
             height: 500px !important;
         }
+        #chartContainer {
+            max-height: 500px;
+        }
+        #campaignModalChartContainer {
+            max-height: 400px;
+        }
     </style>
 @endsection
 @section('content')
@@ -294,6 +300,8 @@
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Bootstrap JS for modal functionality -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <!-- SheetJS for Excel Export -->
@@ -390,7 +398,12 @@
                     },
                     {
                         title: "CAMPAIGN",
-                        field: "campaignName"
+                        field: "campaignName",
+                        formatter: function(cell) {
+                            const campaignName = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            return `<span>${campaignName}</span> <button class="btn btn-sm btn-outline-primary ms-2" onclick="showCampaignChart('${campaignName}')"><i class="fas fa-chart-line"></i></button>`;
+                        }
                     },
                     {
                         title: "STATUS",
@@ -497,13 +510,14 @@
                             var cpc_L1 = parseFloat(row.cpc_L1) || 0;
                             var cpc_L7 = parseFloat(row.cpc_L7) || 0;
                             var sbid;
-                            if (cpc_L1 > cpc_L7) {
-                                sbid = Math.floor(cpc_L1 * 1.05 * 100) / 100;
+                            
+                            if (cpc_L1 === 0 && cpc_L7 === 0) {
+                                sbid = 0.75;
                             } else {
-                                sbid = Math.floor(cpc_L7 * 1.05 * 100) / 100;
+                                sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
                             }
 
-                            return sbid;
+                            return sbid.toFixed(2);
                         },
                     },
                     {
@@ -524,12 +538,13 @@
                                 var cpc_L1 = parseFloat(row.cpc_L1) || 0;
                                 var cpc_L7 = parseFloat(row.cpc_L7) || 0;
                                 var sbid;
-                                if (cpc_L1 > cpc_L7) {
-                                    sbid = Math.floor(cpc_L1 * 1.05 * 100) / 100;
+                                
+                                if (cpc_L1 === 0 && cpc_L7 === 0) {
+                                    sbid = 0.75;
                                 } else {
-                                    sbid = Math.floor(cpc_L7 * 1.05 * 100) / 100;
+                                    sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
                                 }
-                                updateBid(sbid, row.campaign_id);
+                                updateBid(sbid.toFixed(2), row.campaign_id);
                             }
                         }
                     }
@@ -686,10 +701,10 @@
                         var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
 
                         var sbid = 0;
-                        if(l1_cpc > l7_cpc){
-                            sbid = Math.floor(l1_cpc * 1.05 * 100) / 100;
+                        if (l1_cpc === 0 && l7_cpc === 0) {
+                            sbid = 0.75;
                         }else{
-                            sbid = Math.floor(l7_cpc * 1.05 * 100) / 100;
+                            sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
                         }
 
                         campaignIds.push(rowData.campaign_id);
@@ -772,11 +787,7 @@
                     let cpc_L7 = parseFloat(row.cpc_L7 || 0);
                     let sbid = 0;
 
-                    if (cpc_L1 > cpc_L7) {
-                        sbid = Math.floor(cpc_L1 * 1.05 * 100) / 100;
-                    } else {
-                        sbid = Math.floor(cpc_L7 * 1.05 * 100) / 100;
-                    }
+                    sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
 
                     return {
                         campaignName: row.campaignName || "",
@@ -986,12 +997,214 @@
                 chart.update();
 
                 $('.card-clicks').text(response.totals.clicks);
-                $('.card-spend').text('US$' + Number(response.totals.spend).toFixed(2));
+                $('.card-spend').text('US$' + Math.round(response.totals.spend));
                 $('.card-orders').text(response.totals.orders);
-                $('.card-sales').text('US$' + Number(response.totals.sales).toFixed(2));
+                $('.card-sales').text('US$' + Math.round(response.totals.sales));
+            }
+        });
+    }
+
+    // Campaign chart functions
+    function showCampaignChart(campaignName) {
+        console.log('Opening modal for campaign:', campaignName);
+        
+        // Update modal title with date range
+        const endDate = moment().format('MMM DD, YYYY');
+        const startDate = moment().subtract(29, 'days').format('MMM DD, YYYY');
+        $('#campaignModalLabel').text(campaignName + ' (' + startDate + ' - ' + endDate + ')');
+        
+        // Try both jQuery and Bootstrap 5 methods to show modal
+        try {
+            const modalElement = document.getElementById('campaignModal');
+            if (modalElement) {
+                const modal = new bootstrap.Modal(modalElement);
+                modal.show();
+                console.log('Modal opened using Bootstrap 5');
+            } else {
+                $('#campaignModal').modal('show');
+                console.log('Modal opened using jQuery');
+            }
+            
+            // Fetch campaign data
+            fetchCampaignChartData(campaignName);
+        } catch (error) {
+            console.error('Error opening modal:', error);
+            // Fallback method
+            $('#campaignModal').show();
+        }
+    }
+
+    function fetchCampaignChartData(campaignName) {
+        console.log('Fetching campaign chart data for:', campaignName);
+        
+        // Default to last 30 days
+        const endDate = moment().format('YYYY-MM-DD');
+        const startDate = moment().subtract(29, 'days').format('YYYY-MM-DD');
+        
+        $.ajax({
+            url: '/google/shopping/campaign/chart-data',
+            method: 'GET',
+            data: {
+                campaignName: campaignName,
+                startDate: startDate,
+                endDate: endDate
+            },
+            beforeSend: function() {
+                console.log('Sending campaign chart request...');
+                // Show loading state
+                $('#modal-clicks, #modal-spend, #modal-orders, #modal-sales, #modal-impressions, #modal-ctr').text('Loading...');
+            },
+            success: function(response) {
+                console.log('Campaign chart data response:', response);
+                
+                // Update modal stats
+                $('#modal-clicks').text(response.totals.clicks);
+                $('#modal-spend').text('US$' + Math.round(response.totals.spend));
+                $('#modal-orders').text(response.totals.orders);
+                $('#modal-sales').text('US$' + Math.round(response.totals.sales));
+                $('#modal-impressions').text(response.totals.impressions);
+                $('#modal-ctr').text(response.totals.ctr + '%');
+
+                // Update chart
+                updateModalChart(response.chartData);
+            },
+            error: function(xhr) {
+                console.error('Error fetching campaign chart data:', xhr.responseText);
+            }
+        });
+    }
+
+    function updateModalChart(chartData) {
+        const ctx = document.getElementById('campaignModalChart').getContext('2d');
+
+        if (window.campaignModalChartInstance) {
+            window.campaignModalChartInstance.destroy();
+        }
+
+        window.campaignModalChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    label: 'Clicks',
+                    data: chartData.clicks,
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    yAxisID: 'y',
+                    tension: 0.4
+                }, {
+                    label: 'Spend (US$)',
+                    data: chartData.spend,
+                    borderColor: '#059669',
+                    backgroundColor: 'rgba(5, 150, 105, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                spanGaps: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Clicks'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Spend (US$)'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                    }
+                }
             }
         });
     }
 
     </script>
+
+    <!-- Campaign Chart Modal -->
+    <div class="modal fade" id="campaignModal" tabindex="-1" aria-labelledby="campaignModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="campaignModalLabel">Campaign Performance</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Stats Cards -->
+                    <div class="row text-center mb-4">
+                        <div class="col-md-2">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Clicks</div>
+                                <div class="h5 mb-0 fw-bold text-primary" id="modal-clicks">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Spend</div>
+                                <div class="h5 mb-0 fw-bold text-success" id="modal-spend">US$0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Orders</div>
+                                <div class="h5 mb-0 fw-bold text-danger" id="modal-orders">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Sales</div>
+                                <div class="h5 mb-0 fw-bold text-info" id="modal-sales">US$0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Impressions</div>
+                                <div class="h5 mb-0 fw-bold text-warning" id="modal-impressions">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">CTR</div>
+                                <div class="h5 mb-0 fw-bold text-secondary" id="modal-ctr">0%</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Chart -->
+                    <div id="campaignModalChartContainer">
+                        <canvas id="campaignModalChart" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection

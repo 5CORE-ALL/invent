@@ -951,12 +951,12 @@ class AdsMasterController extends Controller
                 // Update ProductMaster Values field with doba_final_price
                 $product = ProductMaster::where('sku', $sku)->first();
                 if ($product) {
-                    $values = is_string($product->Values) ? json_decode($product->Values, true) : $product->Values;
+                    $values = $product->Values ?? [];
                     if (!is_array($values)) {
                         $values = [];
                     }
                     $values['doba_final_price'] = number_format($sprice * 0.75, 2, '.', '');
-                    $product->Values = json_encode($values);
+                    $product->Values = $values;
                     $product->save();
                 }
                 break;

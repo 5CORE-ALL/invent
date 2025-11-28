@@ -85,6 +85,24 @@ class EbayKwAdsController extends Controller
         $start = \Carbon\Carbon::parse($request->startDate);
         $end   = \Carbon\Carbon::parse($request->endDate);
 
+        // Get the same SKUs logic as the table data to ensure consistency
+        $normalizeSku = fn($sku) => strtoupper(trim($sku));
+        
+        $productMasters = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        $skus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
+
+        // Get SKUs with price < 20 and not PARENT SKUs (same logic as table)
+        $ebayMetricData = EbayMetric::whereIn('sku', $skus)
+            ->where('ebay_price', '<', 20)
+            ->get()
+            ->keyBy(fn($item) => $normalizeSku($item->sku));
+
+        $filteredSkus = $ebayMetricData->keys()->toArray();
+
         $data = DB::table('ebay_priority_reports')
             ->selectRaw('
                 DATE(updated_at) as report_date,
@@ -95,6 +113,13 @@ class EbayKwAdsController extends Controller
             ')
             ->where('report_range', 'L30')
             ->whereBetween(DB::raw('DATE(updated_at)'), [$start->format('Y-m-d'), $end->format('Y-m-d')])
+            ->whereNotNull('campaign_name')
+            ->where('campaign_name', '!=', '')
+            ->where(function ($q) use ($filteredSkus) {
+                foreach ($filteredSkus as $sku) {
+                    $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
+                }
+            })
             ->groupBy(DB::raw('DATE(updated_at)'))
             ->orderBy('report_date', 'asc')
             ->get()
@@ -156,8 +181,16 @@ class EbayKwAdsController extends Controller
             $currentDate->addDay();
         }
 
+        // Format dates for chart display
+        $chartDates = [];
+        $currentDate = $start->copy();
+        while ($currentDate->lte($end)) {
+            $chartDates[] = $currentDate->format('M d');
+            $currentDate->addDay();
+        }
+
         return response()->json([
-            'dates'  => $dates,
+            'dates'  => $chartDates,
             'clicks' => $clicks,
             'spend'  => $spend,
             'ad_sales'  => $adSales,
@@ -381,7 +414,96 @@ class EbayKwAdsController extends Controller
     }
 
     public function ebayPriceLessThanTwentyAdsView(){
-        return view('campaign.ebay-less-twenty-kw-ads');
+        // Get the same SKUs logic as the table data
+        $normalizeSku = fn($sku) => strtoupper(trim($sku));
+        
+        $productMasters = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        $skus = $productMasters->pluck('sku')->filter()->map($normalizeSku)->unique()->values()->all();
+
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+        $today = \Carbon\Carbon::now();
+
+        // Get SKUs with price < 20 and not PARENT SKUs
+        $ebayMetricData = EbayMetric::whereIn('sku', $skus)
+            ->where('ebay_price', '<', 20)
+            ->get()
+            ->keyBy(fn($item) => $normalizeSku($item->sku));
+
+        $filteredSkus = $ebayMetricData->keys()->toArray();
+
+        // Get aggregated data by date from ebay_priority_reports for campaigns matching filtered SKUs (price < 20)
+        $data = DB::table('ebay_priority_reports')
+            ->selectRaw('
+                DATE(updated_at) as report_date,
+                SUM(cpc_clicks) as clicks,
+                SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as spend,
+                SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")) as ad_sales,
+                SUM(cpc_attributed_sales) as ad_sold
+            ')
+            ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->whereNotNull('campaign_name')
+            ->where('campaign_name', '!=', '')
+            ->where(function ($q) use ($filteredSkus) {
+                foreach ($filteredSkus as $sku) {
+                    $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
+                }
+            })
+            ->groupBy(DB::raw('DATE(updated_at)'))
+            ->orderBy('report_date', 'asc')
+            ->get()
+            ->keyBy('report_date');
+
+        // Create array for all 30 days with data or zeros
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $ad_sales = [];
+        $ad_sold = [];
+        $acos = [];
+        $cvr = [];
+
+        $currentDate = $thirtyDaysAgo->copy();
+        while ($currentDate->lte($today)) {
+            $dateStr = $currentDate->format('Y-m-d');
+            $dates[] = $currentDate->format('M d');
+
+            if (isset($data[$dateStr])) {
+                $row = $data[$dateStr];
+                $clicksVal = (int) $row->clicks;
+                $spendVal = (float) $row->spend;
+                $salesVal = (float) $row->ad_sales;
+                $soldVal = (int) $row->ad_sold;
+
+                $clicks[] = $clicksVal;
+                $spend[] = $spendVal;
+                $ad_sales[] = $salesVal;
+                $ad_sold[] = $soldVal;
+
+                $acosVal = $salesVal > 0 ? ($spendVal / $salesVal) * 100 : 0;
+                $acos[] = round($acosVal, 2);
+
+                $cvrVal = $clicksVal > 0 ? ($soldVal / $clicksVal) * 100 : 0;
+                $cvr[] = round($cvrVal, 2);
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $ad_sales[] = 0;
+                $ad_sold[] = 0;
+                $acos[] = 0;
+                $cvr[] = 0;
+            }
+
+            $currentDate->addDay();
+        }
+
+        return view('campaign.ebay-less-twenty-kw-ads', compact(
+            'dates', 'clicks', 'spend', 'ad_sales', 'ad_sold', 'acos', 'cvr'
+        ));
     }
 
     public function ebayPriceLessThanTwentyAdsData()
@@ -541,6 +663,82 @@ class EbayKwAdsController extends Controller
             'message' => 'Data fetched successfully',
             'data'    => $result,
             'status'  => 200,
+        ]);
+    }
+
+    public function getCampaignChartData(Request $request)
+    {
+        $campaignId = $request->campaignId;
+
+        // Get data for the last 30 days for this specific campaign
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+        
+        $data = DB::table('ebay_priority_reports')
+            ->selectRaw('
+                DATE(updated_at) as report_date,
+                SUM(cpc_clicks) as clicks,
+                SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as spend,
+                SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")) as ad_sales,
+                SUM(cpc_attributed_sales) as ad_sold
+            ')
+            ->where('report_range', 'L30')
+            ->where('campaign_name', $campaignId)
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->groupBy(DB::raw('DATE(updated_at)'))
+            ->orderBy('report_date', 'asc')
+            ->get()
+            ->keyBy('report_date');
+
+        // Create array for all 30 days
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $adSales = [];
+        $adSold = [];
+        $acos = [];
+        $cvr = [];
+
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+            $dates[] = $date;
+
+            if (isset($data[$date])) {
+                $row = $data[$date];
+                $clicksVal = (int) $row->clicks;
+                $spendVal = (float) $row->spend;
+                $salesVal = (float) $row->ad_sales;
+                $soldVal = (int) $row->ad_sold;
+
+                $clicks[] = $clicksVal;
+                $spend[] = $spendVal;
+                $adSales[] = $salesVal;
+                $adSold[] = $soldVal;
+
+                // ACOS = (Spend / Sales) * 100
+                $acosVal = $salesVal > 0 ? ($spendVal / $salesVal) * 100 : 0;
+                $acos[] = round($acosVal, 2);
+
+                // CVR = (Ad Sold / Clicks) * 100
+                $cvrVal = $clicksVal > 0 ? ($soldVal / $clicksVal) * 100 : 0;
+                $cvr[] = round($cvrVal, 2);
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $adSales[] = 0;
+                $adSold[] = 0;
+                $acos[] = 0;
+                $cvr[] = 0;
+            }
+        }
+
+        return response()->json([
+            'dates' => $dates,
+            'clicks' => $clicks,
+            'spend' => $spend,
+            'ad_sales' => $adSales,
+            'ad_sold' => $adSold,
+            'acos' => $acos,
+            'cvr' => $cvr,
         ]);
     }
 }

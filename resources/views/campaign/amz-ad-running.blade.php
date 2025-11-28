@@ -124,6 +124,19 @@
             height: auto !important;
             line-height: 1.2em;
         }
+        
+        #amazonChart {
+            height: 500px !important;
+        }
+        #chartContainer {
+            max-height: 500px;
+        }
+        #campaignModalChartContainer {
+            max-height: 400px;
+        }
+        #campaignModalChartContainer {
+            max-height: 400px;
+        }
     </style>
 @endsection
 @section('content')
@@ -132,6 +145,65 @@
         'sub_title' => 'Amazon - Budget',
     ])
     <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <button id="daterange-btn" class="btn btn-outline-dark">
+                            <span>Date range: Select</span> <i class="fa-solid fa-chevron-down ms-1"></i>
+                        </button>
+                    </div>
+                    <!-- Stats Row -->
+                    <div class="row text-center mb-4">
+                        <!-- Spend -->
+                        <div class="col-md-3 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Spend L30</div>
+                                <div class="h3 mb-0 fw-bold text-success card-spend">$0</div>
+                            </div>
+                        </div>
+
+                        <!-- Clicks -->
+                        <div class="col-md-3 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Clicks L30</div>
+                                <div class="h3 mb-0 fw-bold text-primary card-clicks">0</div>
+                            </div>
+                        </div>
+
+                        <!-- Sales -->
+                        <div class="col-md-3 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Sales L30</div>
+                                <div class="h3 mb-0 fw-bold text-info card-sales">$0</div>
+                            </div>
+                        </div>
+
+                        <!-- Units Sold -->
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="text-muted small">Units Sold L30</div>
+                                        <div class="h3 mb-0 fw-bold text-danger card-sold">0</div>
+                                    </div>
+                                    <button id="toggleChartBtn" class="btn btn-sm btn-info ms-2">
+                                        <i id="chartArrow" class="fa-solid fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chart (hidden by default) -->
+                    <div id="chartContainer" style="display: none;">
+                        <canvas id="amazonChart" height="120"></canvas>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body py-3">
@@ -221,7 +293,13 @@
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Bootstrap JS for modal functionality -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function() {
 
@@ -264,6 +342,9 @@
                             <i class="fa fa-info-circle text-primary toggle-cols-btn" 
                             data-sku="${sku}" 
                             style="cursor:pointer; margin-left:8px;"></i>
+                            <button class="btn btn-sm btn-outline-primary ms-2" onclick="showCampaignChart('${sku}')">
+                                <i class="fas fa-chart-line"></i>
+                            </button>
                         `;
                     }
                 },
@@ -1276,4 +1357,546 @@
         document.body.style.zoom = "85%";
     });
 </script>
+
+<script>
+    // Chart initialization with sample data - will be updated when backend is ready
+    const ctx = document.getElementById('amazonChart').getContext('2d');
+
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [], // Will be populated with dates
+            datasets: [
+                {
+                    label: 'Spend ($)',
+                    data: [],
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    fill: false,
+                },
+                {
+                    label: 'Clicks',
+                    data: [],
+                    borderColor: '#007bff',
+                    backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                    yAxisID: 'y2',
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    fill: false,
+                },
+                {
+                    label: 'Sales ($)',
+                    data: [],
+                    borderColor: '#17a2b8',
+                    backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    fill: false,
+                },
+                {
+                    label: 'Units Sold',
+                    data: [],
+                    borderColor: '#dc3545',
+                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                    yAxisID: 'y2',
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    fill: false,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                tooltip: {
+                    backgroundColor: "#fff",
+                    titleColor: "#111",
+                    bodyColor: "#333",
+                    borderColor: "#ddd",
+                    borderWidth: 1,
+                    padding: 12,
+                    titleFont: { size: 14, weight: 'bold' },
+                    bodyFont: { size: 13 },
+                    usePointStyle: true,
+                    callbacks: {
+                        label: function(context) {
+                            let value = context.raw;
+                            if (context.dataset.label.includes("Spend") || context.dataset.label.includes("Sales")) {
+                                return `${context.dataset.label}: $${Number(value).toFixed(2)}`;
+                            }
+                            return `${context.dataset.label}: ${value}`;
+                        }
+                    }
+                },
+                legend: {
+                    labels: {
+                        usePointStyle: true,
+                        boxWidth: 10,
+                        padding: 20
+                    },
+                    onClick: (e, legendItem, legend) => {
+                        const index = legendItem.datasetIndex;
+                        const ci = legend.chart;
+                        const meta = ci.getDatasetMeta(index);
+                        meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
+                        ci.update();
+                    }
+                }
+            },
+            scales: {
+                y1: {
+                    type: 'linear',
+                    position: 'left',
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Spend / Sales ($)'
+                    }
+                },
+                y2: {
+                    type: 'linear',
+                    position: 'right',
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Clicks / Units Sold'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            }
+        }
+    });
+
+    document.addEventListener("DOMContentLoaded", function() {
+        // Load initial stats data immediately when page loads
+        loadChartData();
+        
+        const toggleBtn = document.getElementById("toggleChartBtn");
+        const chartContainer = document.getElementById("chartContainer");
+        const arrowIcon = document.getElementById("chartArrow");
+
+        toggleBtn.addEventListener("click", function() {
+            if (chartContainer.style.display === "none") {
+                chartContainer.style.display = "block";
+                arrowIcon.classList.remove("fa-chevron-down");
+                arrowIcon.classList.add("fa-chevron-up");
+            } else {
+                chartContainer.style.display = "none";
+                arrowIcon.classList.remove("fa-chevron-up");
+                arrowIcon.classList.add("fa-chevron-down");
+            }
+        });
+    });
+
+    // Date range picker
+    $(function() {
+        let picker = $('#daterange-btn').daterangepicker({
+            opens: 'right',
+            autoUpdateInput: false,
+            alwaysShowCalendars: true,
+            locale: {
+                format: "D MMM YYYY",
+                cancelLabel: 'Clear'
+            },
+            ranges: {
+                'Today': [moment(), moment()],
+                'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+                'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+                'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+                'This Month': [moment().startOf('month'), moment().endOf('month')],
+                'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+            }
+        }, function(start, end) {
+            const startDate = start.format("YYYY-MM-DD");
+            const endDate = end.format("YYYY-MM-DD");
+
+            $('#daterange-btn span').html("Date range: " + startDate + " - " + endDate);
+            loadChartData(startDate, endDate);
+        });
+
+        $('#daterange-btn').on('cancel.daterangepicker', function(ev, picker) {
+            $(this).find('span').html("Date range: Select");
+            loadChartData(); // Load default data
+        });
+    });
+
+    function loadChartData(startDate, endDate) {
+        // For now, we'll generate sample data until backend is implemented
+        generateSampleChartData(startDate, endDate);
+        
+        // TODO: When backend is ready, replace with actual API call:
+        /*
+        $.ajax({
+            url: "/amazon/ad-running/chart-data",
+            type: "GET",
+            data: { startDate, endDate },
+            success: function(response) {
+                updateChart(response);
+                updateStats(response.totals);
+            },
+            error: function(xhr) {
+                console.error('Error loading chart data:', xhr);
+                generateSampleChartData(startDate, endDate); // Fallback to sample data
+            }
+        });
+        */
+    }
+
+    function generateSampleChartData(startDate, endDate) {
+        const start = startDate ? moment(startDate) : moment().subtract(29, 'days');
+        const end = endDate ? moment(endDate) : moment();
+        
+        const dates = [];
+        const spend = [];
+        const clicks = [];
+        const sales = [];
+        const sold = [];
+        
+        let totalSpend = 0, totalClicks = 0, totalSales = 0, totalSold = 0;
+        
+        for (let date = start.clone(); date.isSameOrBefore(end); date.add(1, 'day')) {
+            dates.push(date.format('MMM DD'));
+            
+            // Generate realistic sample data
+            const dailySpend = Math.random() * 500 + 100;
+            const dailyClicks = Math.random() * 200 + 50;
+            const dailySales = dailySpend * (1.5 + Math.random() * 2); // 1.5-3.5x ROAS
+            const dailySold = Math.floor(Math.random() * 50 + 10);
+            
+            spend.push(dailySpend);
+            clicks.push(dailyClicks);
+            sales.push(dailySales);
+            sold.push(dailySold);
+            
+            totalSpend += dailySpend;
+            totalClicks += dailyClicks;
+            totalSales += dailySales;
+            totalSold += dailySold;
+        }
+        
+        // Update chart
+        chart.data.labels = dates;
+        chart.data.datasets[0].data = spend;
+        chart.data.datasets[1].data = clicks;
+        chart.data.datasets[2].data = sales;
+        chart.data.datasets[3].data = sold;
+        chart.update();
+        
+        // Update stats cards
+        $('.card-spend').text('$' + Math.round(totalSpend).toLocaleString());
+        $('.card-clicks').text(Math.round(totalClicks).toLocaleString());
+        $('.card-sales').text('$' + Math.round(totalSales).toLocaleString());
+        $('.card-sold').text(Math.round(totalSold).toLocaleString());
+    }
+
+    function updateChart(response) {
+        const formattedDates = response.dates.map(d => moment(d).format('MMM DD'));
+        chart.data.labels = formattedDates;
+        chart.data.datasets[0].data = response.spend;
+        chart.data.datasets[1].data = response.clicks;
+        chart.data.datasets[2].data = response.sales;
+        chart.data.datasets[3].data = response.sold;
+        chart.update();
+    }
+
+    function updateStats(totals) {
+        $('.card-spend').text('$' + Math.round(totals.spend).toLocaleString());
+        $('.card-clicks').text(Math.round(totals.clicks).toLocaleString());
+        $('.card-sales').text('$' + Math.round(totals.sales).toLocaleString());
+        $('.card-sold').text(Math.round(totals.sold).toLocaleString());
+    }
+
+    // Campaign chart functions
+    function showCampaignChart(sku) {
+        console.log('Opening modal for SKU:', sku);
+        
+        // Update modal title with date range
+        const endDate = moment().format('MMM DD, YYYY');
+        const startDate = moment().subtract(29, 'days').format('MMM DD, YYYY');
+        $('#campaignModalLabel').text(sku + ' (' + startDate + ' - ' + endDate + ')');
+        
+        // Try both jQuery and Bootstrap 5 methods to show modal
+        try {
+            const modalElement = document.getElementById('campaignModal');
+            if (modalElement) {
+                const modal = new bootstrap.Modal(modalElement);
+                modal.show();
+                console.log('Modal opened using Bootstrap 5');
+            } else {
+                $('#campaignModal').modal('show');
+                console.log('Modal opened using jQuery');
+            }
+            
+            // Fetch campaign data
+            fetchCampaignChartData(sku);
+        } catch (error) {
+            console.error('Error opening modal:', error);
+            // Fallback method
+            $('#campaignModal').show();
+        }
+    }
+
+    function fetchCampaignChartData(sku) {
+        console.log('Fetching campaign chart data for SKU:', sku);
+        
+        // Default to last 30 days
+        const endDate = moment().format('YYYY-MM-DD');
+        const startDate = moment().subtract(29, 'days').format('YYYY-MM-DD');
+        
+        // For now, generate sample data for the specific SKU
+        // TODO: Replace with actual API call when backend is ready
+        /*
+        $.ajax({
+            url: '/amazon/ad-running/campaign/chart-data',
+            method: 'GET',
+            data: {
+                sku: sku,
+                startDate: startDate,
+                endDate: endDate
+            },
+            beforeSend: function() {
+                console.log('Sending campaign chart request...');
+                // Show loading state
+                $('#modal-spend, #modal-clicks, #modal-sales, #modal-sold, #modal-impressions, #modal-ctr').text('Loading...');
+            },
+            success: function(response) {
+                console.log('Campaign chart data response:', response);
+                
+                // Update modal stats
+                $('#modal-spend').text('$' + Math.round(response.totals.spend));
+                $('#modal-clicks').text(response.totals.clicks);
+                $('#modal-sales').text('$' + Math.round(response.totals.sales));
+                $('#modal-sold').text(response.totals.sold);
+                $('#modal-impressions').text(response.totals.impressions);
+                $('#modal-ctr').text(response.totals.ctr + '%');
+
+                // Update chart
+                updateModalChart(response.chartData);
+            },
+            error: function(xhr) {
+                console.error('Error fetching campaign chart data:', xhr.responseText);
+                generateSampleCampaignData(sku);
+            }
+        });
+        */
+        
+        // Generate sample data for now
+        generateSampleCampaignData(sku);
+    }
+
+    function generateSampleCampaignData(sku) {
+        const dates = [];
+        const spend = [];
+        const clicks = [];
+        const sales = [];
+        const sold = [];
+        
+        let totalSpend = 0, totalClicks = 0, totalSales = 0, totalSold = 0;
+        
+        for (let i = 29; i >= 0; i--) {
+            const date = moment().subtract(i, 'days');
+            dates.push(date.format('MMM DD'));
+            
+            // Generate realistic sample data for individual SKU
+            const dailySpend = Math.random() * 50 + 10;
+            const dailyClicks = Math.random() * 30 + 5;
+            const dailySales = dailySpend * (1.2 + Math.random() * 1.5); // 1.2-2.7x ROAS
+            const dailySold = Math.floor(Math.random() * 8 + 1);
+            
+            spend.push(dailySpend);
+            clicks.push(dailyClicks);
+            sales.push(dailySales);
+            sold.push(dailySold);
+            
+            totalSpend += dailySpend;
+            totalClicks += dailyClicks;
+            totalSales += dailySales;
+            totalSold += dailySold;
+        }
+        
+        // Calculate additional metrics
+        const totalImpressions = totalClicks * (8 + Math.random() * 12); // 8-20x CTR
+        const ctr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : 0;
+        
+        // Update modal stats
+        $('#modal-spend').text('$' + Math.round(totalSpend));
+        $('#modal-clicks').text(Math.round(totalClicks));
+        $('#modal-sales').text('$' + Math.round(totalSales));
+        $('#modal-sold').text(Math.round(totalSold));
+        $('#modal-impressions').text(Math.round(totalImpressions));
+        $('#modal-ctr').text(ctr + '%');
+
+        // Update chart
+        const chartData = {
+            labels: dates,
+            spend: spend,
+            clicks: clicks,
+            sales: sales,
+            sold: sold
+        };
+        
+        updateModalChart(chartData);
+    }
+
+    function updateModalChart(chartData) {
+        const ctx = document.getElementById('campaignModalChart').getContext('2d');
+
+        if (window.campaignModalChartInstance) {
+            window.campaignModalChartInstance.destroy();
+        }
+
+        window.campaignModalChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    label: 'Spend ($)',
+                    data: chartData.spend,
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    yAxisID: 'y',
+                    tension: 0.4
+                }, {
+                    label: 'Sales ($)',
+                    data: chartData.sales,
+                    borderColor: '#17a2b8',
+                    backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                    yAxisID: 'y',
+                    tension: 0.4
+                }, {
+                    label: 'Clicks',
+                    data: chartData.clicks,
+                    borderColor: '#007bff',
+                    backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.4
+                }, {
+                    label: 'Units Sold',
+                    data: chartData.sold,
+                    borderColor: '#dc3545',
+                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                spanGaps: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Spend / Sales ($)'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Clicks / Units Sold'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                    }
+                }
+            }
+        });
+    }
+</script>
+
+<!-- Campaign Chart Modal -->
+<div class="modal fade" id="campaignModal" tabindex="-1" aria-labelledby="campaignModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="campaignModalLabel">Campaign Performance</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Stats Cards -->
+                <div class="row text-center mb-4">
+                    <div class="col-md-2">
+                        <div class="p-3 border rounded bg-light h-100">
+                            <div class="text-muted small">Spend</div>
+                            <div class="h5 mb-0 fw-bold text-success" id="modal-spend">$0</div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="p-3 border rounded bg-light h-100">
+                            <div class="text-muted small">Clicks</div>
+                            <div class="h5 mb-0 fw-bold text-primary" id="modal-clicks">0</div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="p-3 border rounded bg-light h-100">
+                            <div class="text-muted small">Sales</div>
+                            <div class="h5 mb-0 fw-bold text-info" id="modal-sales">$0</div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="p-3 border rounded bg-light h-100">
+                            <div class="text-muted small">Units Sold</div>
+                            <div class="h5 mb-0 fw-bold text-danger" id="modal-sold">0</div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="p-3 border rounded bg-light h-100">
+                            <div class="text-muted small">Impressions</div>
+                            <div class="h5 mb-0 fw-bold text-warning" id="modal-impressions">0</div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="p-3 border rounded bg-light h-100">
+                            <div class="text-muted small">CTR</div>
+                            <div class="h5 mb-0 fw-bold text-secondary" id="modal-ctr">0%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Chart -->
+                <div id="campaignModalChartContainer">
+                    <canvas id="campaignModalChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
