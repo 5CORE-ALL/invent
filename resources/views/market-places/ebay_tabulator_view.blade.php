@@ -99,6 +99,26 @@
                     <a href="{{ url('/ebay-export') }}" class="btn btn-sm btn-success me-2">
                         <i class="fa fa-file-excel"></i> Export
                     </a>
+                    
+                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary me-2" style="display: none;">
+                        <i class="fa fa-eye-slash"></i> Hide Chart
+                    </button>
+                </div>
+
+                <!-- Metrics Chart Section -->
+                <div id="metrics-chart-section" class="mt-2 p-2 bg-white rounded border" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Metrics Trend</h6>
+                        <select id="chart-days-filter" class="form-select form-select-sm" style="width: auto;">
+                            <option value="7" selected>Last 7 Days</option>
+                            <option value="14">Last 14 Days</option>
+                            <option value="30">Last 30 Days</option>
+                            <option value="60">Last 60 Days</option>
+                        </select>
+                    </div>
+                    <div style="height: 200px;">
+                        <canvas id="metricsChart"></canvas>
+                    </div>
                 </div>
 
                 <!-- Summary Stats -->
@@ -156,13 +176,464 @@
             </div>
         </div>
     </div>
+
+    <!-- SKU Metrics Chart Modal -->
+    <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Metrics Chart for <span id="modalSkuName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Date Range:</label>
+                        <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                            <option value="7" selected>Last 7 Days</option>
+                            <option value="14">Last 14 Days</option>
+                            <option value="30">Last 30 Days</option>
+                        </select>
+                    </div>
+                    <div id="chart-no-data-message" class="alert alert-info" style="display: none;">
+                        No historical data available for this SKU. Data will appear after running the metrics collection command.
+                    </div>
+                    <div style="height: 400px;">
+                        <canvas id="skuMetricsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
-@section('script-bottom')
+    @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "ebay_tabulator_column_visibility";
+        let metricsChart = null;
+        let skuMetricsChart = null;
+        let currentSku = null;
+
+        // Initialize Metrics Chart
+        function initMetricsChart() {
+            const ctx = document.getElementById('metricsChart').getContext('2d');
+            metricsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Avg Price ($)',
+                            data: [],
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Total Views',
+                            data: [],
+                            borderColor: 'rgb(54, 162, 235)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Avg CVR%',
+                            data: [],
+                            borderColor: 'rgb(255, 206, 86)',
+                            backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Avg AD%',
+                            data: [],
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 10
+                            }
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    let value = context.parsed.y || 0;
+                                    
+                                    // Format based on dataset label
+                                    if (label.includes('Price') || label.includes('price')) {
+                                        return label + ': $' + value.toFixed(2);
+                                    } else if (label.includes('Views') || label.includes('views')) {
+                                        return label + ': ' + value.toLocaleString();
+                                    } else if (label.includes('CVR')) {
+                                        return label + ': ' + value.toFixed(1) + '%';
+                                    } else if (label.includes('AD') || label.includes('%')) {
+                                        return label + ': ' + Math.round(value) + '%';
+                                    }
+                                    return label + ': ' + value;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Price / Percentages'
+                            },
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value, index, values) {
+                                    // Format based on value range
+                                    if (value >= 0 && value <= 200) {
+                                        return value.toFixed(0) + '%';
+                                    } else {
+                                        return '$' + value.toFixed(0);
+                                    }
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Views'
+                            },
+                            beginAtZero: true,
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load Metrics Data
+        function loadMetricsData(days = 7) {
+            fetch(`/ebay-metrics-history?days=${days}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.length > 0 && metricsChart) {
+                        metricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
+                        metricsChart.data.datasets[0].data = data.map(d => d.avg_price || 0);
+                        metricsChart.data.datasets[1].data = data.map(d => d.total_views || 0);
+                        metricsChart.data.datasets[2].data = data.map(d => d.avg_cvr_percent || 0);
+                        metricsChart.data.datasets[3].data = data.map(d => d.avg_ad_percent || 0);
+                        metricsChart.update();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading metrics data:', error);
+                });
+        }
+
+        // SKU-specific chart
+        function initSkuMetricsChart() {
+            const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+            skuMetricsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Price (USD)',
+                            data: [],
+                            borderColor: '#FF0000',
+                            backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Views',
+                            data: [],
+                            borderColor: '#0000FF',
+                            backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'CVR%',
+                            data: [],
+                            borderColor: '#008000',
+                            backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'AD%',
+                            data: [],
+                            borderColor: '#FFD700',
+                            backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'eBay SKU Metrics',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: {
+                                top: 10,
+                                bottom: 20
+                            }
+                        },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    let value = context.parsed.y || 0;
+                                    
+                                    // Format based on dataset label
+                                    if (label.includes('Price')) {
+                                        return label + ': $' + value.toFixed(2);
+                                    } else if (label.includes('Views')) {
+                                        return label + ': ' + value.toLocaleString();
+                                    } else if (label.includes('CVR')) {
+                                        return label + ': ' + value.toFixed(1) + '%';
+                                    } else if (label.includes('AD')) {
+                                        return label + ': ' + Math.round(value) + '%';
+                                    }
+                                    return label + ': ' + value;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Price/Views',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            beginAtZero: true,
+                            ticks: {
+                                font: {
+                                    size: 11
+                                },
+                                callback: function(value, index, values) {
+                                    if (values.length > 0 && Math.max(...values.map(v => v.value)) < 1000) {
+                                        return '$' + value.toFixed(0);
+                                    }
+                                    return value.toLocaleString();
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Percent (%)',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            beginAtZero: true,
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                },
+                                callback: function(value) {
+                                    return value.toFixed(0) + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function loadSkuMetricsData(sku, days = 7) {
+            console.log('Loading metrics data for SKU:', sku, 'Days:', days);
+            fetch(`/ebay-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Metrics data received:', data);
+                    if (skuMetricsChart) {
+                        if (!data || data.length === 0) {
+                            console.warn('No data returned for SKU:', sku);
+                            $('#chart-no-data-message').show();
+                            skuMetricsChart.data.labels = [];
+                            skuMetricsChart.data.datasets.forEach(dataset => {
+                                dataset.data = [];
+                            });
+                            skuMetricsChart.options.plugins.title.text = 'eBay Metrics';
+                            skuMetricsChart.update();
+                            return;
+                        }
+                        
+                        $('#chart-no-data-message').hide();
+                        skuMetricsChart.options.plugins.title.text = `eBay Metrics (${days} Days)`;
+                        skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
+                        skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
+                        skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
+                        skuMetricsChart.data.datasets[2].data = data.map(d => d.cvr_percent || 0);
+                        skuMetricsChart.data.datasets[3].data = data.map(d => d.ad_percent || 0);
+                        skuMetricsChart.update('active');
+                        console.log('Chart updated successfully with', data.length, 'data points');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading SKU metrics data:', error);
+                    alert('Error loading metrics data. Please check console for details.');
+                });
+        }
 
         $(document).ready(function() {
+            // Initialize charts
+            initMetricsChart();
+            loadMetricsData(7);
+            initSkuMetricsChart();
+
+            // Toggle chart button
+            $('#toggle-chart-btn').on('click', function() {
+                const $chartSection = $('#metrics-chart-section');
+                const $btn = $(this);
+                
+                if ($chartSection.is(':visible')) {
+                    $chartSection.slideUp();
+                    $btn.html('<i class="fa fa-eye"></i> Show Chart');
+                } else {
+                    $chartSection.slideDown();
+                    $btn.html('<i class="fa fa-eye-slash"></i> Hide Chart');
+                }
+            });
+
+            // Show chart button by default on first load
+            $('#toggle-chart-btn').show();
+
+            // Chart days filter
+            $('#chart-days-filter').on('change', function() {
+                const days = $(this).val();
+                loadMetricsData(days);
+            });
+
+            // SKU chart days filter
+            $('#sku-chart-days-filter').on('change', function() {
+                const days = $(this).val();
+                if (currentSku) {
+                    if (skuMetricsChart) {
+                        skuMetricsChart.options.plugins.title.text = `eBay Metrics (${days} Days)`;
+                        skuMetricsChart.update();
+                    }
+                    loadSkuMetricsData(currentSku, days);
+                }
+            });
+
+            // Event delegation for eye button clicks (add to SKU column formatter)
             const table = new Tabulator("#ebay-table", {
                 ajaxURL: "/ebay-data-json",
                 ajaxSorting: false,
@@ -216,12 +687,22 @@
                         width: 250,
                         formatter: function(cell) {
                             const sku = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
+                            
+                            if (isParent) {
+                                return `<span>${sku}</span>`;
+                            }
+                            
                             return `
                                 <span>${sku}</span>
                                 <i class="fa fa-copy text-secondary copy-sku-btn" 
                                    style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
                                    data-sku="${sku}"
                                    title="Copy SKU"></i>
+                                <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;">
+                                    <i class="fa fa-info-circle"></i>
+                                </button>
                             `;
                         }
                     },
@@ -1217,6 +1698,19 @@
                         document.body.removeChild(textarea);
                         showToast('success', `SKU "${sku}" copied to clipboard!`);
                     });
+                }
+
+                // View SKU chart
+                if (e.target.closest('.view-sku-chart')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const sku = e.target.closest('.view-sku-chart').getAttribute('data-sku');
+                    currentSku = sku;
+                    $('#modalSkuName').text(sku);
+                    $('#sku-chart-days-filter').val('7');
+                    $('#chart-no-data-message').hide();
+                    loadSkuMetricsData(sku, 7);
+                    $('#skuMetricsModal').modal('show');
                 }
             });
 
