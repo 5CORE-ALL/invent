@@ -1,10 +1,584 @@
 @extends('layouts.vertical', ['title' => 'Dashboard', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
+@section('css')
+<!-- task dashboard css -->
+<style>
+    .dashboard-card {
+            background: #ffffff !important;
+            border-radius: 12px !important;
+            padding: 20px !important;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06) !important;
+            transition: all 0.2s ease !important;
+            cursor: pointer !important;
+            position: relative !important;
+            overflow: visible !important;
+            border: 1px solid #e5e7eb !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+
+        .dashboard-card:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+            border-color: #d1d5db !important;
+        }
+
+        .dashboard-card::before {
+            content: '' !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            height: 4px !important;
+            background: #3b82f6 !important;
+            border-radius: 12px 12px 0 0 !important;
+        }
+
+        .card-header {
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: flex-start !important;
+            margin-bottom: 12px !important;
+            margin-top: 8px !important;
+        }
+
+        .card-icon {
+            width: 52px !important;
+            height: 52px !important;
+            border-radius: 10px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            font-size: 1.6em !important;
+            margin-bottom: 0 !important;
+            box-shadow: none !important;
+            transition: all 0.2s ease !important;
+        }
+        
+        .dashboard-card:hover .card-icon {
+            transform: scale(1.05) !important;
+        }
+
+        .card-title {
+            font-size: 1.125rem !important;
+            font-weight: 600 !important;
+            color: #111827 !important;
+            margin-bottom: 4px !important;
+            letter-spacing: -0.01em !important;
+            line-height: 1.4 !important;
+        }
+
+        .card-description {
+            color: #6b7280 !important;
+            font-size: 0.875rem !important;
+            line-height: 1.5 !important;
+            margin-bottom: 0 !important;
+        }
+
+        .card-badge {
+            padding: 4px 12px !important;
+            border-radius: 20px !important;
+            font-size: 0.8125rem !important;
+            font-weight: 600 !important;
+            box-shadow: none !important;
+            white-space: nowrap !important;
+            line-height: 1.5 !important;
+        }
+
+        .badge-cyan {
+            background: #cffafe;
+            color: #0891b2;
+        }
+
+        .badge-green {
+            background: #d1fae5;
+            color: #059669;
+        }
+
+        .badge-orange {
+            background: #fed7aa;
+            color: #ea580c;
+        }
+
+        .badge-pink {
+            background: #fce7f3;
+            color: #db2777;
+        }
+
+        .badge-purple {
+            background: #e9d5ff;
+            color: #9333ea;
+        }
+
+        .badge-blue {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+
+        .badge-gray {
+            background: #e5e7eb;
+            color: #4b5563;
+        }
+
+        .badge-red {
+            background: #fecaca;
+            color: #dc2626;
+        }
+
+        .badge-yellow {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .badge-teal {
+            background: #ccfbf1;
+            color: #0d9488;
+        }
+
+        .badge-indigo {
+            background: #e0e7ff;
+            color: #4f46e5;
+        }
+
+        .badge-brown {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .subcards-preview {
+            display: flex !important;
+            gap: 8px !important;
+            margin-top: 14px !important;
+            padding-top: 14px !important;
+            border-top: 1px solid #e5e7eb !important;
+            flex-wrap: wrap !important;
+        }
+
+        .subcard-item {
+            padding: 5px 10px !important;
+            border-radius: 6px !important;
+            background: #f9fafb !important;
+            font-size: 0.8125rem !important;
+            color: #6b7280 !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 4px !important;
+            border: none !important;
+            transition: all 0.15s ease !important;
+            font-weight: 500 !important;
+        }
+        
+        .subcard-item:hover {
+            background: #f3f4f6 !important;
+            color: #374151 !important;
+        }
+
+        .graphs-section {
+            display: grid !important;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)) !important;
+            gap: 20px !important;
+            margin-bottom: 30px !important;
+        }
+
+        .graph-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+
+        .graph-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 20px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+
+        .bar {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-around;
+            height: 100%;
+            gap: 10px;
+        }
+
+        .bar-item {
+            flex: 1;
+            background: #3b82f6;
+            border-radius: 8px 8px 0 0;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .bar-item:hover {
+            opacity: 0.8;
+            transform: translateY(-5px);
+        }
+
+        .bar-label {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.8em;
+            color: #6b7280;
+            white-space: nowrap;
+        }
+
+        .bar-value {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.85em;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .donut-chart {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: conic-gradient(
+                #3b82f6 0deg 120deg,
+                #10b981 120deg 240deg,
+                #f59e0b 240deg 300deg,
+                #ef4444 300deg 360deg
+            );
+            position: relative;
+            margin: 0 auto;
+        }
+
+        .donut-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 120px;
+            height: 120px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .donut-value {
+            font-size: 2em;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .donut-label {
+            font-size: 0.8em;
+            color: #6b7280;
+        }
+
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .legend-text {
+            font-size: 0.85em;
+            color: #4b5563;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-box {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #3b82f6;
+        }
+
+        .stat-label {
+            color: #6b7280;
+            font-size: 0.9em;
+            margin-top: 8px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .chart-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .chart-modal.active {
+            display: flex;
+        }
+
+        .chart-modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            width: 95%;
+            height: 90vh;
+            max-width: 1400px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .chart-modal-title {
+            font-size: 1.5em;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .chart-modal-body {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+        }
+
+        .chart-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .chart-modal.active {
+            display: flex;
+        }
+
+        .chart-modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            width: 95%;
+            height: 90vh;
+            max-width: 1400px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .chart-modal-title {
+            font-size: 1.5em;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .chart-modal-body {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 1.8em;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .close-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #f3f4f6;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .close-btn:hover {
+            background: #e5e7eb;
+            transform: rotate(90deg);
+        }
+
+        .subcard-grid {
+            display: grid;
+            gap: 15px;
+        }
+
+        .subcard {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 4px solid #3b82f6;
+            transition: all 0.3s;
+        }
+
+        .subcard:hover {
+            background: #f3f4f6;
+            transform: translateX(5px);
+        }
+
+        .subcard-title {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 5px;
+        }
+
+        .subcard-value {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #3b82f6;
+        }
+
+        .dashboard-grid {
+            display: grid !important;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) !important;
+            gap: 20px !important;
+            margin-top: 30px !important;
+            margin-bottom: 30px !important;
+            padding: 0 !important;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr !important;
+            }
+
+            .graphs-section {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .top-header {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+        }
+
+        @media (min-width: 1025px) and (max-width: 1400px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(3, 1fr) !important;
+            }
+        }
+
+        @media (min-width: 1401px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(4, 1fr) !important;
+            }
+        }
+</style>
+@endsection
+
 @section('content')
 @include('layouts.shared/page-title', ['sub_title' => 'Menu', 'page_title' => 'Dashboard'])
 
     <div class="row">
-        <div class="col-xxl-3 col-sm-6">
+         <div class="col-xxl-3 col-sm-6">
+        <a href="https://inventory.5coremanagement.com/channel/channels/channel-masters" target="_blank" style="text-decoration: none;">       
             <div class="card widget-flat text-bg-pink">
                 <div class="card-body">
                     <div class="float-end">
@@ -17,7 +591,9 @@
                     </p>
                 </div>
             </div>
-        </div> <!-- end col-->
+            </a>
+        </div> 
+        <!-- end col-->
 
         <div class="col-xxl-3 col-sm-6">
             <div class="card widget-flat text-bg-success">
@@ -71,6 +647,7 @@
             <div class="card">
                 <div class="card-body">
                     <div class="card-widgets">
+                        <a href="https://inventory.5coremanagement.com/channel/channels/channel-masters" target="_blank" title="View Channel Masters"><i class="ri-eye-line"></i></a>
                         <a href="javascript:;" data-bs-toggle="reload"><i class="ri-refresh-line"></i></a>
                         <a data-bs-toggle="collapse" href="#weeklysales-collapse" role="button" aria-expanded="false"
                             aria-controls="weeklysales-collapse"><i class="ri-subtract-line"></i></a>
@@ -93,6 +670,9 @@
                             <div class="col text-center">
                                 <button type="button" class="btn btn-sm btn-primary" onclick="loadChannelSalesChart();">
                                     <i class="ri-refresh-line"></i> Refresh Channels
+                                </button>
+                                <button type="button" class="btn btn-sm btn-info ms-2" onclick="openChartModal();">
+                                    <i class="ri-fullscreen-line"></i> View Fullscreen
                                 </button>
                             </div>
                         </div>
@@ -152,225 +732,270 @@
                 </div> <!-- end card-body-->
             </div> <!-- end card-->
 
-            <div class="card">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-grow-1 overflow-hidden">
-                            <h4 class="fs-22 fw-semibold">69.25%</h4>
-                            <p class="text-uppercase fw-medium text-muted text-truncate mb-0"> US Dollar Share</p>
-                        </div>
-                        <div class="flex-shrink-0">
-                            <div id="us-share-chart" class="apex-charts" dir="ltr"></div>
-                        </div>
-                    </div>
-                </div><!-- end card body -->
-            </div> <!-- end card-->
+           
         </div> <!-- end col-->
 
     </div>
     <!-- end row -->
 
-    <div class="row">
-        <div class="col-xl-4">
-            <!-- Chat-->
-            <div class="card">
-                <div class="card-body p-0">
-                    <div class="p-3">
-                        <div class="card-widgets">
-                            <a href="javascript:;" data-bs-toggle="reload"><i class="ri-refresh-line"></i></a>
-                            <a data-bs-toggle="collapse" href="#yearly-sales-collapse" role="button"
-                                aria-expanded="false" aria-controls="yearly-sales-collapse"><i
-                                    class="ri-subtract-line"></i></a>
-                            <a href="#" data-bs-toggle="remove"><i class="ri-close-line"></i></a>
-                        </div>
-                        <h5 class="header-title mb-0">Chat</h5>
-                    </div>
-
-                    <div id="yearly-sales-collapse" class="collapse show">
-                        <div class="chat-conversation mt-2">
-                            <div class="card-body py-0 mb-3" data-simplebar style="height: 322px;">
-                                <ul class="conversation-list">
-                                    <li class="clearfix">
-                                        <div class="chat-avatar">
-                                            <img src="/images/users/avatar-5.jpg" alt="male">
-                                            <i>10:00</i>
-                                        </div>
-                                        <div class="conversation-text">
-                                            <div class="ctext-wrap">
-                                                <i>Geneva</i>
-                                                <p>
-                                                    Hello!
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li class="clearfix odd">
-                                        <div class="chat-avatar">
-                                            <img src="/images/users/avatar-1.jpg" alt="Female">
-                                            <i>10:01</i>
-                                        </div>
-                                        <div class="conversation-text">
-                                            <div class="ctext-wrap">
-                                                <i>Thomson</i>
-                                                <p>
-                                                    Hi, How are you? What about our next meeting?
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li class="clearfix">
-                                        <div class="chat-avatar">
-                                            <img src="/images/users/avatar-5.jpg" alt="male">
-                                            <i>10:01</i>
-                                        </div>
-                                        <div class="conversation-text">
-                                            <div class="ctext-wrap">
-                                                <i>Geneva</i>
-                                                <p>
-                                                    Yeah everything is fine
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li class="clearfix odd">
-                                        <div class="chat-avatar">
-                                            <img src="/images/users/avatar-1.jpg" alt="male">
-                                            <i>10:02</i>
-                                        </div>
-                                        <div class="conversation-text">
-                                            <div class="ctext-wrap">
-                                                <i>Thomson</i>
-                                                <p>
-                                                    Wow that's great
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div class="card-body pt-0">
-                                <form class="needs-validation" novalidate name="chat-form" id="chat-form">
-                                    <div class="row align-items-start">
-                                        <div class="col">
-                                            <input type="text" class="form-control chat-input"
-                                                placeholder="Enter your text" required>
-                                            <div class="invalid-feedback">
-                                                Please enter your messsage
-                                            </div>
-                                        </div>
-                                        <div class="col-auto d-grid">
-                                            <button type="submit"
-                                                class="btn btn-danger chat-send waves-effect waves-light">Send</button>
-                                        </div>
-                                    </div>
-                                </form>
-                            </div>
-
-                        </div> <!-- end .chat-conversation-->
-                    </div>
+    <!-- task dashboard -->
+      <div class="dashboard-grid">
+        <div class="dashboard-card" onclick="openModal('Tasks')">
+            <div class="card-icon" style="background: #cffafe;">✓</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Tasks</div>
+                    <div class="card-description">Manage your tasks, assigned tasks, and track progress</div>
                 </div>
+                <span class="card-badge badge-cyan">31 Items</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">📋 My Tasks</span>
+                <span class="subcard-item">👥 Team Tasks</span>
+                <span class="subcard-item">✓ Completed</span>
+            </div>
+        </div>
 
-            </div> <!-- end card-->
-        </div> <!-- end col-->
-
-        <div class="col-xl-8">
-            <!-- Todo-->
-            <div class="card">
-                <div class="card-body p-0">
-                    <div class="p-3">
-                        <div class="card-widgets">
-                            <a href="javascript:;" data-bs-toggle="reload"><i class="ri-refresh-line"></i></a>
-                            <a data-bs-toggle="collapse" href="#yearly-sales-collapse" role="button"
-                                aria-expanded="false" aria-controls="yearly-sales-collapse"><i
-                                    class="ri-subtract-line"></i></a>
-                            <a href="#" data-bs-toggle="remove"><i class="ri-close-line"></i></a>
-                        </div>
-                        <h5 class="header-title mb-0">Projects</h5>
-                    </div>
-
-                    <div id="yearly-sales-collapse" class="collapse show">
-
-                        <div class="table-responsive">
-                            <table class="table table-nowrap table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Project Name</th>
-                                        <th>Start Date</th>
-                                        <th>Due Date</th>
-                                        <th>Status</th>
-                                        <th>Assign</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>1</td>
-                                        <td>Velonic Admin v1</td>
-                                        <td>01/01/2015</td>
-                                        <td>26/04/2015</td>
-                                        <td><span class="badge bg-info-subtle text-info">Released</span></td>
-                                        <td>Techzaa Studio</td>
-                                    </tr>
-                                    <tr>
-                                        <td>2</td>
-                                        <td>Velonic Frontend v1</td>
-                                        <td>01/01/2015</td>
-                                        <td>26/04/2015</td>
-                                        <td><span class="badge bg-info-subtle text-info">Released</span></td>
-                                        <td>Techzaa Studio</td>
-                                    </tr>
-                                    <tr>
-                                        <td>3</td>
-                                        <td>Velonic Admin v1.1</td>
-                                        <td>01/05/2015</td>
-                                        <td>10/05/2015</td>
-                                        <td><span class="badge bg-pink-subtle text-pink">Pending</span></td>
-                                        <td>Techzaa Studio</td>
-                                    </tr>
-                                    <tr>
-                                        <td>4</td>
-                                        <td>Velonic Frontend v1.1</td>
-                                        <td>01/01/2015</td>
-                                        <td>31/05/2015</td>
-                                        <td><span class="badge bg-purple-subtle text-purple">Work in Progress</span></td>
-                                        <td>Techzaa Studio</td>
-                                    </tr>
-                                    <tr>
-                                        <td>5</td>
-                                        <td>Velonic Admin v1.3</td>
-                                        <td>01/01/2015</td>
-                                        <td>31/05/2015</td>
-                                        <td><span class="badge bg-warning-subtle text-warning">Coming soon</span></td>
-                                        <td>Techzaa Studio</td>
-                                    </tr>
-
-                                    <tr>
-                                        <td>6</td>
-                                        <td>Velonic Admin v1.3</td>
-                                        <td>01/01/2015</td>
-                                        <td>31/05/2015</td>
-                                        <td><span class="badge bg-primary-subtle text-primary">Coming soon</span></td>
-                                        <td>Techzaa Studio</td>
-                                    </tr>
-
-                                    <tr>
-                                        <td>7</td>
-                                        <td>Velonic Admin v1.3</td>
-                                        <td>01/01/2015</td>
-                                        <td>31/05/2015</td>
-                                        <td><span class="badge bg-danger-subtle text-danger">Cool</span></td>
-                                        <td>Techzaa Studio</td>
-                                    </tr>
-
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+        <div class="dashboard-card" onclick="openModal('My Team')">
+            <div class="card-icon" style="background: #d1fae5;">👥</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">My Team</div>
+                    <div class="card-description">View team members and performance metrics</div>
                 </div>
-            </div> <!-- end card-->
-        </div> <!-- end col-->
+                <span class="card-badge badge-green">1 Members</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">👤 Members</span>
+                <span class="subcard-item">📊 Performance</span>
+                <span class="subcard-item">🎯 Goals</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Inventory')">
+            <div class="card-icon" style="background: #fed7aa;">📦</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Inventory</div>
+                    <div class="card-description">Inventory values</div>
+                </div>
+                <span class="card-badge badge-orange">1 Metrics</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">📈 Stock Levels</span>
+                <span class="subcard-item">💰 Valuation</span>
+            </div>
+        </div>
+
+        <!-- <div class="dashboard-card" onclick="openModal('Sales')">
+            <div class="card-icon" style="background: #fef3c7;">💰</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Sales</div>
+                    <div class="card-description">Track sales performance</div>
+                </div>
+                <span class="card-badge badge-brown">286,435</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">🛒 E-Commerce</span>
+                <span class="subcard-item">🛍️ Shopify</span>
+                <span class="subcard-item">📱 Social Media</span>
+                <span class="subcard-item">📦 Amazon</span>
+            </div>
+        </div> -->
+
+        <div class="dashboard-card" onclick="openModal('Operations')">
+            <div class="card-icon" style="background: #fce7f3;">⏰</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Operations</div>
+                    <div class="card-description">Track customer, Shipping & Reviews analyze</div>
+                </div>
+                <span class="card-badge badge-pink">3 Metrics</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">🚚 Shipping</span>
+                <span class="subcard-item">⭐ Reviews</span>
+                <span class="subcard-item">👥 Customers</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Human Resources')">
+            <div class="card-icon" style="background: #e9d5ff;">👨‍💼</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Human Resources</div>
+                    <div class="card-description">Employee management & attendance tracking</div>
+                </div>
+                <span class="card-badge badge-purple">3 Metrics</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">👥 Employees</span>
+                <span class="subcard-item">📅 Attendance</span>
+                <span class="subcard-item">💼 Payroll</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Software & IT')">
+            <div class="card-icon" style="background: #ccfbf1;">💻</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Software & IT</div>
+                    <div class="card-description">Generate reports and view analytics</div>
+                </div>
+                <span class="card-badge badge-teal">12 Items</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">🖥️ Systems</span>
+                <span class="subcard-item">🔧 Maintenance</span>
+                <span class="subcard-item">📊 Analytics</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Purchase')">
+            <div class="card-icon" style="background: #1e3a5f; color: white;">🛒</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Purchase</div>
+                    <div class="card-description">Generate reports and view analytics</div>
+                </div>
+                <span class="card-badge badge-indigo">0 Metrics</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">🛍️ Orders</span>
+                <span class="subcard-item">💳 Payments</span>
+                <span class="subcard-item">📦 Suppliers</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Pricing')">
+            <div class="card-icon" style="background: #fef3c7;">💵</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Pricing</div>
+                    <div class="card-description">Get Pricing reports and view analytics</div>
+                </div>
+                <span class="card-badge badge-yellow">79%</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">💰 Price Lists</span>
+                <span class="subcard-item">📈 Trends</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Advertisements')">
+            <div class="card-icon" style="background: #e5e7eb;">📢</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Advertisements</div>
+                    <div class="card-description">Get Advertisments reports and view analytics</div>
+                </div>
+                <span class="card-badge badge-gray">9 Metrics</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">📱 Digital Ads</span>
+                <span class="subcard-item">📺 Campaigns</span>
+                <span class="subcard-item">📊 ROI</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Content')">
+            <div class="card-icon" style="background: #7c2d12; color: white;">📝</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Content</div>
+                    <div class="card-description">Get Content reports</div>
+                </div>
+                <span class="card-badge badge-red">0 Metrics</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">✍️ Articles</span>
+                <span class="subcard-item">🎨 Media</span>
+                <span class="subcard-item">📅 Schedule</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Marketing')">
+            <div class="card-icon" style="background: #dbeafe;">🎯</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Marketing</div>
+                    <div class="card-description">Get Marketing analytics</div>
+                </div>
+                <span class="card-badge badge-blue">6 Metrics</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">📧 Email</span>
+                <span class="subcard-item">🎯 Campaigns</span>
+                <span class="subcard-item">📊 Analytics</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Social Media')">
+            <div class="card-icon" style="background: #fef3c7;">📱</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Social Media</div>
+                    <div class="card-description">Get Social Media analytics</div>
+                </div>
+                <span class="card-badge badge-yellow">0 Metrics</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">📘 Facebook</span>
+                <span class="subcard-item">📷 Instagram</span>
+                <span class="subcard-item">🐦 Twitter</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Videos')">
+            <div class="card-icon" style="background: #fed7aa;">🎬</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Videos</div>
+                    <div class="card-description">Get Videos details</div>
+                </div>
+                <span class="card-badge badge-orange">0 Metrics</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">🎥 Library</span>
+                <span class="subcard-item">▶️ Views</span>
+                <span class="subcard-item">👍 Engagement</span>
+            </div>
+        </div>
+
+        <div class="dashboard-card" onclick="openModal('Logistics')">
+            <div class="card-icon" style="background: #1e3a5f; color: white;">🚚</div>
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Logistics</div>
+                    <div class="card-description">Get Logistics Track Reports</div>
+                </div>
+                <span class="card-badge badge-indigo">0 Metrics</span>
+            </div>
+            <div class="subcards-preview">
+                <span class="subcard-item">📦 Shipments</span>
+                <span class="subcard-item">🚛 Tracking</span>
+                <span class="subcard-item">📍 Delivery</span>
+            </div>
+        </div>
     </div>
+    
     <!-- end row -->
+
+    <!-- Channel Sales Fullscreen Modal -->
+    <div class="chart-modal" id="chartModal">
+        <div class="chart-modal-content">
+            <div class="chart-modal-header">
+                <h3 class="chart-modal-title">Sales by Channel's - Fullscreen View</h3>
+                <button class="close-btn" onclick="closeChartModal();">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+            <div class="chart-modal-body">
+                <canvas id="channelSalesChartModal"></canvas>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -537,8 +1162,7 @@
                         return;
                     }
                     
-                    const channels = [];
-                    const l30Sales = [];
+                    const channelData = [];
                     
                     // Extract channel names and L30 sales from the data
                     result.data.forEach(row => {
@@ -548,11 +1172,17 @@
                         
                         console.log('[Dashboard] Channel:', channelName, 'Sales:', sales);
                         
-                        channels.push(channelName);
-                        l30Sales.push(sales);
+                        channelData.push({ name: channelName, sales: sales });
                     });
                     
-                    console.log('[Dashboard] Channels extracted:', channels.length, 'channels');
+                    // Sort by sales (highest to lowest)
+                    channelData.sort((a, b) => b.sales - a.sales);
+                    
+                    // Separate into arrays for Chart.js
+                    const channels = channelData.map(item => item.name);
+                    const l30Sales = channelData.map(item => item.sales);
+                    
+                    console.log('[Dashboard] Channels extracted and sorted:', channels.length, 'channels');
                     
                     // Destroy existing chart if it exists
                     if (window.channelSalesChartInstance) {
@@ -644,7 +1274,10 @@
                                 },
                                 y: {
                                     ticks: {
-                                        font: { size: 11 }
+                                        font: { size: 11 },
+                                        autoSkip: false,
+                                        maxRotation: 0,
+                                        minRotation: 0
                                     },
                                     grid: {
                                         display: false
@@ -794,6 +1427,166 @@
             console.log('[Dashboard] Manual reload requested');
             loadDashboardMetrics();
         };
+
+        // Fullscreen chart modal functions
+        let modalChartInstance = null;
+
+        window.openChartModal = function() {
+            const modal = document.getElementById('chartModal');
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            
+            // Load chart data in modal
+            loadChannelSalesChartModal();
+        };
+
+        window.closeChartModal = function() {
+            const modal = document.getElementById('chartModal');
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
+            
+            // Destroy modal chart instance
+            if (modalChartInstance) {
+                modalChartInstance.destroy();
+                modalChartInstance = null;
+            }
+        };
+
+        function loadChannelSalesChartModal() {
+            console.log('[Dashboard] Loading fullscreen channel chart...');
+            
+            fetch('/channels-master-data')
+                .then(response => response.json())
+                .then(result => {
+                    if (!result.data || result.data.length === 0) {
+                        console.warn('[Dashboard] No channel data available');
+                        return;
+                    }
+                    
+                    const channelData = [];
+                    
+                    result.data.forEach(row => {
+                        const channelName = row['Channel '] || row['Channel'] || row.channel || row.name || row.Name || 'Unknown';
+                        const sales = parseFloat(row['L30 Sales'] || row.l30_sales || row.L30Sales || 0);
+                        channelData.push({ name: channelName, sales: sales });
+                    });
+                    
+                    // Sort by sales (highest to lowest)
+                    channelData.sort((a, b) => b.sales - a.sales);
+                    
+                    const channels = channelData.map(item => item.name);
+                    const l30Sales = channelData.map(item => item.sales);
+                    
+                    // Destroy existing modal chart
+                    if (modalChartInstance) {
+                        modalChartInstance.destroy();
+                    }
+                    
+                    const ctx = document.getElementById('channelSalesChartModal');
+                    if (!ctx) return;
+                    
+                    modalChartInstance = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: channels,
+                            datasets: [{
+                                label: 'L30 Sales ($)',
+                                data: l30Sales,
+                                backgroundColor: [
+                                    'rgba(54, 162, 235, 0.7)',
+                                    'rgba(75, 192, 75, 0.7)',
+                                    'rgba(255, 193, 7, 0.7)',
+                                    'rgba(255, 87, 34, 0.7)',
+                                    'rgba(156, 39, 176, 0.7)',
+                                    'rgba(233, 30, 99, 0.7)',
+                                    'rgba(0, 188, 212, 0.7)',
+                                    'rgba(76, 175, 80, 0.7)',
+                                    'rgba(255, 152, 0, 0.7)',
+                                    'rgba(63, 81, 181, 0.7)'
+                                ],
+                                borderColor: [
+                                    'rgba(54, 162, 235, 1)',
+                                    'rgba(75, 192, 75, 1)',
+                                    'rgba(255, 193, 7, 1)',
+                                    'rgba(255, 87, 34, 1)',
+                                    'rgba(156, 39, 176, 1)',
+                                    'rgba(233, 30, 99, 1)',
+                                    'rgba(0, 188, 212, 1)',
+                                    'rgba(76, 175, 80, 1)',
+                                    'rgba(255, 152, 0, 1)',
+                                    'rgba(63, 81, 181, 1)'
+                                ],
+                                borderWidth: 2,
+                                borderRadius: 6
+                            }]
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top',
+                                    labels: {
+                                        font: { size: 14, weight: 'bold' },
+                                        padding: 20
+                                    }
+                                },
+                                tooltip: {
+                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                    padding: 15,
+                                    titleFont: { size: 14, weight: 'bold' },
+                                    bodyFont: { size: 13 },
+                                    callbacks: {
+                                        label: function(context) {
+                                            return 'Sales: $' + context.parsed.x.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                                        },
+                                        font: { size: 12 }
+                                    },
+                                    grid: {
+                                        color: 'rgba(0, 0, 0, 0.05)',
+                                        drawBorder: false
+                                    }
+                                },
+                                y: {
+                                    ticks: {
+                                        font: { size: 13, weight: '500' },
+                                        autoSkip: false,
+                                        maxRotation: 0,
+                                        minRotation: 0
+                                    },
+                                    grid: {
+                                        display: false
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    
+                    console.log('[Dashboard] ✅ Fullscreen chart created');
+                })
+                .catch(error => {
+                    console.error('[Dashboard] ❌ Error loading fullscreen chart:', error);
+                });
+        }
+
+        // Close modal on ESC key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeChartModal();
+            }
+        });
     </script>
 @endsection
 
