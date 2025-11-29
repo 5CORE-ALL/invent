@@ -418,7 +418,7 @@ class PricingMasterViewsController extends Controller
             ->table('shein_orders')
             ->select('seller_sku as sku', DB::raw('COUNT(*) as shein_l30'))
             ->whereIn('seller_sku', $nonParentSkus)
-            ->where('created_at', '>=', $thirtyDaysAgo)
+            ->where('seller_delivery_time', '>=', $thirtyDaysAgo)
             ->groupBy('seller_sku')
             ->get()
             ->keyBy('sku');

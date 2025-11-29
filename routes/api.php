@@ -89,6 +89,9 @@ Route::get('/test-shein-api', function () {
         
         $url = 'https://openapi.sheincorp.com' . $endpoint;
         
+        // Calculate 30 days ago timestamp
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d H:i:s');
+        
         // Fetch only first page with 10 items to avoid rate limiting
         $payload = [
             "pageNum" => 1,
@@ -96,7 +99,7 @@ Route::get('/test-shein-api', function () {
             "insertTimeEnd" => "",
             "insertTimeStart" => "",
             "updateTimeEnd" => "",
-            "updateTimeStart" => "",
+            "updateTimeStart" => $thirtyDaysAgo,
         ];
         
         $response = \Illuminate\Support\Facades\Http::withoutVerifying()
