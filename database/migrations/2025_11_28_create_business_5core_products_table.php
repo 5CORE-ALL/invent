@@ -11,16 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('fba_sku_daily_data', function (Blueprint $table) {
+        Schema::create('business_5core_products', function (Blueprint $table) {
             $table->id();
-            $table->string('sku', 255);
-            $table->date('record_date');
-            $table->json('daily_data'); // JSON format for all metrics
+            $table->string('sku')->unique();
+            $table->decimal('price', 10, 2)->nullable();
+            $table->integer('b5c_l30')->default(0);
+            $table->integer('b5c_l60')->default(0);
             $table->timestamps();
             
+            // Indexes for faster queries
             $table->index('sku');
-            $table->index('record_date');
-            $table->unique(['sku', 'record_date']);
+            $table->index('created_at');
         });
     }
 
@@ -29,12 +30,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('fba_sku_daily_data');
+        Schema::dropIfExists('business_5core_products');
     }
 };
-
-
-
-
-
-

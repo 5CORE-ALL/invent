@@ -1732,14 +1732,25 @@ tableData = sheetData.map((item, index) => {
     const difference = Math.abs(parsed - INV_shopify);
     const isWithinTolerance = difference <= tolerance;
     
-    row[`is_notmatching_${platform}`] =
-      parsed !== 0 && INV_shopify !== 0 && parsed !== INV_shopify && !isWithinTolerance
-        ? 'notmatching'
-        : 'matching';
+    // Special case for ebay3: if value > 95, treat as matched regardless of Shopify value
+    if (platform === 'ebay3' && parsed > 95) {
+      row[`is_notmatching_${platform}`] = 'matching';
+    } else {
+      // Normal matching logic for all other cases
+      row[`is_notmatching_${platform}`] =
+        parsed !== 0 && INV_shopify !== 0 && parsed !== INV_shopify && !isWithinTolerance
+          ? 'notmatching'
+          : 'matching';
+    }
   });
 
   return row;
 });
+
+                // Recalculate ebay3 not matching count (considering >95 as matched)
+                const ebay3ActualNotMatching = tableData.filter(item => item.is_notmatching_ebay3 === 'notmatching').length;
+                datainfo.ebay3.notmatching = ebay3ActualNotMatching;
+
                 filteredData=tableData;
                 renderTable(filteredData);
                 hideLoader();

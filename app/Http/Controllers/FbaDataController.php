@@ -1158,9 +1158,14 @@ class FbaDataController extends Controller
    }
 
 
-   public function exportFbaManualData()
+   public function exportFbaManualData(Request $request)
    {
-      return $this->fbaManualDataService->exportToCSV();
+      $selectedColumns = [];
+      if ($request->has('columns')) {
+         $columnsJson = $request->input('columns');
+         $selectedColumns = json_decode($columnsJson, true) ?: [];
+      }
+      return $this->fbaManualDataService->exportToCSV($selectedColumns);
    }
 
 

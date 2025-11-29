@@ -1320,7 +1320,12 @@
                         </div>
 
                         <div class="d-flex flex-wrap gap-2 align-items-center">
-                            <!-- Export Button -->
+                            <!-- Export Datatable Button -->
+                            <button type="button" id="exportDatatableBtn" class="btn btn-success">
+                                <i class="fas fa-file-excel me-1"></i> Export Datatable
+                            </button>
+
+                            <!-- Export Live/Listings Button -->
                             <a href="{{ route('temu.analytics.export') }}" class="btn btn-success">
                                 <i class="fas fa-file-export me-1"></i> Export Live/Listings
                             </a>
@@ -1497,13 +1502,13 @@
                                             <div class="metric-total" id="ovl30-total">0</div>
                                         </div>
                                     </th>
-                                    <th data-field="ov_l30" style="vertical-align: middle; white-space: nowrap;">
+                                        <th data-field="ov_dil" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 OV DIL <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="ovl30-total">0</div>
+                                            <div class="metric-total" id="ovdil-total">0</div>
                                         </div>
                                     </th>
                                     <th data-field="tl_30" style="vertical-align: middle; white-space: nowrap;">
@@ -1521,7 +1526,7 @@
                                                 T DIL <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="tDil-total">0%</div>
+                                            <div class="metric-total" id="tdil-total">0%</div>
                                         </div>
                                     </th>
                                     <th>NRL</th>
@@ -1551,7 +1556,7 @@
                                                 Views L30 <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="views-l30-total">0</div>
+                                            <div class="metric-total" id="views-total">0</div>
                                         </div>
                                     </th>
                                     <th data-field="sales_l30" style="vertical-align: middle; white-space: nowrap;">
@@ -2583,12 +2588,12 @@
                                data-item='${JSON.stringify(item.raw_data)}'>W</span>`
                     ));
 
-                    // T Sales column
+                    // TL 30 column (Temu L30 sales from quantity_purchased_l30)
                     $row.append($('<td>').html(`
                      <div class="sku-tooltip-container">
                      <span class="sku-text">${item.sales_l30 || 0}</span>
                      <div class="sku-tooltip">
-                    <div class="sku-link"><strong>Sheet L30:</strong> ${item.sales_l30 || 0}</div>
+                    <div class="sku-link"><strong>TL30 (Quantity Purchased L30):</strong> ${item.sales_l30 || 0}</div>
                      </div>
                      </div>
                       `));
@@ -4236,8 +4241,8 @@
                     metrics.ovDilTotal = metrics.invTotal > 0 ?
                         (metrics.ovL30Total / metrics.invTotal) * 100 : 0;
                     const divisor = metrics.rowCount || 1;
-                    const sheetL30Sum = filteredData.reduce((sum, item) => {
-                        return sum + (parseFloat(item.sheet_l30) || 0);
+                    const salesL30Sum = filteredData.reduce((sum, item) => {
+                        return sum + (parseFloat(item.sales_l30) || 0);
                     }, 0);
 
                     const sheetDilSum = filteredData.reduce((sum, item) => {
@@ -4247,7 +4252,7 @@
                     // Update metric displays
                     $('#inv-total').text(metrics.invTotal.toLocaleString());
                     $('#ovl30-total').text(metrics.ovL30Total.toLocaleString());
-                    $('#tl30-total').text(sheetL30Sum.toLocaleString());
+                    $('#tl30-total').text(salesL30Sum.toLocaleString());
                     $('#tdil-total').text(Math.round(sheetDilSum / divisor) + '%');
                     $('#ovdil-total').text(Math.round(metrics.ovDilTotal) + '%');
                     $('#al30-total').text(metrics.el30Total.toLocaleString());
@@ -4776,6 +4781,81 @@
             function hideLoader() {
                 $('#data-loader').fadeOut();
             }
+
+            // Export Datatable to Excel
+            function exportDatatableToExcel() {
+                if (!filteredData || filteredData.length === 0) {
+                    showNotification('warning', 'No data available to export.');
+                    return;
+                }
+
+                // Prepare data for export
+                const exportData = filteredData.map((item, index) => {
+                    return {
+                        'SL No.': item['SL No.'] || index + 1,
+                        'Parent': item.Parent || '',
+                        'SKU': item.Sku || '',
+                        'R&A': item['R&A'] || '',
+                        'INV': item.INV || 0,
+                        'OV L30': item.L30 || 0,
+                        'OV DIL': item.ovDil ? Math.round(item.ovDil * 100) + '%' : '0%',
+                        'TL 30': item.sales_l30 || 0,
+                        'T DIL': item.T_DIL ? Math.round(item.T_DIL) + '%' : '0%',
+                        'NR': item.NR || '',
+                        'Listed': item.listed ? 'Yes' : 'No',
+                        'Live': item.live ? 'Yes' : 'No',
+                        'Views L30': item.views_l30 || 0,
+                        'Sales L30': item.sales_l30 || 0,
+                        'Growth': item.growth ? (item.growth * 100).toFixed(1) + '%' : '-',
+                        'Base Price': item.price_wo_ship ? '$' + parseFloat(item.price_wo_ship).toFixed(2) : '$0.00',
+                        'Price': item.price ? '$' + parseFloat(item.price).toFixed(2) : '$0.00',
+                        'PFT%': item.PFT_percentage ? Math.round(item.PFT_percentage) + '%' : '-',
+                        'ROI%': item.ROI_percentage ? Math.round(item.ROI_percentage) + '%' : '-',
+                        'SPRICE': item.SPRICE ? '$' + parseFloat(item.SPRICE).toFixed(2) : '',
+                        'SPFT': item.SPFT ? Math.round(item.SPFT) + '%' : '',
+                        'SROI': item.SROI ? Math.round(item.SROI) + '%' : '',
+                        'CVR': item.CVR ? Math.round(item.CVR * 100) + '%' : '0%',
+                        'SHIP': item.SHIP ? '$' + parseFloat(item.SHIP).toFixed(2) : ''
+                    };
+                });
+
+                // Create CSV content
+                const headers = Object.keys(exportData[0]);
+                let csvContent = headers.join(',') + '\n';
+
+                exportData.forEach(row => {
+                    const values = headers.map(header => {
+                        let value = row[header];
+                        // Escape commas and quotes
+                        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+                            value = '"' + value.replace(/"/g, '""') + '"';
+                        }
+                        return value;
+                    });
+                    csvContent += values.join(',') + '\n';
+                });
+
+                // Create download link
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                
+                const timestamp = new Date().toISOString().slice(0, 10);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `temu_datatable_${timestamp}.csv`);
+                link.style.visibility = 'hidden';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                showNotification('success', `Successfully exported ${exportData.length} rows to CSV.`);
+            }
+
+            // Export button click handler
+            $('#exportDatatableBtn').on('click', function() {
+                exportDatatableToExcel();
+            });
 
 
             // Initialize everything
