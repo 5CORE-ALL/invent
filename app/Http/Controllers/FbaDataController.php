@@ -767,6 +767,7 @@ class FbaDataController extends Controller
             'SGPFT%' => $this->colorService->getValueHtml($sgpftPercentage),
             'GROI%' => $this->colorService->getRoiHtmlForView($groiPercentage),
             'S_Price' => $S_PRICE > 0 ? round($S_PRICE, 2) : '', // ✅ Show empty if 0 to prevent confusion
+            'SPRICE_STATUS' => $manual ? ($manual->data['SPRICE_STATUS'] ?? null) : null, // Status: 'pushed', 'applied', 'error'
             'SPft%' => $this->colorService->getValueHtml($spftPercentage),
             'SROI%' => $this->colorService->getRoiHtmlForView($sroiPercentage),
             'SGROI%' => $this->colorService->getRoiHtmlForView($sgroiPercentage),
@@ -1205,21 +1206,105 @@ class FbaDataController extends Controller
 
    public function pushFbaPrice(Request $request)
    {
-      $sku = $request->input('sku');
+      $sku = strtoupper(trim($request->input('sku')));
       $price = $request->input('price');
 
-      // ✅ Validate price before pushing to Amazon
-      if (!$price || $price <= 0 || !is_numeric($price)) {
+      // Validate SKU
+      if (empty($sku)) {
+         $this->saveSpriceStatus($sku, 'error');
          return response()->json([
-            'success' => false,
-            'error' => 'Invalid price. Price must be greater than 0.'
+            'errors' => [['code' => 'InvalidInput', 'message' => 'SKU is required.']]
          ], 400);
       }
 
-      $service = new AmazonSpApiService();
-      $result = $service->updateAmazonPriceUS($sku, $price);
+      // Validate price
+      if (!is_numeric($price) || $price <= 0) {
+         $this->saveSpriceStatus($sku, 'error');
+         return response()->json([
+            'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be a valid number greater than 0.']]
+         ], 400);
+      }
+      $price = round((float)$price, 2); // Ensure price is a float and rounded
 
-      return response()->json($result);
+      // Additional price range validation
+      if ($price < 0.01 || $price > 999999.99) {
+         $this->saveSpriceStatus($sku, 'error');
+         return response()->json([
+            'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be between $0.01 and $999,999.99.']]
+         ], 400);
+      }
+
+      try {
+         $service = new AmazonSpApiService();
+         $result = $service->updateAmazonPriceUS($sku, $price);
+
+         if (isset($result['errors']) && !empty($result['errors'])) {
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json($result);
+         }
+
+         $this->saveSpriceStatus($sku, 'pushed');
+         return response()->json($result);
+      } catch (\Exception $e) {
+         $this->saveSpriceStatus($sku, 'error');
+         Log::error('Exception in pushFbaPrice', [
+            'sku' => $sku,
+            'price' => $price,
+            'error' => $e->getMessage()
+         ]);
+         return response()->json([
+            'errors' => [['message' => $e->getMessage()]]
+         ], 500);
+      }
+   }
+
+   private function saveSpriceStatus($sku, $status)
+   {
+      try {
+         $manual = FbaManualData::where('sku', strtoupper(trim($sku)))->first();
+         
+         if (!$manual) {
+            $manual = new FbaManualData();
+            $manual->sku = strtoupper(trim($sku));
+            $manual->data = [];
+         }
+         
+         $data = $manual->data ?? [];
+         $data['SPRICE_STATUS'] = $status;
+         $data['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+         
+         $manual->data = $data;
+         $manual->save();
+         
+         Log::info('FBA SPRICE status saved', ['sku' => $sku, 'status' => $status]);
+      } catch (\Exception $e) {
+         Log::error('Failed to save FBA SPRICE status', [
+            'sku' => $sku,
+            'status' => $status,
+            'error' => $e->getMessage()
+         ]);
+      }
+   }
+
+   public function updateSpriceStatus(Request $request)
+   {
+      $sku = strtoupper(trim($request->input('sku')));
+      $status = $request->input('status');
+      
+      if (!in_array($status, ['pushed', 'applied', 'error'])) {
+         return response()->json([
+            'success' => false,
+            'message' => 'Invalid status. Must be: pushed, applied, or error.'
+         ], 400);
+      }
+      
+      $this->saveSpriceStatus($sku, $status);
+      
+      return response()->json([
+         'success' => true,
+         'message' => 'Status updated successfully',
+         'status' => $status
+      ]);
    }
 
    public function getMetricsHistory(Request $request)
