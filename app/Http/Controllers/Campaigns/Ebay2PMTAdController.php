@@ -7,6 +7,7 @@ use App\Models\Ebay2GeneralReport;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3PriorityReport;
 use App\Models\EbayTwoDataView;
+use App\Models\EbayTwoListingStatus;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -34,11 +35,16 @@ class Ebay2PMTAdController extends Controller
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
         $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
-        $ebayMetrics = DB::connection('apicentral')->table('ebay2_metrics')->whereIn("sku", $skus)->get()->keyBy("sku");
-        $matchedSkus = $ebayMetrics->keys()->all();
-        $productMasters = $productMasters->whereIn('sku', $matchedSkus)->values();
-
-        $nrValues = EbayTwoDataView::whereIn("sku", $matchedSkus)->pluck("value", "sku");
+        $ebayMetrics = Ebay2Metric::whereIn("sku", $skus)->get();
+        
+        // Normalize SKUs by replacing non-breaking spaces with regular spaces for matching
+        $ebayMetricsNormalized = $ebayMetrics->mapWithKeys(function($item) {
+            $normalizedSku = str_replace(["\xC2\xA0", "\u{00A0}"], ' ', $item->sku);
+            return [$normalizedSku => $item];
+        });
+        
+        $nrValues = EbayTwoListingStatus::whereIn("sku", $skus)->pluck("value", "sku");
+        $ebayDataValues = EbayTwoDataView::whereIn("sku", $skus)->pluck("value", "sku");
 
         $itemIdToSku = $ebayMetrics->pluck('sku', 'item_id')->toArray();
         $campaignIdToSku = $ebayMetrics->pluck('sku', 'campaign_id')->toArray();
@@ -48,11 +54,32 @@ class Ebay2PMTAdController extends Controller
             ->pluck('clicks', 'listing_id')
             ->toArray();
 
+        // Get campaign_id for each listing_id
+        $listingToCampaignId = Ebay2GeneralReport::whereIn('listing_id', array_keys($itemIdToSku))
+            ->where('report_range', 'L30')
+            ->pluck('campaign_id', 'listing_id')
+            ->toArray();
+
         $generalReports = Ebay2GeneralReport::whereIn('listing_id', array_keys($itemIdToSku))
             ->whereIn('report_range', ['L60', 'L30', 'L7'])
             ->get();
 
-        $campaignListings = DB::connection('apicentral')->table('ebay2_campaign_ads_listings')->select('listing_id', 'bid_percentage', 'suggested_bid')->get()->keyBy('listing_id')->toArray();
+        // Get campaign listings with bid_percentage. Prioritize COST_PER_SALE rows
+        // since they have bid_percentage, but fallback to latest row if no COST_PER_SALE exists.
+        $campaignListings = DB::connection('apicentral')
+            ->table('ebay2_campaign_ads_listings as t')
+            ->join(DB::raw('(SELECT listing_id, 
+                                    MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                    MAX(id) AS max_id
+                             FROM ebay2_campaign_ads_listings 
+                             GROUP BY listing_id) x'), 
+                function($join) {
+                    $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                })
+            ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
+            ->get()
+            ->keyBy('listing_id');
+
 
         $adMetricsBySku = [];
 
@@ -89,7 +116,25 @@ class Ebay2PMTAdController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData[$pm->sku] ?? null;
-            $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
+            
+            // Fallback: If exact match not found, try partial match
+            // Prefer longer SKU matches to avoid matching "DS CH YLW" when looking for "DS CH YLW REST-LVR"
+            if (!$ebayMetric) {
+                $candidates = [];
+                foreach ($ebayMetricsNormalized as $metric) {
+                    if (stripos($metric->sku, $pm->sku) === 0 || stripos($pm->sku, $metric->sku) === 0) {
+                        $candidates[] = $metric;
+                    }
+                }
+                // Sort by SKU length descending and pick the longest match
+                if (!empty($candidates)) {
+                    usort($candidates, function($a, $b) {
+                        return strlen($b->sku) - strlen($a->sku);
+                    });
+                    $ebayMetric = $candidates[0];
+                }
+            }
 
             $row = [];
             $row["Parent"] = $parent;
@@ -105,10 +150,13 @@ class Ebay2PMTAdController extends Controller
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['ebay_views'] = $ebayMetric->views ?? 0;
+            $row['campaign_id'] = ($ebayMetric && isset($listingToCampaignId[$ebayMetric->item_id])) 
+                ? $listingToCampaignId[$ebayMetric->item_id] : null;
 
-            if ($ebayMetric && isset($campaignListings[$ebayMetric->item_id])) {
-                $row['bid_percentage'] = $campaignListings[$ebayMetric->item_id]->bid_percentage ?? null;
-                $row['suggested_bid']  = $campaignListings[$ebayMetric->item_id]->suggested_bid ?? null;
+            if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
+                $listing = $campaignListings->get($ebayMetric->item_id);
+                $row['bid_percentage'] = $listing->bid_percentage ?? null;
+                $row['suggested_bid']  = $listing->suggested_bid ?? null;
             } else {
                 $row['bid_percentage'] = null;
                 $row['suggested_bid']  = null;
@@ -178,25 +226,36 @@ class Ebay2PMTAdController extends Controller
             $row['Live'] = null;
             $row['APlus'] = null;
 
+            // Get nr_req from EbayListingStatus
             if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
+                $nrRaw = $nrValues[$pm->sku];
+                if (!is_array($nrRaw)) {
+                    $nrRaw = json_decode($nrRaw, true);
                 }
-                if (is_array($raw)) {
-                    $row['NRL'] = $raw['NRL'] ?? null;
-                    $row['SPRICE'] = $raw['SPRICE'] ?? null;
-                    $row['SPFT'] = $raw['SPFT'] ?? null;
-                    $row['SROI'] = $raw['SROI'] ?? null;
-                    $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
-                    $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
-                    $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
+                if (is_array($nrRaw)) {
+                    $row['NRL'] = $nrRaw['nr_req'] ?? null;
+                }
+            }
+
+            // Get other fields from EbayDataView
+            if (isset($ebayDataValues[$pm->sku])) {
+                $ebayRaw = $ebayDataValues[$pm->sku];
+                if (!is_array($ebayRaw)) {
+                    $ebayRaw = json_decode($ebayRaw, true);
+                }
+                if (is_array($ebayRaw)) {
+                    $row['SPRICE'] = $ebayRaw['SPRICE'] ?? null;
+                    $row['SPFT'] = $ebayRaw['SPFT'] ?? null;
+                    $row['SROI'] = $ebayRaw['SROI'] ?? null;
+                    $row['Listed'] = isset($ebayRaw['Listed']) ? filter_var($ebayRaw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
+                    $row['Live'] = isset($ebayRaw['Live']) ? filter_var($ebayRaw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
+                    $row['APlus'] = isset($ebayRaw['APlus']) ? filter_var($ebayRaw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
                 }
             }
 
             $row["image_path"] = $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
 
-            if($row['NRL'] !== 'NRL'){
+            if($row['NRL'] !== 'NRL' && stripos($pm->sku, 'PARENT') === false){
                 $result[] = (object) $row;
             }
         }

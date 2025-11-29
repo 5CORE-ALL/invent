@@ -100,18 +100,9 @@ class EbayTwoController extends Controller
             ->get()
             ->keyBy("sku");
 
-        /*    
         $ebayMetrics = Ebay2Metric::whereIn("sku", $skus)
             ->get()
-            ->keyBy("sku"); 
-        */
-            
-        $ebayMetrics = DB::connection('apicentral')
-            ->table('ebay2_metrics')
-            ->select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id')
-            ->whereIn('sku', $skus)
-            ->get()
-            ->keyBy('sku');  
+            ->keyBy("sku");  
 
         $nrValues = EbayTwoDataView::whereIn("sku", $skus)->pluck("value", "sku");
 

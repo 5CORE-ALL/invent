@@ -1336,14 +1336,7 @@
                         <!-- Left side controls -->
                         <div class="d-flex flex-column" style="gap: 8px;">
                             <div class="d-flex" style="gap: 16px;">
-                                <div class="form-group mb-2">
-                                    <label for="row-data-type" class="mr-2">Data Type:</label>
-                                    <select id="row-data-type" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="sku">SKU (Child)</option>
-                                        <option value="parent">Parent</option>
-                                    </select>
-                                </div>
+
                                 <div class="form-group mb-2">
                                     <label for="ovl30-filter" class="mr-2">OV L30:</label>
                                     <select id="ovl30-filter" class="form-control form-control-sm">
@@ -1360,14 +1353,7 @@
                                 </div>
                             </div>
                             <div class="d-flex" style="gap: 16px;">
-                                <div class="form-group mb-2">
-                                    <label for="inv-filter" class="mr-2">INV:</label>
-                                    <select id="inv-filter" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="0">0</option>
-                                        <option value="1-100+" selected>1-100+</option>
-                                    </select>
-                                </div>
+
                                 <div class="form-group mb-2">
                                     <label for="el30-filter" class="mr-2">EL 30:</label>
                                     <select id="el30-filter" class="form-control form-control-sm">
@@ -2294,6 +2280,9 @@
                     initRAEditHandlers(); // Add this line
                     initCheckBoxEditHandlers();
                     initNRSelectChangeHandler();
+                    
+
+                    
                     applyColumnFilters();
 
                 });
@@ -2639,61 +2628,32 @@
 
                     $row.append($('<td class="el_30_col">').text(item['eBay L30']));
                     
-                    $row.append($('<td>').text(item.CBID));
+                    $row.append($('<td data-field="cbid">').text(item.CBID));
 
-                    $row.append($('<td>').text(item.ESBID));
+                    $row.append($('<td data-field="esbid">').text(item.ESBID));
                     
-                    let sbid = 0;
-                    let sbidColor = "";
-                    const percent = Math.round(item.ov_dil * 100);
+                    // Calculate adjusted CBID based on PmtClkL7
+                    let adjustedCbid = parseFloat(item.CBID) || 0;
+                    let cbidColor = "";
+                    const pmtClkL7 = parseFloat(item.raw_data.PmtClkL7) || 0;
 
-                    if (percent < 16.66) {
-                        sbid = 8;      
-                        sbidColor = "red";
-                    } else if (percent >= 16.66 && percent < 25) {
-                        sbid = 6;     
-                        sbidColor = "yellow";
-                    } else if (percent >= 25 && percent < 50) {
-                        sbid = 4;       
-                        sbidColor = "green";
+                    if (pmtClkL7 < 70) {
+                        adjustedCbid = adjustedCbid + 0.5;
+                        cbidColor = "green"; // Increase bid
+                    } else if (pmtClkL7 > 140) {
+                        adjustedCbid = adjustedCbid - 0.5;
+                        cbidColor = "red"; // Decrease bid
                     } else {
-                        sbid = 2;     
-                        sbidColor = "pink";
+                        cbidColor = "yellow"; // Keep current bid
                     }
 
-                    const viewsLow = item.VIEWS < 300;
-                    const noSale = item['eBay L30'] === 0;
-
-                    if (sbidColor === "pink") {
-                        if (viewsLow) {
-                            sbid = 4;
-                        } else {
-                            sbid = 2;
-                        }
+                    // Apply 15% cap and 2% minimum to adjusted CBID
+                    if (adjustedCbid > 15) {
+                        adjustedCbid = 15;
                     }
-
-                    if (sbidColor === "green") {
-                        if (noSale) {
-                            sbid = viewsLow ? 10 : 7;
-                        } else {
-                            sbid = viewsLow ? 7 : 5;
-                        }
-                    }
-
-                    if (sbidColor === "yellow") {
-                        if (noSale) {
-                            sbid = viewsLow ? 12 : 10;
-                        } else {
-                            sbid = viewsLow ? 10 : 8;
-                        }
-                    }
-
-                    if (sbidColor === "red") {
-                        if (noSale) {
-                            sbid = viewsLow ? 15 : 12;
-                        } else {
-                            sbid = viewsLow ? 12 : 10;
-                        }
+                    
+                    if (adjustedCbid < 2) {
+                        adjustedCbid = 2;
                     }
 
                     let reqViews = item.INV * 10;
@@ -2706,8 +2666,8 @@
                     }
 
                     $row.append($('<td data-field="sbid">').html(
-                        `<span class="dil-percent-value ${sbidColor}">
-                           ${sbid}
+                        `<span class="dil-percent-value ${cbidColor}">
+                           ${adjustedCbid.toFixed(1)}
                         </span>`
                     ));
 
@@ -4834,7 +4794,7 @@
             }
 
             // Add this script after your other filter initializations:
-            $('#inv-filter, #ovl30-filter, #el30-filter, #nra-filter').on('change', function() {
+            $('#ovl30-filter, #el30-filter, #nra-filter').on('change', function() {
                 applyColumnFilters();
             });
 
@@ -4843,25 +4803,11 @@
                 // Default: show all rows
                 filteredData = [...tableData];
 
-                // Apply row type filter first
-                const rowTypeFilter = $('#row-data-type').val();
-                if (rowTypeFilter === 'parent') {
-                    filteredData = filteredData.filter(item => item.is_parent);
-                } else if (rowTypeFilter === 'sku') {
-                    filteredData = filteredData.filter(item => !item.is_parent);
-                }
-
-                // Apply INV filter
-                let invFilter = $('#inv-filter').val() || '1-100+'; 
+                // Hide items with INV = 0 by default
                 filteredData = filteredData.filter(item => {
                     const inv = Number(item.INV) || 0;
-
-                    if (invFilter === '0') return inv === 0;
-                    if (invFilter === '1-100+') return inv >= 1;
-                    if (invFilter === 'all') return true; 
-                    return true;
+                    return inv > 0;
                 });
-
 
                 // Apply OV L30 filter
                 const ovl30Filter = $('#ovl30-filter').val();
@@ -4925,15 +4871,19 @@
 
                 let exportData = [];
 
-                // Table ke rows loop karke sbid lete hain
+                // Table ke rows loop karke data lete hain
                 $("#ebay-table tbody tr").each(function (index) {
-                    let sbid = $(this).find('td[data-field="sbid"]').text().trim();
+                    let cbid = $(this).find('td[data-field="cbid"]').text().trim();
+                    let esbid = $(this).find('td[data-field="esbid"]').text().trim();
                     let ovDil = $(this).find('td[data-field="ov_dil"]').data("value");
+                    let inv = $(this).find('td.inv_col').text().trim();
 
                     if (filteredData[index]) {
                         exportData.push({
                             SKU: filteredData[index]['(Child) sku'] || "",
-                            SBID: sbid || "",
+                            INV: inv || "",
+                            CBID: cbid || "",
+                            ESBID: esbid || "",
                             'Dil%': ovDil || ""
                         });
                     }
@@ -5287,10 +5237,7 @@
                     });
                 }
 
-                $('#row-data-type').on('change', function() {
-                    const filterType = $(this).val();
-                    applyRowTypeFilter(filterType);
-                });
+
             }
 
             function initEnhancedDropdown($input, $results, field) {
@@ -5411,23 +5358,7 @@
                 $results.show();
             }
 
-            function applyRowTypeFilter(filterType) {
-                // Reset to all data first
-                filteredData = [...tableData];
 
-                // Apply the row type filter
-                if (filterType === 'parent') {
-                    filteredData = filteredData.filter(item => item.is_parent);
-                } else if (filterType === 'sku') {
-                    filteredData = filteredData.filter(item => !item.is_parent);
-                }
-                // else 'all' - no filtering needed
-
-                // Reset to first page and render
-                currentPage = 1;
-                renderTable();
-                calculateTotals();
-            }
 
             // Initialize manual dropdowns
             function initManualDropdowns() {
