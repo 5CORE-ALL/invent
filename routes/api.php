@@ -75,21 +75,17 @@ Route::get('/test-doba-item-validation', [PricingMasterViewsController::class, '
 Route::get('/advanced-doba-debug', [PricingMasterViewsController::class, 'advancedDobaDebug']); // Advanced debug with multiple methods
 Route::post('/update-doba-price', [PricingMasterViewsController::class, 'pushdobaPriceBySku']); // Doba price update API
 
-// Test route to get Shein API data (single page to avoid rate limiting)
+// Test route to get Shein API data with stock information (single page to avoid rate limiting)
 Route::get('/test-shein-api', function () {
     try {
+        $sheinService = new \App\Services\SheinApiService();
+        
         $endpoint = "/open-api/openapi-business-backend/product/query";
         $timestamp = round(microtime(true) * 1000);
         $random = \Illuminate\Support\Str::random(5);
         
-        // Generate signature
-        $openKeyId = env('SHEIN_OPEN_KEY_ID');
-        $secretKey = env('SHEIN_SECRET_KEY');
-        $value = $openKeyId . "&" . $timestamp . "&" . $endpoint;
-        $key = $secretKey . $random;
-        $hmacResult = hash_hmac('sha256', $value, $key, false);
-        $base64Signature = base64_encode($hmacResult);
-        $signature = $random . $base64Signature;
+        // Generate signature using the service method
+        $signature = $sheinService->generateSheinSignature($endpoint, $timestamp, $random);
         
         $url = 'https://openapi.sheincorp.com' . $endpoint;
         
@@ -106,7 +102,7 @@ Route::get('/test-shein-api', function () {
         $response = \Illuminate\Support\Facades\Http::withoutVerifying()
             ->withHeaders([
                 "Language" => "en-us",
-                "x-lt-openKeyId" => $openKeyId,
+                "x-lt-openKeyId" => env('SHEIN_OPEN_KEY_ID'),
                 "x-lt-timestamp" => $timestamp,
                 "x-lt-signature" => $signature,
                 "Content-Type" => "application/json",
@@ -124,12 +120,37 @@ Route::get('/test-shein-api', function () {
         $data = $response->json();
         $products = $data["info"]["data"] ?? [];
         
+        // Extract SKU codes from products (like SheinApiService does)
+        $skuCodes = array_map(function ($item) {
+            return $item['skuCodeList'][0] ?? null;
+        }, $products);
+        
+        $skuCodes = array_filter($skuCodes); // remove nulls
+        
+        // Get stock information for these SKUs
+        $stockData = $sheinService->getStock($skuCodes);
+        
+        // Combine product info with stock data
+        $productList = [];
+        foreach ($products as $product) {
+            $sku = $product['skuCodeList'][0] ?? null;
+            $stockInfo = collect($stockData)->firstWhere('sku', $sku);
+            
+            $productList[] = [
+                'skcName' => $product['skcName'] ?? null,
+                'spuName' => $product['spuName'] ?? null,
+                'sku' => $sku,
+                'inventory_quantity' => $stockInfo['quantity'] ?? 0,
+            ];
+        }
+        
         return response()->json([
             'success' => true,
-            'message' => 'Shein API test successful (1 page, 10 items)',
+            'message' => 'Shein API test successful with stock data',
             'total_products' => count($products),
-            'api_response' => $data,
-            'products' => $products
+            'total_stock_items' => count($stockData),
+            'products_with_stock' => $productList,
+            'raw_stock_data' => $stockData
         ]);
         
     } catch (\Exception $e) {
