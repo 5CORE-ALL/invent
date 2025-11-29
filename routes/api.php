@@ -29,6 +29,29 @@ Route::get('/data', [ApiController::class, 'getData']);
 
 Route::post('/data', [ApiController::class, 'storeData']);
 
+// Test route to get Shein 30-day sales data from apicentral.shein_orders
+Route::get('/test-shein-sales', function () {
+    $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+    
+    $sheinSales = DB::connection('apicentral')
+        ->table('shein_orders')
+        ->select('seller_sku as sku', DB::raw('COUNT(*) as total_orders'))
+        ->where('created_at', '>=', $thirtyDaysAgo)
+        ->groupBy('seller_sku')
+        ->orderBy('total_orders', 'desc')
+        ->get();
+    
+    return response()->json([
+        'success' => true,
+        'date_range' => [
+            'from' => $thirtyDaysAgo->toDateString(),
+            'to' => \Carbon\Carbon::now()->toDateString()
+        ],
+        'total_skus' => $sheinSales->count(),
+        'data' => $sheinSales
+    ]);
+});
+
 Route::post('/update-amazon-column', [ApiController::class, 'updateAmazonColumn']);
 Route::post('/update-amazon-fba-column', [ApiController::class, 'updateAmazonFBAColumn']);
 Route::post('/update-ebay-column', [ApiController::class, 'updateEbayColumn']);
@@ -51,6 +74,29 @@ Route::get('/debug-doba-signature', [PricingMasterViewsController::class, 'debug
 Route::get('/test-doba-item-validation', [PricingMasterViewsController::class, 'testDobaItemValidation']); // Test item validation
 Route::get('/advanced-doba-debug', [PricingMasterViewsController::class, 'advancedDobaDebug']); // Advanced debug with multiple methods
 Route::post('/update-doba-price', [PricingMasterViewsController::class, 'pushdobaPriceBySku']); // Doba price update API
+
+// Test route to get Shein L30 sales data from Shein API
+Route::get('/test-shein-api', function () {
+    try {
+        $sheinService = new \App\Services\SheinApiService();
+        $products = $sheinService->listAllProducts();
+        
+        return response()->json([
+            'success' => true,
+            'total_products' => count($products),
+            'message' => 'Shein API data fetched successfully (inventory + stock updates)',
+            'data' => $products
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'file' => $e->getFile()
+        ], 500);
+    }
+});
+
 
 // Supplier open rfq form url
 //please dont delete this section 🙏
