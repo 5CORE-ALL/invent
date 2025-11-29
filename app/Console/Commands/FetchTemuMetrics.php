@@ -300,6 +300,7 @@ class FetchTemuMetrics extends Command
             $finalSkuQuantities = [];
             foreach($ranges as $label => [$from, $to]){
                 $pageNumber = 1;
+                $hasMorePages = true;
         
                 do {
                     $requestBody = [
@@ -329,8 +330,17 @@ class FetchTemuMetrics extends Command
                         Log::error("Temu Error in fetchQuantity for {$label}", ['error' => $data['errorMsg'] ?? 'Unknown']);
                         break;
                     }
+                    
                     $orders = $data['result']['pageItems'] ?? [];
-                    if (empty($orders)) break;
+                    $totalCount = $data['result']['totalCount'] ?? 0;
+                    
+                    $this->info("Fetching {$label} - Page {$pageNumber}: " . count($orders) . " orders (Total: {$totalCount})");
+                    Log::info("Fetching {$label} page {$pageNumber}", ['orders_count' => count($orders), 'total_count' => $totalCount]);
+                    
+                    if (empty($orders)) {
+                        $this->warn("No more orders found for {$label} on page {$pageNumber}");
+                        break;
+                    }
                         
                     foreach ($orders as $order) {
                         
@@ -349,8 +359,21 @@ class FetchTemuMetrics extends Command
                         }
                     }
         
+                    // Check if there are more pages
+                    $processedSoFar = $pageNumber * 100;
+                    $hasMorePages = $processedSoFar < $totalCount && count($orders) >= 100;
+                    
+                    if (!$hasMorePages) {
+                        $this->info("Finished fetching all pages for {$label}. Total pages: {$pageNumber}");
+                        Log::info("Completed pagination for {$label}", ['total_pages' => $pageNumber, 'total_count' => $totalCount]);
+                    }
+                    
                     $pageNumber++;
-                } while (true);
+                    
+                    // Small delay to avoid rate limits
+                    usleep(300000); // 0.3 seconds
+                    
+                } while ($hasMorePages);
             }
 
             foreach ($finalSkuQuantities as $skuId => $data) {                

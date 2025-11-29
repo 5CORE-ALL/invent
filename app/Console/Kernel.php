@@ -295,8 +295,6 @@ class Kernel extends ConsoleKernel
 
         $schedule->command('app:sync-cp-master-to-sheet')->hourly();
                 
-
-
         // FBA Commands - Daily Updates
         $schedule->command('app:fetch-fba-reports')
             ->dailyAt('01:00')
@@ -306,6 +304,10 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles');
         $schedule->command('app:fetch-fba-monthly-sales')
             ->dailyAt('02:00')
+            ->timezone('America/Los_Angeles');
+
+        $schedule->command('fba:sync-ship-calculations')
+            ->dailyAt('03:00')
             ->timezone('America/Los_Angeles');
 
         $schedule->command('app:sync-shopify-all-channels-data')->dailyAt('12:00')->timezone('Asia/Kolkata');
