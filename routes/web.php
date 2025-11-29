@@ -610,6 +610,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/purchase/list', 'index')->name('purchase.index');
         Route::get('/purchase-orders/items-by-supplier/{supplier_id}', 'getItemsBySupplier');
         Route::get('/product-master/get-parent/{sku}', 'getParentBySku');
+        Route::get('/purchase/search-sku', 'searchSku');
         Route::post('/purchase/save', 'store')->name('purchase.store');
         Route::get('/purchase-data/list', 'getPurchaseSummary');
         Route::post('/purchase/delete', 'deletePurchase');
