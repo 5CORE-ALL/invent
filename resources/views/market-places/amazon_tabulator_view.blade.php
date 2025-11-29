@@ -854,14 +854,28 @@
                             success: function(response) {
                                 // Check for errors in response
                                 if (response.errors && response.errors.length > 0) {
-                                    // If we have retries left, retry in background
-                                    if (attempt < maxRetries) {
-                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                        setTimeout(attemptApply, delay);
+                                    const errorMsg = response.errors[0].message || 'Unknown error';
+                                    console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
+                                    
+                                    // Check if it's an authentication error - don't retry immediately
+                                    if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || errorMsg.includes('Client authentication failed')) {
+                                        // For auth errors, wait longer before retry (10 seconds)
+                                        if (attempt < maxRetries) {
+                                            console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
+                                            setTimeout(attemptApply, 10000);
+                                        } else {
+                                            console.error(`Max retries reached for SKU ${sku} due to auth error`);
+                                            reject({ error: true, response: response, isAuthError: true });
+                                        }
                                     } else {
-                                        // Max retries reached, return error
-                                        console.error(`Max retries reached for SKU ${sku}`);
-                                        reject({ error: true, response: response });
+                                        // For other errors, retry with normal delay
+                                        if (attempt < maxRetries) {
+                                            console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                            setTimeout(attemptApply, delay);
+                                        } else {
+                                            console.error(`Max retries reached for SKU ${sku}`);
+                                            reject({ error: true, response: response });
+                                        }
                                     }
                                 } else {
                                     // Success
@@ -869,14 +883,28 @@
                                 }
                             },
                             error: function(xhr) {
-                                // If we have retries left, retry in background
-                                if (attempt < maxRetries) {
-                                    console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                    setTimeout(attemptApply, delay);
+                                const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseText || 'Network error';
+                                console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
+                                
+                                // Check if it's an authentication error
+                                if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || xhr.status === 401 || errorMsg.includes('Client authentication failed')) {
+                                    // For auth errors, wait longer before retry
+                                    if (attempt < maxRetries) {
+                                        console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
+                                        setTimeout(attemptApply, 10000);
+                                    } else {
+                                        console.error(`Max retries reached for SKU ${sku} due to auth error`);
+                                        reject({ error: true, xhr: xhr, isAuthError: true });
+                                    }
                                 } else {
-                                    // Max retries reached, return error
-                                    console.error(`Max retries reached for SKU ${sku}`);
-                                    reject({ error: true, xhr: xhr });
+                                    // For other errors, retry with normal delay
+                                    if (attempt < maxRetries) {
+                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                        setTimeout(attemptApply, delay);
+                                    } else {
+                                        console.error(`Max retries reached for SKU ${sku}`);
+                                        reject({ error: true, xhr: xhr });
+                                    }
                                 }
                             }
                         });
@@ -935,7 +963,7 @@
                 let errorCount = 0;
                 let currentIndex = 0;
                 
-                // Process SKUs sequentially (one by one)
+                // Process SKUs sequentially (one by one) with delay to avoid rate limiting
                 function processNextSku() {
                     if (currentIndex >= skusToProcess.length) {
                         // All SKUs processed
@@ -1020,9 +1048,11 @@
                                 }
                             }
                             
-                            // Process next SKU
+                            // Process next SKU with delay to avoid rate limiting (2 seconds between requests)
                             currentIndex++;
-                            processNextSku();
+                            setTimeout(() => {
+                                processNextSku();
+                            }, 2000);
                         })
                         .catch((error) => {
                             errorCount++;
@@ -1055,9 +1085,11 @@
                                 }
                             }
                             
-                            // Process next SKU even if this one failed
+                            // Process next SKU with delay to avoid rate limiting
                             currentIndex++;
-                            processNextSku();
+                            setTimeout(() => {
+                                processNextSku();
+                            }, 2000);
                         });
                 }
                 

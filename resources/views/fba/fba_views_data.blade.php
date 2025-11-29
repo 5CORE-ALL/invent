@@ -1057,34 +1057,77 @@
                             },
                             data: {
                                 sku: sku,
-                                price: price
+                                price: price,
+                                _token: '{{ csrf_token() }}'
                             },
                             success: function(response) {
+                                // Log response for debugging
+                                console.log(`Attempt ${attempt} response for SKU ${sku}:`, response);
+                                
                                 // Check for errors in response
                                 if (response.errors && response.errors.length > 0) {
-                                    // If we have retries left, retry in background
-                                    if (attempt < maxRetries) {
-                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                        setTimeout(attemptApply, delay);
+                                    const errorMsg = response.errors[0].message || 'Unknown error';
+                                    const errorCode = response.errors[0].code || '';
+                                    console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg, 'Code:', errorCode);
+                                    
+                                    // Check if it's an authentication error - don't retry immediately
+                                    if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || errorCode === 'AuthenticationError' || errorMsg.includes('Client authentication failed')) {
+                                        // For auth errors, wait longer before retry (10 seconds)
+                                        if (attempt < maxRetries) {
+                                            console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
+                                            setTimeout(attemptApply, 10000);
+                                        } else {
+                                            console.error(`Max retries reached for SKU ${sku} due to auth error`);
+                                            reject({ error: true, response: response, isAuthError: true });
+                                        }
                                     } else {
-                                        // Max retries reached, return error
-                                        console.error(`Max retries reached for SKU ${sku}`);
-                                        reject({ error: true, response: response });
+                                        // For other errors, retry with normal delay
+                                        if (attempt < maxRetries) {
+                                            console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                            setTimeout(attemptApply, delay);
+                                        } else {
+                                            console.error(`Max retries reached for SKU ${sku}`);
+                                            reject({ error: true, response: response });
+                                        }
                                     }
                                 } else {
                                     // Success
+                                    console.log(`Successfully pushed price for SKU ${sku} on attempt ${attempt}`);
                                     resolve({ success: true, response: response });
                                 }
                             },
                             error: function(xhr) {
-                                // If we have retries left, retry
-                                if (attempt < maxRetries) {
-                                    console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                    setTimeout(attemptApply, delay);
+                                const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseText || 'Network error';
+                                const errorCode = xhr.responseJSON?.errors?.[0]?.code || '';
+                                const statusCode = xhr.status || 0;
+                                
+                                console.error(`Attempt ${attempt} for SKU ${sku} failed:`, {
+                                    error: errorMsg,
+                                    code: errorCode,
+                                    status: statusCode,
+                                    response: xhr.responseJSON,
+                                    responseText: xhr.responseText
+                                });
+                                
+                                // Check if it's an authentication error
+                                if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || statusCode === 401 || errorCode === 'AuthenticationError' || errorMsg.includes('Client authentication failed')) {
+                                    // For auth errors, wait longer before retry
+                                    if (attempt < maxRetries) {
+                                        console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
+                                        setTimeout(attemptApply, 10000);
+                                    } else {
+                                        console.error(`Max retries reached for SKU ${sku} due to auth error`);
+                                        reject({ error: true, xhr: xhr, isAuthError: true });
+                                    }
                                 } else {
-                                    // Max retries reached
-                                    console.error(`Max retries reached for SKU ${sku}`);
-                                    reject({ error: true, xhr: xhr });
+                                    // For other errors, retry with normal delay
+                                    if (attempt < maxRetries) {
+                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                        setTimeout(attemptApply, delay);
+                                    } else {
+                                        console.error(`Max retries reached for SKU ${sku}`);
+                                        reject({ error: true, xhr: xhr });
+                                    }
                                 }
                             }
                         });
@@ -1144,7 +1187,7 @@
                 let errorCount = 0;
                 let currentIndex = 0;
                 
-                // Process SKUs sequentially (one by one)
+                // Process SKUs sequentially (one by one) with delay to avoid rate limiting
                 function processNextSku() {
                     if (currentIndex >= skusToProcess.length) {
                         // All SKUs processed
@@ -1183,35 +1226,115 @@
                         }
                     }
                     
-                    // Use retry function to apply price
-                    applyPriceWithRetryPromise(sku, price, 5, 5000)
-                        .then((result) => {
-                            successCount++;
-                            
-                            // Update row data with pushed status instantly
-                            if (row) {
-                                const rowData = row.getData();
-                                rowData.SPRICE_STATUS = 'pushed';
-                                row.update(rowData);
+                    // First save to database (like S_Price edit does), then push to Amazon
+                    console.log(`Processing SKU ${sku} (${currentIndex + 1}/${skusToProcess.length}): Saving S_Price ${price} to database...`);
+                    
+                    $.ajax({
+                        url: '/update-fba-manual-data',
+                        method: 'POST',
+                        data: {
+                            sku: sku,
+                            field: 's_price',
+                            value: price,
+                            _token: '{{ csrf_token() }}'
+                        },
+                        success: function(saveResponse) {
+                            console.log(`SKU ${sku}: Database save successful`, saveResponse);
+                            if (saveResponse.success === false) {
+                                console.error(`Failed to save S_Price for SKU ${sku}:`, saveResponse.error);
+                                errorCount++;
                                 
-                                // Update button to show green check-double
-                                const acceptCell = row.getCell('_accept');
-                                if (acceptCell) {
-                                    const $cellElement = $(acceptCell.getElement());
-                                    const $btnInCell = $cellElement.find('.apply-price-btn');
-                                    if ($btnInCell.length) {
-                                        $btnInCell.prop('disabled', false);
-                                        $btnInCell.html('<i class="fa-solid fa-check-double"></i>');
-                                        $btnInCell.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                                // Update row data with error status
+                                if (row) {
+                                    const rowData = row.getData();
+                                    rowData.SPRICE_STATUS = 'error';
+                                    row.update(rowData);
+                                    
+                                    const acceptCell = row.getCell('_accept');
+                                    if (acceptCell) {
+                                        const $cellElement = $(acceptCell.getElement());
+                                        const $btnInCell = $cellElement.find('.apply-price-btn');
+                                        if ($btnInCell.length) {
+                                            $btnInCell.prop('disabled', false);
+                                            $btnInCell.html('<i class="fa-solid fa-x"></i>');
+                                            $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                        }
                                     }
                                 }
+                                
+                                // Process next SKU
+                                currentIndex++;
+                                setTimeout(() => {
+                                    processNextSku();
+                                }, 2000);
+                                return;
                             }
                             
-                            // Process next SKU
-                            currentIndex++;
-                            processNextSku();
-                        })
-                        .catch((error) => {
+                            // After saving, push to Amazon using retry function
+                            console.log(`SKU ${sku}: Starting Amazon price push...`);
+                            applyPriceWithRetryPromise(sku, price, 5, 5000)
+                                .then((result) => {
+                                    successCount++;
+                                    
+                                    // Update row data with pushed status instantly
+                                    if (row) {
+                                        const rowData = row.getData();
+                                        rowData.SPRICE_STATUS = 'pushed';
+                                        row.update(rowData);
+                                        
+                                        // Update button to show green check-double
+                                        const acceptCell = row.getCell('_accept');
+                                        if (acceptCell) {
+                                            const $cellElement = $(acceptCell.getElement());
+                                            const $btnInCell = $cellElement.find('.apply-price-btn');
+                                            if ($btnInCell.length) {
+                                                $btnInCell.prop('disabled', false);
+                                                $btnInCell.html('<i class="fa-solid fa-check-double"></i>');
+                                                $btnInCell.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Process next SKU with delay to avoid rate limiting (2 seconds between requests)
+                                    currentIndex++;
+                                    setTimeout(() => {
+                                        processNextSku();
+                                    }, 2000);
+                                })
+                                .catch((error) => {
+                                    errorCount++;
+                                    
+                                    // Update row data with error status
+                                    if (row) {
+                                        const rowData = row.getData();
+                                        rowData.SPRICE_STATUS = 'error';
+                                        row.update(rowData);
+                                        
+                                        // Update button to show error icon
+                                        const acceptCell = row.getCell('_accept');
+                                        if (acceptCell) {
+                                            const $cellElement = $(acceptCell.getElement());
+                                            const $btnInCell = $cellElement.find('.apply-price-btn');
+                                            if ($btnInCell.length) {
+                                                $btnInCell.prop('disabled', false);
+                                                $btnInCell.html('<i class="fa-solid fa-x"></i>');
+                                                $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Save for background retry
+                                    saveFailedSkuForRetry(sku, price, 0);
+                                    
+                                    // Process next SKU with delay to avoid rate limiting
+                                    currentIndex++;
+                                    setTimeout(() => {
+                                        processNextSku();
+                                    }, 2000);
+                                });
+                        },
+                        error: function(xhr) {
+                            console.error(`Failed to save S_Price for SKU ${sku}:`, xhr.responseJSON || xhr.responseText);
                             errorCount++;
                             
                             // Update row data with error status
@@ -1220,7 +1343,6 @@
                                 rowData.SPRICE_STATUS = 'error';
                                 row.update(rowData);
                                 
-                                // Update button to show error icon
                                 const acceptCell = row.getCell('_accept');
                                 if (acceptCell) {
                                     const $cellElement = $(acceptCell.getElement());
@@ -1233,13 +1355,13 @@
                                 }
                             }
                             
-                            // Save for background retry
-                            saveFailedSkuForRetry(sku, price, 0);
-                            
                             // Process next SKU
                             currentIndex++;
-                            processNextSku();
-                        });
+                            setTimeout(() => {
+                                processNextSku();
+                            }, 2000);
+                        }
+                    });
                 }
                 
                 // Start processing
