@@ -540,6 +540,83 @@
 
             $(document).ready(function () {
 
+                // Helper function for AJAX with retry logic
+                function ajaxWithRetry(url, method, data, maxRetries = 4) {
+                    return new Promise((resolve, reject) => {
+                        let attempt = 0;
+
+                        function makeRequest() {
+                            attempt++;
+                            console.log(`[Attempt ${attempt}/${maxRetries}] ${method} ${url}`);
+
+                            $.ajax({
+                                url: url,
+                                method: method,
+                                data: data,
+                                timeout: 20000,
+                                success: function (response) {
+                                    console.log(`✓ Success on attempt ${attempt}`, response);
+                                    resolve(response);
+                                },
+                                error: function (xhr, status, error) {
+                                    const errorType = xhr.status || status;
+                                    const shouldRetry = shouldRetryRequest(errorType);
+
+                                    console.warn(`✗ Error on attempt ${attempt}:`, {
+                                        status: xhr.status,
+                                        type: status,
+                                        shouldRetry: shouldRetry
+                                    });
+
+                                    if (shouldRetry && attempt < maxRetries) {
+                                        const waitTime = getWaitTime(errorType, attempt);
+                                        console.log(`⏳ Retrying in ${waitTime}ms...`);
+                                        setTimeout(makeRequest, waitTime);
+                                    } else {
+                                        reject({
+                                            status: xhr.status,
+                                            response: xhr.responseJSON || { error: error },
+                                            attempt: attempt
+                                        });
+                                    }
+                                }
+                            });
+                        }
+
+                        makeRequest();
+                    });
+                }
+
+                // Determine if we should retry based on error type
+                function shouldRetryRequest(errorCode) {
+                    // Rate limit error
+                    if (errorCode === 429) return true;
+                    // Server errors
+                    if (errorCode >= 500 && errorCode <= 599) return true;
+                    // Timeout errors
+                    if (errorCode === 0 || errorCode === 'timeout') return true;
+                    // Bad gateway / Service unavailable
+                    if (errorCode === 502 || errorCode === 503 || errorCode === 504) return true;
+                    return false;
+                }
+
+                // Get wait time based on error type and attempt
+                function getWaitTime(errorCode, attempt) {
+                    if (errorCode === 429) {
+                        // Rate limit: longer wait times
+                        const waits = [3000, 5000, 8000];
+                        return waits[Math.min(attempt - 1, waits.length - 1)];
+                    } else if (errorCode >= 500) {
+                        // Server error: exponential backoff
+                        const waits = [2000, 4000, 6000];
+                        return waits[Math.min(attempt - 1, waits.length - 1)];
+                    } else {
+                        // Timeout: moderate wait times
+                        const waits = [2000, 4000, 6000];
+                        return waits[Math.min(attempt - 1, waits.length - 1)];
+                    }
+                }
+
                 $('#incomingForm').on('submit', function (e) {
                     e.preventDefault();
 
@@ -568,7 +645,6 @@
 
                     if (hasError) return; // stop if validation fails
 
-
                     // Create overlay loader dynamically
                     const overlay = document.createElement("div");
                     overlay.id = "processing-overlay";
@@ -588,30 +664,53 @@
                         ">
                             <div style="font-size:28px;">🚀 Processing incoming stock...</div>
                             <small style="margin-top:10px;font-size:16px;">
-                                Please wait while we update Shopify inventory.
+                                Please wait while we update Shopify inventory.<br>
+                                <span id="retry-status" style="font-size: 14px; opacity: 0.8;"></span>
                             </small>
                         </div>`;
                     document.body.appendChild(overlay);
 
-                    $.ajax({
-                        url: '{{ route("incoming.store") }}',
-                        method: 'POST',
-                        data: formData,
-                        success: function (response) {
+                    // Use retry-enabled AJAX
+                    ajaxWithRetry('{{ route("incoming.store") }}', 'POST', formData, 4)
+                        .then(function (response) {
                             document.getElementById("processing-overlay")?.remove();
-                            alert('Incoming inventory stored and updated in Shopify successfully!');
+                            
+                            // Show success message from server (inline)
+                            const message = response.message || 'Incoming inventory stored and updated in Shopify successfully!';
+                            $('#incoming-errors').html(`<div class="text-success" style="font-size:18px;font-weight:700">${escapeHtml(message)}</div>`);
                             $('#addWarehouseModal').modal('hide');
-                            // loadData(); // Reload after store
-                            $('#incomingForm')[0].reset(); // Optional: clear form
+                            $('#incomingForm')[0].reset();
                             $('#parent').val('');
-                            location.reload();
-                        },
-                        error: function (xhr) {
+                            // Reload after a short delay so user sees success briefly
+                            setTimeout(() => location.reload(), 600);
+                        })
+                        .catch(function (error) {
                             document.getElementById("processing-overlay")?.remove();
-                            console.log(xhr.responseJSON);
-                            alert('Error storing Incoming.');
-                        }
-                    });
+
+                            console.error('Final error after retries:', error);
+
+                            // Parse error message and show prominently in modal
+                            let errorMsg = 'Error storing Incoming.';
+
+                            if (error.response && error.response.error) {
+                                errorMsg = error.response.error;
+                                if (error.response.details) {
+                                    errorMsg += ' — ' + error.response.details;
+                                }
+                            } else if (error.status === 0) {
+                                errorMsg = 'Network/timeout error. Please try again.';
+                            }
+
+                            // Display big red error inside modal area
+                            $('#incoming-errors').html(`<div style="color:#b00020;font-size:20px;font-weight:800">${escapeHtml(errorMsg)}<br><small style=\"font-size:13px;color:#6b0b15\">(Attempted ${error.attempt} times)</small></div>`);
+
+                            // Also log details to console for debugging
+                            console.log('Error details:', {
+                                attempt: error.attempt,
+                                status: error.status,
+                                response: error.response
+                            });
+                        });
                 });
 
                 $('#sku').select2({

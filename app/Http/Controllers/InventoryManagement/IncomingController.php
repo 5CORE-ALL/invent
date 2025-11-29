@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\ProductMaster;
 use App\Models\Warehouse;
 use App\Models\Inventory;
+use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use App\Http\Controllers\ShopifyApiInventoryController;
@@ -235,11 +236,14 @@ class IncomingController extends Controller
 
     public function store(Request $request)
     {
+        // Set execution time limit
+        set_time_limit(25);
+        
         try {
             // Validate input
             $validated = $request->validate([
                 'sku' => 'required|string',
-                'qty' => 'required|integer',
+                'qty' => 'required|integer|min:1',
                 'warehouse_id' => 'required|integer',
                 'reason' => 'required|string',
                 'date' => 'nullable|date',
@@ -248,135 +252,333 @@ class IncomingController extends Controller
             $sku = trim($validated['sku']);
             $qty = (int) $validated['qty'];
 
+            Log::info("Incoming request received", [
+                'sku' => $sku,
+                'qty' => $qty,
+                'warehouse_id' => $validated['warehouse_id'],
+                'user' => Auth::user()->name ?? 'Unknown'
+            ]);
+
             // Shopify credentials
             $shopifyDomain = env('SHOPIFY_STORE_URL');
             $accessToken = env('SHOPIFY_ACCESS_TOKEN');
 
+            if (!$accessToken || !$shopifyDomain) {
+                Log::error("Missing Shopify credentials");
+                return response()->json(['error' => 'Configuration error', 'details' => 'Shopify credentials not configured'], 500);
+            }
+
             /** -----------------------------------------------------------------
-             * Find the Shopify Inventory Item ID (with pagination)
+             * Find the Shopify Inventory Item ID
+             * Strategy:
+             * 1) Fast-path: check local `shopify_skus` table for known variant_id
+             * 2) Quick variants endpoint lookup (sku query)
+             * 3) Fallback: paginated products.json search
              * ----------------------------------------------------------------- */
             $inventoryItemId = null;
             $pageInfo = null;
+            $maxPages = 20;
+            $pageCount = 0;
+
+            // Fast-path: check local `shopify_skus` table for a known variant_id
+            try {
+                $shopifyRow = ShopifySku::whereRaw('LOWER(sku) = ?', [strtolower($sku)])->first();
+                if ($shopifyRow && !empty($shopifyRow->variant_id)) {
+                    Log::info('Incoming: trying fast-path variant lookup', ['sku' => $sku, 'variant_id' => $shopifyRow->variant_id]);
+                    try {
+                        $variantResp = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                            ->timeout(15)
+                            ->retry(3, 2000)
+                            ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$shopifyRow->variant_id}.json");
+
+                        if ($variantResp->successful()) {
+                            $inventoryItemId = $variantResp->json('variant.inventory_item_id') ?? null;
+                            Log::info('Incoming: Found inventory_item_id from variant fast-path', ['sku' => $sku, 'inventory_item_id' => $inventoryItemId]);
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Incoming: fast-path variant fetch failed, will fall back to normal lookup', ['error' => $e->getMessage()]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Incoming: error checking shopify_skus fast-path', ['error' => $e->getMessage()]);
+            }
+
+            // Quick attempt: query /variants.json?sku=... which is faster than full pagination
+            if (!$inventoryItemId) {
+                try {
+                    $vResp = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                        ->timeout(15)
+                        ->retry(2, 1500)
+                        ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants.json", [
+                            'sku' => $sku,
+                        ]);
+
+                    if ($vResp->successful()) {
+                        $variants = $vResp->json('variants') ?? [];
+                        if (!empty($variants) && !empty($variants[0]['inventory_item_id'])) {
+                            $inventoryItemId = $variants[0]['inventory_item_id'];
+                            Log::info('Incoming: Found inventory_item_id via variants endpoint', ['sku' => $sku, 'inventory_item_id' => $inventoryItemId]);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Incoming: variants endpoint quick lookup failed', ['error' => $e->getMessage()]);
+                }
+            }
 
             do {
+                $pageCount++;
+                if ($pageCount > $maxPages) break;
+
                 $url = "https://{$shopifyDomain}/admin/api/2025-01/products.json?limit=250";
                 if ($pageInfo) {
                     $url .= "&page_info={$pageInfo}";
                 }
 
-                $response = Http::withHeaders([
-                    'X-Shopify-Access-Token' => $accessToken,
-                ])->get($url);
+                try {
+                    $response = Http::withHeaders([
+                        'X-Shopify-Access-Token' => $accessToken,
+                    ])->timeout(10)->get($url);
 
-                if (!$response->successful()) {
-                    return response()->json(['error' => 'Failed to fetch Shopify products.'], 500);
-                }
+                    if ($response->successful()) {
 
-                $products = $response->json('products') ?? [];
+                        $products = $response->json('products') ?? [];
 
-                foreach ($products as $product) {
-                    foreach ($product['variants'] as $variant) {
-                        if (trim(strtolower($variant['sku'])) === strtolower($sku)) {
-                            $inventoryItemId = $variant['inventory_item_id'];
-                            break 2;
+                        foreach ($products as $product) {
+                            foreach ($product['variants'] as $variant) {
+                                if (trim(strtolower($variant['sku'] ?? '')) === strtolower($sku)) {
+                                    $inventoryItemId = $variant['inventory_item_id'];
+                                    Log::info("Found inventory item for SKU", ['sku' => $sku, 'inventory_item_id' => $inventoryItemId]);
+                                    break 2;
+                                }
+                            }
                         }
-                    }
-                }
 
-                // Handle pagination
-                $linkHeader = $response->header('Link');
-                if ($linkHeader && preg_match('/<([^>]+)>; rel="next"/', $linkHeader, $matches)) {
-                    $parsedUrl = parse_url($matches[1]);
-                    parse_str($parsedUrl['query'] ?? '', $query);
-                    $pageInfo = $query['page_info'] ?? null;
-                } else {
-                    $pageInfo = null;
+                        // Handle pagination
+                        $linkHeader = $response->header('Link');
+                        $pageInfo = null;
+                        if ($linkHeader && preg_match('/<([^>]+)>; rel="next"/', $linkHeader, $matches)) {
+                            $parsedUrl = parse_url($matches[1]);
+                            parse_str($parsedUrl['query'] ?? '', $query);
+                            $pageInfo = $query['page_info'] ?? null;
+                        }
+                    } else {
+                        Log::warning("Failed to fetch Shopify products page", ['status' => $response->status(), 'page_count' => $pageCount]);
+                        $pageInfo = null;
+                    }
+                } catch (\Exception $e) {
+                    Log::warning("Exception fetching Shopify products: " . $e->getMessage(), ['page_count' => $pageCount]);
+                    sleep(1);
+                    continue;
                 }
 
             } while (!$inventoryItemId && $pageInfo);
 
             if (!$inventoryItemId) {
                 Log::warning("SKU not found in Shopify: {$sku}");
-                return response()->json(['error' => "SKU '{$sku}' not found in Shopify"], 404);
+                return response()->json([
+                    'error' => 'SKU not found',
+                    'details' => "The SKU '{$sku}' was not found in Shopify. Please check the SKU spelling."
+                ], 404);
             }
 
             /** -----------------------------------------------------------------
-             * Find the Shopify Location ID for “Ohio”
+             * Find the Shopify Location ID for "Ohio" with retries
              * ----------------------------------------------------------------- */
-            $locationResponse = Http::withHeaders([
-                'X-Shopify-Access-Token' => $accessToken,
-            ])->get("https://{$shopifyDomain}/admin/api/2025-01/locations.json");
+            $locationId = null;
+            $maxRetries = 3;
+            $attempt = 0;
 
-            if (!$locationResponse->successful()) {
-                return response()->json(['error' => 'Failed to fetch Shopify locations.'], 500);
+            while ($attempt < $maxRetries && !$locationId) {
+                $attempt++;
+                try {
+                    $locationResponse = Http::withHeaders([
+                        'X-Shopify-Access-Token' => $accessToken,
+                    ])->timeout(10)->get("https://{$shopifyDomain}/admin/api/2025-01/locations.json");
+
+                    if ($locationResponse->successful()) {
+
+                        $locations = $locationResponse->json('locations') ?? [];
+                        
+                        $ohioLocation = collect($locations)->first(function ($loc) {
+                            return stripos($loc['name'] ?? '', 'ohio') !== false;
+                        });
+
+                        if ($ohioLocation) {
+                            $locationId = $ohioLocation['id'];
+                            Log::info("Found Ohio location", ['location_id' => $locationId]);
+                        } else {
+                            Log::warning("No Ohio location found in Shopify");
+                            return response()->json([
+                                'error' => 'Location not found',
+                                'details' => 'No Shopify location found with name containing "Ohio"'
+                            ], 404);
+                        }
+                    } else {
+                        Log::warning("Failed to fetch locations", ['attempt' => $attempt, 'status' => $locationResponse->status()]);
+                        if ($attempt < $maxRetries) {
+                            sleep($attempt);
+                            continue;
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::warning("Exception fetching locations: " . $e->getMessage(), ['attempt' => $attempt]);
+                    if ($attempt < $maxRetries) {
+                        sleep($attempt);
+                        continue;
+                    }
+                    throw $e;
+                }
             }
 
-            $locations = $locationResponse->json('locations');
-            $ohioLocation = collect($locations)->first(function ($loc) {
-                return stripos($loc['name'], 'ohio') !== false;
-            });
-
-            if (!$ohioLocation) {
-                return response()->json(['error' => 'No Shopify location found with name containing "Ohio".'], 404);
+            if (!$locationId) {
+                return response()->json([
+                    'error' => 'Failed to fetch location',
+                    'details' => 'Could not connect to Shopify to get location data'
+                ], 503);
             }
-
-            $locationId = $ohioLocation['id'];
 
             /** -----------------------------------------------------------------
-             * Ensure inventory item is connected to the Ohio location
+             * Ensure inventory item is connected to the Ohio location (with retries)
              * ----------------------------------------------------------------- */
-            $connectResponse = Http::withHeaders([
-                'X-Shopify-Access-Token' => $accessToken,
-                'Content-Type' => 'application/json',
-            ])->post("https://{$shopifyDomain}/admin/api/2025-01/inventory_levels/connect.json", [
-                'location_id' => $locationId,
-                'inventory_item_id' => $inventoryItemId,
-            ]);
+            $connectAttempt = 0;
+            while ($connectAttempt < $maxRetries) {
+                $connectAttempt++;
+                try {
+                    $connectResponse = Http::withHeaders([
+                        'X-Shopify-Access-Token' => $accessToken,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(10)->post("https://{$shopifyDomain}/admin/api/2025-01/inventory_levels/connect.json", [
+                        'location_id' => $locationId,
+                        'inventory_item_id' => $inventoryItemId,
+                    ]);
 
-            // 422 just means already connected, ignore it
-            if (!$connectResponse->successful() && $connectResponse->status() != 422) {
-                Log::error("Failed to connect inventory item {$inventoryItemId} to Ohio location: " . $connectResponse->body());
+                    // 422 means already connected - that's fine
+                    if ($connectResponse->successful() || $connectResponse->status() == 422) {
+                        Log::info("Inventory item connected to location", ['status' => $connectResponse->status()]);
+                        break;
+                    } elseif ($connectResponse->status() >= 500 || $connectResponse->status() == 429) {
+                        if ($connectAttempt < $maxRetries) {
+                            sleep($connectAttempt);
+                            continue;
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::warning("Exception connecting inventory: " . $e->getMessage(), ['attempt' => $connectAttempt]);
+                    if ($connectAttempt < $maxRetries) {
+                        sleep($connectAttempt);
+                        continue;
+                    }
+                }
             }
 
             /** -----------------------------------------------------------------
-             * Adjust inventory quantity for the Ohio location
+             * Adjust inventory quantity for the Ohio location (with retries)
              * ----------------------------------------------------------------- */
-            $adjustResponse = Http::withHeaders([
-                'X-Shopify-Access-Token' => $accessToken,
-                'Content-Type' => 'application/json',
-            ])->post("https://{$shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
-                'location_id' => $locationId,
-                'inventory_item_id' => $inventoryItemId,
-                'available_adjustment' => $qty,
-            ]);
+            $adjustAttempt = 0;
+            $adjustResponse = null;
 
-            Log::info("Shopify Adjust Response (SKU: {$sku}):", $adjustResponse->json());
+            while ($adjustAttempt < $maxRetries) {
+                $adjustAttempt++;
+                try {
+                    $adjustResponse = Http::withHeaders([
+                        'X-Shopify-Access-Token' => $accessToken,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(10)->post("https://{$shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+                        'location_id' => $locationId,
+                        'inventory_item_id' => $inventoryItemId,
+                        'available_adjustment' => $qty,
+                    ]);
 
-            if (!$adjustResponse->successful()) {
-                Log::error('Shopify adjust failed: ' . $adjustResponse->body());
-                return response()->json(['error' => 'Failed to update Shopify inventory'], 500);
+                    if ($adjustResponse->successful()) {
+                        Log::info("Successfully adjusted Shopify inventory", ['sku' => $sku, 'qty' => $qty, 'attempt' => $adjustAttempt]);
+                        break;
+                    } elseif ($adjustResponse->status() >= 500 || $adjustResponse->status() == 429) {
+                        Log::warning("Adjust failed, retrying...", ['status' => $adjustResponse->status(), 'attempt' => $adjustAttempt]);
+                        if ($adjustAttempt < $maxRetries) {
+                            sleep($adjustAttempt);
+                            continue;
+                        }
+                    } else {
+                        Log::error("Adjust failed with non-retryable error", ['sku' => $sku, 'status' => $adjustResponse->status()]);
+                        break;
+                    }
+                } catch (\Exception $e) {
+                    Log::warning("Exception adjusting inventory: " . $e->getMessage(), ['attempt' => $adjustAttempt]);
+                    if ($adjustAttempt < $maxRetries) {
+                        sleep($adjustAttempt);
+                        continue;
+                    }
+                    throw $e;
+                }
+            }
+
+            if (!$adjustResponse || !$adjustResponse->successful()) {
+                $status = $adjustResponse ? $adjustResponse->status() : 'No response';
+                Log::error("Failed to adjust Shopify inventory after retries", ['sku' => $sku, 'status' => $status]);
+                return response()->json([
+                    'error' => 'Failed to update Shopify inventory',
+                    'details' => 'Could not complete the adjustment. Please try again.'
+                ], 503);
             }
 
             /** -----------------------------------------------------------------
-             * Store locally
+             * Store locally in database
              * ----------------------------------------------------------------- */
-            DB::table('inventories')->insert([
-                'sku' => $sku,
-                'verified_stock' => $qty,
-                'to_adjust' => $qty,
-                'reason' => $request->reason,
-                'is_approved' => true,
-                'approved_by' => Auth::user()->name ?? 'N/A',
-                'approved_at' => Carbon::now('America/New_York'),
-                'type' => 'incoming',
-                'warehouse_id' => $request->warehouse_id,
-            ]);
+            try {
+                DB::beginTransaction();
+                
+                DB::table('inventories')->insert([
+                    'sku' => $sku,
+                    'verified_stock' => $qty,
+                    'to_adjust' => $qty,
+                    'reason' => $validated['reason'],
+                    'is_approved' => true,
+                    'approved_by' => Auth::user()->name ?? 'N/A',
+                    'approved_at' => Carbon::now('America/New_York'),
+                    'type' => 'incoming',
+                    'warehouse_id' => $validated['warehouse_id'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
 
-            return response()->json(['success' => true, 'message' => 'Shopify Ohio inventory updated successfully!']);
+                DB::commit();
 
+                Log::info('Incoming inventory stored successfully', ['sku' => $sku, 'qty' => $qty]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "✓ Incoming stock for {$sku} added successfully! Quantity: {$qty} units.",
+                    'new_stock_level' => $qty
+                ], 200);
+
+            } catch (\Exception $dbException) {
+                DB::rollBack();
+                Log::error("Failed to save to database after successful Shopify update", ['sku' => $sku, 'error' => $dbException->getMessage()]);
+                
+                return response()->json([
+                    'error' => 'Database Error',
+                    'details' => 'Shopify was updated but database record could not be created. Please contact support.',
+                    'shopify_updated' => true
+                ], 500);
+            }
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Error',
+                'details' => $e->errors()
+            ], 422);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error("Connection timeout: {$e->getMessage()}");
+            return response()->json([
+                'error' => 'Connection Timeout',
+                'details' => 'Request took too long. Please try again.'
+            ], 504);
         } catch (\Exception $e) {
-            Log::error('Incoming Store Error: ' . $e->getMessage());
-            return response()->json(['error' => 'Server error: ' . $e->getMessage()], 500);
+            Log::error("Incoming store failed: " . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'details' => 'Please try again or contact support if the problem persists.'
+            ], 500);
         }
     }
 
