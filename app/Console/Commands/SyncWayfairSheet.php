@@ -15,177 +15,184 @@ class SyncWayfairSheet extends Command
 
     public function handle()
     {
-        $url = 'https://script.google.com/macros/s/AKfycbxkkmo4L0EbqNK6WaOqM73yUuvC4mwAJMDJcfebxNnzwZ_LuL_9SIOtP09moPFHjV27/exec';
+        // COMMENTED OUT - Google Sheet sync disabled, use Wayfair API instead (sync:wayfair-l30-api)
+        // $url = 'https://script.google.com/macros/s/AKfycbxkkmo4L0EbqNK6WaOqM73yUuvC4mwAJMDJcfebxNnzwZ_LuL_9SIOtP09moPFHjV27/exec';
 
-        try {
-            $response = Http::timeout(120)->get($url);
+        // try {
+        //     $response = Http::timeout(120)->get($url);
 
-            if ($response->failed()) {
-                $this->error("Failed to fetch sheet: " . $response->status());
-                return;
-            }
+        //     if ($response->failed()) {
+        //         $this->error("Failed to fetch sheet: " . $response->status());
+        //         return;
+        //     }
 
-            $data = $response->json();
-            $rows = collect($data['data'] ?? []);
+        //     $data = $response->json();
+        //     $rows = collect($data['data'] ?? []);
 
-        } catch (\Exception $e) {
-            $this->error("Exception: " . $e->getMessage());
-            return;
-        }
+        // } catch (\Exception $e) {
+        //     $this->error("Exception: " . $e->getMessage());
+        //     return;
+        // }
 
-        foreach ($rows as $row) {
-            $sku = trim($row['sku'] ?? '');
-            if (!$sku) continue;
+        // foreach ($rows as $row) {
+        //     $sku = trim($row['sku'] ?? '');
+        //     if (!$sku) continue;
 
-            WaifairProductSheet::updateOrCreate(
-                ['sku' => $sku],
-                [
-                    'price' => $this->toDecimalOrNull($row['price'] ?? null),
-                    'l30'   => $this->toIntOrNull($row['l30'] ?? null),
-                    'l60'   => $this->toIntOrNull($row['l60'] ?? null),
-                    'views'   => $this->toIntOrNull($row['views'] ?? null),
-                ]
-            );
-        }
+        //     WaifairProductSheet::updateOrCreate(
+        //         ['sku' => $sku],
+        //         [
+        //             'price' => $this->toDecimalOrNull($row['price'] ?? null),
+        //             'l30'   => $this->toIntOrNull($row['l30'] ?? null),
+        //             'l60'   => $this->toIntOrNull($row['l60'] ?? null),
+        //             'views'   => $this->toIntOrNull($row['views'] ?? null),
+        //         ]
+        //     );
+        // }
 
-        $this->info("Sheet synced. Fetching Shopify Wayfair L30/L60...");
-        $this->fetchShopifyWayfairData();
+        // $this->info("Sheet synced. Fetching Shopify Wayfair L30/L60...");
+        // $this->fetchShopifyWayfairData();
+
+        $this->info("❌ Google Sheet and Shopify sync disabled for Wayfair.");
+        $this->info("✅ Use 'php artisan sync:wayfair-l30-api' to update from Wayfair API instead.");
     }
 
     private function fetchShopifyWayfairData()
     {
-        $now = Carbon::now();
-        $sixtyDaysAgo = $now->copy()->subDays(60);
-        $thirtyDaysAgo = $now->copy()->subDays(30);
+        // COMMENTED OUT - Shopify sync disabled for Wayfair, use Wayfair API instead
+        // $now = Carbon::now();
+        // $sixtyDaysAgo = $now->copy()->subDays(60);
+        // $thirtyDaysAgo = $now->copy()->subDays(30);
 
-        $baseUrl = "https://" . env('SHOPIFY_STORE_URL') . "/admin/api/2024-10/orders.json";
+        // $baseUrl = "https://" . env('SHOPIFY_STORE_URL') . "/admin/api/2024-10/orders.json";
 
-        $params = [
-            'status' => 'any',
-            'created_at_min' => $sixtyDaysAgo->toISOString(),
-            'created_at_max' => $now->toISOString(),
-            'limit' => 250
-        ];
+        // $params = [
+        //     'status' => 'any',
+        //     'created_at_min' => $sixtyDaysAgo->toISOString(),
+        //     'created_at_max' => $now->toISOString(),
+        //     'limit' => 250
+        // ];
 
-        $page = 1;
+        // $page = 1;
 
-        // Storage for aggregated data
-        $skuCountsL60 = [];
-        $skuCountsL30 = [];
-        $skuPrices = [];
+        // // Storage for aggregated data
+        // $skuCountsL60 = [];
+        // $skuCountsL30 = [];
+        // $skuPrices = [];
 
-        do {
-            $url = $baseUrl . '?' . http_build_query($params);
+        // do {
+        //     $url = $baseUrl . '?' . http_build_query($params);
 
-            // Retry handling
-            $maxRetries = 3;
-            $retryCount = 0;
-            $response = null;
+        //     // Retry handling
+        //     $maxRetries = 3;
+        //     $retryCount = 0;
+        //     $response = null;
 
-            while ($retryCount < $maxRetries) {
+        //     while ($retryCount < $maxRetries) {
 
-                if ($retryCount > 0) {
-                    sleep(2);
-                } else {
-                    sleep(1);
-                }
+        //         if ($retryCount > 0) {
+        //             sleep(2);
+        //         } else {
+        //             sleep(1);
+        //         }
 
-                $response = Http::withHeaders([
-                    'X-Shopify-Access-Token' => env('SHOPIFY_ACCESS_TOKEN')
-                ])->get($url);
+        //         $response = Http::withHeaders([
+        //             'X-Shopify-Access-Token' => env('SHOPIFY_ACCESS_TOKEN')
+        //         ])->get($url);
 
-                if ($response->successful()) {
-                    break;
-                }
+        //         if ($response->successful()) {
+        //             break;
+        //         }
 
-                if ($response->status() == 429 || str_contains($response->body(), 'Exceeded')) {
-                    $retryCount++;
-                    $this->warn("Rate limit hit… retry {$retryCount}/{$maxRetries}");
-                } else {
-                    $this->error("Failed fetching Shopify orders: " . $response->body());
-                    return;
-                }
-            }
+        //         if ($response->status() == 429 || str_contains($response->body(), 'Exceeded')) {
+        //             $retryCount++;
+        //             $this->warn("Rate limit hit… retry {$retryCount}/{$maxRetries}");
+        //         } else {
+        //             $this->error("Failed fetching Shopify orders: " . $response->body());
+        //             return;
+        //         }
+        //     }
 
-            if (!$response->successful()) {
-                $this->error("Failed after retry: " . $response->body());
-                return;
-            }
+        //     if (!$response->successful()) {
+        //         $this->error("Failed after retry: " . $response->body());
+        //         return;
+        //     }
 
-            $data = $response->json();
-            $orders = $data['orders'] ?? [];
+        //     $data = $response->json();
+        //     $orders = $data['orders'] ?? [];
 
-            $this->info("Fetched page {$page}: " . count($orders) . " orders");
+        //     $this->info("Fetched page {$page}: " . count($orders) . " orders");
 
-            // 🔥 Process each order immediately (NO memory accumulation)
-            foreach ($orders as $order) {
-                $createdAt = Carbon::parse($order['created_at']);
+        //     // 🔥 Process each order immediately (NO memory accumulation)
+        //     foreach ($orders as $order) {
+        //         $createdAt = Carbon::parse($order['created_at']);
 
-                if (!$this->isWayfairOrder($order)) {
-                    continue;
-                }
+        //         if (!$this->isWayfairOrder($order)) {
+        //             continue;
+        //         }
 
-                foreach ($order['line_items'] as $item) {
-                    $sku = $item['sku'] ?? '';
-                    if (!$sku) continue;
+        //         foreach ($order['line_items'] as $item) {
+        //             $sku = $item['sku'] ?? '';
+        //             if (!$sku) continue;
 
-                    $quantity = $item['current_quantity'] ?? 0;
-                    $price = $item['price'] ?? 0;
+        //             $quantity = $item['current_quantity'] ?? 0;
+        //             $price = $item['price'] ?? 0;
 
-                    // L60
-                    if ($createdAt >= $sixtyDaysAgo) {
-                        $skuCountsL60[$sku] = ($skuCountsL60[$sku] ?? 0) + $quantity;
-                    }
+        //             // L60
+        //             if ($createdAt >= $sixtyDaysAgo) {
+        //                 $skuCountsL60[$sku] = ($skuCountsL60[$sku] ?? 0) + $quantity;
+        //             }
 
-                    // L30
-                    if ($createdAt >= $thirtyDaysAgo) {
-                        $skuCountsL30[$sku] = ($skuCountsL30[$sku] ?? 0) + $quantity;
-                    }
+        //             // L30
+        //             if ($createdAt >= $thirtyDaysAgo) {
+        //                 $skuCountsL30[$sku] = ($skuCountsL30[$sku] ?? 0) + $quantity;
+        //             }
 
-                    // Latest price
-                    if (!isset($skuPrices[$sku]) || $createdAt > $skuPrices[$sku]['date']) {
-                        $skuPrices[$sku] = [
-                            'price' => $price,
-                            'date'  => $createdAt
-                        ];
-                    }
-                }
-            }
+        //             // Latest price
+        //             if (!isset($skuPrices[$sku]) || $createdAt > $skuPrices[$sku]['date']) {
+        //                 $skuPrices[$sku] = [
+        //                     'price' => $price,
+        //                     'date'  => $createdAt
+        //                 ];
+        //             }
+        //         }
+        //     }
 
-            // Next page check
-            $next = $this->getNextPageUrl($response->header('Link'));
+        //     // Next page check
+        //     $next = $this->getNextPageUrl($response->header('Link'));
 
-            if ($next) {
-                $parsed = parse_url($next);
-                parse_str($parsed['query'], $params);
-                $page++;
-            } else {
-                break;
-            }
+        //     if ($next) {
+        //         $parsed = parse_url($next);
+        //         parse_str($parsed['query'], $params);
+        //         $page++;
+        //     } else {
+        //         break;
+        //     }
 
-        } while (true);
+        // } while (true);
 
-        // 🔥 Update DB
-        foreach ($skuPrices as $sku => $priceData) {
-            $update = [
-                'price' => $priceData['price'],
-                'l60'    => $skuCountsL60[$sku] ?? 0,
-                'l30'    => $skuCountsL30[$sku] ?? 0,
-            ];
-            WaifairProductSheet::where('sku', $sku)->update($update);
-        }
+        // // 🔥 Update DB
+        // foreach ($skuPrices as $sku => $priceData) {
+        //     $update = [
+        //         'price' => $priceData['price'],
+        //         'l60'    => $skuCountsL60[$sku] ?? 0,
+        //         'l30'    => $skuCountsL30[$sku] ?? 0,
+        //     ];
+        //     WaifairProductSheet::where('sku', $sku)->update($update);
+        // }
 
-        // SKUs with L30/L60 but no price
-        foreach ($skuCountsL60 as $sku => $l60) {
-            if (!isset($skuPrices[$sku])) {
-                WaifairProductSheet::where('sku', $sku)->update([
-                    'shopify_wayfairl60' => $l60,
-                    'shopify_wayfairl30' => $skuCountsL30[$sku] ?? 0,
-                ]);
-            }
-        }
+        // // SKUs with L30/L60 but no price
+        // foreach ($skuCountsL60 as $sku => $l60) {
+        //     if (!isset($skuPrices[$sku])) {
+        //         WaifairProductSheet::where('sku', $sku)->update([
+        //             'shopify_wayfairl60' => $l60,
+        //             'shopify_wayfairl30' => $skuCountsL30[$sku] ?? 0,
+        //         ]);
+        //     }
+        // }
 
-        $this->info("Shopify Wayfair sales updated!");
+        // $this->info("Shopify Wayfair sales updated!");
+
+        return;
     }
 
     private function isWayfairOrder($order)

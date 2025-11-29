@@ -169,7 +169,15 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:fetch-pls-data')->twiceDaily(1, 13);
       
         $schedule->command('sync:neweegg-sheet')->twiceDaily(1, 13);
-        $schedule->command('sync:wayfair-sheet')->twiceDaily(2, 14);
+        // Wayfair sheet sync disabled - using API instead
+        // $schedule->command('sync:wayfair-sheet')->twiceDaily(2, 14);
+        
+        // Wayfair L30/L60 sync from API - runs daily at 1 PM (13:00) America/Los_Angeles timezone
+        $schedule->command('sync:wayfair-l30-api')
+            ->dailyAt('13:00')
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-api-sync-daily')
+            ->withoutOverlapping();
 
 
         $schedule->command('sync:shein-sheet')->twiceDaily(1, 13);

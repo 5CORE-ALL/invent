@@ -80,51 +80,109 @@ XML;
 
 
     public function getInventory()
-{
-      $limit = 100;
-    $offset = 0;
-    $inventoryUrl = 'https://api.wayfair.io/v1/product-catalog-api/graphql';
-    $allInventory = [];
+    {
+        // OLD CODE - Product Catalog API (Not Working)
+        // $limit = 100;
+        // $offset = 0;
+        // $inventoryUrl = 'https://api.wayfair.io/v1/product-catalog-api/graphql';
+        // $allInventory = [];
+        // do {
+        //     $query = <<<'GRAPHQL'
+        //     GRAPHQL;
+        //     $response = Http::withoutVerifying()->withToken($this->getAccessToken())->post($inventoryUrl, [
+        //         'query' => $query,
+        //         'variables' => [
+        //             'limit' => $limit,
+        //             'offset' => $offset,
+        //         ]
+        //     ]);
+        //     if (!$response->successful()) {
+        //         throw new \Exception("Wayfair API Error: " . $response->body());
+        //     }
+        //     $inventoryItems = $response->json()['data']['inventory'] ?? [];
+        //     if (empty($inventoryItems)) {
+        //         break;
+        //     }
+        //     $allInventory = array_merge($allInventory, $inventoryItems);
+        //     $offset += $limit;
+        // } while (count($inventoryItems) === $limit);
+        // return array_map(function ($item) {
+        //     return [
+        //         'sku' => $item['supplierPartNumber'] ?? null,
+        //         'quantity' => $item['quantityOnHand'] ?? 0,
+        //     ];
+        // }, $allInventory);
 
-    do {
-        $query = <<<'GRAPHQL'
-     
-        GRAPHQL;
+        // NEW CODE - Purchase Orders API (Working)
+        $limit = 100;
+        $offset = 0;
+        $allOrders = [];
+        $allProducts = [];
 
-        $response = Http::withoutVerifying()->withToken($this->getAccessToken())->post($inventoryUrl, [
-            'query' => $query,
-            'variables' => [
-                'limit' => $limit,
-                'offset' => $offset,
-            ]
-        ]);
+        do {
+            $query = <<<'GRAPHQL'
+            query GetPurchaseOrders($limit: Int!, $offset: Int!) {
+                purchaseOrders(
+                    limit: $limit,
+                    offset: $offset
+                ) {
+                    poNumber
+                    poDate
+                    estimatedShipDate
+                    products {
+                        partNumber
+                        quantity
+                        price
+                    }
+                }
+            }
+            GRAPHQL;
 
-        if (!$response->successful()) {
-            throw new \Exception("Wayfair API Error: " . $response->body());
-        }
+            $response = Http::withoutVerifying()
+                ->withToken($this->authenticate())
+                ->post($this->graphqlUrl, [
+                    'query' => $query,
+                    'variables' => [
+                        'limit' => $limit,
+                        'offset' => $offset,
+                    ]
+                ]);
 
-        dd($response->body());
+            if (!$response->successful()) {
+                throw new \Exception("Wayfair API Error: " . $response->body());
+            }
 
-        $inventoryItems = $response->json()['data']['inventory'] ?? [];
+            $data = $response->json();
+            $orders = $data['data']['purchaseOrders'] ?? [];
 
-        if (empty($inventoryItems)) {
-            break;
-        }
+            if (empty($orders)) {
+                break;
+            }
 
-        $allInventory = array_merge($allInventory, $inventoryItems);
-        $offset += $limit;
-    } while (count($inventoryItems) === $limit);
+            foreach ($orders as $order) {
+                $allOrders[] = $order;
+                if (!empty($order['products'])) {
+                    foreach ($order['products'] as $product) {
+                        $allProducts[] = [
+                            'sku' => $product['partNumber'] ?? null,
+                            'quantity' => $product['quantity'] ?? 0,
+                            'price' => $product['price'] ?? 0,
+                            'po_number' => $order['poNumber'] ?? null,
+                            'po_date' => $order['poDate'] ?? null,
+                        ];
+                    }
+                }
+            }
 
-    dd($allInventory);
+            $offset += $limit;
+        } while (count($orders) === $limit);
 
-    return array_map(function ($item) {
         return [
-            'sku' => $item['supplierPartNumber'] ?? null,
-            'quantity' => $item['quantityOnHand'] ?? 0,
+            'total_orders' => count($allOrders),
+            'total_products' => count($allProducts),
+            'products' => $allProducts,
         ];
-    }, $allInventory);
-
-}
+    }
 
 
       
