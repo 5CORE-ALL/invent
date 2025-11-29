@@ -2,6 +2,7 @@
 @section('css')
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
     /* Pagination styling */
@@ -113,18 +114,22 @@
                         <table class="table table-bordered align-middle text-nowrap" id="productTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Parent</th>
-                                    <th>SKU</th>
-                                    <th>QTY</th>
-                                    <th>Rate</th>
-                                    <th>Amount</th>
-                                    <th>Action</th>
+                                    <th style="width: 20%;">Parent</th>
+                                    <th style="width: 30%;">SKU</th>
+                                    <th style="width: 10%;">QTY</th>
+                                    <th style="width: 12%;">Rate</th>
+                                    <th style="width: 13%;">Amount</th>
+                                    <th style="width: 15%;">Action</th>
                                 </tr>
                             </thead>
                             <tbody id="productRowsWrapper">
                                 <tr class="default-row">
                                     <td><input type="text" class="form-control" name="parent[]" readonly></td>
-                                    <td><input type="text" class="form-control" name="sku[]" required></td>
+                                    <td>
+                                        <select class="form-control sku-select" name="sku[]" required style="width: 100%;">
+                                            <option value="">Search SKU...</option>
+                                        </select>
+                                    </td>
                                     <td><input type="number" class="form-control qty-input" name="qty[]" min="0"></td>
                                     <td><input type="number" class="form-control rate-input" name="rate[]" min="0" step="0.01"></td>
                                     <td><input type="number" class="form-control amount-input" name="amount[]" readonly></td>
@@ -148,6 +153,13 @@
                         <button type="button" class="btn btn-outline-primary btn-sm" id="addProductRowBtn">
                             <i class="fas fa-plus-circle me-1"></i> Add Purchase Row
                         </button>
+                    </div>
+
+                    <div class="row g-2 mt-3">
+                        <div class="col-md-12">
+                            <label class="form-label fw-semibold">Description</label>
+                            <textarea class="form-control" name="description" rows="2" placeholder="Enter description or notes..."></textarea>
+                        </div>
                     </div>
                 </div>
 
@@ -196,6 +208,7 @@
 
 @endsection
 @section('script')
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -367,12 +380,55 @@ document.addEventListener('DOMContentLoaded', function () {
         amountTotalEl.textContent = totalAmount.toFixed(2);
     }
 
+    // Function to initialize Select2 for SKU dropdowns
+    function initializeSkuSelect(element) {
+        $(element).select2({
+            ajax: {
+                url: '/purchase/search-sku',
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return {
+                        q: params.term || '',
+                        page: params.page || 1
+                    };
+                },
+                processResults: function (data, params) {
+                    params.page = params.page || 1;
+                    return {
+                        results: data.items,
+                        pagination: {
+                            more: data.has_more
+                        }
+                    };
+                },
+                cache: true
+            },
+            placeholder: 'Search SKU...',
+            allowClear: true,
+            minimumInputLength: 0,
+            dropdownParent: $('#createPurchaseModal')
+        });
+
+        // When SKU is selected, fetch parent
+        $(element).on('select2:select', function (e) {
+            const sku = e.params.data.id;
+            const parent = e.params.data.parent || '';
+            const row = $(this).closest('tr');
+            row.find('input[name="parent[]"]').val(parent);
+        });
+    }
+
     // Function to create new product row
     function createProductRow() {
         return `
             <tr>
                 <td><input type="text" class="form-control" name="parent[]" readonly></td>
-                <td><input type="text" class="form-control" name="sku[]" required></td>
+                <td>
+                    <select class="form-control sku-select" name="sku[]" required style="width: 100%;">
+                        <option value="">Search SKU...</option>
+                    </select>
+                </td>
                 <td><input type="number" class="form-control qty-input" name="qty[]" min="0"></td>
                 <td><input type="number" class="form-control rate-input" name="rate[]" min="0" step="0.01"></td>
                 <td><input type="number" class="form-control amount-input" name="amount[]" readonly></td>
@@ -388,7 +444,11 @@ document.addEventListener('DOMContentLoaded', function () {
         return `
             <tr>
                 <td><input type="text" class="form-control" name="parent[]" value="${item.parent ?? ''}" readonly></td>
-                <td><input type="text" class="form-control" name="sku[]" value="${item.sku ?? ''}" required></td>
+                <td>
+                    <select class="form-control sku-select" name="sku[]" required style="width: 100%;">
+                        <option value="${item.sku ?? ''}" selected>${item.sku ?? ''}</option>
+                    </select>
+                </td>
                 <td><input type="number" class="form-control qty-input" name="qty[]" value="${item.qty ?? 0}" min="0"></td>
                 <td><input type="number" class="form-control rate-input" name="rate[]" value="${item.price ?? 0}" min="0" step="0.01"></td>
                 <td><input type="number" class="form-control amount-input" name="amount[]" value="${(item.qty * item.price).toFixed(2)}" readonly></td>
@@ -411,10 +471,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 if (data.length === 0) {
                     productTableBody.innerHTML = createProductRow();
+                    initializeSkuSelect($('#productRowsWrapper .sku-select').last());
                 } else {
                     data.forEach(item => {
                         productTableBody.insertAdjacentHTML('beforeend', createRowFromItem(item));
                         const newRow = productTableBody.lastElementChild;
+                        initializeSkuSelect($(newRow).find('.sku-select'));
                         calculateRowAmount(newRow);
                     });
                     updateTotals(); 
@@ -424,6 +486,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(err => {
                 console.error('Error loading supplier items:', err);
                 productTableBody.innerHTML = createProductRow(); // fallback
+                initializeSkuSelect($('#productRowsWrapper .sku-select').last());
             });
     });
 
@@ -437,24 +500,6 @@ document.addEventListener('DOMContentLoaded', function () {
             calculateRowAmount(row);
             updateTotals();
         }
-
-        // SKU change: fetch parent
-        if (target.name === 'sku[]') {
-            const sku = target.value.trim();
-
-            if (sku.length > 0) {
-                fetch(`/product-master/get-parent/${sku}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        row.querySelector('input[name="parent[]"]').value = data.parent ?? '';
-                    })
-                    .catch(() => {
-                        row.querySelector('input[name="parent[]"]').value = '';
-                    });
-            } else {
-                row.querySelector('input[name="parent[]"]').value = '';
-            }
-        }
     });
 
 
@@ -464,6 +509,7 @@ document.addEventListener('DOMContentLoaded', function () {
         productTableBody.insertAdjacentHTML('beforeend', rowHTML);
 
         const newRow = productTableBody.lastElementChild;
+        initializeSkuSelect($(newRow).find('.sku-select'));
         calculateRowAmount(newRow);   
         updateTotals();               
     });
@@ -534,6 +580,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         $('input[name="vo_number"]').val(rowData.vo_number ?? "");
         $('input[name="purchase_date"]').val(rowData.purchase_date ?? "");
+        $('textarea[name="description"]').val(rowData.description ?? "");
 
         //-- Parse ITEMS
         let items = rowData.items;
@@ -569,10 +616,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 $("#productRowsWrapper").append(`
                     <tr>
                         <td>
-                            <input type="text" class="form-control" name="parent[]" value="${parent}">
+                            <input type="text" class="form-control" name="parent[]" value="${parent}" readonly>
                         </td>
                         <td>
-                            <input type="text" class="form-control" name="sku[]" value="${sku}">
+                            <select class="form-control sku-select" name="sku[]" required style="width: 100%;">
+                                <option value="${sku}" selected>${sku}</option>
+                            </select>
                         </td>
                         <td>
                             <input type="number" class="form-control qty-input" name="qty[]" value="${qty}">
@@ -589,6 +638,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         </td>
                     </tr>
                 `);
+                initializeSkuSelect($("#productRowsWrapper tr:last-child .sku-select"));
             });
 
         } else {
@@ -598,6 +648,9 @@ document.addEventListener('DOMContentLoaded', function () {
         updateTotals();
         $("#createPurchaseModal").modal("show");
     }
+
+    // Initialize Select2 on default row
+    initializeSkuSelect($('.sku-select'));
 
     // Initial totals
     updateTotals();

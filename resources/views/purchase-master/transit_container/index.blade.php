@@ -574,7 +574,27 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
             { title: "Parent", field: "parent"},
             { title: "Sku", field: "our_sku" },
             { title: "Supplier", field: "supplier_name", editor: "input" },
-           
+            {
+              title: "Status",
+              field: "push_status",
+              headerSort: false,
+              hozAlign: "center",
+              width: 80,
+              formatter: function(cell) {
+                const status = cell.getValue() || 'pending';
+                const rowData = cell.getRow().getData();
+                
+                if (status === 'success') {
+                  return '<i class="fas fa-check-circle text-success" style="font-size: 1.2rem;" title="Successfully pushed"></i>';
+                } else if (status === 'failed') {
+                  return '<i class="fas fa-times-circle text-danger" style="font-size: 1.2rem;" title="Failed to push"></i>';
+                } else if (status === 'processing') {
+                  return '<i class="fas fa-spinner fa-spin text-primary" style="font-size: 1.2rem;" title="Processing..."></i>';
+                } else {
+                  return '<i class="fas fa-clock text-muted" style="font-size: 1.2rem;" title="Pending"></i>';
+                }
+              }
+            },
             { title: "Rec Qty", field: "rec_qty"},
             { title: "Qty / Ctns", field: "no_of_units", editor: "input" },
             { title: "Qty Ctns", field: "total_ctn", editor: "input" },
@@ -1061,82 +1081,154 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
 
 document.getElementById("push-inventory-btn").addEventListener("click", async function () {
     const activeTab = document.querySelector(".nav-link.active");
-    if (!activeTab) return alert("No container tab selected.");
+    if (!activeTab) {
+        alert("⚠️ No container tab selected.");
+        return;
+    }
 
     const tabId = activeTab.getAttribute("data-bs-target");
     const index = tabId.replace("#tab-", "");
     const table = window.tabTables[index];
-    if (!table) return alert("No data found for this container.");
+    if (!table) {
+        alert("⚠️ No data found for this container.");
+        return;
+    }
 
     const selectedRows = table.getSelectedData();
-    if (selectedRows.length === 0) return alert("Please select at least one SKU to push.");
+    if (selectedRows.length === 0) {
+        alert("⚠️ Please select at least one SKU to push.");
+        return;
+    }
 
-    if (!confirm(`Are you sure you want to push ${selectedRows.length} selected SKU(s)?`)) return;
+    // Filter out already pushed items (status = 'success')
+    const rowsToPush = selectedRows.filter(row => {
+        const status = row.push_status || 'pending';
+        return status !== 'success';
+    });
+
+    const alreadyPushedRows = selectedRows.filter(row => {
+        const status = row.push_status || 'pending';
+        return status === 'success';
+    });
+
+    // Show message if all selected items are already pushed
+    if (rowsToPush.length === 0) {
+        alert("⚠️ All selected items are already pushed successfully!");
+        return;
+    }
+
+    // Show message if some items are already pushed
+    let confirmMessage = `You have selected ${selectedRows.length} item(s).\n`;
+    if (alreadyPushedRows.length > 0) {
+        confirmMessage += `⚠️ ${alreadyPushedRows.length} item(s) are already pushed and will be skipped.\n`;
+    }
+    confirmMessage += `\nOnly ${rowsToPush.length} item(s) will be pushed/retried.\n\nContinue?`;
+
+    if (!confirm(confirmMessage)) return;
 
     const tabName = activeTab.textContent.trim();
-    const rowsToSend = selectedRows.map(r => ({
-        ...r,
-        our_sku: r.our_sku.trim().toUpperCase(),
-        row_id: r.id,
-        tab_name: tabName
-    }));
+    const button = this;
+    const originalText = button.innerHTML;
+    
+    // Disable button during processing
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...';
 
-    // Show processing overlay
-    const overlay = document.createElement("div");
-    overlay.id = "processing-overlay";
-    overlay.innerHTML = `
-        <div style="position:fixed;top:0;left:0;width:100%;height:100%;
-            background:rgba(0,0,0,0.6);color:white;display:flex;align-items:center;
-            justify-content:center;flex-direction:column;z-index:9999;font-size:20px;">
-            <div>🚀 Processing container...</div>
-            <small>Please wait while we push inventory to Shopify.</small>
-        </div>`;
-    document.body.appendChild(overlay);
+    let successCount = 0;
+    let failedCount = 0;
+    let skippedCount = alreadyPushedRows.length; // Count already pushed items as skipped
 
-    try {
-        const res = await fetch("/inventory-warehouse/push", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-            },
-            body: JSON.stringify({ tab_name: tabName, data: rowsToSend })
-        });
+    // Process items one by one (only failed/pending items)
+    for (let i = 0; i < rowsToPush.length; i++) {
+        const row = rowsToPush[i];
+        const rowId = row.id;
+        const tableRow = table.getRow(rowId);
+        
+        if (!tableRow) continue;
 
-        const response = await res.json();
-        document.body.removeChild(overlay);
+        // Update status to processing
+        tableRow.update({ push_status: 'processing' });
+        table.redraw();
 
-        if (!response.success) {
-            alert(response.message || "Push failed!");
-            return;
+        try {
+            const res = await fetch("/inventory-warehouse/push-single", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({ 
+                    tab_name: tabName, 
+                    data: {
+                        ...row,
+                        our_sku: row.our_sku ? row.our_sku.trim().toUpperCase() : '',
+                        id: rowId
+                    }
+                })
+            });
+
+            const response = await res.json();
+
+            // Update status based on response
+            if (response.status === 'success') {
+                tableRow.update({ 
+                    push_status: 'success',
+                    pushed: 1
+                });
+                tableRow.getElement().style.backgroundColor = "#d4edda";
+                tableRow.deselect();
+                successCount++;
+            } else if (response.status === 'skipped') {
+                // This should not happen since we filtered, but handle it anyway
+                tableRow.update({ push_status: 'success' });
+                tableRow.getElement().style.backgroundColor = "#fff3cd";
+                skippedCount++;
+            } else {
+                tableRow.update({ push_status: 'failed' });
+                tableRow.getElement().style.backgroundColor = "#f8d7da";
+                failedCount++;
+            }
+
+            table.redraw();
+
+        } catch (err) {
+            console.error(`Error pushing SKU ${row.our_sku}:`, err);
+            tableRow.update({ push_status: 'failed' });
+            tableRow.getElement().style.backgroundColor = "#f8d7da";
+            failedCount++;
+            table.redraw();
         }
 
-        const pushed = response.pushed || [];
-        const skipped = response.skipped || [];
-        const notFound = response.not_found || [];
-
-        pushed.forEach(({ row_id }) => {
-            const row = table.getRow(row_id);
-            if (row) {
-                row.getElement().style.backgroundColor = "#d4edda"; // green
-                row.deselect();
-                row.update({ pushed: 1 });
-            }
-        });
-
-        let msg = "";
-        if (pushed.length) msg += `✅ Pushed successfully:\n${pushed.map(r => r.sku).join(", ")}\n\n`;
-        if (skipped.length) msg += `⚠️ Already pushed (skipped):\n${skipped.join(", ")}\n\n`;
-        if (notFound.length) msg += `❌ Not found in Shopify:\n${notFound.join(", ")}`;
-
-        alert(msg || "Push complete!");
-        location.reload(); // 🔄 Auto refresh
-
-    } catch (err) {
-        document.body.removeChild(overlay);
-        console.error("Push error:", err);
-        alert("Something went wrong while pushing inventory.");
+        // Small delay between items to avoid overwhelming the server
+        if (i < rowsToPush.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
     }
+
+    // Re-enable button
+    button.disabled = false;
+    button.innerHTML = originalText;
+
+    // Show summary
+    let message = `Push completed!\n\n`;
+    if (successCount > 0) {
+        message += `✅ Successfully pushed: ${successCount}\n`;
+    }
+    if (skippedCount > 0) {
+        message += `⚠️ Already pushed (skipped): ${skippedCount}\n`;
+    }
+    if (failedCount > 0) {
+        message += `❌ Failed: ${failedCount}\n`;
+    }
+    
+    if (successCount === 0 && failedCount === 0 && skippedCount > 0) {
+        message = `⚠️ All selected items were already pushed successfully!\n\nNo items were processed.`;
+    }
+
+    alert(message);
+    
+    // Update summary totals
+    updateActiveTabSummary(index, table);
 });
 
 

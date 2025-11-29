@@ -70,10 +70,20 @@ private function generateSignValue($requestBody)
         Log::info("======================= Started Inventory Sync =======================");
 
         do {
-            $requestBody = [
+            // OLD CODE (commented for reference):
+                
+            // $requestBody = [
+            //     "type" => "bg.local.goods.list.query",
+            //     "goodsSearchType" => 1,
+            //     "goodsStatusFilterType" => 1,
+            //     "pageSize" => $pageSize,
+            //     "pageNumber" => $pageNumber,
+            //     "orderStatusFilterType" => [3, 4], // 3=Shipped, 4=Delivered
+            // ];
+             $requestBody = [
                 "type" => "bg.local.goods.list.query",
                 "goodsSearchType" => 1,
-                "goodsStatusFilterType" => 1,
+                "goodsStatusFilterType" => 1, // 1=On sale (excludes canceled/removed products)
                 "pageSize" => $pageSize,
                 "pageNumber" => $pageNumber,
             ];

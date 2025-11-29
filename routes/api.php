@@ -29,6 +29,29 @@ Route::get('/data', [ApiController::class, 'getData']);
 
 Route::post('/data', [ApiController::class, 'storeData']);
 
+// Test route to get Shein 30-day sales data from apicentral.shein_orders
+Route::get('/test-shein-sales', function () {
+    $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+    
+    $sheinSales = DB::connection('apicentral')
+        ->table('shein_orders')
+        ->select('seller_sku as sku', DB::raw('COUNT(*) as total_orders'))
+        ->where('created_at', '>=', $thirtyDaysAgo)
+        ->groupBy('seller_sku')
+        ->orderBy('total_orders', 'desc')
+        ->get();
+    
+    return response()->json([
+        'success' => true,
+        'date_range' => [
+            'from' => $thirtyDaysAgo->toDateString(),
+            'to' => \Carbon\Carbon::now()->toDateString()
+        ],
+        'total_skus' => $sheinSales->count(),
+        'data' => $sheinSales
+    ]);
+});
+
 Route::post('/update-amazon-column', [ApiController::class, 'updateAmazonColumn']);
 Route::post('/update-amazon-fba-column', [ApiController::class, 'updateAmazonFBAColumn']);
 Route::post('/update-ebay-column', [ApiController::class, 'updateEbayColumn']);
@@ -52,6 +75,7 @@ Route::get('/test-doba-item-validation', [PricingMasterViewsController::class, '
 Route::get('/advanced-doba-debug', [PricingMasterViewsController::class, 'advancedDobaDebug']); // Advanced debug with multiple methods
 Route::post('/update-doba-price', [PricingMasterViewsController::class, 'pushdobaPriceBySku']); // Doba price update API
 
+
 // Supplier open rfq form url
 //please dont delete this section 🙏
 Route::prefix('rfq-form')->group(function() {
@@ -68,6 +92,7 @@ Route::get('/all-channels-chart-data', [ZeroVisibilityMasterController::class, '
 Route::post('/save-channel-action', [ZeroVisibilityMasterController::class, 'saveChannelAction']);
 Route::get('/test-channel-data', [ZeroVisibilityMasterController::class, 'testChannelData']);
 
+
 // TikTok Shop Webhook
-// Route::post('/webhooks/tiktok/orders', [\App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);
-// Route::get('/webhooks/tiktok/test', [\App\Http\Controllers\Api\TiktokWebhookController::class, 'testWebhook']);
+// Route::post('/webhooks/tiktok/orders', [App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);
+// Route::get('/webhooks/tiktok/test', [App\Http\Controllers\Api\TiktokWebhookController::class, 'testWebhook']);

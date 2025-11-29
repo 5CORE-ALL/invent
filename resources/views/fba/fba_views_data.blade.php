@@ -9,6 +9,17 @@
         .tabulator-col-sorter {
             display: none !important;
         }
+        
+        /* Circular button styling */
+        .btn-circle {
+            border-radius: 50% !important;
+            width: 35px;
+            height: 35px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
     </style>
 @endsection
 @section('script')
@@ -50,6 +61,42 @@
                         <option value="50+">50%+</option>
                     </select>
 
+                    <select id="gpft-filter" class="form-select form-select-sm me-2"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50-60">50-60%</option>
+                        <option value="60plus">60%+</option>
+                    </select>
+
+                    <select id="cvr-filter" class="form-select form-select-sm me-2"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR</option>
+                        <option value="0-0">0 to 0.00%</option>
+                        <option value="0.01-1">0.01 - 1%</option>
+                        <option value="1-2">1-2%</option>
+                        <option value="2-3">2-3%</option>
+                        <option value="3-4">3-4%</option>
+                        <option value="0-4">0-4%</option>
+                        <option value="4-7">4-7%</option>
+                        <option value="7-10">7-10%</option>
+                        <option value="10plus">10%+</option>
+                    </select>
+
+                    <select id="status-filter" class="form-select form-select-sm me-2"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Status</option>
+                        <option value="not_pushed">Not Pushed</option>
+                        <option value="pushed">Pushed</option>
+                        <option value="applied">Applied</option>
+                        <option value="error">Error</option>
+                    </select>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block me-2">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -78,6 +125,10 @@
                     
                     <button id="toggle-chart-btn" class="btn btn-sm btn-secondary me-2" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
+                    </button>
+                    
+                    <button id="decrease-btn" class="btn btn-sm btn-warning me-2">
+                        <i class="fas fa-percent"></i> Decrease
                     </button>
                 </div>
 
@@ -126,6 +177,19 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
+                <!-- Discount Input Box (shown when SKUs are selected) -->
+                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="mb-0 fw-bold">Discount %:</label>
+                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
+                            placeholder="Enter discount %" step="0.1" min="0" max="100" 
+                            style="width: 150px; display: inline-block;">
+                        <button id="apply-discount-btn" class="btn btn-sm btn-primary">
+                            <i class="fas fa-check"></i> Apply Discount
+                        </button>
+                        <span id="selected-skus-count" class="text-muted ms-2"></span>
+                    </div>
+                </div>
                 <div id="fba-table-wrapper" style="height: 600px; display: flex; flex-direction: column;">
 
                     <!--Table body (scrollable section) -->
@@ -246,6 +310,31 @@
         <script>
             const COLUMN_VIS_KEY = "fba_tabulator_column_visibility";
             let metricsChart = null;
+            let table = null; // Global table reference
+            let decreaseModeActive = false; // Track decrease mode state
+            let selectedSkus = new Set(); // Track selected SKUs across all pages
+            
+            // Toast notification function
+            function showToast(message, type = 'info') {
+                const toastContainer = document.querySelector('.toast-container');
+                if (!toastContainer) return;
+                
+                const toast = document.createElement('div');
+                toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} border-0`;
+                toast.setAttribute('role', 'alert');
+                toast.setAttribute('aria-live', 'assertive');
+                toast.setAttribute('aria-atomic', 'true');
+                toast.innerHTML = `
+                    <div class="d-flex">
+                        <div class="toast-body">${message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                `;
+                toastContainer.appendChild(toast);
+                const bsToast = new bootstrap.Toast(toast);
+                bsToast.show();
+                toast.addEventListener('hidden.bs.toast', () => toast.remove());
+            }
 
             // Initialize Metrics Chart
             function initMetricsChart() {
@@ -670,6 +759,493 @@
                     });
             }
 
+            // Background retry storage key
+            const BACKGROUND_RETRY_KEY = 'fba_failed_price_pushes';
+            
+            // Save failed SKU to localStorage for background retry
+            function saveFailedSkuForRetry(sku, price, retryCount = 0) {
+                try {
+                    const failedSkus = JSON.parse(localStorage.getItem(BACKGROUND_RETRY_KEY) || '{}');
+                    failedSkus[sku] = {
+                        sku: sku,
+                        price: price,
+                        retryCount: retryCount,
+                        timestamp: Date.now()
+                    };
+                    localStorage.setItem(BACKGROUND_RETRY_KEY, JSON.stringify(failedSkus));
+                } catch (e) {
+                    console.error('Error saving failed SKU to localStorage:', e);
+                }
+            }
+            
+            // Remove SKU from background retry list
+            function removeFailedSkuFromRetry(sku) {
+                try {
+                    const failedSkus = JSON.parse(localStorage.getItem(BACKGROUND_RETRY_KEY) || '{}');
+                    delete failedSkus[sku];
+                    localStorage.setItem(BACKGROUND_RETRY_KEY, JSON.stringify(failedSkus));
+                } catch (e) {
+                    console.error('Error removing SKU from localStorage:', e);
+                }
+            }
+            
+            // Background retry function (runs even after page refresh)
+            async function backgroundRetryFailedSkus() {
+                try {
+                    const failedSkus = JSON.parse(localStorage.getItem(BACKGROUND_RETRY_KEY) || '{}');
+                    const skuKeys = Object.keys(failedSkus);
+                    
+                    if (skuKeys.length === 0) return;
+                    
+                    console.log(`Found ${skuKeys.length} failed SKU(s) to retry in background`);
+                    
+                    for (const sku of skuKeys) {
+                        const failedData = failedSkus[sku];
+                        
+                        // Skip if already retried 5 times
+                        if (failedData.retryCount >= 5) {
+                            console.log(`SKU ${sku} has reached max retries (5), removing from retry list`);
+                            removeFailedSkuFromRetry(sku);
+                            continue;
+                        }
+                        
+                        // Try to find the cell in the table for UI update
+                        let cell = null;
+                        if (table) {
+                            try {
+                                const rows = table.getRows();
+                                for (let i = 0; i < rows.length; i++) {
+                                    const rowData = rows[i].getData();
+                                    if (rowData.FBA_SKU === sku || rowData.SKU === sku) {
+                                        cell = rows[i].getCell('_accept');
+                                        break;
+                                    }
+                                }
+                            } catch (e) {
+                                // Table might not be ready, continue without UI update
+                            }
+                        }
+                        
+                        // Retry the price push once (background retry)
+                        const success = await applyPriceWithRetry(sku, failedData.price, cell, 0, true);
+                        
+                        if (!success) {
+                            // Increment retry count if still failed
+                            failedData.retryCount++;
+                            saveFailedSkuForRetry(sku, failedData.price, failedData.retryCount);
+                            console.log(`Background retry ${failedData.retryCount}/5 failed for SKU: ${sku}`);
+                        } else {
+                            // Success - already removed from retry list in applyPriceWithRetry
+                            // Update table if it's loaded
+                            if (table) {
+                                setTimeout(() => {
+                                    table.replaceData();
+                                }, 1000);
+                            }
+                        }
+                        
+                        // Small delay between SKUs to avoid burst calls
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                } catch (e) {
+                    console.error('Error in background retry:', e);
+                }
+            }
+            
+            // Apply price with retry logic
+            async function applyPriceWithRetry(sku, price, cell, retries = 0, isBackgroundRetry = false) {
+                const $btn = cell ? $(cell.getElement()).find('.apply-price-btn') : null;
+                const row = cell ? cell.getRow() : null;
+                const rowData = row ? row.getData() : null;
+
+                // Background mode: single attempt, no internal recursion (global max 5 handled via retryCount)
+                if (isBackgroundRetry) {
+                    try {
+                        const response = await $.ajax({
+                            url: '/push-fba-price',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name=\"csrf-token\"]').attr('content')
+                            },
+                            data: { sku: sku, price: price }
+                        });
+
+                        if (response.errors && response.errors.length > 0) {
+                            throw new Error(response.errors[0].message || 'API error');
+                        }
+
+                        // Success - update UI and remove from retry list
+                        if (rowData) {
+                            rowData.SPRICE_STATUS = 'pushed';
+                            row.update(rowData);
+                        }
+                        if ($btn && cell) {
+                            $btn.prop('disabled', false);
+                            $btn.html('<i class=\"fa-solid fa-check-double\"></i>');
+                            $btn.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                        }
+                        removeFailedSkuFromRetry(sku);
+                        return true;
+                    } catch (e) {
+                        // Background failure is handled by retryCount in backgroundRetryFailedSkus
+                        if (rowData) {
+                            rowData.SPRICE_STATUS = 'error';
+                            row.update(rowData);
+                        }
+                        if ($btn && cell) {
+                            $btn.prop('disabled', false);
+                            $btn.html('<i class=\"fa-solid fa-x\"></i>');
+                            $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                        }
+                        return false;
+                    }
+                }
+
+                // Foreground mode (user click): up to 5 immediate retries with spinner UI
+                // Set initial loading state (only if cell exists)
+                if (retries === 0 && cell && $btn && row) {
+                    $btn.prop('disabled', true);
+                    $btn.html('<i class=\"fas fa-spinner fa-spin\"></i>');
+                    $btn.attr('style', 'border: none; background: none; color: #ffc107; padding: 0;'); // Yellow text, no background
+                    if (rowData) {
+                        rowData.SPRICE_STATUS = 'processing';
+                        row.update(rowData);
+                    }
+                }
+
+                try {
+                    const response = await $.ajax({
+                        url: '/push-fba-price',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name=\"csrf-token\"]').attr('content')
+                        },
+                        data: { sku: sku, price: price }
+                    });
+
+                    if (response.errors && response.errors.length > 0) {
+                        throw new Error(response.errors[0].message || 'API error');
+                    }
+
+                    // Success - update UI
+                    if (rowData) {
+                        rowData.SPRICE_STATUS = 'pushed';
+                        row.update(rowData);
+                    }
+                    
+                    if ($btn && cell) {
+                        $btn.prop('disabled', false);
+                        $btn.html('<i class=\"fa-solid fa-check-double\"></i>');
+                        $btn.attr('style', 'border: none; background: none; color: #28a745; padding: 0;'); // Green text, no background
+                    }
+                    
+                    if (!isBackgroundRetry) {
+                        showToast('success', `Price $${price.toFixed(2)} pushed successfully for SKU: ${sku}`);
+                    }
+                    
+                    return true;
+                } catch (xhr) {
+                    const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseJSON?.message || 'Failed to apply price';
+                    console.error(`Attempt ${retries + 1} for SKU ${sku} failed:`, errorMsg);
+
+                    if (retries < 5) {
+                        console.log(`Retrying SKU ${sku} in 5 seconds...`);
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        return applyPriceWithRetry(sku, price, cell, retries + 1, isBackgroundRetry);
+                    } else {
+                        // Final failure - mark error and save for background retry
+                        if (rowData) {
+                            rowData.SPRICE_STATUS = 'error';
+                            row.update(rowData);
+                        }
+                        
+                        if ($btn && cell) {
+                            $btn.prop('disabled', false);
+                            $btn.html('<i class=\"fa-solid fa-x\"></i>');
+                            $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;'); // Red text, no background
+                        }
+                        
+                        // Save for background retry (only if not already a background retry)
+                        saveFailedSkuForRetry(sku, price, 0);
+                        showToast('error', `Failed to apply price for SKU: ${sku} after multiple retries. Will retry in background (max 5 times).`);
+                        
+                        return false;
+                    }
+                }
+            }
+
+            // Update selected count display
+            function updateSelectedCount() {
+                const count = selectedSkus.size;
+                $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
+                $('#discount-input-container').toggle(count > 0);
+            }
+
+            // Update select all checkbox state
+            function updateSelectAllCheckbox() {
+                const allData = table.getData('active');
+                const childRows = allData.filter(row => !row.is_parent);
+                const allSelected = childRows.length > 0 && childRows.every(row => selectedSkus.has(row.SKU));
+                $('#select-all-checkbox').prop('checked', allSelected);
+            }
+
+            // Apply discount to selected SKUs
+            function applyDiscount() {
+                const discountPercent = parseFloat($('#discount-percentage-input').val());
+                
+                if (isNaN(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+                    showToast('error', 'Please enter a valid discount percentage (0-100)');
+                    return;
+                }
+
+                if (selectedSkus.size === 0) {
+                    showToast('error', 'Please select at least one SKU');
+                    return;
+                }
+
+                const allData = table.getData('active');
+                let updatedCount = 0;
+
+                allData.forEach(row => {
+                    if (row.is_parent) return;
+                    
+                    if (selectedSkus.has(row.SKU)) {
+                        const currentPrice = parseFloat(row.FBA_Price) || 0;
+                        if (currentPrice > 0) {
+                            const discountedPrice = currentPrice * (1 - discountPercent / 100);
+                            const newSPrice = Math.max(0.01, discountedPrice);
+                            
+                            // Update S_Price in database
+                            $.ajax({
+                                url: '/update-fba-manual-data',
+                                method: 'POST',
+                                data: {
+                                    sku: row.FBA_SKU,
+                                    field: 's_price',
+                                    value: newSPrice,
+                                    _token: '{{ csrf_token() }}'
+                                },
+                                success: function() {
+                                    updatedCount++;
+                                    if (updatedCount === selectedSkus.size) {
+                                        showToast('success', `Discount applied to ${updatedCount} SKU(s)`);
+                                        table.replaceData();
+                                    }
+                                },
+                                error: function() {
+                                    showToast('error', 'Error applying discount');
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+
+            // Retry function for applying price with up to 5 attempts (Promise-based for Apply All)
+            function applyPriceWithRetryPromise(sku, price, maxRetries = 5, delay = 5000) {
+                return new Promise((resolve, reject) => {
+                    let attempt = 0;
+                    
+                    function attemptApply() {
+                        attempt++;
+                        
+                        $.ajax({
+                            url: '/push-fba-price',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                sku: sku,
+                                price: price
+                            },
+                            success: function(response) {
+                                // Check for errors in response
+                                if (response.errors && response.errors.length > 0) {
+                                    // If we have retries left, retry in background
+                                    if (attempt < maxRetries) {
+                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                        setTimeout(attemptApply, delay);
+                                    } else {
+                                        // Max retries reached, return error
+                                        console.error(`Max retries reached for SKU ${sku}`);
+                                        reject({ error: true, response: response });
+                                    }
+                                } else {
+                                    // Success
+                                    resolve({ success: true, response: response });
+                                }
+                            },
+                            error: function(xhr) {
+                                // If we have retries left, retry
+                                if (attempt < maxRetries) {
+                                    console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                    setTimeout(attemptApply, delay);
+                                } else {
+                                    // Max retries reached
+                                    console.error(`Max retries reached for SKU ${sku}`);
+                                    reject({ error: true, xhr: xhr });
+                                }
+                            }
+                        });
+                    }
+                    
+                    attemptApply();
+                });
+            }
+
+            // Apply all selected prices
+            window.applyAllSelectedPrices = function() {
+                if (selectedSkus.size === 0) {
+                    showToast('error', 'Please select at least one SKU to apply prices');
+                    return;
+                }
+                
+                const $btn = $('#apply-all-btn');
+                if ($btn.length === 0) {
+                    showToast('error', 'Apply All button not found');
+                    return;
+                }
+                
+                if ($btn.prop('disabled')) {
+                    return;
+                }
+                
+                const originalHtml = $btn.html();
+                
+                // Disable button and show loading state
+                $btn.prop('disabled', true);
+                $btn.html('<i class="fas fa-spinner fa-spin" style="color: #ffc107;"></i>');
+                
+                // Get all table data to find S_Price for selected SKUs
+                const tableData = table.getData('all');
+                const skusToProcess = [];
+                
+                // Build list of SKUs with their prices
+                selectedSkus.forEach(sku => {
+                    const row = tableData.find(r => r.SKU === sku);
+                    if (row) {
+                        const sprice = parseFloat(row.S_Price) || 0;
+                        const fbaSku = row.FBA_SKU || sku;
+                        if (sprice > 0) {
+                            skusToProcess.push({ sku: fbaSku, price: sprice, childSku: sku });
+                        }
+                    }
+                });
+                
+                if (skusToProcess.length === 0) {
+                    $btn.prop('disabled', false);
+                    $btn.html(originalHtml);
+                    showToast('error', 'No valid prices found for selected SKUs');
+                    return;
+                }
+                
+                let successCount = 0;
+                let errorCount = 0;
+                let currentIndex = 0;
+                
+                // Process SKUs sequentially (one by one)
+                function processNextSku() {
+                    if (currentIndex >= skusToProcess.length) {
+                        // All SKUs processed
+                        $btn.prop('disabled', false);
+                        
+                        if (errorCount === 0) {
+                            // All successful
+                            $btn.html(`<i class="fas fa-check-double" style="color: #28a745;"></i>`);
+                            showToast('success', `Successfully applied prices to ${successCount} SKU${successCount > 1 ? 's' : ''}`);
+                            
+                            // Reset to original state after 3 seconds
+                            setTimeout(() => {
+                                $btn.html(originalHtml);
+                            }, 3000);
+                        } else {
+                            $btn.html(originalHtml);
+                            showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
+                        }
+                        return;
+                    }
+                    
+                    const { sku, price, childSku } = skusToProcess[currentIndex];
+                    
+                    // Find the row and update button to show spinner
+                    const row = table.getRows().find(r => r.getData().SKU === childSku);
+                    if (row) {
+                        const acceptCell = row.getCell('_accept');
+                        if (acceptCell) {
+                            const $cellElement = $(acceptCell.getElement());
+                            const $btnInCell = $cellElement.find('.apply-price-btn');
+                            if ($btnInCell.length) {
+                                $btnInCell.prop('disabled', true);
+                                $btnInCell.html('<i class="fas fa-spinner fa-spin"></i>');
+                                $btnInCell.attr('style', 'border: none; background: none; color: #ffc107; padding: 0;');
+                            }
+                        }
+                    }
+                    
+                    // Use retry function to apply price
+                    applyPriceWithRetryPromise(sku, price, 5, 5000)
+                        .then((result) => {
+                            successCount++;
+                            
+                            // Update row data with pushed status instantly
+                            if (row) {
+                                const rowData = row.getData();
+                                rowData.SPRICE_STATUS = 'pushed';
+                                row.update(rowData);
+                                
+                                // Update button to show green check-double
+                                const acceptCell = row.getCell('_accept');
+                                if (acceptCell) {
+                                    const $cellElement = $(acceptCell.getElement());
+                                    const $btnInCell = $cellElement.find('.apply-price-btn');
+                                    if ($btnInCell.length) {
+                                        $btnInCell.prop('disabled', false);
+                                        $btnInCell.html('<i class="fa-solid fa-check-double"></i>');
+                                        $btnInCell.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                                    }
+                                }
+                            }
+                            
+                            // Process next SKU
+                            currentIndex++;
+                            processNextSku();
+                        })
+                        .catch((error) => {
+                            errorCount++;
+                            
+                            // Update row data with error status
+                            if (row) {
+                                const rowData = row.getData();
+                                rowData.SPRICE_STATUS = 'error';
+                                row.update(rowData);
+                                
+                                // Update button to show error icon
+                                const acceptCell = row.getCell('_accept');
+                                if (acceptCell) {
+                                    const $cellElement = $(acceptCell.getElement());
+                                    const $btnInCell = $cellElement.find('.apply-price-btn');
+                                    if ($btnInCell.length) {
+                                        $btnInCell.prop('disabled', false);
+                                        $btnInCell.html('<i class="fa-solid fa-x"></i>');
+                                        $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                    }
+                                }
+                            }
+                            
+                            // Save for background retry
+                            saveFailedSkuForRetry(sku, price, 0);
+                            
+                            // Process next SKU
+                            currentIndex++;
+                            processNextSku();
+                        });
+                }
+                
+                // Start processing
+                processNextSku();
+            };
+
             $(document).ready(function() {
                 // Initialize charts
                 initMetricsChart();
@@ -692,6 +1268,82 @@
 
                 // Show chart button by default on first load
                 $('#toggle-chart-btn').show();
+
+                // Decrease button toggle
+                $('#decrease-btn').on('click', function() {
+                    decreaseModeActive = !decreaseModeActive;
+                    const selectColumn = table.getColumn('_select');
+                    
+                    if (decreaseModeActive) {
+                        selectColumn.show();
+                        $(this).removeClass('btn-warning').addClass('btn-danger');
+                        $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
+                    } else {
+                        selectColumn.hide();
+                        $(this).removeClass('btn-danger').addClass('btn-warning');
+                        $(this).html('<i class="fas fa-percent"></i> Decrease');
+                        selectedSkus.clear();
+                        updateSelectedCount();
+                        updateSelectAllCheckbox();
+                    }
+                });
+
+                // Select all checkbox handler
+                $(document).on('change', '#select-all-checkbox', function() {
+                    const isChecked = $(this).prop('checked');
+                    const allData = table.getData('active');
+                    const childRows = allData.filter(row => !row.is_parent);
+                    
+                    childRows.forEach(row => {
+                        if (isChecked) {
+                            selectedSkus.add(row.SKU);
+                        } else {
+                            selectedSkus.delete(row.SKU);
+                        }
+                    });
+                    
+                    // Update all checkboxes
+                    table.getRows().forEach(tableRow => {
+                        const rowData = tableRow.getData();
+                        if (!rowData.is_parent) {
+                            const checkbox = $(tableRow.getElement()).find('.sku-select-checkbox');
+                            checkbox.prop('checked', isChecked);
+                        }
+                    });
+                    
+                    updateSelectedCount();
+                });
+
+                // Individual checkbox handler
+                $(document).on('change', '.sku-select-checkbox', function() {
+                    const sku = $(this).data('sku');
+                    if ($(this).prop('checked')) {
+                        selectedSkus.add(sku);
+                    } else {
+                        selectedSkus.delete(sku);
+                    }
+                    updateSelectedCount();
+                    updateSelectAllCheckbox();
+                });
+
+                // Apply discount button
+                $('#apply-discount-btn').on('click', function() {
+                    applyDiscount();
+                });
+
+                // Apply discount on Enter key
+                $('#discount-percentage-input').on('keypress', function(e) {
+                    if (e.which === 13) {
+                        applyDiscount();
+                    }
+                });
+
+                // Apply All button handler
+                $(document).on('click', '#apply-all-btn', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.applyAllSelectedPrices();
+                });
 
                 // Chart days filter
                 $('#chart-days-filter').on('change', function() {
@@ -725,7 +1377,7 @@
                     $('#skuMetricsModal').modal('show');
                 });
 
-                const table = new Tabulator("#fba-table", {
+                table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
                     ajaxSorting: true,
                     layout: "fitData",
@@ -892,7 +1544,27 @@
                                 }
                             }
                         },
-
+                        {
+                            field: "_select",
+                            hozAlign: "center",
+                            headerSort: false,
+                            visible: false,
+                            titleFormatter: function(column) {
+                                return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                    <span>Select</span>
+                                    <input type="checkbox" id="select-all-checkbox" style="cursor: pointer;" title="Select All Filtered SKUs">
+                                </div>`;
+                            },
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                
+                                const sku = rowData.SKU;
+                                const isSelected = selectedSkus.has(sku);
+                                
+                                return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">`;
+                            }
+                        },
                         {
                             title: "GPFT%",
                             field: "GPFT%",
@@ -941,15 +1613,15 @@
                         //     },
                         // },
 
-                        {
-                            title: "LP AMT",
-                            field: "LP_AMT",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue()) || 0;
-                                return '$' + value.toFixed(2);
-                            },
-                        },
+                        // {
+                        //     title: "LP AMT",
+                        //     field: "LP_AMT",
+                        //     hozAlign: "center",
+                        //     formatter: function(cell) {
+                        //         const value = parseFloat(cell.getValue()) || 0;
+                        //         return '$' + value.toFixed(2);
+                        //     },
+                        // },
 
                         {
                             title: "GROI%",
@@ -1099,8 +1771,101 @@
                                 }
                             },
                         },
+                        {
+                            field: "_accept",
+                            hozAlign: "center",
+                            headerSort: false,
+                            titleFormatter: function(column) {
+                                return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
+                                    <span>Accept</span>
+                                    <button type="button" class="btn btn-sm" id="apply-all-btn" title="Apply All Selected Prices to Amazon" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;">
+                                        <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
+                                    </button>
+                                </div>`;
+                            },
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
 
+                                const sku = rowData.SKU;
+                                const fbaSku = rowData.FBA_SKU;
+                                const sprice = parseFloat(rowData.S_Price) || 0;
+                                const status = rowData.SPRICE_STATUS || null;
 
+                                if (!sprice || sprice === 0) {
+                                    return '<span style="color: #999;">N/A</span>';
+                                }
+
+                                let icon = '<i class="fas fa-check"></i>';
+                                let iconColor = '#28a745'; // Green for apply
+                                let titleText = 'Apply Price to Amazon';
+
+                                if (status === 'processing') {
+                                    icon = '<i class="fas fa-spinner fa-spin"></i>';
+                                    iconColor = '#ffc107'; // Yellow text
+                                    titleText = 'Price pushing in progress...';
+                                } else if (status === 'pushed') {
+                                    icon = '<i class="fa-solid fa-check-double"></i>';
+                                    iconColor = '#28a745'; // Green text
+                                    titleText = 'Price pushed to Amazon (Double-click to mark as Applied)';
+                                } else if (status === 'applied') {
+                                    icon = '<i class="fa-solid fa-check-double"></i>';
+                                    iconColor = '#28a745'; // Green text
+                                    titleText = 'Price applied to Amazon (Double-click to change)';
+                                } else if (status === 'error') {
+                                    icon = '<i class="fa-solid fa-x"></i>';
+                                    iconColor = '#dc3545'; // Red text
+                                    titleText = 'Error applying price to Amazon';
+                                }
+
+                                // Show only icon with color, no background
+                                return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${fbaSku}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
+                                    ${icon}
+                                </button>`;
+                            },
+                            cellClick: function(e, cell) {
+                                const $target = $(e.target);
+                                
+                                // Handle double-click to change status from 'pushed' to 'applied'
+                                if (e.originalEvent && e.originalEvent.detail === 2) {
+                                    const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
+                                    const currentStatus = $btn.attr('data-status') || '';
+                                    
+                                    if (currentStatus === 'pushed') {
+                                        const sku = $btn.attr('data-sku') || $btn.data('sku');
+                                        $.ajax({
+                                            url: '/update-fba-sprice-status',
+                                            method: 'POST',
+                                            headers: {
+                                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                            },
+                                            data: { sku: sku, status: 'applied' },
+                                            success: function(response) {
+                                                if (response.success) {
+                                                    table.replaceData();
+                                                    showToast('success', 'Status updated to Applied');
+                                                }
+                                            }
+                                        });
+                                    }
+                                    return;
+                                }
+                                
+                                if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
+                                    e.stopPropagation();
+                                    const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
+                                    const sku = $btn.attr('data-sku') || $btn.data('sku');
+                                    const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
+                                    
+                                    if (!sku || !price || price <= 0 || isNaN(price)) {
+                                        showToast('error', 'Invalid SKU or price');
+                                        return;
+                                    }
+                                    
+                                    applyPriceWithRetry(sku, price, cell, 0);
+                                }
+                            }
+                        },
                         {
                             title: "SGPFT%",
                             field: "SGPFT%",
@@ -1656,6 +2421,9 @@
                     const inventoryFilter = $('#inventory-filter').val();
                     const parentFilter = $('#parent-filter').val();
                     const pftFilter = $('#pft-filter').val();
+                    const gpftFilter = $('#gpft-filter').val();
+                    const cvrFilter = $('#cvr-filter').val();
+                    const statusFilter = $('#status-filter').val();
 
                     table.clearFilter(true);
 
@@ -1692,6 +2460,64 @@
                             }
                         });
                     }
+
+                    if (gpftFilter !== 'all') {
+                        table.addFilter(function(data) {
+                            if (data.is_parent) return true;
+                            const gpftStr = data['GPFT%'] || '';
+                            const gpft = parseFloat(gpftStr.replace('%', '').replace(/<[^>]*>/g, '')) || 0;
+                            
+                            if (gpftFilter === 'negative') return gpft < 0;
+                            if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
+                            if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
+                            if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
+                            if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
+                            if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
+                            if (gpftFilter === '50-60') return gpft >= 50 && gpft < 60;
+                            if (gpftFilter === '60plus') return gpft >= 60;
+                            return true;
+                        });
+                    }
+
+                    if (cvrFilter !== 'all') {
+                        table.addFilter(function(data) {
+                            if (data.is_parent) return true;
+                            // Extract CVR from FBA_CVR HTML
+                            const cvrHtml = data['FBA_CVR'] || '';
+                            const cvrMatch = cvrHtml.match(/(\d+\.?\d*)%/);
+                            const cvr = cvrMatch ? parseFloat(cvrMatch[1]) : 0;
+                            
+                            if (cvrFilter === '0-0') return cvr === 0;
+                            if (cvrFilter === '0.01-1') return cvr > 0 && cvr <= 1;
+                            if (cvrFilter === '1-2') return cvr > 1 && cvr <= 2;
+                            if (cvrFilter === '2-3') return cvr > 2 && cvr <= 3;
+                            if (cvrFilter === '3-4') return cvr > 3 && cvr <= 4;
+                            if (cvrFilter === '0-4') return cvr >= 0 && cvr <= 4;
+                            if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
+                            if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
+                            if (cvrFilter === '10plus') return cvr > 10;
+                            return true;
+                        });
+                    }
+
+                    if (statusFilter !== 'all') {
+                        table.addFilter(function(data) {
+                            if (data.is_parent) return true;
+                            
+                            const status = data.SPRICE_STATUS || null;
+                            
+                            if (statusFilter === 'not_pushed') {
+                                return status === null || status === '' || status === 'error';
+                            } else if (statusFilter === 'pushed') {
+                                return status === 'pushed';
+                            } else if (statusFilter === 'applied') {
+                                return status === 'applied';
+                            } else if (statusFilter === 'error') {
+                                return status === 'error';
+                            }
+                            return true;
+                        });
+                    }
                 }
 
                 $('#inventory-filter').on('change', function() {
@@ -1705,6 +2531,21 @@
                 });
 
                 $('#pft-filter').on('change', function() {
+                    applyFilters();
+                    updateSummary();
+                });
+
+                $('#gpft-filter').on('change', function() {
+                    applyFilters();
+                    updateSummary();
+                });
+
+                $('#cvr-filter').on('change', function() {
+                    applyFilters();
+                    updateSummary();
+                });
+
+                $('#status-filter').on('change', function() {
                     applyFilters();
                     updateSummary();
                 });
@@ -1884,10 +2725,26 @@
                     buildColumnDropdown();
                     applyFilters(); // Apply default filters on load
                     updateSummary();
+                    
+                    // Set up periodic background retry check (every 30 seconds)
+                    setInterval(() => {
+                        backgroundRetryFailedSkus();
+                    }, 30000);
                 });
 
                 table.on('dataLoaded', function() {
                     updateSummary();
+                    // Sync checkboxes with selectedSkus
+                    table.getRows().forEach(tableRow => {
+                        const rowData = tableRow.getData();
+                        if (!rowData.is_parent) {
+                            const checkbox = $(tableRow.getElement()).find('.sku-select-checkbox');
+                            if (checkbox.length) {
+                                checkbox.prop('checked', selectedSkus.has(rowData.SKU));
+                            }
+                        }
+                    });
+                    updateSelectAllCheckbox();
                 });
 
                 // Toggle column from dropdown

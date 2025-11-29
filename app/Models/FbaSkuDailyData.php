@@ -23,3 +23,6 @@ class FbaSkuDailyData extends Model
     ];
 }
 
+
+
+

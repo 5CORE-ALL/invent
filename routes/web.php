@@ -805,6 +805,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'setAmazonColumnVisibility']);
     Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
+    Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice']);
+    Route::post('/update-sprice-status', [OverallAmazonController::class, 'updateSpriceStatus']);
     Route::post('/update-amazon-listed-live', [OverallAmazonController::class, 'updateListedLive']);
     Route::get('/amazon-export-pricing-cvr', [OverallAmazonController::class, 'exportAmazonPricingCVR'])->name('amazon.export.pricing.cvr');
     Route::get('/amazon-ratings-sample', [OverallAmazonController::class, 'downloadAmazonRatingsSample'])->name('amazon.ratings.sample');
@@ -1181,6 +1183,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/transit-container/delete', [TransitContainerDetailsController::class, 'deleteTransitItem']);
 
     Route::post('/inventory-warehouse/push', [InventoryWarehouseController::class, 'pushInventory'])->name('inventory.push');
+    Route::post('/inventory-warehouse/push-single', [InventoryWarehouseController::class, 'pushSingleItem'])->name('inventory.push.single');
     Route::get('/inventory-warehouse', [InventoryWarehouseController::class, 'index'])->name('inventory.index');
     Route::get('/inventory-warehouse/check-pushed', [InventoryWarehouseController::class, 'checkPushed']);
 
@@ -2067,7 +2070,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(FacebookAddsManagerController::class)->group(function () {
         Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
         Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
-        Route::post('/meta-all-ads-control/import', 'importMetaAds')->name('meta.ads.import');
+        Route::post('/meta-all-ads-control/sync-google-sheets', 'syncMetaAdsFromGoogleSheets')->name('meta.ads.sync');
         Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
         Route::get('/facebook-ads-control/data', 'index')->name('facebook.ads.index');
         Route::get('/facebook-web-to-video', 'facebookWebToVideo')->name('facebook.web.to.video');
@@ -2426,6 +2429,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('fba-ads-pt', 'fbaAdsPt');
            Route::get('fba-data-json', 'fbaDataJson');
         Route::post('push-fba-price', 'pushFbaPrice');
+        Route::post('update-fba-sprice-status', 'updateSpriceStatus');
         Route::get('fba-ads-data-json', 'fbaAdsDataJson');
         Route::get('fba-ads-pt-data-json', 'fbaAdsPtDataJson');
         Route::get('fba-monthly-sales/{sku}', 'getFbaMonthlySales');

@@ -48,6 +48,7 @@ class PurchaseController extends Controller
                 'supplier_id'   => $request->supplier,
                 'warehouse_id'  => $request->warehouse,
                 'items'         => json_encode($items),
+                'description'   => $request->description,
             ]);
 
             return redirect()->back()->with('flash_message', 'Purchase updated successfully ✅');
@@ -60,6 +61,7 @@ class PurchaseController extends Controller
             'supplier_id'   => $request->supplier,
             'warehouse_id'  => $request->warehouse,
             'items'         => json_encode($items),
+            'description'   => $request->description,
         ]);
 
         return redirect()->back()->with('flash_message', 'Purchase saved successfully ✅');
@@ -67,8 +69,7 @@ class PurchaseController extends Controller
 
     function generateVoucherNumber()
     {
-        $datePart = Carbon::now()->format('dmy'); 
-        $prefix = 'VO-' . $datePart;
+        $prefix = 'PURCHASE';
 
         $latestOrder = Purchase::select('vo_number')
             ->where('vo_number', 'like', "$prefix-%")
@@ -78,9 +79,9 @@ class PurchaseController extends Controller
         if ($latestOrder) {
             $parts = explode('-', $latestOrder->vo_number); 
             $lastSerial = intval(end($parts));
-            $newSerial = str_pad($lastSerial + 1, 2, '0', STR_PAD_LEFT);
+            $newSerial = str_pad($lastSerial + 1, 3, '0', STR_PAD_LEFT);
         } else {
-            $newSerial = '01';
+            $newSerial = '001';
         }
 
         return "$prefix-$newSerial";
@@ -100,6 +101,7 @@ class PurchaseController extends Controller
                 'warehouse_id'   => $purchase->warehouse_id,
                 'warehouse_name' => $purchase->warehouse->name ?? '',
                 'items'          => $purchase->items,
+                'description'    => $purchase->description,
             ];
         });
 
@@ -150,6 +152,38 @@ class PurchaseController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Deleted successfully.'
+        ]);
+    }
+
+    public function searchSku(Request $request)
+    {
+        $search = $request->get('q', '');
+        $page = $request->get('page', 1);
+        $perPage = 30;
+
+        $query = ProductMaster::select('sku', 'parent');
+
+        if (!empty($search)) {
+            $query->where('sku', 'like', "%{$search}%")
+                  ->orWhere('parent', 'like', "%{$search}%");
+        }
+
+        $total = $query->count();
+        $products = $query->skip(($page - 1) * $perPage)
+                          ->take($perPage)
+                          ->get();
+
+        $items = $products->map(function ($product) {
+            return [
+                'id' => $product->sku,
+                'text' => $product->sku . ($product->parent ? ' - ' . $product->parent : ''),
+                'parent' => $product->parent
+            ];
+        });
+
+        return response()->json([
+            'items' => $items,
+            'has_more' => ($page * $perPage) < $total
         ]);
     }
 

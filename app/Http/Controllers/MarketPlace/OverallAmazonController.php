@@ -1657,6 +1657,7 @@ class OverallAmazonController extends Controller
                     $row['SROI'] = $raw['SROI'] ?? null;
                     $row['SGPFT'] = $raw['SGPFT'] ?? null;
                     $row['ad_spend'] = $raw['Spend_L30'] ?? null;
+                    $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? null; // Status: 'pushed', 'applied', 'error'
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
@@ -2033,6 +2034,162 @@ class OverallAmazonController extends Controller
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
             'sgpft_percent' => $sgpft
+        ]);
+    }
+
+    public function applyAmazonPrice(Request $request)
+    {
+        // Validate and sanitize inputs
+        $sku = trim($request->input('sku', ''));
+        $price = $request->input('price');
+
+        // Validate SKU
+        if (empty($sku)) {
+            return response()->json([
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'SKU is required and cannot be empty.'
+                ]]
+            ], 400);
+        }
+
+        $sku = strtoupper($sku);
+
+        // Validate price
+        if ($price === null || $price === '') {
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json([
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'Price is required.'
+                ]]
+            ], 400);
+        }
+
+        // Convert to float and validate
+        $priceFloat = is_numeric($price) ? (float) $price : null;
+        
+        if ($priceFloat === null || $priceFloat <= 0) {
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json([
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'Price must be a valid number greater than 0.'
+                ]]
+            ], 400);
+        }
+
+        // Validate price range (reasonable bounds: 0.01 to 999999.99)
+        if ($priceFloat < 0.01 || $priceFloat > 999999.99) {
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json([
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'Price must be between $0.01 and $999,999.99.'
+                ]]
+            ], 400);
+        }
+
+        // Round price to 2 decimal places
+        $priceFloat = round($priceFloat, 2);
+
+        try {
+            $service = new AmazonSpApiService();
+            $result = $service->updateAmazonPriceUS($sku, $priceFloat);
+
+            // Check if the response indicates errors
+            if (isset($result['errors']) && !empty($result['errors'])) {
+                // Save error status
+                $this->saveSpriceStatus($sku, 'error');
+                
+                // Log the error for debugging
+                Log::error('Amazon price update failed', [
+                    'sku' => $sku,
+                    'price' => $priceFloat,
+                    'errors' => $result['errors']
+                ]);
+                
+                return response()->json($result);
+            }
+
+            // Check if response indicates success (pushed)
+            // If no errors, consider it pushed initially
+            $this->saveSpriceStatus($sku, 'pushed');
+            
+            Log::info('Amazon price update successful', [
+                'sku' => $sku,
+                'price' => $priceFloat
+            ]);
+            
+            return response()->json($result);
+        } catch (\Exception $e) {
+            // Save error status
+            $this->saveSpriceStatus($sku, 'error');
+            Log::error('Exception in applyAmazonPrice', [
+                'sku' => $sku,
+                'price' => $priceFloat,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'errors' => [[
+                    'code' => 'Exception',
+                    'message' => 'An error occurred: ' . $e->getMessage()
+                ]]
+            ], 500);
+        }
+    }
+
+    /**
+     * Save SPRICE status to database
+     * Status: 'pushed', 'applied', 'error'
+     */
+    private function saveSpriceStatus($sku, $status)
+    {
+        try {
+            $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+            
+            // Decode value column safely
+            $existing = is_array($amazonDataView->value)
+                ? $amazonDataView->value
+                : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+            
+            // Save status
+            $existing['SPRICE_STATUS'] = $status;
+            $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            
+            $amazonDataView->value = $existing;
+            $amazonDataView->save();
+            
+            Log::info('SPRICE status saved', ['sku' => $sku, 'status' => $status]);
+        } catch (\Exception $e) {
+            Log::error('Failed to save SPRICE status', [
+                'sku' => $sku,
+                'status' => $status,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Update SPRICE status manually
+     */
+    public function updateSpriceStatus(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'status' => 'required|in:pushed,applied,error'
+        ]);
+
+        $sku = strtoupper(trim($request->input('sku')));
+        $status = $request->input('status');
+
+        $this->saveSpriceStatus($sku, $status);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Status updated successfully',
+            'status' => $status
         ]);
     }
 
@@ -2450,6 +2607,7 @@ class OverallAmazonController extends Controller
                         'views' => $data['views'] ?? 0,
                         'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
                         'ad_percent' => round($data['ad_percent'] ?? 0, 2),
+                        'a_l30' => round($data['a_l30'] ?? 0, 0), // Amazon L30 sold units
                     ];
                 }
             } else {

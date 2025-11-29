@@ -77,19 +77,27 @@
                         <option value="req">REQ</option>
                     </select>
 
-                    <select id="pft-filter" class="form-select form-select-sm me-2"
+                    <select id="gpft-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
-                        <option value="all">PFT%</option>
+                        <option value="all">GPFT%</option>
                         <option value="negative">Negative</option>
                         <option value="0-10">0-10%</option>
                         <option value="10-20">10-20%</option>
                         <option value="20-30">20-30%</option>
-                        <option value="30plus">30%+</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50-60">50-60%</option>
+                        <option value="60plus">60%+</option>
                     </select>
 
                     <select id="cvr-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
                         <option value="all">CVR</option>
+                        <option value="0-0">0 to 0.00%</option>
+                        <option value="0.01-1">0.01 - 1%</option>
+                        <option value="1-2">1-2%</option>
+                        <option value="2-3">2-3%</option>
+                        <option value="3-4">3-4%</option>
                         <option value="0-4">0-4%</option>
                         <option value="4-7">4-7%</option>
                         <option value="7-10">7-10%</option>
@@ -100,6 +108,15 @@
                         style="width: auto; display: inline-block;">
                         <option value="show">Show Parent</option>
                         <option value="hide" selected>Hide Parent</option>
+                    </select>
+
+                    <select id="status-filter" class="form-select form-select-sm me-2"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Status</option>
+                        <option value="not-pushed">Not Pushed</option>
+                        <option value="pushed">Pushed</option>
+                        <option value="applied">Applied</option>
+                        <option value="error">Error</option>
                     </select>
 
                     <!-- Column Visibility Dropdown -->
@@ -134,6 +151,10 @@
                     <a href="{{ url('/amazon-export-pricing-cvr') }}" class="btn btn-sm btn-success me-2">
                         <i class="fas fa-file-csv"></i> Export
                     </a>
+                    
+                    <button id="decrease-btn" class="btn btn-sm btn-warning me-2">
+                        <i class="fas fa-percent"></i> Decrease
+                    </button>
                     
                     <button id="toggle-chart-btn" class="btn btn-sm btn-secondary me-2" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
@@ -185,6 +206,19 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
+                <!-- Discount Input Box (shown when SKUs are selected) -->
+                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="mb-0 fw-bold">Discount %:</label>
+                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
+                            placeholder="Enter discount %" step="0.1" min="0" max="100" 
+                            style="width: 150px; display: inline-block;">
+                        <button id="apply-discount-btn" class="btn btn-sm btn-primary">
+                            <i class="fas fa-check"></i> Apply Discount
+                        </button>
+                        <span id="selected-skus-count" class="text-muted ms-2"></span>
+                    </div>
+                </div>
                 <div id="amazon-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <!-- Table body (scrollable section) -->
                     <div id="amazon-table" style="flex: 1;"></div>
@@ -292,6 +326,8 @@
         let skuMetricsChart = null;
         let currentSku = null;
         let table = null; // Global table reference
+        let decreaseModeActive = false; // Track decrease mode state
+        let selectedSkus = new Set(); // Track selected SKUs across all pages
 
         // Initialize Metrics Chart
         function initMetricsChart() {
@@ -522,6 +558,17 @@
                             pointHoverRadius: 6,
                             yAxisID: 'y1',
                             tension: 0.4
+                        },
+                        {
+                            label: 'Sold (L30)',
+                            data: [],
+                            borderColor: '#FF00FF',
+                            backgroundColor: 'rgba(255, 0, 255, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
                         }
                     ]
                 },
@@ -569,6 +616,8 @@
                                         return label + ': $' + value.toFixed(2);
                                     } else if (label.includes('Views')) {
                                         return label + ': ' + value.toLocaleString();
+                                    } else if (label.includes('Sold')) {
+                                        return label + ': ' + Math.round(value).toLocaleString();
                                     } else if (label.includes('CVR')) {
                                         return label + ': ' + value.toFixed(1) + '%';
                                     } else if (label.includes('AD')) {
@@ -601,7 +650,7 @@
                             position: 'left',
                             title: {
                                 display: true,
-                                text: 'Price/Views',
+                                text: 'Price/Views/Sold',
                                 font: {
                                     size: 12,
                                     weight: 'bold'
@@ -613,9 +662,8 @@
                                     size: 11
                                 },
                                 callback: function(value, index, values) {
-                                    if (values.length > 0 && Math.max(...values.map(v => v.value)) < 1000) {
-                                        return '$' + value.toFixed(0);
-                                    }
+                                    // Format as number (for Views and Sold), not currency
+                                    // Price will be shown in tooltip, but axis shows numeric values
                                     return value.toLocaleString();
                                 }
                             }
@@ -681,6 +729,7 @@
                         skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
                         skuMetricsChart.data.datasets[2].data = data.map(d => d.cvr_percent || 0);
                         skuMetricsChart.data.datasets[3].data = data.map(d => d.ad_percent || 0);
+                        skuMetricsChart.data.datasets[4].data = data.map(d => d.a_l30 || 0);
                         skuMetricsChart.update('active');
                         console.log('Chart updated successfully with', data.length, 'data points');
                     }
@@ -713,6 +762,568 @@
 
             // Show chart button by default on first load
             $('#toggle-chart-btn').show();
+
+            // Decrease Mode Toggle
+            $('#decrease-btn').on('click', function() {
+                decreaseModeActive = !decreaseModeActive;
+                const selectColumn = table.getColumn('_select');
+                
+                if (decreaseModeActive) {
+                    selectColumn.show();
+                    $(this).removeClass('btn-warning').addClass('btn-danger');
+                    $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
+                } else {
+                    selectColumn.hide();
+                    $(this).removeClass('btn-danger').addClass('btn-warning');
+                    $(this).html('<i class="fas fa-percent"></i> Decrease');
+                    // Clear all selections
+                    selectedSkus.clear();
+                    $('.sku-select-checkbox').prop('checked', false);
+                    $('#select-all-checkbox').prop('checked', false);
+                    $('#discount-input-container').hide();
+                }
+            });
+
+            // Checkbox change handler - track selected SKUs
+            $(document).on('change', '.sku-select-checkbox', function() {
+                const sku = $(this).data('sku');
+                const isChecked = $(this).prop('checked');
+                
+                if (isChecked) {
+                    selectedSkus.add(sku);
+                } else {
+                    selectedSkus.delete(sku);
+                }
+                
+                updateSelectedCount();
+                updateSelectAllCheckbox();
+            });
+
+            // Update selected count and discount input visibility
+            function updateSelectedCount() {
+                const selectedCount = selectedSkus.size;
+                
+                if (selectedCount > 0) {
+                    $('#discount-input-container').show();
+                    $('#selected-skus-count').text(`(${selectedCount} SKU${selectedCount > 1 ? 's' : ''} selected)`);
+                } else {
+                    $('#discount-input-container').hide();
+                }
+                
+                // Update Apply All button
+                updateApplyAllButton();
+            }
+
+            // Update Apply All button count and state
+            function updateApplyAllButton() {
+                const selectedCount = selectedSkus.size;
+                const $btn = $('.apply-all-prices-btn');
+                const $count = $('.apply-all-count');
+                
+                if ($count.length) {
+                    $count.text(selectedCount);
+                }
+                
+                if ($btn.length) {
+                    if (selectedCount === 0) {
+                        $btn.prop('disabled', true).addClass('disabled');
+                    } else {
+                        $btn.prop('disabled', false).removeClass('disabled');
+                    }
+                }
+            }
+
+            // Retry function for applying price with up to 5 attempts
+            function applyPriceWithRetry(sku, price, cell, maxRetries = 5, delay = 5000) {
+                return new Promise((resolve, reject) => {
+                    let attempt = 0;
+                    
+                    function attemptApply() {
+                        attempt++;
+                        
+                        $.ajax({
+                            url: '/apply-amazon-price',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                sku: sku,
+                                price: price
+                            },
+                            success: function(response) {
+                                // Check for errors in response
+                                if (response.errors && response.errors.length > 0) {
+                                    // If we have retries left, retry in background
+                                    if (attempt < maxRetries) {
+                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                        setTimeout(attemptApply, delay);
+                                    } else {
+                                        // Max retries reached, return error
+                                        console.error(`Max retries reached for SKU ${sku}`);
+                                        reject({ error: true, response: response });
+                                    }
+                                } else {
+                                    // Success
+                                    resolve({ success: true, response: response });
+                                }
+                            },
+                            error: function(xhr) {
+                                // If we have retries left, retry in background
+                                if (attempt < maxRetries) {
+                                    console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                    setTimeout(attemptApply, delay);
+                                } else {
+                                    // Max retries reached, return error
+                                    console.error(`Max retries reached for SKU ${sku}`);
+                                    reject({ error: true, xhr: xhr });
+                                }
+                            }
+                        });
+                    }
+                    
+                    attemptApply();
+                });
+            }
+
+            // Global function to apply all selected prices (can be called from button)
+            window.applyAllSelectedPrices = function() {
+                if (selectedSkus.size === 0) {
+                    showToast('error', 'Please select at least one SKU to apply prices');
+                    return;
+                }
+                
+                const $btn = $('.apply-all-prices-btn');
+                if ($btn.length === 0) {
+                    showToast('error', 'Apply All button not found');
+                    return;
+                }
+                
+                if ($btn.prop('disabled')) {
+                    return;
+                }
+                
+                const originalHtml = $btn.html();
+                
+                // Disable button and show loading state
+                $btn.prop('disabled', true);
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+                
+                // Get all table data to find SPRICE for selected SKUs
+                const tableData = table.getData('all');
+                const skusToProcess = [];
+                
+                // Build list of SKUs with their prices
+                selectedSkus.forEach(sku => {
+                    const row = tableData.find(r => r['(Child) sku'] === sku);
+                    if (row) {
+                        const sprice = parseFloat(row.SPRICE) || 0;
+                        if (sprice > 0) {
+                            skusToProcess.push({ sku: sku, price: sprice });
+                        }
+                    }
+                });
+                
+                if (skusToProcess.length === 0) {
+                    $btn.prop('disabled', false);
+                    $btn.html(originalHtml);
+                    showToast('error', 'No valid prices found for selected SKUs');
+                    return;
+                }
+                
+                let successCount = 0;
+                let errorCount = 0;
+                let currentIndex = 0;
+                
+                // Process SKUs sequentially (one by one)
+                function processNextSku() {
+                    if (currentIndex >= skusToProcess.length) {
+                        // All SKUs processed
+                        $btn.prop('disabled', false);
+                        
+                        if (errorCount === 0) {
+                            // All successful
+                            $btn.removeClass('btn-primary').addClass('btn-success');
+                            const selectedCount = selectedSkus.size;
+                            $btn.html(`<i class="fas fa-check-double" style="color: white; font-weight: bold;"></i> Applied (<span class="apply-all-count">${selectedCount}</span>)`);
+                            showToast('success', `Successfully applied prices to ${successCount} SKU${successCount > 1 ? 's' : ''}`);
+                            
+                            // Reset to original state after 3 seconds
+                            setTimeout(() => {
+                                $btn.removeClass('btn-success').addClass('btn-primary');
+                                $btn.html(originalHtml);
+                                updateApplyAllButton();
+                            }, 3000);
+                        } else {
+                            $btn.html(originalHtml);
+                            showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
+                        }
+                        return;
+                    }
+                    
+                    const { sku, price } = skusToProcess[currentIndex];
+                    
+                    // Find the row and update button to show clock spinner
+                    const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
+                    if (row) {
+                        const acceptCell = row.getCell('_accept');
+                        if (acceptCell) {
+                            const $cellElement = $(acceptCell.getElement());
+                            const $btnInCell = $cellElement.find('.apply-price-btn');
+                            if ($btnInCell.length) {
+                                $btnInCell.prop('disabled', true);
+                                // Ensure circular styling
+                                $btnInCell.css({
+                                    'border-radius': '50%',
+                                    'width': '35px',
+                                    'height': '35px',
+                                    'padding': '0',
+                                    'display': 'flex',
+                                    'align-items': 'center',
+                                    'justify-content': 'center'
+                                });
+                                $btnInCell.html('<i class="fas fa-clock fa-spin" style="color: white;"></i>');
+                            }
+                        }
+                    }
+                    
+                    // Use retry function to apply price
+                    applyPriceWithRetry(sku, price, null, 5, 5000)
+                        .then((result) => {
+                            successCount++;
+                            
+                            // Update row data with pushed status instantly
+                            if (row) {
+                                const rowData = row.getData();
+                                rowData.SPRICE_STATUS = 'pushed';
+                                row.update(rowData);
+                                
+                                // Update button to show green tick in circular button
+                                const acceptCell = row.getCell('_accept');
+                                if (acceptCell) {
+                                    const $cellElement = $(acceptCell.getElement());
+                                    const $btnInCell = $cellElement.find('.apply-price-btn');
+                                    if ($btnInCell.length) {
+                                        $btnInCell.prop('disabled', false);
+                                        // Ensure circular styling
+                                        $btnInCell.css({
+                                            'border-radius': '50%',
+                                            'width': '35px',
+                                            'height': '35px',
+                                            'padding': '0',
+                                            'display': 'flex',
+                                            'align-items': 'center',
+                                            'justify-content': 'center'
+                                        });
+                                        $btnInCell.html('<i class="fas fa-check-circle" style="color: white; font-size: 1.1em;"></i>');
+                                    }
+                                }
+                            }
+                            
+                            // Process next SKU
+                            currentIndex++;
+                            processNextSku();
+                        })
+                        .catch((error) => {
+                            errorCount++;
+                            
+                            // Update row data with error status
+                            if (row) {
+                                const rowData = row.getData();
+                                rowData.SPRICE_STATUS = 'error';
+                                row.update(rowData);
+                                
+                                // Update button to show error icon in circular button
+                                const acceptCell = row.getCell('_accept');
+                                if (acceptCell) {
+                                    const $cellElement = $(acceptCell.getElement());
+                                    const $btnInCell = $cellElement.find('.apply-price-btn');
+                                    if ($btnInCell.length) {
+                                        $btnInCell.prop('disabled', false);
+                                        // Ensure circular styling
+                                        $btnInCell.css({
+                                            'border-radius': '50%',
+                                            'width': '35px',
+                                            'height': '35px',
+                                            'padding': '0',
+                                            'display': 'flex',
+                                            'align-items': 'center',
+                                            'justify-content': 'center'
+                                        });
+                                        $btnInCell.html('<i class="fas fa-times" style="color: white;"></i>');
+                                    }
+                                }
+                            }
+                            
+                            // Process next SKU even if this one failed
+                            currentIndex++;
+                            processNextSku();
+                        });
+                }
+                
+                // Start processing
+                processNextSku();
+            };
+
+            // Update select all checkbox state based on current selections
+            function updateSelectAllCheckbox() {
+                if (!table) return;
+                
+                // Get all filtered data (excluding parent rows)
+                const filteredData = table.getData('active').filter(row => !row.is_parent_summary);
+                
+                if (filteredData.length === 0) {
+                    $('#select-all-checkbox').prop('checked', false);
+                    return;
+                }
+                
+                // Get all filtered SKUs
+                const filteredSkus = new Set(filteredData.map(row => row['(Child) sku']).filter(sku => sku));
+                
+                // Check if all filtered SKUs are selected
+                const allFilteredSelected = filteredSkus.size > 0 && 
+                    Array.from(filteredSkus).every(sku => selectedSkus.has(sku));
+                
+                $('#select-all-checkbox').prop('checked', allFilteredSelected);
+            }
+
+            // Select All checkbox handler
+            $(document).on('change', '#select-all-checkbox', function() {
+                const isChecked = $(this).prop('checked');
+                
+                // Get all filtered data (excluding parent rows)
+                const filteredData = table.getData('active').filter(row => !row.is_parent_summary);
+                
+                // Add or remove all filtered SKUs from the selected set
+                filteredData.forEach(row => {
+                    const sku = row['(Child) sku'];
+                    if (sku) {
+                        if (isChecked) {
+                            selectedSkus.add(sku);
+                        } else {
+                            selectedSkus.delete(sku);
+                        }
+                    }
+                });
+                
+                // Update all visible checkboxes
+                $('.sku-select-checkbox').each(function() {
+                    const sku = $(this).data('sku');
+                    $(this).prop('checked', selectedSkus.has(sku));
+                });
+                
+                updateSelectedCount();
+            });
+
+            // Apply Discount Button
+            $('#apply-discount-btn').on('click', function() {
+                const discountPercent = parseFloat($('#discount-percentage-input').val());
+                
+                if (isNaN(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+                    showToast('error', 'Please enter a valid discount percentage (0-100)');
+                    return;
+                }
+                
+                if (selectedSkus.size === 0) {
+                    showToast('error', 'Please select at least one SKU');
+                    return;
+                }
+                
+                const discountDecimal = discountPercent / 100;
+                let successCount = 0;
+                let errorCount = 0;
+                let totalToProcess = selectedSkus.size;
+                
+                // Disable button during processing
+                $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+                
+                // Process each selected SKU
+                selectedSkus.forEach(sku => {
+                    // Try to find the row - it might be on a different page
+                    let row = null;
+                    table.getRows().forEach(r => {
+                        if (r.getData()['(Child) sku'] === sku) {
+                            row = r;
+                        }
+                    });
+                    
+                    if (row) {
+                        const rowData = row.getData();
+                        const originalPrice = parseFloat(rowData.price) || 0;
+                        
+                        if (originalPrice > 0) {
+                            const discountedPrice = originalPrice * (1 - discountDecimal);
+                            
+                            // Update SPRICE via AJAX
+                            $.ajax({
+                                url: '/save-amazon-sprice',
+                                method: 'POST',
+                                headers: {
+                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                },
+                                data: {
+                                    sku: sku,
+                                    sprice: discountedPrice.toFixed(2)
+                                },
+                                success: function(response) {
+                                    successCount++;
+                                    
+                                    // Update row data
+                                    row.update({
+                                        'SPRICE': discountedPrice.toFixed(2)
+                                    });
+                                    
+                                    if (response.sgpft_percent !== undefined) {
+                                        row.update({
+                                            'SGPFT': response.sgpft_percent
+                                        });
+                                    }
+                                    if (response.spft_percent !== undefined) {
+                                        row.update({
+                                            'Spft%': response.spft_percent
+                                        });
+                                    }
+                                    if (response.sroi_percent !== undefined) {
+                                        row.update({
+                                            'SROI': response.sroi_percent
+                                        });
+                                    }
+                                    
+                                    // Check if all requests are complete
+                                    if (successCount + errorCount === totalToProcess) {
+                                        $('#apply-discount-btn').prop('disabled', false).html('<i class="fas fa-check"></i> Apply Discount');
+                                        if (errorCount === 0) {
+                                            showToast('success', `Discount applied successfully to ${successCount} SKU${successCount > 1 ? 's' : ''}`);
+                                        } else {
+                                            showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
+                                        }
+                                    }
+                                },
+                                error: function(xhr) {
+                                    errorCount++;
+                                    if (successCount + errorCount === totalToProcess) {
+                                        $('#apply-discount-btn').prop('disabled', false).html('<i class="fas fa-check"></i> Apply Discount');
+                                        showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
+                                    }
+                                }
+                            });
+                        } else {
+                            errorCount++;
+                            if (successCount + errorCount === totalToProcess) {
+                                $('#apply-discount-btn').prop('disabled', false).html('<i class="fas fa-check"></i> Apply Discount');
+                                showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
+                            }
+                        }
+                    } else {
+                        errorCount++;
+                        if (successCount + errorCount === totalToProcess) {
+                            $('#apply-discount-btn').prop('disabled', false).html('<i class="fas fa-check"></i> Apply Discount');
+                            showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
+                        }
+                    }
+                });
+            });
+
+            // Allow Enter key to apply discount
+            $('#discount-percentage-input').on('keypress', function(e) {
+                if (e.which === 13) { // Enter key
+                    $('#apply-discount-btn').click();
+                }
+            });
+
+            // Apply Price to Amazon button - delegated event handler
+            $(document).on('click', '.apply-price-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log('Apply button clicked'); // Debug log
+                
+                const $btn = $(this);
+                const sku = $btn.attr('data-sku') || $btn.data('sku');
+                const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
+                
+                console.log('SKU:', sku, 'Price:', price); // Debug log
+                
+                if (!sku || !price || price <= 0 || isNaN(price)) {
+                    console.error('Invalid SKU or price:', {sku, price}); // Debug log
+                    showToast('error', 'Invalid SKU or price');
+                    return;
+                }
+                
+                // Disable button and show loading state
+                $btn.prop('disabled', true);
+                const originalHtml = $btn.html();
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+                
+                // Call the API to update Amazon price
+                $.ajax({
+                    url: '/apply-amazon-price',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        price: price
+                    },
+                    success: function(response) {
+                        $btn.prop('disabled', false);
+                        
+                        // Check for errors in response (matching FBA pattern)
+                        if (response.errors && response.errors.length > 0) {
+                            $btn.html(originalHtml);
+                            const errorMsg = response.errors[0].message || 'Failed to apply price to Amazon';
+                            showToast('error', errorMsg);
+                        } else {
+                            // Success - no errors
+                            showToast('success', `Price $${price.toFixed(2)} applied successfully to Amazon for SKU: ${sku}`);
+                            // Update button to show success state
+                            $btn.removeClass('btn-success').addClass('btn-secondary');
+                            $btn.html('<i class="fas fa-check-circle"></i> Applied');
+                            setTimeout(() => {
+                                $btn.removeClass('btn-secondary').addClass('btn-success');
+                                $btn.html(originalHtml);
+                            }, 3000);
+                        }
+                    },
+                    error: function(xhr) {
+                        $btn.prop('disabled', false);
+                        $btn.html(originalHtml);
+                        
+                        let errorMsg = 'Failed to apply price to Amazon';
+                        if (xhr.responseJSON) {
+                            // Check for error field first (matching FBA pattern)
+                            errorMsg = xhr.responseJSON.error || xhr.responseJSON.message || errorMsg;
+                        } else if (xhr.responseText) {
+                            try {
+                                const errorData = JSON.parse(xhr.responseText);
+                                errorMsg = errorData.error || errorData.message || errorMsg;
+                            } catch (e) {
+                                errorMsg = xhr.responseText.substring(0, 100);
+                            }
+                        }
+                        
+                        showToast('error', errorMsg);
+                        console.error('Apply price error:', xhr);
+                    }
+                });
+            });
+
+            // Apply All Prices button - delegated event handler
+            $(document).on('click', '.apply-all-prices-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log('Apply All button clicked via delegated handler'); // Debug log
+                
+                // Call the global function
+                if (typeof applyAllSelectedPrices === 'function') {
+                    applyAllSelectedPrices();
+                } else {
+                    console.error('applyAllSelectedPrices function not found');
+                    showToast('error', 'Apply All function not available');
+                }
+            });
 
             // Chart days filter
             $('#chart-days-filter').on('change', function() {
@@ -1085,6 +1696,30 @@
                         },
                         width: 100
                     },
+                    {
+                        title: "Select",
+                        field: "_select",
+                        hozAlign: "center",
+                        headerSort: false,
+                        visible: false,
+                        titleFormatter: function(column) {
+                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                <span>Select</span>
+                                <input type="checkbox" id="select-all-checkbox" style="cursor: pointer;" title="Select All Visible">
+                            </div>`;
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+                            
+                            const sku = rowData['(Child) sku'];
+                            const isChecked = selectedSkus.has(sku) ? 'checked' : '';
+                            return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isChecked} style="cursor: pointer;">`;
+                        },
+                        width: 60
+                    },
 
                 
 
@@ -1112,6 +1747,163 @@
                             }
                             
                             return formattedValue;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "Accept",
+                        field: "_accept",
+                        hozAlign: "center",
+                        headerSort: false,
+                        titleFormatter: function(column) {
+                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
+                                <span>Accept</span>
+                                <button type="button" class="btn btn-sm apply-all-prices-btn" title="Apply All Selected Prices to Amazon" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;" onclick="event.stopPropagation(); if(typeof applyAllSelectedPrices === 'function') { applyAllSelectedPrices(); }">
+                                    <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
+                                </button>
+                            </div>`;
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+                            
+                            const sku = rowData['(Child) sku'];
+                            const sprice = parseFloat(rowData.SPRICE) || 0;
+                            const status = rowData.SPRICE_STATUS || null;
+                            
+                            if (!sprice || sprice === 0) {
+                                return '<span style="color: #999;">N/A</span>';
+                            }
+                            
+                            // Determine icon and color based on status
+                            let icon = '<i class="fas fa-check"></i>';
+                            let iconColor = '#28a745'; // Green for apply
+                            let titleText = 'Apply Price to Amazon';
+                            
+                            if (status === 'pushed') {
+                                icon = '<i class="fa-solid fa-check-double"></i>';
+                                iconColor = '#28a745'; // Green
+                                titleText = 'Price pushed to Amazon (Double-click to mark as Applied)';
+                            } else if (status === 'applied') {
+                                icon = '<i class="fa-solid fa-check-double"></i>';
+                                iconColor = '#28a745'; // Green
+                                titleText = 'Price applied to Amazon (Double-click to change)';
+                            } else if (status === 'error') {
+                                icon = '<i class="fa-solid fa-x"></i>';
+                                iconColor = '#dc3545'; // Red
+                                titleText = 'Error applying price to Amazon';
+                            } else if (status === 'processing') {
+                                icon = '<i class="fas fa-spinner fa-spin"></i>';
+                                iconColor = '#ffc107'; // Yellow
+                                titleText = 'Price pushing in progress...';
+                            }
+                            
+                            // Show only icon with color, no background
+                            return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${sku}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
+                                ${icon}
+                            </button>`;
+                        },
+                        cellClick: function(e, cell) {
+                            // Handle button click directly in cellClick
+                            const $target = $(e.target);
+                            if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
+                                e.stopPropagation();
+                                const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
+                                const sku = $btn.attr('data-sku') || $btn.data('sku');
+                                const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
+                                
+                                if (!sku || !price || price <= 0 || isNaN(price)) {
+                                    showToast('error', 'Invalid SKU or price');
+                                    return;
+                                }
+                                
+                                // Disable button and show loading state (only clock icon)
+                                $btn.prop('disabled', true);
+                                // Ensure circular styling
+                                $btn.css({
+                                    'border-radius': '50%',
+                                    'width': '35px',
+                                    'height': '35px',
+                                    'padding': '0',
+                                    'display': 'flex',
+                                    'align-items': 'center',
+                                    'justify-content': 'center'
+                                });
+                                $btn.html('<i class="fas fa-clock fa-spin" style="color: white;"></i>');
+                                
+                                // Use retry function
+                                applyPriceWithRetry(sku, price, cell, 5, 5000)
+                                    .then((result) => {
+                                        // Success - update row data with pushed status
+                                        const row = cell.getRow();
+                                        const rowData = row.getData();
+                                        rowData.SPRICE_STATUS = 'pushed';
+                                        row.update(rowData);
+                                        
+                                        $btn.prop('disabled', false);
+                                        // Show green tick icon in circular button
+                                        $btn.html('<i class="fas fa-check-circle" style="color: white; font-size: 1.1em;"></i>');
+                                    })
+                                    .catch((error) => {
+                                        // Update row data with error status
+                                        const row = cell.getRow();
+                                        const rowData = row.getData();
+                                        rowData.SPRICE_STATUS = 'error';
+                                        row.update(rowData);
+                                        
+                                        $btn.prop('disabled', false);
+                                        // Show error icon in circular button
+                                        $btn.html('<i class="fas fa-times" style="color: white;"></i>');
+                                        
+                                        console.error('Apply price failed after retries:', error);
+                                    });
+                                return;
+                            }
+                            // Don't stop propagation for other clicks
+                            e.stopPropagation();
+                        },
+                        cellDblClick: function(e, cell) {
+                            // Handle double-click to manually set status to 'applied'
+                            const $target = $(e.target);
+                            if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
+                                e.stopPropagation();
+                                const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
+                                const sku = $btn.attr('data-sku') || $btn.data('sku');
+                                const currentStatus = $btn.attr('data-status') || '';
+                                
+                                // Only allow setting to 'applied' if current status is 'pushed'
+                                if (currentStatus === 'pushed') {
+                                    $.ajax({
+                                        url: '/update-sprice-status',
+                                        method: 'POST',
+                                        headers: {
+                                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                        },
+                                        data: {
+                                            sku: sku,
+                                            status: 'applied'
+                                        },
+                                        success: function(response) {
+                                            // Update row data
+                                            const row = cell.getRow();
+                                            const rowData = row.getData();
+                                            rowData.SPRICE_STATUS = 'applied';
+                                            row.update(rowData);
+                                            showToast('success', 'Status updated to Applied');
+                                        },
+                                        error: function(xhr) {
+                                            showToast('error', 'Failed to update status');
+                                        }
+                                    });
+                                } else if (currentStatus === 'applied') {
+                                    // If already applied, show message
+                                    showToast('info', 'Price is already marked as Applied');
+                                } else {
+                                    showToast('info', 'Please push the price first before marking as Applied');
+                                }
+                            }
                         },
                         width: 80
                     },
@@ -1347,9 +2139,10 @@
             function applyFilters() {
                 const inventoryFilter = $('#inventory-filter').val();
                 const nrlFilter = $('#nrl-filter').val();
-                const pftFilter = $('#pft-filter').val();
+                const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const parentFilter = $('#parent-filter').val();
+                const statusFilter = $('#status-filter').val();
 
                 table.clearFilter(true);
 
@@ -1373,14 +2166,17 @@
                     }
                 }
 
-                if (pftFilter !== 'all') {
+                if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const pft = parseFloat(data['PFT_percentage']) || 0;
-                        if (pftFilter === 'negative') return pft < 0;
-                        if (pftFilter === '0-10') return pft >= 0 && pft < 10;
-                        if (pftFilter === '10-20') return pft >= 10 && pft < 20;
-                        if (pftFilter === '20-30') return pft >= 20 && pft < 30;
-                        if (pftFilter === '30plus') return pft >= 30;
+                        const gpft = parseFloat(data['GPFT%']) || 0;
+                        if (gpftFilter === 'negative') return gpft < 0;
+                        if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
+                        if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
+                        if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
+                        if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
+                        if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
+                        if (gpftFilter === '50-60') return gpft >= 50 && gpft < 60;
+                        if (gpftFilter === '60plus') return gpft >= 60;
                         return true;
                     });
                 }
@@ -1391,6 +2187,11 @@
                         const sess30 = parseFloat(data['Sess30']) || 0;
                         const cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
                         
+                        if (cvrFilter === '0-0') return cvr === 0;
+                        if (cvrFilter === '0.01-1') return cvr > 0 && cvr <= 1;
+                        if (cvrFilter === '1-2') return cvr > 1 && cvr <= 2;
+                        if (cvrFilter === '2-3') return cvr > 2 && cvr <= 3;
+                        if (cvrFilter === '3-4') return cvr > 3 && cvr <= 4;
                         if (cvrFilter === '0-4') return cvr >= 0 && cvr <= 4;
                         if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
                         if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
@@ -1405,14 +2206,39 @@
                     });
                 }
 
+                if (statusFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        // Skip parent rows
+                        if (data.is_parent_summary) return false;
+                        
+                        const status = data.SPRICE_STATUS || null;
+                        
+                        if (statusFilter === 'not-pushed') {
+                            // Show SKUs that are not pushed (null, empty, or anything other than 'pushed')
+                            return status !== 'pushed';
+                        } else if (statusFilter === 'pushed') {
+                            return status === 'pushed';
+                        } else if (statusFilter === 'applied') {
+                            return status === 'applied';
+                        } else if (statusFilter === 'error') {
+                            return status === 'error';
+                        }
+                        return true;
+                    });
+                }
+
                 updateCalcValues();
                 updateSummary();
                 // Reload chart with filtered data (only INV > 0)
                 const days = $('#chart-days-filter').val() || 7;
                 loadMetricsData(days);
+                // Update select all checkbox after filter is applied
+                setTimeout(function() {
+                    updateSelectAllCheckbox();
+                }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #pft-filter, #cvr-filter, #parent-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #parent-filter, #status-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -1607,6 +2433,7 @@
                 applyColumnVisibilityFromServer();
                 buildColumnDropdown();
                 applyFilters();
+                updateApplyAllButton();
             });
 
             table.on('dataLoaded', function() {
@@ -1617,12 +2444,25 @@
                 loadMetricsData(days);
                 setTimeout(function() {
                     $('[data-bs-toggle="tooltip"]').tooltip();
+                    // Refresh checkboxes to reflect selectedSkus set
+                    $('.sku-select-checkbox').each(function() {
+                        const sku = $(this).data('sku');
+                        $(this).prop('checked', selectedSkus.has(sku));
+                    });
+                    updateSelectAllCheckbox();
+                    updateApplyAllButton();
                 }, 100);
             });
 
             table.on('renderComplete', function() {
                 setTimeout(function() {
                     $('[data-bs-toggle="tooltip"]').tooltip();
+                    // Refresh checkboxes to reflect selectedSkus set
+                    $('.sku-select-checkbox').each(function() {
+                        const sku = $(this).data('sku');
+                        $(this).prop('checked', selectedSkus.has(sku));
+                    });
+                    updateSelectAllCheckbox();
                 }, 100);
             });
 
