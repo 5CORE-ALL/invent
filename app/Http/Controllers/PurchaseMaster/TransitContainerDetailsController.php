@@ -53,7 +53,7 @@ class TransitContainerDetailsController extends Controller
             return [$normSku => $value];
         })->toArray();
 
-        $pushedMap = InventoryWarehouse::select('tab_name', 'transit_container_id', 'our_sku', 'pushed', 'created_at','created_by')
+        $pushedMap = InventoryWarehouse::select('tab_name', 'transit_container_id', 'our_sku', 'pushed', 'push_status', 'created_at','created_by')
         ->whereNotNull('transit_container_id')
         ->whereNotNull('tab_name')
         ->orderBy('created_at', 'desc')
@@ -64,7 +64,10 @@ class TransitContainerDetailsController extends Controller
         ->mapWithKeys(function ($item) {
             $normTab = strtoupper(trim(preg_replace('/\s+/', ' ', $item->tab_name)));
             $rowId = (int)$item->transit_container_id;
-            return ["{$normTab}|{$rowId}" => (int) $item->pushed];
+            return ["{$normTab}|{$rowId}" => [
+                'pushed' => (int) $item->pushed,
+                'push_status' => $item->push_status ?? 'pending'
+            ]];
         })
         ->toArray();
 
@@ -89,7 +92,13 @@ class TransitContainerDetailsController extends Controller
             $record->image_src = $shopifyImages[$sku] ?? null;
             $record->Values = $productValuesMap[$sku] ?? null;
 
-            $record->pushed = isset($pushedMap[$key]) ? (int) $pushedMap[$key] : 0;
+            if (isset($pushedMap[$key])) {
+                $record->pushed = (int) $pushedMap[$key]['pushed'];
+                $record->push_status = $pushedMap[$key]['push_status'] ?? 'pending';
+            } else {
+                $record->pushed = 0;
+                $record->push_status = 'pending';
+            }
             // $record->pushed = isset($pushedMap[$sku]) ? (int) $pushedMap[$sku] : 0;
             $record->created_by_name = $record->user->name ?? '—';
             
