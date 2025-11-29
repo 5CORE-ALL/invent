@@ -2026,7 +2026,6 @@ function applyRowTypeFilter(filterType) {
 
 function applyRowTypeFilterA(platform, filterType) {
     let key = '';
-    let filteredData = [...tableData];
     let countFiltered = 0;
 
     // Set the correct key based on filterType
@@ -2036,10 +2035,15 @@ function applyRowTypeFilterA(platform, filterType) {
         key = `is_notmatching_${platform}`;
     }
     
-    // Apply filtering
+    // Apply filtering - use global filteredData
     if (filterType === 'matching' || filterType === 'notmatching' || filterType === 'nrl') {
-        filteredData = filteredData.filter(item => item[key] === filterType);
+        filteredData = tableData.filter(item => item[key] === filterType);
         countFiltered = filteredData.length;
+        console.log(`Filter ${platform} by ${filterType}: Found ${countFiltered} items`);
+        console.log('Sample item:', filteredData[0]);
+    } else {
+        // Show all when filterType is 'all'
+        filteredData = [...tableData];
     }
 
     // Update count display
@@ -2051,7 +2055,6 @@ function applyRowTypeFilterA(platform, filterType) {
     }
 
     currentPage = 1;
-    console.log(filteredData);    
 
     renderTable(filteredData);
     calculateTotals();
