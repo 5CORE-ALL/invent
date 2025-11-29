@@ -112,9 +112,21 @@ class FetchEbayReports extends Command
             }
         }
 
+        // Track all active SKUs for cleanup
+        $allActiveSkus = array_keys($skuToItemId);
+        foreach ($itemsWithoutSku as $itemId => $price) {
+            $allActiveSkus[] = 'NO-SKU-' . $itemId;
+        }
+
         // Save metrics with SKU as unique identifier
         $saved = 0;
         foreach ($skuToItemId as $sku => $itemId) {
+            // Check if this SKU exists with different item_id and clean up
+            $existingRecord = EbayMetric::where('sku', $sku)->first();
+            if ($existingRecord && $existingRecord->item_id !== $itemId) {
+                $this->info("🔄 SKU {$sku}: Item ID changed from {$existingRecord->item_id} to {$itemId}");
+            }
+            
             EbayMetric::updateOrCreate(
                 ['sku' => $sku],
                 [
@@ -137,6 +149,12 @@ class FetchEbayReports extends Command
                 ]
             );
             $saved++;
+        }
+
+        // Clean up SKUs that are no longer active (not in current fetch)
+        $deletedCount = EbayMetric::whereNotIn('sku', $allActiveSkus)->delete();
+        if ($deletedCount > 0) {
+            $this->info("🗑️  Cleaned up {$deletedCount} inactive SKU records");
         }
 
         $this->info("💾 Saved/Updated {$saved} records in database");
@@ -476,27 +494,57 @@ class FetchEbayReports extends Command
     {
         // $map = [ itemId => [sku,sku,...], ... ]
         $chunks = array_chunk(array_keys($map), 20);
+        
+        $this->info('🔄 Fetching views for ' . count($map) . ' items in ' . count($chunks) . ' chunks...');
 
-        foreach ($chunks as $chunk) {
+        foreach ($chunks as $chunkIndex => $chunk) {
             $ids = implode('|', $chunk);
-            $range = now()->subDays(30)->format('Ymd').'..'.now()->format('Ymd');
+            $range = now()->subDays(30)->format('Ymd').'..'.now()->subDay()->format('Ymd');
 
             $url = "https://api.ebay.com/sell/analytics/v1/traffic_report?dimension=LISTING&filter=listing_ids:%7B{$ids}%7D,date_range:[{$range}]&metric=LISTING_VIEWS_TOTAL";
+            
+            $this->info("📊 Chunk {$chunkIndex}: " . implode(', ', array_slice($chunk, 0, 3)) . (count($chunk) > 3 ? '...' : ''));
 
             $r = Http::withToken($token)->get($url);
+            
+            if (!$r->successful()) {
+                $this->error('❌ Views API failed for chunk ' . $chunkIndex . ': ' . $r->body());
+                continue;
+            }
 
-            foreach ($r['records'] ?? [] as $rec) {
+            $records = $r['records'] ?? [];
+            $this->info("📈 Found " . count($records) . " view records");
+            
+            if (empty($records)) {
+                $this->warn('⚠️  No view records found. Response: ' . json_encode($r->json()));
+            }
+
+            foreach ($records as $rec) {
                 $id = $rec['dimensionValues'][0]['value'] ?? null;
-                $v = $rec['metricValues'][0]['value'] ?? null;
+                $v = $rec['metricValues'][0]['value'] ?? 0;
                 if (! $id) {
+                    $this->warn('⚠️  Record missing item ID: ' . json_encode($rec));
                     continue;
                 }
+                
+                $this->info("📊 Item {$id}: {$v} views");
 
                 $skus = $map[$id] ?? [];
                 foreach ($skus as $sku) {
-                    EbayMetric::where('sku', $sku)
+                    $updated = EbayMetric::where('sku', $sku)
                         ->update(['views' => $v]);
+                    
+                    if ($updated) {
+                        $this->info("✅ Updated views for {$id}/{$sku}: {$v}");
+                    } else {
+                        $this->warn("⚠️  Failed to update views for {$id}/{$sku}");
+                    }
                 }
+            }
+            
+            // Add small delay between API calls
+            if ($chunkIndex < count($chunks) - 1) {
+                sleep(1);
             }
         }
     }

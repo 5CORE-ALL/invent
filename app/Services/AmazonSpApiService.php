@@ -61,80 +61,331 @@ class AmazonSpApiService
 
     public function updateAmazonPriceUS($sku, $price)
     {
+        // Validate inputs
+        $sku = trim($sku);
+        if (empty($sku)) {
+            Log::error("Amazon Price Update: Empty SKU provided");
+            return [
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'SKU is required and cannot be empty.'
+                ]]
+            ];
+        }
+
+        // Validate and format price
+        $price = is_numeric($price) ? (float) $price : null;
+        if ($price === null || $price <= 0) {
+            Log::error("Amazon Price Update: Invalid price", ['sku' => $sku, 'price' => $price]);
+            return [
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'Price must be a valid number greater than 0.'
+                ]]
+            ];
+        }
+
+        // Round price to 2 decimal places (Amazon requirement)
+        $price = round($price, 2);
+
         $sellerId = env('AMAZON_SELLER_ID');
-        $accessToken = $this->getAccessToken();
+        if (empty($sellerId)) {
+            Log::error("Amazon Price Update: Seller ID not configured");
+            return [
+                'errors' => [[
+                    'code' => 'ConfigurationError',
+                    'message' => 'Amazon Seller ID is not configured.'
+                ]]
+            ];
+        }
 
-        $productType = $this->getAmazonProductType($sku);
+        $amazonSku = null;
+        try {
+            $accessToken = $this->getAccessToken();
+            if (empty($accessToken)) {
+                Log::error("Amazon Price Update: Failed to get access token", ['sku' => $sku]);
+                return [
+                    'errors' => [[
+                        'code' => 'AuthenticationError',
+                        'message' => 'Failed to authenticate with Amazon API.'
+                    ]]
+                ];
+            }
 
-        $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/" . rawurlencode($sku) . "?marketplaceIds=ATVPDKIKX0DER";
+            // Find the correct SKU format in Amazon (handles case sensitivity issues)
+            $amazonSku = $this->findAmazonSkuFormat($sku);
+            if (empty($amazonSku)) {
+                Log::error("Amazon Price Update: SKU not found in Amazon", ['sku' => $sku]);
+                return [
+                    'errors' => [[
+                        'code' => 'InvalidInput',
+                        'message' => 'SKU not found in Amazon. Please ensure the SKU exists in your Amazon listings.'
+                    ]]
+                ];
+            }
 
-        $body = [
-            "productType" => $productType,
-            "patches" => [[
-                "op" => "replace",
-                "path" => "/attributes/purchasable_offer",
-                "value" => [[
-                    "marketplaceId" => "ATVPDKIKX0DER",
-                    "currency" => "USD",
-                    "our_price" => [
-                        [
-                            "schedule" => [
-                                [
-                                    "value_with_tax" => (float) $price
+            // Get product type using the correct SKU format (pass Amazon SKU to avoid duplicate lookup)
+            $productType = $this->getAmazonProductType($sku, $amazonSku);
+            if (empty($productType)) {
+                Log::error("Amazon Price Update: Product type not found", [
+                    'sku' => $sku,
+                    'amazon_sku' => $amazonSku
+                ]);
+                return [
+                    'errors' => [[
+                        'code' => 'InvalidInput',
+                        'message' => 'Product type not found for SKU. Please ensure the SKU exists in Amazon.'
+                    ]]
+                ];
+            }
+
+            // Use the correct Amazon SKU format for the API call
+            $encodedSku = rawurlencode($amazonSku);
+            $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+
+            // Build request body with proper structure
+            $body = [
+                "productType" => $productType,
+                "patches" => [[
+                    "op" => "replace",
+                    "path" => "/attributes/purchasable_offer",
+                    "value" => [[
+                        "marketplaceId" => "ATVPDKIKX0DER",
+                        "currency" => "USD",
+                        "our_price" => [
+                            [
+                                "schedule" => [
+                                    [
+                                        "value_with_tax" => $price
+                                    ]
                                 ]
                             ]
                         ]
-                    ]
+                    ]]
                 ]]
-            ]]
-        ];
+            ];
 
-        $response = Http::withToken($accessToken)
-            ->withHeaders([
-                'x-amz-access-token' => $accessToken,
-                'content-type' => 'application/json',
-                'accept' => 'application/json',
-            ])
-            ->patch($endpoint, $body);
-
-        // Log::info("Amazon Price Update Request", [
-        //     "sku" => $sku,
-        //     "price" => $price,
-        //     "endpoint" => $endpoint,
-        //     "body" => $body
-        // ]);
-
-        if ($response->failed()) {
-            Log::error("Amazon Price Update Failed", [
-                "sku" => $sku,
-                "status" => $response->status(),
-                "response" => $response->json()
+            // Log request for debugging (can be commented out in production)
+            Log::info("Amazon Price Update Request", [
+                "original_sku" => $sku,
+                "amazon_sku" => $amazonSku,
+                "price" => $price,
+                "productType" => $productType,
+                "endpoint" => $endpoint,
+                "body" => $body
             ]);
-        } else {
-            Log::info("Amazon Price Update Success", $response->json());
-        }
 
-        return $response->json();
+            $response = Http::withToken($accessToken)
+                ->withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'content-type' => 'application/json',
+                    'accept' => 'application/json',
+                ])
+                ->timeout(30)
+                ->patch($endpoint, $body);
+
+            $responseData = $response->json();
+
+            if ($response->failed()) {
+                Log::error("Amazon Price Update Failed", [
+                    "original_sku" => $sku,
+                    "amazon_sku" => $amazonSku,
+                    "price" => $price,
+                    "status" => $response->status(),
+                    "response" => $responseData
+                ]);
+
+                // Return the error response from Amazon
+                return $responseData ?: [
+                    'errors' => [[
+                        'code' => 'RequestFailed',
+                        'message' => 'Failed to update price on Amazon. HTTP Status: ' . $response->status()
+                    ]]
+                ];
+            } else {
+                Log::info("Amazon Price Update Success", [
+                    "original_sku" => $sku,
+                    "amazon_sku" => $amazonSku,
+                    "price" => $price,
+                    "response" => $responseData
+                ]);
+            }
+
+            return $responseData ?: ['success' => true];
+        } catch (\Exception $e) {
+            Log::error("Amazon Price Update Exception", [
+                "original_sku" => $sku,
+                "amazon_sku" => $amazonSku ?: 'not_found',
+                "price" => $price,
+                "error" => $e->getMessage(),
+                "trace" => $e->getTraceAsString()
+            ]);
+
+            return [
+                'errors' => [[
+                    'code' => 'Exception',
+                    'message' => 'An error occurred while updating price: ' . $e->getMessage()
+                ]]
+            ];
+        }
     }
 
-    public function getAmazonProductType($sku)
+    /**
+     * Find the correct SKU format in Amazon by trying different case variations
+     * Returns the SKU format that works with Amazon API, or null if not found
+     */
+    private function findAmazonSkuFormat($sku)
     {
-        $sellerId = env('AMAZON_SELLER_ID');
-        $accessToken = $this->getAccessToken();
-
-        $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/" . rawurlencode($sku) . "?marketplaceIds=ATVPDKIKX0DER";
-
-        $response = Http::withHeaders([
-            'x-amz-access-token' => $accessToken,
-            'Content-Type' => 'application/json',
-        ])->get($url);
-
-        if ($response->failed()) {
+        $sku = trim($sku);
+        if (empty($sku)) {
             return null;
         }
 
-        $data = $response->json();
-        return $data['summaries'][0]['productType'] ?? null;
+        $sellerId = env('AMAZON_SELLER_ID');
+        if (empty($sellerId)) {
+            return null;
+        }
+
+        $accessToken = $this->getAccessToken();
+        if (empty($accessToken)) {
+            return null;
+        }
+
+        // Generate case variations to try
+        $variations = [
+            $sku, // Original
+            strtoupper($sku), // All uppercase
+            strtolower($sku), // All lowercase
+            ucfirst(strtolower($sku)), // First letter uppercase
+            ucwords(strtolower($sku)), // Title case (each word capitalized)
+        ];
+
+        // Remove duplicates while preserving order
+        $variations = array_values(array_unique($variations));
+
+        foreach ($variations as $skuVariation) {
+            try {
+                $encodedSku = rawurlencode($skuVariation);
+                $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+
+                $response = Http::withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->get($url);
+
+                // If successful (200), return this SKU format
+                if ($response->successful()) {
+                    $data = $response->json();
+                    // Check if we got valid data
+                    if (isset($data['summaries']) && !empty($data['summaries'])) {
+                        Log::info("Found matching SKU format in Amazon", [
+                            'original_sku' => $sku,
+                            'amazon_sku' => $skuVariation
+                        ]);
+                        return $skuVariation;
+                    }
+                }
+
+                // If 404, try next variation
+                // If other error (like 400 InvalidInput), also try next variation
+                if ($response->status() === 404 || $response->status() === 400) {
+                    continue;
+                }
+
+                // For other errors, log and continue
+                if ($response->failed()) {
+                    Log::debug("SKU variation failed", [
+                        'sku_variation' => $skuVariation,
+                        'status' => $response->status()
+                    ]);
+                    continue;
+                }
+            } catch (\Exception $e) {
+                // Continue to next variation on exception
+                Log::debug("Exception trying SKU variation", [
+                    'sku_variation' => $skuVariation,
+                    'error' => $e->getMessage()
+                ]);
+                continue;
+            }
+        }
+
+        // None of the variations worked
+        Log::warning("Could not find matching SKU format in Amazon", [
+            'original_sku' => $sku,
+            'tried_variations' => $variations
+        ]);
+        return null;
+    }
+
+    public function getAmazonProductType($sku, $amazonSku = null)
+    {
+        try {
+            $sku = trim($sku);
+            if (empty($sku)) {
+                Log::warning("getAmazonProductType: Empty SKU provided");
+                return null;
+            }
+
+            $sellerId = env('AMAZON_SELLER_ID');
+            if (empty($sellerId)) {
+                Log::warning("getAmazonProductType: Seller ID not configured");
+                return null;
+            }
+
+            $accessToken = $this->getAccessToken();
+            if (empty($accessToken)) {
+                Log::warning("getAmazonProductType: Failed to get access token", ['sku' => $sku]);
+                return null;
+            }
+
+            // Use provided Amazon SKU or find it
+            if (empty($amazonSku)) {
+                $amazonSku = $this->findAmazonSkuFormat($sku);
+                if (empty($amazonSku)) {
+                    Log::warning("getAmazonProductType: Could not find SKU in Amazon", ['sku' => $sku]);
+                    return null;
+                }
+            }
+
+            // Use the correct SKU format to get product type
+            $encodedSku = rawurlencode($amazonSku);
+            $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+
+            $response = Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->get($url);
+
+            if ($response->failed()) {
+                Log::warning("getAmazonProductType: Failed to get product type", [
+                    'sku' => $sku,
+                    'amazon_sku' => $amazonSku,
+                    'status' => $response->status(),
+                    'response' => $response->json()
+                ]);
+                return null;
+            }
+
+            $data = $response->json();
+            $productType = $data['summaries'][0]['productType'] ?? null;
+
+            if (empty($productType)) {
+                Log::warning("getAmazonProductType: Product type not found in response", [
+                    'sku' => $sku,
+                    'amazon_sku' => $amazonSku,
+                    'response' => $data
+                ]);
+            }
+
+            return $productType;
+        } catch (\Exception $e) {
+            Log::error("getAmazonProductType: Exception", [
+                'sku' => $sku,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
     }
 
  public function getinventory()

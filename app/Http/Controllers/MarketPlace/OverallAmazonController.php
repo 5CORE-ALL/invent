@@ -2039,27 +2039,76 @@ class OverallAmazonController extends Controller
 
     public function applyAmazonPrice(Request $request)
     {
-        $sku = strtoupper(trim($request->input('sku')));
+        // Validate and sanitize inputs
+        $sku = trim($request->input('sku', ''));
         $price = $request->input('price');
 
-        // ✅ Validate price before pushing to Amazon
-        if (!$price || $price <= 0 || !is_numeric($price)) {
-            // Save error status
-            $this->saveSpriceStatus($sku, 'error');
+        // Validate SKU
+        if (empty($sku)) {
             return response()->json([
-                'success' => false,
-                'error' => 'Invalid price. Price must be greater than 0.'
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'SKU is required and cannot be empty.'
+                ]]
             ], 400);
         }
 
+        $sku = strtoupper($sku);
+
+        // Validate price
+        if ($price === null || $price === '') {
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json([
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'Price is required.'
+                ]]
+            ], 400);
+        }
+
+        // Convert to float and validate
+        $priceFloat = is_numeric($price) ? (float) $price : null;
+        
+        if ($priceFloat === null || $priceFloat <= 0) {
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json([
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'Price must be a valid number greater than 0.'
+                ]]
+            ], 400);
+        }
+
+        // Validate price range (reasonable bounds: 0.01 to 999999.99)
+        if ($priceFloat < 0.01 || $priceFloat > 999999.99) {
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json([
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'Price must be between $0.01 and $999,999.99.'
+                ]]
+            ], 400);
+        }
+
+        // Round price to 2 decimal places
+        $priceFloat = round($priceFloat, 2);
+
         try {
             $service = new AmazonSpApiService();
-            $result = $service->updateAmazonPriceUS($sku, $price);
+            $result = $service->updateAmazonPriceUS($sku, $priceFloat);
 
             // Check if the response indicates errors
             if (isset($result['errors']) && !empty($result['errors'])) {
                 // Save error status
                 $this->saveSpriceStatus($sku, 'error');
+                
+                // Log the error for debugging
+                Log::error('Amazon price update failed', [
+                    'sku' => $sku,
+                    'price' => $priceFloat,
+                    'errors' => $result['errors']
+                ]);
+                
                 return response()->json($result);
             }
 
@@ -2067,8 +2116,10 @@ class OverallAmazonController extends Controller
             // If no errors, consider it pushed initially
             $this->saveSpriceStatus($sku, 'pushed');
             
-            // Note: 'applied' status would be set later if we get confirmation from Amazon
-            // For now, we'll use 'pushed' for successful API calls
+            Log::info('Amazon price update successful', [
+                'sku' => $sku,
+                'price' => $priceFloat
+            ]);
             
             return response()->json($result);
         } catch (\Exception $e) {
@@ -2076,11 +2127,15 @@ class OverallAmazonController extends Controller
             $this->saveSpriceStatus($sku, 'error');
             Log::error('Exception in applyAmazonPrice', [
                 'sku' => $sku,
-                'price' => $price,
-                'error' => $e->getMessage()
+                'price' => $priceFloat,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             return response()->json([
-                'errors' => [['message' => $e->getMessage()]]
+                'errors' => [[
+                    'code' => 'Exception',
+                    'message' => 'An error occurred: ' . $e->getMessage()
+                ]]
             ], 500);
         }
     }
@@ -2552,6 +2607,7 @@ class OverallAmazonController extends Controller
                         'views' => $data['views'] ?? 0,
                         'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
                         'ad_percent' => round($data['ad_percent'] ?? 0, 2),
+                        'a_l30' => round($data['a_l30'] ?? 0, 0), // Amazon L30 sold units
                     ];
                 }
             } else {
