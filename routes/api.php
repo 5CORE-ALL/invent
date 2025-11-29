@@ -75,6 +75,7 @@ Route::get('/test-doba-item-validation', [PricingMasterViewsController::class, '
 Route::get('/advanced-doba-debug', [PricingMasterViewsController::class, 'advancedDobaDebug']); // Advanced debug with multiple methods
 Route::post('/update-doba-price', [PricingMasterViewsController::class, 'pushdobaPriceBySku']); // Doba price update API
 
+
 // Supplier open rfq form url
 //please dont delete this section 🙏
 Route::prefix('rfq-form')->group(function() {
