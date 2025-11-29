@@ -29,6 +29,29 @@ Route::get('/data', [ApiController::class, 'getData']);
 
 Route::post('/data', [ApiController::class, 'storeData']);
 
+// Test route to get Shein 30-day sales data from apicentral.shein_orders
+Route::get('/test-shein-sales', function () {
+    $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+    
+    $sheinSales = DB::connection('apicentral')
+        ->table('shein_orders')
+        ->select('seller_sku as sku', DB::raw('COUNT(*) as total_orders'))
+        ->where('created_at', '>=', $thirtyDaysAgo)
+        ->groupBy('seller_sku')
+        ->orderBy('total_orders', 'desc')
+        ->get();
+    
+    return response()->json([
+        'success' => true,
+        'date_range' => [
+            'from' => $thirtyDaysAgo->toDateString(),
+            'to' => \Carbon\Carbon::now()->toDateString()
+        ],
+        'total_skus' => $sheinSales->count(),
+        'data' => $sheinSales
+    ]);
+});
+
 Route::post('/update-amazon-column', [ApiController::class, 'updateAmazonColumn']);
 Route::post('/update-amazon-fba-column', [ApiController::class, 'updateAmazonFBAColumn']);
 Route::post('/update-ebay-column', [ApiController::class, 'updateEbayColumn']);
@@ -51,6 +74,94 @@ Route::get('/debug-doba-signature', [PricingMasterViewsController::class, 'debug
 Route::get('/test-doba-item-validation', [PricingMasterViewsController::class, 'testDobaItemValidation']); // Test item validation
 Route::get('/advanced-doba-debug', [PricingMasterViewsController::class, 'advancedDobaDebug']); // Advanced debug with multiple methods
 Route::post('/update-doba-price', [PricingMasterViewsController::class, 'pushdobaPriceBySku']); // Doba price update API
+
+// Test route to get Shein API data with stock information (single page to avoid rate limiting)
+Route::get('/test-shein-api', function () {
+    try {
+        $sheinService = new \App\Services\SheinApiService();
+        
+        $endpoint = "/open-api/openapi-business-backend/product/query";
+        $timestamp = round(microtime(true) * 1000);
+        $random = \Illuminate\Support\Str::random(5);
+        
+        // Generate signature using the service method
+        $signature = $sheinService->generateSheinSignature($endpoint, $timestamp, $random);
+        
+        $url = 'https://openapi.sheincorp.com' . $endpoint;
+        
+        // Fetch only first page with 10 items to avoid rate limiting
+        $payload = [
+            "pageNum" => 1,
+            "pageSize" => 10,
+            "insertTimeEnd" => "",
+            "insertTimeStart" => "",
+            "updateTimeEnd" => "",
+            "updateTimeStart" => "",
+        ];
+        
+        $response = \Illuminate\Support\Facades\Http::withoutVerifying()
+            ->withHeaders([
+                "Language" => "en-us",
+                "x-lt-openKeyId" => env('SHEIN_OPEN_KEY_ID'),
+                "x-lt-timestamp" => $timestamp,
+                "x-lt-signature" => $signature,
+                "Content-Type" => "application/json",
+            ])
+            ->post($url, $payload);
+        
+        if (!$response->successful()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Shein API Error: ' . $response->body(),
+                'status' => $response->status()
+            ], $response->status());
+        }
+        
+        $data = $response->json();
+        $products = $data["info"]["data"] ?? [];
+        
+        // Extract SKU codes from products (like SheinApiService does)
+        $skuCodes = array_map(function ($item) {
+            return $item['skuCodeList'][0] ?? null;
+        }, $products);
+        
+        $skuCodes = array_filter($skuCodes); // remove nulls
+        
+        // Get stock information for these SKUs
+        $stockData = $sheinService->getStock($skuCodes);
+        
+        // Combine product info with stock data
+        $productList = [];
+        foreach ($products as $product) {
+            $sku = $product['skuCodeList'][0] ?? null;
+            $stockInfo = collect($stockData)->firstWhere('sku', $sku);
+            
+            $productList[] = [
+                'skcName' => $product['skcName'] ?? null,
+                'spuName' => $product['spuName'] ?? null,
+                'sku' => $sku,
+                'inventory_quantity' => $stockInfo['quantity'] ?? 0,
+            ];
+        }
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Shein API test successful with stock data',
+            'total_products' => count($products),
+            'total_stock_items' => count($stockData),
+            'products_with_stock' => $productList,
+            'raw_stock_data' => $stockData
+        ]);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'file' => $e->getFile()
+        ], 500);
+    }
+});
 
 // Supplier open rfq form url
 //please dont delete this section 🙏
