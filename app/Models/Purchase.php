@@ -16,6 +16,7 @@ class Purchase extends Model
         'supplier_id', 
         'warehouse_id',
         'items',
+        'description',
         'deleted_by',
     ];
 
