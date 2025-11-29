@@ -1746,6 +1746,11 @@ tableData = sheetData.map((item, index) => {
 
   return row;
 });
+
+                // Recalculate ebay3 not matching count (considering >95 as matched)
+                const ebay3ActualNotMatching = tableData.filter(item => item.is_notmatching_ebay3 === 'notmatching').length;
+                datainfo.ebay3.notmatching = ebay3ActualNotMatching;
+
                 filteredData=tableData;
                 renderTable(filteredData);
                 hideLoader();
@@ -1789,7 +1794,6 @@ tableData = sheetData.map((item, index) => {
                const isMismatchMacy = item.INV_macy !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_macy) || isMatchWithTolerance(item.INV_shopify, item.INV_macy)) ? true:false;
                const isMismatchEbay1 = item.INV_ebay1 !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_ebay1) || isMatchWithTolerance(item.INV_shopify, item.INV_ebay1)) ? true:false;
                const isMismatchEbay2 = item.INV_ebay2 !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_ebay2) || isMatchWithTolerance(item.INV_shopify, item.INV_ebay2)) ? true:false;
-               // Ebay3: Show green if >95 OR actually matches Shopify
                const isMismatchEbay3 = item.INV_ebay3 !== 'Not Listed' && (parseFloat(item.INV_ebay3) > 95 || parseFloat(item.INV_shopify) === parseFloat(item.INV_ebay3) || isMatchWithTolerance(item.INV_shopify, item.INV_ebay3)) ? true:false;
                const isMismatchbestbuy = item.INV_bestbuy !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_bestbuy) || isMatchWithTolerance(item.INV_shopify, item.INV_bestbuy)) ? true:false;
                const isMismatchtiendamia = item.INV_tiendamia !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_tiendamia) || isMatchWithTolerance(item.INV_shopify, item.INV_tiendamia)) ? true:false;
@@ -2026,6 +2030,7 @@ function applyRowTypeFilter(filterType) {
 
 function applyRowTypeFilterA(platform, filterType) {
     let key = '';
+    let filteredData = [...tableData];
     let countFiltered = 0;
 
     // Set the correct key based on filterType
@@ -2035,15 +2040,10 @@ function applyRowTypeFilterA(platform, filterType) {
         key = `is_notmatching_${platform}`;
     }
     
-    // Apply filtering - use global filteredData
+    // Apply filtering
     if (filterType === 'matching' || filterType === 'notmatching' || filterType === 'nrl') {
-        filteredData = tableData.filter(item => item[key] === filterType);
+        filteredData = filteredData.filter(item => item[key] === filterType);
         countFiltered = filteredData.length;
-        console.log(`Filter ${platform} by ${filterType}: Found ${countFiltered} items`);
-        console.log('Sample item:', filteredData[0]);
-    } else {
-        // Show all when filterType is 'all'
-        filteredData = [...tableData];
     }
 
     // Update count display
@@ -2055,6 +2055,7 @@ function applyRowTypeFilterA(platform, filterType) {
     }
 
     currentPage = 1;
+    console.log(filteredData);    
 
     renderTable(filteredData);
     calculateTotals();
