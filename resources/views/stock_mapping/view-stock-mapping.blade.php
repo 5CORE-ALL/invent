@@ -1732,10 +1732,11 @@ tableData = sheetData.map((item, index) => {
     const difference = Math.abs(parsed - INV_shopify);
     const isWithinTolerance = difference <= tolerance;
     
-    // Special case for ebay3: values above 95 are always considered matched
+    // Special case for ebay3: if value > 95, treat as matched regardless of Shopify value
     if (platform === 'ebay3' && parsed > 95) {
       row[`is_notmatching_${platform}`] = 'matching';
     } else {
+      // Normal matching logic for all other cases
       row[`is_notmatching_${platform}`] =
         parsed !== 0 && INV_shopify !== 0 && parsed !== INV_shopify && !isWithinTolerance
           ? 'notmatching'
@@ -1788,7 +1789,7 @@ tableData = sheetData.map((item, index) => {
                const isMismatchMacy = item.INV_macy !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_macy) || isMatchWithTolerance(item.INV_shopify, item.INV_macy)) ? true:false;
                const isMismatchEbay1 = item.INV_ebay1 !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_ebay1) || isMatchWithTolerance(item.INV_shopify, item.INV_ebay1)) ? true:false;
                const isMismatchEbay2 = item.INV_ebay2 !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_ebay2) || isMatchWithTolerance(item.INV_shopify, item.INV_ebay2)) ? true:false;
-               // Special case: Ebay3 values above 95 are considered matched
+               // Ebay3: Show green if >95 OR actually matches Shopify
                const isMismatchEbay3 = item.INV_ebay3 !== 'Not Listed' && (parseFloat(item.INV_ebay3) > 95 || parseFloat(item.INV_shopify) === parseFloat(item.INV_ebay3) || isMatchWithTolerance(item.INV_shopify, item.INV_ebay3)) ? true:false;
                const isMismatchbestbuy = item.INV_bestbuy !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_bestbuy) || isMatchWithTolerance(item.INV_shopify, item.INV_bestbuy)) ? true:false;
                const isMismatchtiendamia = item.INV_tiendamia !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_tiendamia) || isMatchWithTolerance(item.INV_shopify, item.INV_tiendamia)) ? true:false;
