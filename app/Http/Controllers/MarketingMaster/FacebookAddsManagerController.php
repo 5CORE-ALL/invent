@@ -8,6 +8,7 @@ use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use App\Models\AmazonDataView;
 use App\Models\MetaAllAd;
+use App\Models\ShopifyFacebookCampaign;
 use Illuminate\Support\Facades\Log;
 
 class FacebookAddsManagerController extends Controller
@@ -28,25 +29,47 @@ class FacebookAddsManagerController extends Controller
     {
         $metaAds = MetaAllAd::orderBy('campaign_name', 'asc')->get();
 
+        // Fetch all Shopify Facebook campaign sales data grouped by campaign_id and date_range
+        $shopifySales = ShopifyFacebookCampaign::whereNotNull('campaign_id')
+            ->select('campaign_id', 'date_range', 'sales', 'orders')
+            ->get()
+            ->groupBy('campaign_id');
+
         $data = [];
         foreach ($metaAds as $ad) {
             // Get L30 values
             $spend_l30 = $ad->spent_l30 ?? 0;
             $clicks_l30 = $ad->clicks_l30 ?? 0;
-            $sales_l30 = 0; // TODO: Add sales data when available
             $units_sold_l30 = 0; // TODO: Add units sold data when available
             
             // Get L7 values
             $spend_l7 = $ad->spent_l7 ?? 0;
             $clicks_l7 = $ad->clicks_l7 ?? 0;
-            $sales_l7 = 0; // TODO: Add sales data when available
             $units_sold_l7 = 0; // TODO: Add units sold data when available
             
             // L60 data (currently using L30 values)
             $spend_l60 = $ad->spent_l30 ?? 0;
             $clicks_l60 = $ad->clicks_l30 ?? 0;
-            $sales_l60 = 0; // TODO: Add sales data when available
             $units_sold_l60 = 0; // TODO: Add units sold data when available
+            
+            // Fetch sales data from Shopify Facebook campaigns by matching campaign_id
+            $sales_l30 = 0;
+            $sales_l60 = 0;
+            $sales_l7 = 0;
+            
+            if ($ad->campaign_id && isset($shopifySales[$ad->campaign_id])) {
+                $campaignSales = $shopifySales[$ad->campaign_id];
+                
+                foreach ($campaignSales as $sale) {
+                    if ($sale->date_range === '30_days') {
+                        $sales_l30 = $sale->sales ?? 0;
+                    } elseif ($sale->date_range === '60_days') {
+                        $sales_l60 = $sale->sales ?? 0;
+                    } elseif ($sale->date_range === '7_days') {
+                        $sales_l7 = $sale->sales ?? 0;
+                    }
+                }
+            }
             
             // Calculate ACOS L30 using Amazon formula: ACOS = (Spend / Sales) * 100
             $acos_l30 = 0;

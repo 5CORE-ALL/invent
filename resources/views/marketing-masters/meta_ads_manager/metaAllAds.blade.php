@@ -159,8 +159,8 @@
                                     <select id="status-filter" class="form-select form-select-md">
                                         <option value="">All Status</option>
                                         <option value="ACTIVE">Active</option>
-                                        <option value="PAUSED">Paused</option>
-                                        <option value="ARCHIVED">Archived</option>
+                                        <option value="INACTIVE">Inactive</option>
+                                        <option value="NOT_DELIVERING">Not Delivering</option>
                                     </select>
                                 </div>
                             </div>
@@ -209,15 +209,6 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-
-            const getDilColor = (value) => {
-                const percent = parseFloat(value) * 100;
-                if (percent < 16.66) return 'red';
-                if (percent >= 16.66 && percent < 25) return 'yellow';
-                if (percent >= 25 && percent < 50) return 'green';
-                return 'pink';
-            };
-
             var table = new Tabulator("#budget-under-table", {
                 index: "campaign_id",
                 ajaxURL: "/meta-all-ads-control/data",
@@ -613,6 +604,30 @@
                             }
                         },
                         visible: false
+                    },
+                    {
+                        title: "Status",
+                        field: "status",
+                        width: 150,
+                        headerSort: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue() || '';
+                            let bgColor = '#6c757d';
+                            let displayText = value;
+                            
+                            if (value === 'ACTIVE') {
+                                bgColor = '#28a745';
+                                displayText = 'Active';
+                            } else if (value === 'INACTIVE') {
+                                bgColor = '#dc3545';
+                                displayText = 'Inactive';
+                            } else if (value === 'NOT_DELIVERING') {
+                                bgColor = '#ffc107';
+                                displayText = 'Not Delivering';
+                            }
+                            
+                            return `<span class="badge" style="background-color: ${bgColor}; color: white; font-size: 0.85rem; padding: 6px 12px;">${displayText}</span>`;
+                        }
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
