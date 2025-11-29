@@ -71,21 +71,21 @@ private function generateSignValue($requestBody)
 
         do {
             // OLD CODE (commented for reference):
+                
             // $requestBody = [
             //     "type" => "bg.local.goods.list.query",
             //     "goodsSearchType" => 1,
             //     "goodsStatusFilterType" => 1,
             //     "pageSize" => $pageSize,
             //     "pageNumber" => $pageNumber,
+            //     "orderStatusFilterType" => [3, 4], // 3=Shipped, 4=Delivered
             // ];
-            
-            $requestBody = [
+             $requestBody = [
                 "type" => "bg.local.goods.list.query",
                 "goodsSearchType" => 1,
-                "goodsStatusFilterType" => 1,
+                "goodsStatusFilterType" => 1, // 1=On sale (excludes canceled/removed products)
                 "pageSize" => $pageSize,
                 "pageNumber" => $pageNumber,
-                "orderStatusFilterType" => [3, 4], // 3=Shipped, 4=Delivered
             ];
 
             $signedRequest = $this->generateSignValue($requestBody);
