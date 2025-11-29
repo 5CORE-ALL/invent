@@ -38,20 +38,20 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <h4>FBA pricing data (> 0 INV)</h4>
-                <div>
-                    <select id="inventory-filter" class="form-select form-select-sm me-2"
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Inventory</option>
                         <option value="zero">0 Inventory</option>
                         <option value="more" id="more-inventory-option" selected>More than 0</option>
                     </select>
-                    <select id="parent-filter" class="form-select form-select-sm me-2"
+                    <select id="parent-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="show">Show Parent</option>
                         <option value="hide" selected>Hide Parent</option>
                     </select>
 
-                    <select id="pft-filter" class="form-select form-select-sm me-2"
+                    <select id="pft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Pft%</option>
                         <option value="0-10">0-10%</option>
@@ -61,7 +61,7 @@
                         <option value="50+">50%+</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm me-2"
+                    <select id="gpft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
                         <option value="negative">Negative</option>
@@ -74,7 +74,7 @@
                         <option value="60plus">60%+</option>
                     </select>
 
-                    <select id="cvr-filter" class="form-select form-select-sm me-2"
+                    <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">CVR</option>
                         <option value="0-0">0 to 0.00%</option>
@@ -88,7 +88,7 @@
                         <option value="10plus">10%+</option>
                     </select>
 
-                    <select id="status-filter" class="form-select form-select-sm me-2"
+                    <select id="status-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">Status</option>
                         <option value="not_pushed">Not Pushed</option>
@@ -98,7 +98,7 @@
                     </select>
 
                     <!-- Column Visibility Dropdown -->
-                    <div class="dropdown d-inline-block me-2">
+                    <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fa fa-eye"></i> Columns
@@ -108,26 +108,26 @@
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary me-2">
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
-                    <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info me-2">
+                    <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info">
                         <i class="fa fa-download"></i> Sample Template
                     </a>
-                    <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success me-2">
+                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">
                         <i class="fa fa-file-excel"></i>
-                    </a>
+                    </button>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#importModal">
                         <i class="fa fa-upload"></i>
                     </button>
                     
-                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary me-2" style="display: none;">
+                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
                     </button>
                     
-                    <button id="decrease-btn" class="btn btn-sm btn-warning me-2">
+                    <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-percent"></i> Decrease
                     </button>
                 </div>
@@ -304,6 +304,37 @@
                 </div>
             </div>
         </div>
+
+    <!-- Export Column Selection Modal -->
+    <div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Columns to Export</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-sm btn-primary" id="select-all-export-columns">
+                            <i class="fa fa-check-square"></i> Select All
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" id="deselect-all-export-columns">
+                            <i class="fa fa-square"></i> Deselect All
+                        </button>
+                    </div>
+                    <div id="export-columns-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px;">
+                        <!-- Columns will be populated by JavaScript -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="confirm-export-btn">
+                        <i class="fa fa-file-excel"></i> Export Selected Columns
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
     @endsection
 
     @section('script-bottom')
@@ -1531,7 +1562,20 @@
                             headerFilterPlaceholder: "Search SKU...",
                             cssClass: "font-weight-bold",
                             tooltip: true,
-                            frozen: true
+                            frozen: true,
+                            formatter: function(cell) {
+                                const sku = cell.getValue();
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return sku;
+                                
+                                return `
+                                    <span>${sku}</span>
+                                    <i class="fa fa-copy text-secondary copy-sku-btn" 
+                                       style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
+                                       data-sku="${sku}"
+                                       title="Copy SKU"></i>
+                                `;
+                            }
                         },
                         {
                             title: "FBA <br>SKU",
@@ -2897,6 +2941,27 @@
                 });
             });
 
+            // Copy SKU to clipboard
+            $(document).on('click', '.copy-sku-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                
+                // Copy to clipboard
+                navigator.clipboard.writeText(sku).then(function() {
+                    showToast('success', `SKU "${sku}" copied to clipboard!`);
+                }).catch(function(err) {
+                    // Fallback for older browsers
+                    const textarea = document.createElement('textarea');
+                    textarea.value = sku;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    showToast('success', `SKU "${sku}" copied to clipboard!`);
+                });
+            });
+
             // LMP Modal Event Listener
             $(document).on('click', '.lmp-link', function(e) {
                 e.preventDefault();
@@ -2935,5 +3000,102 @@
                 $('#lmpModal').appendTo('body').modal('show');
                 console.log('Modal shown');
             }
+
+            // Export column mapping (field -> display name)
+            const exportColumnMapping = {
+                'Parent': 'Parent',
+                'SKU': 'Child SKU',
+                'FBA_SKU': 'FBA SKU',
+                'FBA_Quantity': 'FBA INV',
+                'l60_units': 'L60 Units',
+                'l30_units': 'L30 Units',
+                'FBA_Dil': 'FBA Dil',
+                'FBA_Price': 'FBA Price',
+                'GPFT%': 'GPFT%',
+                'GROI%': 'GROI%',
+                'TCOS_Percentage': 'TACOS',
+                'TPFT': 'PRFT%',
+                'ROI': 'ROI%',
+                'S_Price': 'S Price',
+                'SPFT': 'SPft%',
+                'SROI%': 'SROI%',
+                'SGPFT%': 'SGPFT%',
+                'LP': 'LP',
+                'FBA_Ship_Calculation': 'FBA Ship',
+                'FBA_CVR': 'FBA CVR',
+                'Current_Month_Views': 'Views',
+                'Inv_age': 'Inv age',
+                'lmp_1': 'LMP',
+                'Fulfillment_Fee': 'FBA Fee',
+                'FBA_Fee_Manual': 'FBA Fee M',
+                'Send_Cost': 'Send Cost',
+                'Commission_Percentage': 'Comm %',
+                'Ratings': 'Ratings'
+            };
+
+            // Build export columns list
+            function buildExportColumnsList() {
+                const container = document.getElementById('export-columns-list');
+                container.innerHTML = '';
+                
+                const columns = table.getColumns().filter(col => {
+                    const field = col.getField();
+                    return field && exportColumnMapping[field] && field !== '_select' && field !== '_accept';
+                });
+
+                columns.forEach(col => {
+                    const field = col.getField();
+                    const displayName = exportColumnMapping[field];
+                    
+                    const div = document.createElement('div');
+                    div.className = 'form-check mb-2';
+                    div.innerHTML = `
+                        <input class="form-check-input export-column-checkbox" type="checkbox" 
+                               value="${field}" id="export-col-${field}" checked>
+                        <label class="form-check-label" for="export-col-${field}">
+                            ${displayName}
+                        </label>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+
+            // Select all export columns
+            $('#select-all-export-columns').on('click', function() {
+                $('.export-column-checkbox').prop('checked', true);
+            });
+
+            // Deselect all export columns
+            $('#deselect-all-export-columns').on('click', function() {
+                $('.export-column-checkbox').prop('checked', false);
+            });
+
+            // Confirm export
+            $('#confirm-export-btn').on('click', function() {
+                const selectedColumns = [];
+                $('.export-column-checkbox:checked').each(function() {
+                    selectedColumns.push($(this).val());
+                });
+
+                if (selectedColumns.length === 0) {
+                    showToast('error', 'Please select at least one column to export');
+                    return;
+                }
+
+                // Build export URL with selected columns
+                const columnsParam = encodeURIComponent(JSON.stringify(selectedColumns));
+                const exportUrl = `/fba-manual-export?columns=${columnsParam}`;
+                
+                // Close modal and trigger download
+                $('#exportModal').modal('hide');
+                window.location.href = exportUrl;
+            });
+
+            // When export modal is shown, build the columns list
+            $('#exportModal').on('show.bs.modal', function() {
+                if (table) {
+                    buildExportColumnsList();
+                }
+            });
         </script>
     @endsection
