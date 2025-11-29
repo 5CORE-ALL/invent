@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Ebay2GeneralReport;
+use App\Models\Ebay2Metric;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -23,94 +25,97 @@ class UpdateEbayTwoSuggestedBid extends Command
     }
 
     public function handle() {  
-        $this->info('Starting bulk eBay2 ad bid update...');
+        try {
+            $this->info('Starting bulk eBay ad bid update...');
 
-        $accessToken = $this->getEbayAccessToken();
-        if (!$accessToken) {
-            $this->error('Failed to obtain eBay access token.');
-            return;
-        }
+            $accessToken = $this->getEbayAccessToken();
+            if (!$accessToken) {
+                $this->error('Failed to obtain eBay access token.');
+                return 1;
+            }
 
-        $productMasters = ProductMaster::orderBy("parent", "asc")
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy("sku", "asc")
-            ->get();
+            $productMasters = ProductMaster::orderBy("parent", "asc")
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy("sku", "asc")
+                ->get();
 
-        $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
+            if ($productMasters->isEmpty()) {
+                $this->info('No product masters found.');
+                return 0;
+            }
 
-        $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
-        $ebayMetrics = DB::connection('apicentral')->table('ebay2_metrics')->whereIn("sku", $skus)->get()->keyBy("sku");
+            $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
+
+            $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+            $ebayMetrics = Ebay2Metric::whereIn("sku", $skus)->get();
+            
+            if ($ebayMetrics->isEmpty()) {
+                $this->info('No eBay metrics found for the SKUs.');
+                return 0;
+            }
+        
+        // Normalize SKUs by replacing non-breaking spaces with regular spaces for matching
+        $ebayMetricsNormalized = $ebayMetrics->mapWithKeys(function($item) {
+            $normalizedSku = str_replace(["\xC2\xA0", "\u{00A0}"], ' ', $item->sku);
+            return [$normalizedSku => $item];
+        });
 
         $campaignListings = DB::connection('apicentral')
             ->table('ebay2_campaign_ads_listings')
-            ->select('listing_id', 'campaign_id')
+            ->select('listing_id', 'campaign_id', 'bid_percentage')
             ->where('funding_strategy', 'COST_PER_SALE')
             ->get()
-            ->keyBy('listing_id');
+            ->keyBy('listing_id')
+            ->map(function ($item) {
+                return (object) [
+                    'listing_id' => $item->listing_id,
+                    'campaign_id' => $item->campaign_id,
+                    'bid_percentage' => $item->bid_percentage,
+                    'new_bid' => null
+                ];
+            });
+
+            if ($campaignListings->isEmpty()) {
+                $this->info('No campaign listings found.');
+                return 0;
+            }
+
+            // Get L7 clicks from ebaygeneral report
+            $ebayGeneralL7 = Ebay2GeneralReport::select('listing_id', 'clicks')
+                ->where('report_range', 'L7')
+                ->get()
+                ->keyBy('listing_id');
             
+        // Process ProductMaster data and update campaign listings
         foreach ($productMasters as $pm) {
             $shopify = $shopifyData[$pm->sku] ?? null;
-            $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
 
-            $inv = $shopify->inv ?? 0;
-            $l30 = $shopify->quantity ?? 0;
-            $ebay_l30 = $ebayMetric->ebay_l30 ?? 0;
-            $views = $ebayMetric->views ?? 0;
-
-            $ovDil = $inv > 0 ? ($l30 / $inv) : 0;
-
-            $percent = round($ovDil * 100);
-
-            $sbid = 0;
-            $sbidColor = "";
-
-            if ($percent < 16.66) {
-                $sbidColor = "red";
-            } elseif ($percent >= 16.66 && $percent < 25) {
-                $sbidColor = "yellow";
-            } elseif ($percent >= 25 && $percent < 50) {
-                $sbidColor = "green";
-            } else {
-                $sbidColor = "pink";
-            }
-
-            $viewsLow = $views < 300;
-            $noSale = $ebay_l30 === 0;
-
-            if ($sbidColor === "pink") {
-                if ($viewsLow) {
-                    $sbid = 4;
-                } else {
-                    $sbid = 2;
+            if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
+                $listing = $campaignListings[$ebayMetric->item_id];
+                $currentBid = (float) ($listing->bid_percentage ?? 0);
+                $l7ClicksData = $ebayGeneralL7->get($ebayMetric->item_id);
+                $l7Clicks = $l7ClicksData ? (int) ($l7ClicksData->clicks ?? 0) : 0;
+                
+                $newBid = $currentBid;
+                
+                if ($l7Clicks < 70) {
+                    $newBid = $currentBid + 0.5;
+                } elseif ($l7Clicks > 140) {
+                    $newBid = $currentBid - 0.5;
                 }
-            }
-
-            if ($sbidColor === "green") {
-                if ($noSale) {
-                    $sbid = $viewsLow ? 10 : 7;
-                } else {
-                    $sbid = $viewsLow ? 7 : 5;
+                
+                // Apply 15% cap and 2% minimum
+                if ($newBid > 15) {
+                    $newBid = 15;
                 }
-            }
-
-            if ($sbidColor === "yellow") {
-                if ($noSale) {
-                    $sbid = $viewsLow ? 12 : 10;
-                } else {
-                    $sbid = $viewsLow ? 10 : 8;
+                
+                // Ensure bid doesn't go below 2
+                if ($newBid < 2) {
+                    $newBid = 2;
                 }
-            }
-
-            if ($sbidColor === "red") {
-                if ($noSale) {
-                    $sbid = $viewsLow ? 15 : 12;
-                } else {
-                    $sbid = $viewsLow ? 12 : 10;
-                }
-            }
-
-            if ($ebayMetric && isset($campaignListings[$ebayMetric->item_id])) {
-                $campaignListings[$ebayMetric->item_id]->sbid = $sbid;
+                
+                $listing->new_bid = $newBid;
             }
         }
 
@@ -133,10 +138,10 @@ class UpdateEbayTwoSuggestedBid extends Command
             $requests = [];
 
             foreach ($listings as $listing) {
-                if (isset($listing->sbid)) {
+                if (isset($listing->new_bid)) {
                     $requests[] = [
                         'listingId' => $listing->listing_id,
-                        'bidPercentage' => (string) $listing->sbid
+                        'bidPercentage' => (string) $listing->new_bid
                     ];
                 }
             }
@@ -150,8 +155,7 @@ class UpdateEbayTwoSuggestedBid extends Command
                     "sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
                     ['json' => ['requests' => $requests]]
                 );
-
-                $this->info("Campaign {$campaignId}: Updated " . count($requests) . " listings.");
+                $this->info("Campaign {$campaignId}: Updated " . json_encode($requests, JSON_PRETTY_PRINT) . " listings.");
                 Log::info("eBay campaign {$campaignId} bulk update response: " . $response->getBody()->getContents());
             } catch (\Exception $e) {
                 Log::error("Failed to update eBay campaign {$campaignId}: " . $e->getMessage());
@@ -159,18 +163,34 @@ class UpdateEbayTwoSuggestedBid extends Command
             }
         }
 
-        $this->info('eBay ad bid update finished.');
+            $this->info('eBay ad bid update finished.');
+            return 0;
+            
+        } catch (Exception $e) {
+            Log::error('eBay bid update command failed: ' . $e->getMessage());
+            $this->error('Command failed: ' . $e->getMessage());
+            return 1;
+        } catch (\Throwable $e) {
+            Log::error('eBay bid update command failed with throwable: ' . $e->getMessage());
+            $this->error('Command failed with error: ' . $e->getMessage());
+            return 1;
+        }
     }
 
     private function getEbayAccessToken()
     {
-        if (Cache::has('ebay_access_token')) {
-            return Cache::get('ebay_access_token');
-        }
+        try {
+            if (Cache::has('ebay_access_token')) {
+                return Cache::get('ebay_access_token');
+            }
 
-        $clientId = env('EBAY2_APP_ID');
-        $clientSecret = env('EBAY2_CERT_ID');
-        $refreshToken = env('EBAY2_REFRESH_TOKEN');
+            $clientId = env('EBAY2_APP_ID');
+            $clientSecret = env('EBAY2_CERT_ID');
+            $refreshToken = env('EBAY2_REFRESH_TOKEN');
+            
+            if (!$clientId || !$clientSecret || !$refreshToken) {
+                throw new Exception('Missing eBay API credentials in environment variables');
+            }
         $endpoint = "https://api.ebay.com/identity/v1/oauth2/token";
 
         $postFields = http_build_query([
@@ -191,23 +211,40 @@ class UpdateEbayTwoSuggestedBid extends Command
             ],
         ]);
 
-        $response = curl_exec($ch);
-        if (curl_errno($ch)) {
-            throw new Exception(curl_error($ch));
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            
+            if (curl_errno($ch)) {
+                $error = curl_error($ch);
+                curl_close($ch);
+                throw new Exception('cURL Error: ' . $error);
+            }
+            curl_close($ch);
+
+            if ($httpCode !== 200) {
+                throw new Exception('HTTP Error: ' . $httpCode . ' Response: ' . $response);
+            }
+
+            $data = json_decode($response, true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception('Invalid JSON response: ' . json_last_error_msg());
+            }
+
+            if (isset($data['access_token'])) {
+                $accessToken = $data['access_token'];
+                $expiresIn = $data['expires_in'] ?? 7200;
+
+                Cache::put('ebay_access_token', $accessToken, $expiresIn - 60);
+
+                return $accessToken;
+            }
+
+            throw new Exception("Failed to refresh token: " . json_encode($data));
+            
+        } catch (Exception $e) {
+            Log::error('Failed to get eBay access token: ' . $e->getMessage());
+            throw $e;
         }
-        curl_close($ch);
-
-        $data = json_decode($response, true);
-
-        if (isset($data['access_token'])) {
-            $accessToken = $data['access_token'];
-            $expiresIn = $data['expires_in'] ?? 7200;
-
-            Cache::put('ebay_access_token', $accessToken, $expiresIn - 60);
-
-            return $accessToken;
-        }
-
-        throw new Exception("Failed to refresh token: " . json_encode($data));
     }
 }

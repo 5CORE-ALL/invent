@@ -31,11 +31,15 @@ class FetchEbay2Metrics extends Command
      */
     public function handle()
     {
+        $this->info('🚀 Starting eBay2 Metrics fetch...');
+        
         $token = $this->getToken();
         if (! $token) {
-            $this->error('Token error');
+            $this->error('❌ Token error');
             return;
         }
+        
+        $this->info('✅ Token obtained successfully');
 
         $taskId = $this->getInventoryTaskId($token);
         if (! $taskId) {
@@ -48,6 +52,7 @@ class FetchEbay2Metrics extends Command
         // Save price + SKU mapping
         // We'll map itemId => [sku, sku, ...]
         $itemIdToSku = [];
+        $activeSkus = []; // Track all active SKUs from current fetch
 
         foreach ($listingData as $row) {
             $itemId = $row['item_id'] ?? null;
@@ -57,6 +62,9 @@ class FetchEbay2Metrics extends Command
             if (! $itemId || $sku === '') {
                 continue;
             }
+
+            // Track active SKUs
+            $activeSkus[] = $sku;
 
             // keep mapping of itemId to array of SKUs
             if (! isset($itemIdToSku[$itemId])) {
@@ -68,6 +76,19 @@ class FetchEbay2Metrics extends Command
                 $itemIdToSku[$itemId][] = $sku;
             }
 
+            // Check if this SKU exists with different item_id and delete old records
+            $existingRecords = Ebay2Metric::where('sku', $sku)
+                ->where('item_id', '!=', $itemId)
+                ->get();
+            
+            if ($existingRecords->count() > 0) {
+                $this->info("🔄 SKU {$sku}: Found old item_id(s), cleaning up...");
+                foreach ($existingRecords as $oldRecord) {
+                    $this->info("❌ Deleting old record: {$oldRecord->item_id}/{$sku}");
+                    $oldRecord->delete();
+                }
+            }
+
             // Save per SKU (unique by item_id + sku)
             Ebay2Metric::updateOrCreate(
                 ['item_id' => $itemId, 'sku' => $sku],
@@ -76,6 +97,13 @@ class FetchEbay2Metrics extends Command
                     'report_range' => now()->toDateString(),
                 ]
             );
+        }
+
+        // Clean up SKUs that are no longer active (not in current fetch)
+        $uniqueActiveSkus = array_unique($activeSkus);
+        $deletedCount = Ebay2Metric::whereNotIn('sku', $uniqueActiveSkus)->delete();
+        if ($deletedCount > 0) {
+            $this->info("🗑️  Cleaned up {$deletedCount} inactive SKU records");
         }
 
         // Update views per itemId -> sku list
@@ -342,28 +370,58 @@ class FetchEbay2Metrics extends Command
     {
         // $map = [ itemId => [sku,sku,...], ... ]
         $chunks = array_chunk(array_keys($map), 20);
+        
+        $this->info('🔄 Fetching views for ' . count($map) . ' items in ' . count($chunks) . ' chunks...');
 
-        foreach ($chunks as $chunk) {
+        foreach ($chunks as $chunkIndex => $chunk) {
             $ids = implode('|', $chunk);
-            $range = now()->subDays(30)->format('Ymd').'..'.now()->format('Ymd');
+            $range = now()->subDays(30)->format('Ymd').'..'.now()->subDay()->format('Ymd');
 
             $url = "https://api.ebay.com/sell/analytics/v1/traffic_report?dimension=LISTING&filter=listing_ids:%7B{$ids}%7D,date_range:[{$range}]&metric=LISTING_VIEWS_TOTAL";
+            
+            $this->info("📊 Chunk {$chunkIndex}: " . implode(', ', array_slice($chunk, 0, 3)) . (count($chunk) > 3 ? '...' : ''));
 
             $r = Http::withToken($token)->get($url);
+            
+            if (!$r->successful()) {
+                $this->error('❌ Views API failed for chunk ' . $chunkIndex . ': ' . $r->body());
+                continue;
+            }
 
-            foreach ($r['records'] ?? [] as $rec) {
+            $records = $r['records'] ?? [];
+            $this->info("📈 Found " . count($records) . " view records");
+            
+            if (empty($records)) {
+                $this->warn('⚠️  No view records found. Response: ' . json_encode($r->json()));
+            }
+            
+            foreach ($records as $rec) {
                 $id = $rec['dimensionValues'][0]['value'] ?? null;
-                $v = $rec['metricValues'][0]['value'] ?? null;
+                $v = $rec['metricValues'][0]['value'] ?? 0;
                 if (! $id) {
+                    $this->warn('⚠️  Record missing item ID: ' . json_encode($rec));
                     continue;
                 }
+                
+                $this->info("📊 Item {$id}: {$v} views");
 
                 $skus = $map[$id] ?? [];
                 foreach ($skus as $sku) {
-                    Ebay2Metric::where('item_id', $id)
+                    $updated = Ebay2Metric::where('item_id', $id)
                         ->where('sku', $sku)
                         ->update(['views' => $v]);
+                    
+                    if ($updated) {
+                        $this->info("✅ Updated views for {$id}/{$sku}: {$v}");
+                    } else {
+                        $this->warn("⚠️  Failed to update views for {$id}/{$sku}");
+                    }
                 }
+            }
+            
+            // Add small delay between API calls
+            if ($chunkIndex < count($chunks) - 1) {
+                sleep(1);
             }
         }
     }

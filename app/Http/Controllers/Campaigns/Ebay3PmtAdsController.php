@@ -35,8 +35,15 @@ class Ebay3PmtAdsController extends Controller
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
         $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
-        $ebayMetrics = Ebay3Metric::whereIn("sku", $skus)->get()->keyBy("sku");
-        $matchedSkus = $ebayMetrics->keys()->all();
+        $ebayMetrics = Ebay3Metric::whereIn("sku", $skus)->get();
+        
+        // Normalize SKUs by replacing non-breaking spaces with regular spaces for matching
+        $ebayMetricsNormalized = $ebayMetrics->mapWithKeys(function($item) {
+            $normalizedSku = str_replace(["\xC2\xA0", "\u{00A0}"], ' ', $item->sku);
+            return [$normalizedSku => $item];
+        });
+        
+        $matchedSkus = $ebayMetricsNormalized->keys()->all();
         $productMasters = $productMasters->whereIn('sku', $matchedSkus)->values();
 
         $nrValues = EbayThreeDataView::whereIn("sku", $matchedSkus)->pluck("value", "sku");
@@ -104,7 +111,25 @@ class Ebay3PmtAdsController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData[$pm->sku] ?? null;
-            $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
+            
+            // Fallback: If exact match not found, try partial match
+            // Prefer longer SKU matches to avoid matching "DS CH YLW" when looking for "DS CH YLW REST-LVR"
+            if (!$ebayMetric) {
+                $candidates = [];
+                foreach ($ebayMetricsNormalized as $metric) {
+                    if (stripos($metric->sku, $pm->sku) === 0 || stripos($pm->sku, $metric->sku) === 0) {
+                        $candidates[] = $metric;
+                    }
+                }
+                // Sort by SKU length descending and pick the longest match
+                if (!empty($candidates)) {
+                    usort($candidates, function($a, $b) {
+                        return strlen($b->sku) - strlen($a->sku);
+                    });
+                    $ebayMetric = $candidates[0];
+                }
+            }
 
             $row = [];
             $row["Parent"] = $parent;
