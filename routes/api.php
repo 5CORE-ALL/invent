@@ -75,18 +75,63 @@ Route::get('/test-doba-item-validation', [PricingMasterViewsController::class, '
 Route::get('/advanced-doba-debug', [PricingMasterViewsController::class, 'advancedDobaDebug']); // Advanced debug with multiple methods
 Route::post('/update-doba-price', [PricingMasterViewsController::class, 'pushdobaPriceBySku']); // Doba price update API
 
-// Test route to get Shein L30 sales data from Shein API
+// Test route to get Shein API data (single page to avoid rate limiting)
 Route::get('/test-shein-api', function () {
     try {
-        $sheinService = new \App\Services\SheinApiService();
-        $products = $sheinService->listAllProducts();
+        $endpoint = "/open-api/openapi-business-backend/product/query";
+        $timestamp = round(microtime(true) * 1000);
+        $random = \Illuminate\Support\Str::random(5);
+        
+        // Generate signature
+        $openKeyId = env('SHEIN_OPEN_KEY_ID');
+        $secretKey = env('SHEIN_SECRET_KEY');
+        $value = $openKeyId . "&" . $timestamp . "&" . $endpoint;
+        $key = $secretKey . $random;
+        $hmacResult = hash_hmac('sha256', $value, $key, false);
+        $base64Signature = base64_encode($hmacResult);
+        $signature = $random . $base64Signature;
+        
+        $url = 'https://openapi.sheincorp.com' . $endpoint;
+        
+        // Fetch only first page with 10 items to avoid rate limiting
+        $payload = [
+            "pageNum" => 1,
+            "pageSize" => 10,
+            "insertTimeEnd" => "",
+            "insertTimeStart" => "",
+            "updateTimeEnd" => "",
+            "updateTimeStart" => "",
+        ];
+        
+        $response = \Illuminate\Support\Facades\Http::withoutVerifying()
+            ->withHeaders([
+                "Language" => "en-us",
+                "x-lt-openKeyId" => $openKeyId,
+                "x-lt-timestamp" => $timestamp,
+                "x-lt-signature" => $signature,
+                "Content-Type" => "application/json",
+            ])
+            ->post($url, $payload);
+        
+        if (!$response->successful()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Shein API Error: ' . $response->body(),
+                'status' => $response->status()
+            ], $response->status());
+        }
+        
+        $data = $response->json();
+        $products = $data["info"]["data"] ?? [];
         
         return response()->json([
             'success' => true,
+            'message' => 'Shein API test successful (1 page, 10 items)',
             'total_products' => count($products),
-            'message' => 'Shein API data fetched successfully (inventory + stock updates)',
-            'data' => $products
+            'api_response' => $data,
+            'products' => $products
         ]);
+        
     } catch (\Exception $e) {
         return response()->json([
             'success' => false,
@@ -96,7 +141,6 @@ Route::get('/test-shein-api', function () {
         ], 500);
     }
 });
-
 
 // Supplier open rfq form url
 //please dont delete this section 🙏
