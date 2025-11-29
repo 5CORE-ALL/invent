@@ -414,14 +414,14 @@ class PricingMasterViewsController extends Controller
         // NEW CODE: Fetch L30 from shein_orders table in apicentral database (last 30 days from today)
         // Count total number of order records for each SKU (no quantity column, count rows)
         $thirtyDaysAgo = Carbon::now()->subDays(30);
-        $sheinOrdersL30 = DB::connection('apicentral')
+         $sheinOrdersL30 = DB::connection('apicentral')
             ->table('shein_orders')
-            ->select('seller_sku', DB::raw('COUNT(*) as shein_l30'))
+            ->select('seller_sku as sku', DB::raw('COUNT(*) as shein_l30'))
             ->whereIn('seller_sku', $nonParentSkus)
             ->where('created_at', '>=', $thirtyDaysAgo)
             ->groupBy('seller_sku')
             ->get()
-            ->keyBy('seller_sku');
+            ->keyBy('sku');
         
         // Still fetch shein_sheet_data for other fields (price, views, etc.)
         $sheinData = SheinSheetData::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
