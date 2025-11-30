@@ -1426,7 +1426,7 @@
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search SKU...",
                         frozen: true,
-                        width: 150,
+                        width: 250,
                         formatter: function(cell) {
                             const sku = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -1449,7 +1449,7 @@
                                 ${rowData.rating ? `<i class="fas fa-star" style="color: orange;"></i> <span style="font-weight: bold;">${rowData.rating}</span>` : ''}
                             </div>`;
                         },
-                        width: 120
+                     
                     },
 
                     {

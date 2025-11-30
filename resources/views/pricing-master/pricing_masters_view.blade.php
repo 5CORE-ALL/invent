@@ -16,7 +16,19 @@
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-         
+            width: 100% !important;
+        }
+
+        .tabulator {
+            width: 100% !important;
+        }
+
+        .tabulator-tableholder {
+            width: 100% !important;
+        }
+
+        .tabulator-table {
+            width: 100% !important;
         }
 
         .image-preview-container {
@@ -109,6 +121,7 @@
             font-weight: bold;
             text-transform: uppercase;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            width: 100% !important;
         }
 
         .tabulator .tabulator-header .tabulator-col {
@@ -118,6 +131,7 @@
             vertical-align: middle;
             color: #ffffff;
             transition: all 0.2s ease;
+            min-width: fit-content;
         }
 
         .tabulator .tabulator-header .tabulator-col-content {
@@ -1231,7 +1245,7 @@ $.ajax({
        const table = new Tabulator("#forecast-table", {
             ajaxURL: "/pricing-master-data-views",
             fixedHeader: true,
-         
+            layout: "fitColumns",
             width: "100%",
             height: "700px",
           
@@ -1286,6 +1300,7 @@ $.ajax({
                 {
                     title: "SKU",
                     field: "SKU",
+                    width: 250,
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
                     cssClass: "font-weight-bold",
