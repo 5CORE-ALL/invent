@@ -5,7 +5,9 @@
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
     <style>
+        /* ========== TABLE STRUCTURE ========== */
         /* ========== TABLE STRUCTURE ========== */
         .table-container {
             overflow-x: auto;
@@ -919,6 +921,85 @@
 @section('content')
     @include('layouts.shared/page-title', ['page_title' => 'Ebay 3 PMT Ads', 'sub_title' => 'Ebay 3 PMT Ads'])
 
+    <!-- Stats and Chart Section -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <button id="daterange-btn" class="btn btn-outline-dark">
+                            <span>Date range: Select</span> <i class="fa-solid fa-chevron-down ms-1"></i>
+                        </button>
+                    </div>
+                    <!-- Stats Row -->
+                    <div class="row text-center mb-4">
+                        <!-- Clicks -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Clicks</div>
+                                <div class="h3 mb-0 fw-bold text-primary card-clicks">0</div>
+                            </div>
+                        </div>
+
+                        <!-- Spend -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Spent</div>
+                                <div class="h3 mb-0 fw-bold text-success card-spend">$0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Ad Sales -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Ad Sales</div>
+                                <div class="h3 mb-0 fw-bold text-info card-ad-sales">$0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Ad Sold -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Ad Sold</div>
+                                <div class="h3 mb-0 fw-bold text-warning card-ad-sold">0</div>
+                            </div>
+                        </div>
+
+                        <!-- ACOS -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">ACOS</div>
+                                <div class="h3 mb-0 fw-bold text-danger card-acos">0%</div>
+                            </div>
+                        </div>
+
+                        <!-- CVR -->
+                        <div class="col-md-2">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="text-muted small">CVR</div>
+                                        <div class="h3 mb-0 fw-bold text-secondary card-cvr">0%</div>
+                                    </div>
+                                    <!-- Arrow button -->
+                                    <button id="toggleChartBtn" class="btn btn-sm btn-info ms-2">
+                                        <i id="chartArrow" class="fa-solid fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chart (hidden by default) -->
+                    <div id="chartContainer" style="display: none;">
+                        <canvas id="campaignChart" height="120"></canvas>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -1618,8 +1699,284 @@
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <!-- SheetJS for Excel Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script>
+        // Chart initialization
+        const ctx = document.getElementById('campaignChart').getContext('2d');
+
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: {!! json_encode($dates) !!},
+                datasets: [
+                    {
+                        label: 'Clicks',
+                        data: {!! json_encode($clicks) !!},
+                        borderColor: 'purple',
+                        backgroundColor: 'rgba(128, 0, 128, 0.1)',
+                        yAxisID: 'y1',
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        fill: false,
+                    },
+                    {
+                        label: 'Spent (USD)',
+                        data: {!! json_encode($spend) !!},
+                        borderColor: 'teal',
+                        backgroundColor: 'rgba(0, 128, 128, 0.1)',
+                        yAxisID: 'y2',
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        fill: false,
+                    },
+                    {
+                        label: 'Ad Sales (USD)',
+                        data: {!! json_encode($adSales) !!},
+                        borderColor: 'blue',
+                        backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                        yAxisID: 'y2',
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        fill: false,
+                    },
+                    {
+                        label: 'Ad Sold',
+                        data: {!! json_encode($adSold) !!},
+                        borderColor: 'orange',
+                        backgroundColor: 'rgba(255, 165, 0, 0.1)',
+                        yAxisID: 'y1',
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        fill: false,
+                    },
+                    {
+                        label: 'ACOS (%)',
+                        data: {!! json_encode($acos) !!},
+                        borderColor: 'red',
+                        backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                        yAxisID: 'y3',
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        fill: false,
+                    },
+                    {
+                        label: 'CVR (%)',
+                        data: {!! json_encode($cvr) !!},
+                        borderColor: 'green',
+                        backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                        yAxisID: 'y3',
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        fill: false,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    tooltip: {
+                        backgroundColor: "#fff",
+                        titleColor: "#111",
+                        bodyColor: "#333",
+                        borderColor: "#ddd",
+                        borderWidth: 1,
+                        padding: 12,
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 13 },
+                        usePointStyle: true,
+                        callbacks: {
+                            label: function(context) {
+                                let value = context.raw;
+                                if (context.dataset.label.includes("Spent") || context.dataset.label.includes("Sales")) {
+                                    return `${context.dataset.label}: $${Number(value).toFixed(2)}`;
+                                }
+                                if (context.dataset.label.includes("ACOS") || context.dataset.label.includes("CVR")) {
+                                    return `${context.dataset.label}: ${Number(value).toFixed(2)}%`;
+                                }
+                                return `${context.dataset.label}: ${value}`;
+                            }
+                        }
+                    },
+                    legend: {
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 10,
+                            padding: 20
+                        },
+                        onClick: (e, legendItem, legend) => {
+                            const index = legendItem.datasetIndex;
+                            const ci = legend.chart;
+                            const meta = ci.getDatasetMeta(index);
+                            meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
+                            ci.update();
+                        }
+                    }
+                },
+                scales: {
+                    y1: {
+                        type: 'linear',
+                        position: 'left',
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Clicks / Ad Sold'
+                        }
+                    },
+                    y2: {
+                        type: 'linear',
+                        position: 'right',
+                        beginAtZero: true,
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        title: {
+                            display: true,
+                            text: 'Spent / Sales (USD)'
+                        }
+                    },
+                    y3: {
+                        type: 'linear',
+                        position: 'right',
+                        beginAtZero: true,
+                        max: 100,
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        title: {
+                            display: true,
+                            text: 'ACOS / CVR (%)'
+                        },
+                        offset: true
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+
+        // Toggle chart visibility
+        document.getElementById('toggleChartBtn').addEventListener('click', function() {
+            const container = document.getElementById('chartContainer');
+            const arrow = document.getElementById('chartArrow');
+            
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                arrow.classList.remove('fa-chevron-down');
+                arrow.classList.add('fa-chevron-up');
+            } else {
+                container.style.display = 'none';
+                arrow.classList.remove('fa-chevron-up');
+                arrow.classList.add('fa-chevron-down');
+            }
+        });
+
+        // Initialize date range picker
+        const startDate = moment().subtract(29, 'days');
+        const endDate = moment();
+
+        $('#daterange-btn').daterangepicker({
+            startDate: startDate,
+            endDate: endDate,
+            ranges: {
+                'Today': [moment(), moment()],
+                'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+                'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+                'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+                'This Month': [moment().startOf('month'), moment().endOf('month')],
+                'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+            },
+            locale: {
+                format: 'YYYY-MM-DD'
+            }
+        }, function(start, end, label) {
+            $('#daterange-btn span').html('Date range: ' + start.format('YYYY-MM-DD') + ' - ' + end.format('YYYY-MM-DD'));
+
+            // Fetch filtered data
+            fetch('/ebay-3/pmp/ads/filter?startDate=' + start.format('YYYY-MM-DD') + '&endDate=' + end.format('YYYY-MM-DD'))
+                .then(response => response.json())
+                .then(data => {
+                    // Update chart data
+                    chart.data.labels = data.dates;
+                    chart.data.datasets[0].data = data.clicks;
+                    chart.data.datasets[1].data = data.spend;
+                    chart.data.datasets[2].data = data.ad_sales;
+                    chart.data.datasets[3].data = data.ad_sold;
+                    chart.data.datasets[4].data = data.acos;
+                    chart.data.datasets[5].data = data.cvr;
+                    chart.update();
+
+                    // Update stats cards
+                    document.querySelector('.card-clicks').textContent = data.totals.clicks.toLocaleString();
+                    document.querySelector('.card-spend').textContent = '$' + data.totals.spend.toFixed(2);
+                    document.querySelector('.card-ad-sales').textContent = '$' + data.totals.ad_sales.toFixed(2);
+                    document.querySelector('.card-ad-sold').textContent = data.totals.ad_sold.toLocaleString();
+                    
+                    // Calculate and update ACOS and CVR
+                    const avgAcos = data.totals.ad_sales > 0 ? (data.totals.spend / data.totals.ad_sales) * 100 : 0;
+                    const avgCvr = data.totals.clicks > 0 ? (data.totals.ad_sold / data.totals.clicks) * 100 : 0;
+                    
+                    document.querySelector('.card-acos').textContent = avgAcos.toFixed(2) + '%';
+                    document.querySelector('.card-cvr').textContent = avgCvr.toFixed(2) + '%';
+                })
+                .catch(error => console.error('Error:', error));
+        });
+
+        // Initialize the default range
+        $('#daterange-btn span').html('Date range: ' + startDate.format('YYYY-MM-DD') + ' - ' + endDate.format('YYYY-MM-DD'));
+
+        // Calculate and display initial totals
+        const initialClicks = {!! json_encode(array_sum($clicks)) !!};
+        const initialSpend = {!! json_encode(array_sum($spend)) !!};
+        const initialAdSales = {!! json_encode(array_sum($adSales)) !!};
+        const initialAdSold = {!! json_encode(array_sum($adSold)) !!};
+
+        document.querySelector('.card-clicks').textContent = initialClicks.toLocaleString();
+        document.querySelector('.card-spend').textContent = '$' + initialSpend.toFixed(2);
+        document.querySelector('.card-ad-sales').textContent = '$' + initialAdSales.toFixed(2);
+        document.querySelector('.card-ad-sold').textContent = initialAdSold.toLocaleString();
+
+        const initialAcos = initialAdSales > 0 ? (initialSpend / initialAdSales) * 100 : 0;
+        const initialCvr = initialClicks > 0 ? (initialAdSold / initialClicks) * 100 : 0;
+
+        document.querySelector('.card-acos').textContent = initialAcos.toFixed(2) + '%';
+        document.querySelector('.card-cvr').textContent = initialCvr.toFixed(2) + '%';
+
+        // Set up modal functionality for campaign drill-down
+        chart.options.onClick = function(event, elements) {
+            if (elements.length > 0) {
+                const datasetIndex = elements[0].datasetIndex;
+                const dataIndex = elements[0].index;
+                
+                // Only trigger modal for certain datasets (you can customize this)
+                if (datasetIndex === 0) { // Clicks dataset
+                    const date = chart.data.labels[dataIndex];
+                    
+                    // You can expand this to show campaign-specific data
+                    console.log('Clicked on date:', date);
+                    // Implement modal functionality here if needed
+                }
+            }
+        };
+    </script>
     <script>
         $(document).ready(function() {
             $(document).on('dblclick', '.sPriceText', function() {
@@ -5723,7 +6080,6 @@
             initTable();
             // Make the static Hide SKU modal draggable using the existing logic
             ModalSystem.makeDraggable(document.getElementById('customHideSkuModal'));
-            
         });
     </script>
 @endsection
