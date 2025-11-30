@@ -19,6 +19,7 @@ use App\Models\EbaySkuDailyData;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\EbayListingStatus;
+use App\Services\EbayApiService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -488,6 +489,7 @@ class EbayController extends Controller
             }
             
             // Always calculate SPRICE based on CVR (ignore saved values)
+            $calculatedSprice = null;
             if ($price > 0) {
                 // Determine multiplier based on CVR
                 if ($cvr >= 0 && $cvr <= 1) {
@@ -501,10 +503,46 @@ class EbayController extends Controller
                     $spriceMultiplier = 1.01;
                 }
                 
-                $row['SPRICE'] = round($price * $spriceMultiplier, 2);
-                $row['has_custom_sprice'] = false; // Always calculated, never custom
+                $calculatedSprice = round($price * $spriceMultiplier, 2);
                 
-                // Calculate SGPFT based on calculated SPRICE
+                // Check if there's a saved SPRICE that differs from calculated
+                $savedSprice = null;
+                if (isset($nrValues[$pm->sku])) {
+                    $raw = $nrValues[$pm->sku];
+                    if (!is_array($raw)) {
+                        $raw = json_decode($raw, true);
+                    }
+                    if (is_array($raw) && isset($raw['SPRICE'])) {
+                        $savedSprice = floatval($raw['SPRICE']);
+                    }
+                }
+                
+                // Check for SPRICE_STATUS in database (pushed/applied/error)
+                $savedStatus = null;
+                if (isset($nrValues[$pm->sku])) {
+                    $raw = $nrValues[$pm->sku];
+                    if (!is_array($raw)) {
+                        $raw = json_decode($raw, true);
+                    }
+                    if (is_array($raw) && isset($raw['SPRICE_STATUS'])) {
+                        $savedStatus = $raw['SPRICE_STATUS'];
+                    }
+                }
+                
+                // Use saved SPRICE if it exists, otherwise use calculated
+                if ($savedSprice !== null && abs($savedSprice - $calculatedSprice) > 0.01) {
+                    $row['SPRICE'] = $savedSprice;
+                    $row['has_custom_sprice'] = true;
+                    // Use saved status if exists (pushed/applied/error), otherwise 'saved'
+                    $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
+                } else {
+                    $row['SPRICE'] = $calculatedSprice;
+                    $row['has_custom_sprice'] = false;
+                    // Use saved status if exists, otherwise null
+                    $row['SPRICE_STATUS'] = $savedStatus;
+                }
+                
+                // Calculate SGPFT based on actual SPRICE being used
                 $sprice = $row['SPRICE'];
                 $sgpft = round(
                     $sprice > 0 ? (($sprice * 0.86 - $ship - $lp) / $sprice) * 100 : 0,
@@ -528,6 +566,7 @@ class EbayController extends Controller
                 $row['SROI'] = null;
                 $row['SGPFT'] = null;
                 $row['has_custom_sprice'] = false;
+                $row['SPRICE_STATUS'] = null;
             }
 
             // Image
@@ -1069,6 +1108,55 @@ class EbayController extends Controller
             $data = json_decode($response->getContent(), true);
             $ebayData = $data['data'] ?? [];
 
+            // Get selected columns from request
+            $selectedColumns = [];
+            if ($request->has('columns')) {
+                $columnsJson = $request->input('columns');
+                $selectedColumns = json_decode($columnsJson, true) ?: [];
+            }
+
+            // Column mapping: field => [header_name, data_extractor]
+            $columnMap = [
+                'Parent' => ['Parent', function($item) { return $item['Parent'] ?? ''; }],
+                '(Child) sku' => ['SKU', function($item) { return $item['(Child) sku'] ?? ''; }],
+                'INV' => ['INV', function($item) { return $item['INV'] ?? 0; }],
+                'L30' => ['L30', function($item) { return $item['L30'] ?? 0; }],
+                'E Dil%' => ['Dil%', function($item) { 
+                    return ($item['INV'] > 0) ? round(($item['L30'] / $item['INV']) * 100, 2) : 0; 
+                }],
+                'eBay L30' => ['eBay L30', function($item) { return $item['eBay L30'] ?? 0; }],
+                'eBay L60' => ['eBay L60', function($item) { return $item['eBay L60'] ?? 0; }],
+                'eBay Price' => ['eBay Price', function($item) { return number_format($item['eBay Price'] ?? 0, 2); }],
+                'lmp_price' => ['LMP', function($item) { return $item['lmp_price'] ? number_format($item['lmp_price'], 2) : ''; }],
+                'AD_Spend_L30' => ['AD Spend L30', function($item) { return number_format($item['AD_Spend_L30'] ?? 0, 2); }],
+                'AD_Sales_L30' => ['AD Sales L30', function($item) { return number_format($item['AD_Sales_L30'] ?? 0, 2); }],
+                'AD_Units_L30' => ['AD Units L30', function($item) { return $item['AD_Units_L30'] ?? 0; }],
+                'AD%' => ['AD%', function($item) { return number_format(($item['AD%'] ?? 0) * 100, 2); }],
+                'TacosL30' => ['TACOS L30', function($item) { return number_format(($item['TacosL30'] ?? 0) * 100, 2); }],
+                'T_Sale_l30' => ['Total Sales L30', function($item) { return number_format($item['T_Sale_l30'] ?? 0, 2); }],
+                'Total_pft' => ['Total Profit', function($item) { return number_format($item['Total_pft'] ?? 0, 2); }],
+                'PFT %' => ['PFT %', function($item) { return number_format($item['PFT %'] ?? 0, 0); }],
+                'ROI%' => ['ROI%', function($item) { return number_format($item['ROI%'] ?? 0, 0); }],
+                'GPFT%' => ['GPFT%', function($item) { return number_format($item['GPFT%'] ?? 0, 0); }],
+                'views' => ['Views', function($item) { return $item['views'] ?? 0; }],
+                'nr_req' => ['NR/REQ', function($item) { return $item['nr_req'] ?? ''; }],
+                'SPRICE' => ['SPRICE', function($item) { return $item['SPRICE'] ? number_format($item['SPRICE'], 2) : ''; }],
+                'SPFT' => ['SPFT', function($item) { return $item['SPFT'] ? number_format($item['SPFT'], 0) : ''; }],
+                'SROI' => ['SROI', function($item) { return $item['SROI'] ? number_format($item['SROI'], 0) : ''; }],
+                'SGPFT' => ['SGPFT', function($item) { return $item['SGPFT'] ? number_format($item['SGPFT'], 0) : ''; }],
+                'SCVR' => ['SCVR', function($item) { return number_format($item['SCVR'] ?? 0, 1); }],
+                'kw_spend_L30' => ['KW Spend L30', function($item) { return number_format($item['kw_spend_L30'] ?? 0, 2); }],
+                'pmt_spend_L30' => ['PMT Spend L30', function($item) { return number_format($item['pmt_spend_L30'] ?? 0, 2); }],
+            ];
+
+            // If no columns selected, export all
+            if (empty($selectedColumns)) {
+                $selectedColumns = array_keys($columnMap);
+            }
+
+            // Filter column map to only selected columns
+            $selectedColumnMap = array_intersect_key($columnMap, array_flip($selectedColumns));
+
             // Set headers for CSV download
             $fileName = 'eBay_Pricing_Data_' . date('Y-m-d_H-i-s') . '.csv';
             
@@ -1082,51 +1170,20 @@ class EbayController extends Controller
             // Add BOM for UTF-8
             fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
 
-            // Header Row
-            $headers = [
-                'Parent', 'SKU', 'INV', 'L30', 'Dil%', 'eBay L30', 'eBay L60', 
-                'eBay Price', 'LMP', 'AD Spend L30', 'AD Sales L30', 'AD Units L30',
-                'AD%', 'TACOS L30', 'Total Sales L30', 'Total Profit', 'PFT %', 
-                'ROI%', 'GPFT%', 'Views', 'NR', 'SPRICE', 'SPFT', 'SROI', 
-                'Listed', 'Live'
-            ];
+            // Header Row (only selected columns)
+            $headers = array_column($selectedColumnMap, 0);
             fputcsv($output, $headers);
 
             // Data Rows
             foreach ($ebayData as $item) {
                 $item = (array) $item;
+                $row = [];
                 
-                // Calculate Dil%
-                $dil = ($item['INV'] > 0) ? round(($item['L30'] / $item['INV']) * 100, 2) : 0;
-
-                fputcsv($output, [
-                    $item['Parent'] ?? '',
-                    $item['(Child) sku'] ?? '',
-                    $item['INV'] ?? 0,
-                    $item['L30'] ?? 0,
-                    $dil,
-                    $item['eBay L30'] ?? 0,
-                    $item['eBay L60'] ?? 0,
-                    number_format($item['eBay Price'] ?? 0, 2),
-                    $item['lmp_price'] ? number_format($item['lmp_price'], 2) : '',
-                    number_format($item['AD_Spend_L30'] ?? 0, 2),
-                    number_format($item['AD_Sales_L30'] ?? 0, 2),
-                    $item['AD_Units_L30'] ?? 0,
-                    number_format(($item['AD%'] ?? 0) * 100, 2),
-                    number_format(($item['TacosL30'] ?? 0) * 100, 2),
-                    number_format($item['T_Sale_l30'] ?? 0, 2),
-                    number_format($item['Total_pft'] ?? 0, 2),
-                    number_format($item['PFT %'] ?? 0, 0),
-                    number_format($item['ROI%'] ?? 0, 0),
-                    number_format($item['GPFT%'] ?? 0, 0),
-                    $item['views'] ?? 0,
-                    $item['NR'] ?? '',
-                    $item['SPRICE'] ? number_format($item['SPRICE'], 2) : '',
-                    $item['SPFT'] ? number_format($item['SPFT'], 0) : '',
-                    $item['SROI'] ? number_format($item['SROI'], 0) : '',
-                    ($item['Listed'] ?? false) ? 'TRUE' : 'FALSE',
-                    ($item['Live'] ?? false) ? 'TRUE' : 'FALSE',
-                ]);
+                foreach ($selectedColumnMap as $extractor) {
+                    $row[] = $extractor[1]($item);
+                }
+                
+                fputcsv($output, $row);
             }
 
             fclose($output);
@@ -1254,5 +1311,107 @@ class EbayController extends Controller
         $chartData = array_values($dataByDate);
 
         return response()->json($chartData);
+    }
+
+    public function pushEbayPrice(Request $request)
+    {
+        $sku = strtoupper(trim($request->input('sku')));
+        $price = $request->input('price');
+
+        if (empty($sku)) {
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'SKU is required.']]
+            ], 400);
+        }
+
+        // Validate price
+        $priceFloat = floatval($price);
+        if (!is_numeric($price) || $priceFloat <= 0) {
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be a positive number.']]
+            ], 400);
+        }
+
+        // Validate price range (e.g., between 0.01 and 10000)
+        if ($priceFloat < 0.01 || $priceFloat > 10000) {
+            $this->saveSpriceStatus($sku, 'error');
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be between $0.01 and $10,000.']]
+            ], 400);
+        }
+
+        // Ensure price has max 2 decimal places
+        $priceFloat = round($priceFloat, 2);
+
+        try {
+            // Get item_id from ebay_one_metrics
+            $ebayMetric = DB::connection('apicentral')
+                ->table('ebay_one_metrics')
+                ->where('sku', $sku)
+                ->first();
+
+            if (!$ebayMetric || !$ebayMetric->item_id) {
+                $this->saveSpriceStatus($sku, 'error');
+                Log::error('eBay item_id not found', ['sku' => $sku]);
+                return response()->json([
+                    'errors' => [['code' => 'NotFound', 'message' => 'eBay listing not found for SKU: ' . $sku]]
+                ], 404);
+            }
+
+            // Push price to eBay using EbayApiService
+            $ebayService = new EbayApiService();
+            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat);
+
+            if (isset($result['success']) && $result['success']) {
+                $this->saveSpriceStatus($sku, 'pushed');
+                Log::info('eBay price update successful', ['sku' => $sku, 'price' => $priceFloat, 'item_id' => $ebayMetric->item_id]);
+                return response()->json(['success' => true, 'message' => 'Price updated successfully']);
+            } else {
+                $this->saveSpriceStatus($sku, 'error');
+                $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => 'Failed to update price']];
+                Log::error('eBay price update failed', ['sku' => $sku, 'price' => $priceFloat, 'item_id' => $ebayMetric->item_id, 'errors' => $errors]);
+                return response()->json(['errors' => is_array($errors) ? $errors : [['code' => 'APIError', 'message' => $errors]]], 400);
+            }
+        } catch (\Exception $e) {
+            $this->saveSpriceStatus($sku, 'error');
+            Log::error('Exception in pushEbayPrice', ['sku' => $sku, 'price' => $priceFloat, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return response()->json(['errors' => [['code' => 'Exception', 'message' => 'An error occurred: ' . $e->getMessage()]]], 500);
+        }
+    }
+
+    private function saveSpriceStatus($sku, $status)
+    {
+        try {
+            $ebayDataView = EbayDataView::firstOrNew(['sku' => $sku]);
+            
+            $existing = is_array($ebayDataView->value)
+                ? $ebayDataView->value
+                : (json_decode($ebayDataView->value, true) ?: []);
+
+            $merged = array_merge($existing, [
+                'SPRICE_STATUS' => $status,
+                'SPRICE_STATUS_UPDATED_AT' => now()->toDateTimeString()
+            ]);
+
+            $ebayDataView->value = $merged;
+            $ebayDataView->save();
+        } catch (\Exception $e) {
+            Log::error('Error saving SPRICE_STATUS', ['sku' => $sku, 'status' => $status, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function updateEbaySpriceStatus(Request $request)
+    {
+        $sku = strtoupper(trim($request->input('sku')));
+        $status = $request->input('status');
+
+        if (empty($sku) || !in_array($status, ['pushed', 'applied', 'error'])) {
+            return response()->json(['success' => false, 'error' => 'Invalid SKU or status'], 400);
+        }
+
+        $this->saveSpriceStatus($sku, $status);
+        return response()->json(['success' => true, 'message' => 'Status updated successfully']);
     }
 }

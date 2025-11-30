@@ -60,24 +60,24 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 
-                <div>
-                    <input type="text" id="sku-search" class="form-control form-control-sm me-2" placeholder="Search SKU..." style="width: 150px; display: inline-block;">
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 150px; display: inline-block;">
 
-                    <select id="inventory-filter" class="form-select form-select-sm me-2"
+                    <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">INV</option>
                         <option value="zero">Zero </option>
                         <option value="more" selected>More</option>
                     </select>
 
-                    <select id="nrl-filter" class="form-select form-select-sm me-2"
+                    <select id="nrl-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">NR</option>
                         <option value="nrl">NRL</option>
                         <option value="req">REQ</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm me-2"
+                    <select id="gpft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
                         <option value="negative">Negative</option>
@@ -90,7 +90,7 @@
                         <option value="60plus">60%+</option>
                     </select>
 
-                    <select id="cvr-filter" class="form-select form-select-sm me-2"
+                    <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">CVR</option>
                         <option value="0-0">0 to 0.00%</option>
@@ -104,13 +104,13 @@
                         <option value="10plus">10%+</option>
                     </select>
 
-                    <select id="parent-filter" class="form-select form-select-sm me-2"
+                    <select id="parent-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="show">Show Parent</option>
                         <option value="hide" selected>Hide Parent</option>
                     </select>
 
-                    <select id="status-filter" class="form-select form-select-sm me-2"
+                    <select id="status-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">Status</option>
                         <option value="not-pushed">Not Pushed</option>
@@ -120,7 +120,7 @@
                     </select>
 
                     <!-- Column Visibility Dropdown -->
-                    <div class="dropdown d-inline-block me-2">
+                    <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-columns"></i> Col
@@ -129,7 +129,7 @@
                             <!-- Populated dynamically -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary me-2">
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
                         <i class="fas fa-eye"></i> Show All
                     </button>
 
@@ -140,23 +140,23 @@
                         <strong>ROI%:</strong> <span id="roi-calc">0.00%</span>
                     </span> --}}
 
-                    <button id="import-btn" class="btn btn-sm btn-primary me-2" data-bs-toggle="modal" data-bs-target="#importModal">
+                    <button id="import-btn" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">
                         <i class="fas fa-upload"></i> Import Ratings
                     </button>
 
-                    <a href="{{ url('/amazon-ratings-sample') }}" class="btn btn-sm btn-info me-2">
+                    <a href="{{ url('/amazon-ratings-sample') }}" class="btn btn-sm btn-info">
                         <i class="fas fa-download"></i> Template
                     </a>
 
-                    <a href="{{ url('/amazon-export-pricing-cvr') }}" class="btn btn-sm btn-success me-2">
+                    <a href="{{ url('/amazon-export-pricing-cvr') }}" class="btn btn-sm btn-success">
                         <i class="fas fa-file-csv"></i> Export
                     </a>
                     
-                    <button id="decrease-btn" class="btn btn-sm btn-warning me-2">
+                    <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-percent"></i> Decrease
                     </button>
                     
-                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary me-2" style="display: none;">
+                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
                     </button>
                 </div>
@@ -854,14 +854,28 @@
                             success: function(response) {
                                 // Check for errors in response
                                 if (response.errors && response.errors.length > 0) {
-                                    // If we have retries left, retry in background
-                                    if (attempt < maxRetries) {
-                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                        setTimeout(attemptApply, delay);
+                                    const errorMsg = response.errors[0].message || 'Unknown error';
+                                    console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
+                                    
+                                    // Check if it's an authentication error - don't retry immediately
+                                    if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || errorMsg.includes('Client authentication failed')) {
+                                        // For auth errors, wait longer before retry (10 seconds)
+                                        if (attempt < maxRetries) {
+                                            console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
+                                            setTimeout(attemptApply, 10000);
+                                        } else {
+                                            console.error(`Max retries reached for SKU ${sku} due to auth error`);
+                                            reject({ error: true, response: response, isAuthError: true });
+                                        }
                                     } else {
-                                        // Max retries reached, return error
-                                        console.error(`Max retries reached for SKU ${sku}`);
-                                        reject({ error: true, response: response });
+                                        // For other errors, retry with normal delay
+                                        if (attempt < maxRetries) {
+                                            console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                            setTimeout(attemptApply, delay);
+                                        } else {
+                                            console.error(`Max retries reached for SKU ${sku}`);
+                                            reject({ error: true, response: response });
+                                        }
                                     }
                                 } else {
                                     // Success
@@ -869,14 +883,28 @@
                                 }
                             },
                             error: function(xhr) {
-                                // If we have retries left, retry in background
-                                if (attempt < maxRetries) {
-                                    console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                    setTimeout(attemptApply, delay);
+                                const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseText || 'Network error';
+                                console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
+                                
+                                // Check if it's an authentication error
+                                if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || xhr.status === 401 || errorMsg.includes('Client authentication failed')) {
+                                    // For auth errors, wait longer before retry
+                                    if (attempt < maxRetries) {
+                                        console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
+                                        setTimeout(attemptApply, 10000);
+                                    } else {
+                                        console.error(`Max retries reached for SKU ${sku} due to auth error`);
+                                        reject({ error: true, xhr: xhr, isAuthError: true });
+                                    }
                                 } else {
-                                    // Max retries reached, return error
-                                    console.error(`Max retries reached for SKU ${sku}`);
-                                    reject({ error: true, xhr: xhr });
+                                    // For other errors, retry with normal delay
+                                    if (attempt < maxRetries) {
+                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                        setTimeout(attemptApply, delay);
+                                    } else {
+                                        console.error(`Max retries reached for SKU ${sku}`);
+                                        reject({ error: true, xhr: xhr });
+                                    }
                                 }
                             }
                         });
@@ -935,7 +963,7 @@
                 let errorCount = 0;
                 let currentIndex = 0;
                 
-                // Process SKUs sequentially (one by one)
+                // Process SKUs sequentially (one by one) with delay to avoid rate limiting
                 function processNextSku() {
                     if (currentIndex >= skusToProcess.length) {
                         // All SKUs processed
@@ -945,7 +973,7 @@
                             // All successful
                             $btn.removeClass('btn-primary').addClass('btn-success');
                             const selectedCount = selectedSkus.size;
-                            $btn.html(`<i class="fas fa-check-double" style="color: white; font-weight: bold;"></i> Applied (<span class="apply-all-count">${selectedCount}</span>)`);
+                            $btn.html(`<i class="fas fa-check-double" style="color: black; font-weight: bold;"></i> Applied (<span class="apply-all-count">${selectedCount}</span>)`);
                             showToast('success', `Successfully applied prices to ${successCount} SKU${successCount > 1 ? 's' : ''}`);
                             
                             // Reset to original state after 3 seconds
@@ -982,7 +1010,7 @@
                                     'align-items': 'center',
                                     'justify-content': 'center'
                                 });
-                                $btnInCell.html('<i class="fas fa-clock fa-spin" style="color: white;"></i>');
+                                $btnInCell.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
                             }
                         }
                     }
@@ -1015,14 +1043,16 @@
                                             'align-items': 'center',
                                             'justify-content': 'center'
                                         });
-                                        $btnInCell.html('<i class="fas fa-check-circle" style="color: white; font-size: 1.1em;"></i>');
+                                        $btnInCell.html('<i class="fas fa-check-circle" style="color: black; font-size: 1.1em;"></i>');
                                     }
                                 }
                             }
                             
-                            // Process next SKU
+                            // Process next SKU with delay to avoid rate limiting (2 seconds between requests)
                             currentIndex++;
-                            processNextSku();
+                            setTimeout(() => {
+                                processNextSku();
+                            }, 2000);
                         })
                         .catch((error) => {
                             errorCount++;
@@ -1050,14 +1080,16 @@
                                             'align-items': 'center',
                                             'justify-content': 'center'
                                         });
-                                        $btnInCell.html('<i class="fas fa-times" style="color: white;"></i>');
+                                        $btnInCell.html('<i class="fas fa-times" style="color: black;"></i>');
                                     }
                                 }
                             }
                             
-                            // Process next SKU even if this one failed
+                            // Process next SKU with delay to avoid rate limiting
                             currentIndex++;
-                            processNextSku();
+                            setTimeout(() => {
+                                processNextSku();
+                            }, 2000);
                         });
                 }
                 
@@ -1831,7 +1863,7 @@
                                     'align-items': 'center',
                                     'justify-content': 'center'
                                 });
-                                $btn.html('<i class="fas fa-clock fa-spin" style="color: white;"></i>');
+                                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
                                 
                                 // Use retry function
                                 applyPriceWithRetry(sku, price, cell, 5, 5000)
@@ -1844,7 +1876,7 @@
                                         
                                         $btn.prop('disabled', false);
                                         // Show green tick icon in circular button
-                                        $btn.html('<i class="fas fa-check-circle" style="color: white; font-size: 1.1em;"></i>');
+                                        $btn.html('<i class="fas fa-check-circle" style="color: black; font-size: 1.1em;"></i>');
                                     })
                                     .catch((error) => {
                                         // Update row data with error status
@@ -1855,7 +1887,7 @@
                                         
                                         $btn.prop('disabled', false);
                                         // Show error icon in circular button
-                                        $btn.html('<i class="fas fa-times" style="color: white;"></i>');
+                                        $btn.html('<i class="fas fa-times" style="color: black;"></i>');
                                         
                                         console.error('Apply price failed after retries:', error);
                                     });

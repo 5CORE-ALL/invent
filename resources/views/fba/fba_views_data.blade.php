@@ -38,20 +38,20 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <h4>FBA pricing data (> 0 INV)</h4>
-                <div>
-                    <select id="inventory-filter" class="form-select form-select-sm me-2"
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Inventory</option>
                         <option value="zero">0 Inventory</option>
                         <option value="more" id="more-inventory-option" selected>More than 0</option>
                     </select>
-                    <select id="parent-filter" class="form-select form-select-sm me-2"
+                    <select id="parent-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="show">Show Parent</option>
                         <option value="hide" selected>Hide Parent</option>
                     </select>
 
-                    <select id="pft-filter" class="form-select form-select-sm me-2"
+                    <select id="pft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Pft%</option>
                         <option value="0-10">0-10%</option>
@@ -61,7 +61,7 @@
                         <option value="50+">50%+</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm me-2"
+                    <select id="gpft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
                         <option value="negative">Negative</option>
@@ -74,7 +74,7 @@
                         <option value="60plus">60%+</option>
                     </select>
 
-                    <select id="cvr-filter" class="form-select form-select-sm me-2"
+                    <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">CVR</option>
                         <option value="0-0">0 to 0.00%</option>
@@ -88,7 +88,7 @@
                         <option value="10plus">10%+</option>
                     </select>
 
-                    <select id="status-filter" class="form-select form-select-sm me-2"
+                    <select id="status-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">Status</option>
                         <option value="not_pushed">Not Pushed</option>
@@ -98,7 +98,7 @@
                     </select>
 
                     <!-- Column Visibility Dropdown -->
-                    <div class="dropdown d-inline-block me-2">
+                    <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fa fa-eye"></i> Columns
@@ -108,26 +108,26 @@
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary me-2">
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
-                    <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info me-2">
+                    <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info">
                         <i class="fa fa-download"></i> Sample Template
                     </a>
-                    <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success me-2">
+                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">
                         <i class="fa fa-file-excel"></i>
-                    </a>
+                    </button>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#importModal">
                         <i class="fa fa-upload"></i>
                     </button>
                     
-                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary me-2" style="display: none;">
+                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
                     </button>
                     
-                    <button id="decrease-btn" class="btn btn-sm btn-warning me-2">
+                    <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-percent"></i> Decrease
                     </button>
                 </div>
@@ -304,6 +304,37 @@
                 </div>
             </div>
         </div>
+
+    <!-- Export Column Selection Modal -->
+    <div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Columns to Export</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-sm btn-primary" id="select-all-export-columns">
+                            <i class="fa fa-check-square"></i> Select All
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" id="deselect-all-export-columns">
+                            <i class="fa fa-square"></i> Deselect All
+                        </button>
+                    </div>
+                    <div id="export-columns-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px;">
+                        <!-- Columns will be populated by JavaScript -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="confirm-export-btn">
+                        <i class="fa fa-file-excel"></i> Export Selected Columns
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
     @endsection
 
     @section('script-bottom')
@@ -1057,34 +1088,77 @@
                             },
                             data: {
                                 sku: sku,
-                                price: price
+                                price: price,
+                                _token: '{{ csrf_token() }}'
                             },
                             success: function(response) {
+                                // Log response for debugging
+                                console.log(`Attempt ${attempt} response for SKU ${sku}:`, response);
+                                
                                 // Check for errors in response
                                 if (response.errors && response.errors.length > 0) {
-                                    // If we have retries left, retry in background
-                                    if (attempt < maxRetries) {
-                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                        setTimeout(attemptApply, delay);
+                                    const errorMsg = response.errors[0].message || 'Unknown error';
+                                    const errorCode = response.errors[0].code || '';
+                                    console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg, 'Code:', errorCode);
+                                    
+                                    // Check if it's an authentication error - don't retry immediately
+                                    if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || errorCode === 'AuthenticationError' || errorMsg.includes('Client authentication failed')) {
+                                        // For auth errors, wait longer before retry (10 seconds)
+                                        if (attempt < maxRetries) {
+                                            console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
+                                            setTimeout(attemptApply, 10000);
+                                        } else {
+                                            console.error(`Max retries reached for SKU ${sku} due to auth error`);
+                                            reject({ error: true, response: response, isAuthError: true });
+                                        }
                                     } else {
-                                        // Max retries reached, return error
-                                        console.error(`Max retries reached for SKU ${sku}`);
-                                        reject({ error: true, response: response });
+                                        // For other errors, retry with normal delay
+                                        if (attempt < maxRetries) {
+                                            console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                            setTimeout(attemptApply, delay);
+                                        } else {
+                                            console.error(`Max retries reached for SKU ${sku}`);
+                                            reject({ error: true, response: response });
+                                        }
                                     }
                                 } else {
                                     // Success
+                                    console.log(`Successfully pushed price for SKU ${sku} on attempt ${attempt}`);
                                     resolve({ success: true, response: response });
                                 }
                             },
                             error: function(xhr) {
-                                // If we have retries left, retry
-                                if (attempt < maxRetries) {
-                                    console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                    setTimeout(attemptApply, delay);
+                                const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseText || 'Network error';
+                                const errorCode = xhr.responseJSON?.errors?.[0]?.code || '';
+                                const statusCode = xhr.status || 0;
+                                
+                                console.error(`Attempt ${attempt} for SKU ${sku} failed:`, {
+                                    error: errorMsg,
+                                    code: errorCode,
+                                    status: statusCode,
+                                    response: xhr.responseJSON,
+                                    responseText: xhr.responseText
+                                });
+                                
+                                // Check if it's an authentication error
+                                if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || statusCode === 401 || errorCode === 'AuthenticationError' || errorMsg.includes('Client authentication failed')) {
+                                    // For auth errors, wait longer before retry
+                                    if (attempt < maxRetries) {
+                                        console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
+                                        setTimeout(attemptApply, 10000);
+                                    } else {
+                                        console.error(`Max retries reached for SKU ${sku} due to auth error`);
+                                        reject({ error: true, xhr: xhr, isAuthError: true });
+                                    }
                                 } else {
-                                    // Max retries reached
-                                    console.error(`Max retries reached for SKU ${sku}`);
-                                    reject({ error: true, xhr: xhr });
+                                    // For other errors, retry with normal delay
+                                    if (attempt < maxRetries) {
+                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                        setTimeout(attemptApply, delay);
+                                    } else {
+                                        console.error(`Max retries reached for SKU ${sku}`);
+                                        reject({ error: true, xhr: xhr });
+                                    }
                                 }
                             }
                         });
@@ -1144,7 +1218,7 @@
                 let errorCount = 0;
                 let currentIndex = 0;
                 
-                // Process SKUs sequentially (one by one)
+                // Process SKUs sequentially (one by one) with delay to avoid rate limiting
                 function processNextSku() {
                     if (currentIndex >= skusToProcess.length) {
                         // All SKUs processed
@@ -1183,35 +1257,115 @@
                         }
                     }
                     
-                    // Use retry function to apply price
-                    applyPriceWithRetryPromise(sku, price, 5, 5000)
-                        .then((result) => {
-                            successCount++;
-                            
-                            // Update row data with pushed status instantly
-                            if (row) {
-                                const rowData = row.getData();
-                                rowData.SPRICE_STATUS = 'pushed';
-                                row.update(rowData);
+                    // First save to database (like S_Price edit does), then push to Amazon
+                    console.log(`Processing SKU ${sku} (${currentIndex + 1}/${skusToProcess.length}): Saving S_Price ${price} to database...`);
+                    
+                    $.ajax({
+                        url: '/update-fba-manual-data',
+                        method: 'POST',
+                        data: {
+                            sku: sku,
+                            field: 's_price',
+                            value: price,
+                            _token: '{{ csrf_token() }}'
+                        },
+                        success: function(saveResponse) {
+                            console.log(`SKU ${sku}: Database save successful`, saveResponse);
+                            if (saveResponse.success === false) {
+                                console.error(`Failed to save S_Price for SKU ${sku}:`, saveResponse.error);
+                                errorCount++;
                                 
-                                // Update button to show green check-double
-                                const acceptCell = row.getCell('_accept');
-                                if (acceptCell) {
-                                    const $cellElement = $(acceptCell.getElement());
-                                    const $btnInCell = $cellElement.find('.apply-price-btn');
-                                    if ($btnInCell.length) {
-                                        $btnInCell.prop('disabled', false);
-                                        $btnInCell.html('<i class="fa-solid fa-check-double"></i>');
-                                        $btnInCell.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                                // Update row data with error status
+                                if (row) {
+                                    const rowData = row.getData();
+                                    rowData.SPRICE_STATUS = 'error';
+                                    row.update(rowData);
+                                    
+                                    const acceptCell = row.getCell('_accept');
+                                    if (acceptCell) {
+                                        const $cellElement = $(acceptCell.getElement());
+                                        const $btnInCell = $cellElement.find('.apply-price-btn');
+                                        if ($btnInCell.length) {
+                                            $btnInCell.prop('disabled', false);
+                                            $btnInCell.html('<i class="fa-solid fa-x"></i>');
+                                            $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                        }
                                     }
                                 }
+                                
+                                // Process next SKU
+                                currentIndex++;
+                                setTimeout(() => {
+                                    processNextSku();
+                                }, 2000);
+                                return;
                             }
                             
-                            // Process next SKU
-                            currentIndex++;
-                            processNextSku();
-                        })
-                        .catch((error) => {
+                            // After saving, push to Amazon using retry function
+                            console.log(`SKU ${sku}: Starting Amazon price push...`);
+                            applyPriceWithRetryPromise(sku, price, 5, 5000)
+                                .then((result) => {
+                                    successCount++;
+                                    
+                                    // Update row data with pushed status instantly
+                                    if (row) {
+                                        const rowData = row.getData();
+                                        rowData.SPRICE_STATUS = 'pushed';
+                                        row.update(rowData);
+                                        
+                                        // Update button to show green check-double
+                                        const acceptCell = row.getCell('_accept');
+                                        if (acceptCell) {
+                                            const $cellElement = $(acceptCell.getElement());
+                                            const $btnInCell = $cellElement.find('.apply-price-btn');
+                                            if ($btnInCell.length) {
+                                                $btnInCell.prop('disabled', false);
+                                                $btnInCell.html('<i class="fa-solid fa-check-double"></i>');
+                                                $btnInCell.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Process next SKU with delay to avoid rate limiting (2 seconds between requests)
+                                    currentIndex++;
+                                    setTimeout(() => {
+                                        processNextSku();
+                                    }, 2000);
+                                })
+                                .catch((error) => {
+                                    errorCount++;
+                                    
+                                    // Update row data with error status
+                                    if (row) {
+                                        const rowData = row.getData();
+                                        rowData.SPRICE_STATUS = 'error';
+                                        row.update(rowData);
+                                        
+                                        // Update button to show error icon
+                                        const acceptCell = row.getCell('_accept');
+                                        if (acceptCell) {
+                                            const $cellElement = $(acceptCell.getElement());
+                                            const $btnInCell = $cellElement.find('.apply-price-btn');
+                                            if ($btnInCell.length) {
+                                                $btnInCell.prop('disabled', false);
+                                                $btnInCell.html('<i class="fa-solid fa-x"></i>');
+                                                $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Save for background retry
+                                    saveFailedSkuForRetry(sku, price, 0);
+                                    
+                                    // Process next SKU with delay to avoid rate limiting
+                                    currentIndex++;
+                                    setTimeout(() => {
+                                        processNextSku();
+                                    }, 2000);
+                                });
+                        },
+                        error: function(xhr) {
+                            console.error(`Failed to save S_Price for SKU ${sku}:`, xhr.responseJSON || xhr.responseText);
                             errorCount++;
                             
                             // Update row data with error status
@@ -1220,7 +1374,6 @@
                                 rowData.SPRICE_STATUS = 'error';
                                 row.update(rowData);
                                 
-                                // Update button to show error icon
                                 const acceptCell = row.getCell('_accept');
                                 if (acceptCell) {
                                     const $cellElement = $(acceptCell.getElement());
@@ -1233,13 +1386,13 @@
                                 }
                             }
                             
-                            // Save for background retry
-                            saveFailedSkuForRetry(sku, price, 0);
-                            
                             // Process next SKU
                             currentIndex++;
-                            processNextSku();
-                        });
+                            setTimeout(() => {
+                                processNextSku();
+                            }, 2000);
+                        }
+                    });
                 }
                 
                 // Start processing
@@ -1409,7 +1562,20 @@
                             headerFilterPlaceholder: "Search SKU...",
                             cssClass: "font-weight-bold",
                             tooltip: true,
-                            frozen: true
+                            frozen: true,
+                            formatter: function(cell) {
+                                const sku = cell.getValue();
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return sku;
+                                
+                                return `
+                                    <span>${sku}</span>
+                                    <i class="fa fa-copy text-secondary copy-sku-btn" 
+                                       style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
+                                       data-sku="${sku}"
+                                       title="Copy SKU"></i>
+                                `;
+                            }
                         },
                         {
                             title: "FBA <br>SKU",
@@ -2775,6 +2941,27 @@
                 });
             });
 
+            // Copy SKU to clipboard
+            $(document).on('click', '.copy-sku-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                
+                // Copy to clipboard
+                navigator.clipboard.writeText(sku).then(function() {
+                    showToast('success', `SKU "${sku}" copied to clipboard!`);
+                }).catch(function(err) {
+                    // Fallback for older browsers
+                    const textarea = document.createElement('textarea');
+                    textarea.value = sku;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    showToast('success', `SKU "${sku}" copied to clipboard!`);
+                });
+            });
+
             // LMP Modal Event Listener
             $(document).on('click', '.lmp-link', function(e) {
                 e.preventDefault();
@@ -2813,5 +3000,102 @@
                 $('#lmpModal').appendTo('body').modal('show');
                 console.log('Modal shown');
             }
+
+            // Export column mapping (field -> display name)
+            const exportColumnMapping = {
+                'Parent': 'Parent',
+                'SKU': 'Child SKU',
+                'FBA_SKU': 'FBA SKU',
+                'FBA_Quantity': 'FBA INV',
+                'l60_units': 'L60 Units',
+                'l30_units': 'L30 Units',
+                'FBA_Dil': 'FBA Dil',
+                'FBA_Price': 'FBA Price',
+                'GPFT%': 'GPFT%',
+                'GROI%': 'GROI%',
+                'TCOS_Percentage': 'TACOS',
+                'TPFT': 'PRFT%',
+                'ROI': 'ROI%',
+                'S_Price': 'S Price',
+                'SPFT': 'SPft%',
+                'SROI%': 'SROI%',
+                'SGPFT%': 'SGPFT%',
+                'LP': 'LP',
+                'FBA_Ship_Calculation': 'FBA Ship',
+                'FBA_CVR': 'FBA CVR',
+                'Current_Month_Views': 'Views',
+                'Inv_age': 'Inv age',
+                'lmp_1': 'LMP',
+                'Fulfillment_Fee': 'FBA Fee',
+                'FBA_Fee_Manual': 'FBA Fee M',
+                'Send_Cost': 'Send Cost',
+                'Commission_Percentage': 'Comm %',
+                'Ratings': 'Ratings'
+            };
+
+            // Build export columns list
+            function buildExportColumnsList() {
+                const container = document.getElementById('export-columns-list');
+                container.innerHTML = '';
+                
+                const columns = table.getColumns().filter(col => {
+                    const field = col.getField();
+                    return field && exportColumnMapping[field] && field !== '_select' && field !== '_accept';
+                });
+
+                columns.forEach(col => {
+                    const field = col.getField();
+                    const displayName = exportColumnMapping[field];
+                    
+                    const div = document.createElement('div');
+                    div.className = 'form-check mb-2';
+                    div.innerHTML = `
+                        <input class="form-check-input export-column-checkbox" type="checkbox" 
+                               value="${field}" id="export-col-${field}" checked>
+                        <label class="form-check-label" for="export-col-${field}">
+                            ${displayName}
+                        </label>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+
+            // Select all export columns
+            $('#select-all-export-columns').on('click', function() {
+                $('.export-column-checkbox').prop('checked', true);
+            });
+
+            // Deselect all export columns
+            $('#deselect-all-export-columns').on('click', function() {
+                $('.export-column-checkbox').prop('checked', false);
+            });
+
+            // Confirm export
+            $('#confirm-export-btn').on('click', function() {
+                const selectedColumns = [];
+                $('.export-column-checkbox:checked').each(function() {
+                    selectedColumns.push($(this).val());
+                });
+
+                if (selectedColumns.length === 0) {
+                    showToast('error', 'Please select at least one column to export');
+                    return;
+                }
+
+                // Build export URL with selected columns
+                const columnsParam = encodeURIComponent(JSON.stringify(selectedColumns));
+                const exportUrl = `/fba-manual-export?columns=${columnsParam}`;
+                
+                // Close modal and trigger download
+                $('#exportModal').modal('hide');
+                window.location.href = exportUrl;
+            });
+
+            // When export modal is shown, build the columns list
+            $('#exportModal').on('show.bs.modal', function() {
+                if (table) {
+                    buildExportColumnsList();
+                }
+            });
         </script>
     @endsection

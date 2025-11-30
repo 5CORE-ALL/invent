@@ -610,6 +610,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/purchase/list', 'index')->name('purchase.index');
         Route::get('/purchase-orders/items-by-supplier/{supplier_id}', 'getItemsBySupplier');
         Route::get('/product-master/get-parent/{sku}', 'getParentBySku');
+        Route::get('/purchase/search-sku', 'searchSku');
         Route::post('/purchase/save', 'store')->name('purchase.store');
         Route::get('/purchase-data/list', 'getPurchaseSummary');
         Route::post('/purchase/delete', 'deletePurchase');
@@ -944,6 +945,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-pricing-increase', action: [EbayController::class, 'ebayPricingIncrease'])->name('ebay.pricing.inc');
     Route::post('/save-nr-ebay', [EbayController::class, 'saveNrToDatabase'])->name('ebay.save.nr');
     Route::post('/save-sprice-ebay', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay.save.sprice');
+    Route::post('/push-ebay-price-tabulator', [EbayController::class, 'pushEbayPrice'])->name('ebay.push.price.tabulator');
+    Route::post('/update-ebay-sprice-status', [EbayController::class, 'updateEbaySpriceStatus'])->name('ebay.update.sprice.status');
     Route::post('/update-listed-live-ebay', [EbayController::class, 'updateListedLive'])->name('ebay.update.listed.live');
 
     Route::get('/ebay-zero-view', action: [EbayZeroController::class, 'ebayZero'])->name('ebay.zero.view');
@@ -2431,7 +2434,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('fba-dispatch-page', 'fbaDispatchPageView');
         Route::get('fba-ads-keywords', 'fbaadskw');
         Route::get('fba-ads-pt', 'fbaAdsPt');
-           Route::get('fba-data-json', 'fbaDataJson');
+        Route::get('fba-data-json', 'fbaDataJson');
         Route::post('push-fba-price', 'pushFbaPrice');
         Route::post('update-fba-sprice-status', 'updateSpriceStatus');
         Route::get('fba-ads-data-json', 'fbaAdsDataJson');

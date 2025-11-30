@@ -8,6 +8,7 @@ use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use App\Models\ProductStockMapping;
 
 class AmazonSpApiService
@@ -34,18 +35,110 @@ class AmazonSpApiService
     }
     public function getAccessToken()
     {
-        $client = new Client();
-        $response = $client->post('https://api.amazon.com/auth/o2/token', [
-            'form_params' => [
-                'grant_type' => 'refresh_token',
-                'refresh_token' => $this->refreshToken,
-                'client_id' => $this->clientId,
-                'client_secret' => $this->clientSecret,
-            ]
-        ]);
+        // Use cache to prevent multiple simultaneous token requests
+        $cacheKey = 'amazon_spapi_access_token';
+        
+        try {
+            $cachedToken = Cache::get($cacheKey);
+            
+            // If we have a valid cached token, return it
+            if ($cachedToken) {
+                return $cachedToken;
+            }
+        } catch (\Exception $e) {
+            // If cache fails, log and continue without cache
+            Log::warning('Amazon SPAPI: Cache read failed, continuing without cache', [
+                'error' => $e->getMessage()
+            ]);
+        }
+        
+        // Use a lock to prevent multiple simultaneous token refresh requests
+        // Handle lock failures gracefully - if lock fails, just proceed without lock
+        $lockKey = 'amazon_spapi_token_refresh_lock';
+        $lock = null;
+        
+        try {
+            $lock = Cache::lock($lockKey, 10); // 10 second lock
+            
+            // Try to acquire lock, but don't wait if it fails
+            if (!$lock->get()) {
+                Log::warning('Amazon SPAPI: Could not acquire lock, proceeding without lock');
+            }
+        } catch (\Exception $e) {
+            // Lock might not be supported on all cache drivers (e.g., file cache)
+            Log::warning('Amazon SPAPI: Lock not available, proceeding without lock', [
+                'error' => $e->getMessage()
+            ]);
+        }
+        
+        try {
+            // Double-check cache after acquiring lock (another process might have refreshed it)
+            try {
+                $cachedToken = Cache::get($cacheKey);
+                if ($cachedToken) {
+                    if ($lock) {
+                        $lock->release();
+                    }
+                    return $cachedToken;
+                }
+            } catch (\Exception $e) {
+                // Cache read failed, continue
+            }
+            
+            $client = new Client();
+            $response = $client->post('https://api.amazon.com/auth/o2/token', [
+                'form_params' => [
+                    'grant_type' => 'refresh_token',
+                    'refresh_token' => $this->refreshToken,
+                    'client_id' => $this->clientId,
+                    'client_secret' => $this->clientSecret,
+                ],
+                'timeout' => 10, // Add timeout to prevent hanging
+                'http_errors' => false // Don't throw exceptions on HTTP errors
+            ]);
 
-        $data = json_decode($response->getBody(), true);
-        return $data['access_token'];
+            $statusCode = $response->getStatusCode();
+            $data = json_decode($response->getBody(), true);
+            
+            if ($statusCode !== 200 || !isset($data['access_token'])) {
+                $errorMsg = $data['error_description'] ?? $data['error'] ?? 'Unknown error';
+                Log::error('Amazon SPAPI: Failed to get access token', [
+                    'status_code' => $statusCode,
+                    'response' => $data,
+                    'error' => $errorMsg
+                ]);
+                throw new \Exception('Failed to get access token from Amazon API: ' . $errorMsg);
+            }
+            
+            $accessToken = $data['access_token'];
+            
+            // Cache the token for 50 minutes (tokens typically last 60 minutes)
+            // Handle cache write failures gracefully
+            try {
+                Cache::put($cacheKey, $accessToken, now()->addMinutes(50));
+                Log::info('Amazon SPAPI: New access token obtained and cached');
+            } catch (\Exception $e) {
+                Log::warning('Amazon SPAPI: Failed to cache token, but token obtained', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+            
+            return $accessToken;
+        } catch (\Exception $e) {
+            Log::error('Amazon SPAPI: Exception getting access token', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        } finally {
+            if ($lock) {
+                try {
+                    $lock->release();
+                } catch (\Exception $e) {
+                    // Ignore lock release errors
+                }
+            }
+        }
     }
 
     private function getAccessTokenV1()
