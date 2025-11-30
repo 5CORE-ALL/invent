@@ -2261,6 +2261,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(Ebay2PMTAdController::class)->group(function () {
         Route::get('/ebay-2/pmt/ads', 'index')->name('ebay2.pmt.ads');
         Route::get('/ebay-2/pmp/ads/data', 'getEbay2PmtAdsData');
+        Route::get('/ebay-2/pmp/ads/filter', 'filterEbay2PmtAds')->name('ebay2.pmt.ads.filter');
+        Route::get('/ebay-2/pmp/ads/campaign-chart', 'getCampaignChartData')->name('ebay2.pmt.ads.campaign-chart');
         Route::post('/update-ebay-2-pmt-percentage', 'updateEbay2Percentage');
         Route::post('/update-ebay-2-pmt-sprice', 'saveEbay2PMTSpriceToDatabase');
         Route::post('/update-ebay2-nr-data', 'updateEbay2NrData');
@@ -2300,6 +2302,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-3/pmp/ads/data', 'getEbay3PmtAdsData');
         Route::post('/update-ebay-3-pmt-percenatge', 'updateEbay3Percentage');
         Route::post('/update-ebay-3-pmt-sprice', 'saveEbay3PMTSpriceToDatabase');
+        Route::get('/ebay-3/pmp/ads/filter', 'filterEbay3PmtAds')->name('ebay3.pmp.ads.filter');
+        Route::get('/ebay-3/pmp/ads/campaign-chart', 'getCampaignChartData')->name('ebay3.pmp.ads.campaign-chart');
     });
 
 
