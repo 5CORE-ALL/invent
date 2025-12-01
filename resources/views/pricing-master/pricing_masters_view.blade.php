@@ -2529,7 +2529,7 @@ $.ajax({
                 
                     <td>
                         <div class="value-indicator">
-                            ${fmtMoney(price)}
+                            ${(l30 && l30 > 0) ? fmtMoney(price) : '---'}
                         </div>
                     </td>
                     <td>

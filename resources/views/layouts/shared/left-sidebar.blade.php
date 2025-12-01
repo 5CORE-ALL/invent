@@ -1190,6 +1190,21 @@
                                         <a href="{{ route('meta.all.ads') }}">ALL ADS</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('meta.ads.single.image') }}">Single Image</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('meta.ads.single.video') }}">Single Video</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('meta.ads.carousal') }}">Carousal</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('meta.ads.existing.post') }}">Existing Post</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('meta.ads.catalogue') }}">Catalogue Ad</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('facebook.ads.index') }}">Image Carousel Ad Running</a>
                                     </li>
                                 </ul>
