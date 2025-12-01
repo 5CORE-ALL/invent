@@ -83,7 +83,48 @@ class FetchTemuMetrics extends Command
         }
 
         $this->info("Credentials found - App Key: " . substr($appKey, 0, 10) . "...");
-        return true;
+        $this->line("Access Token: " . substr($accessToken, 0, 15) . "...");
+        $this->line("Secret Key: " . substr($appSecret, 0, 10) . "...");
+        
+        // Test API connection with a simple call
+        $this->info("Testing API connection...");
+        try {
+            $requestBody = [
+                "type" => "temu.local.sku.list.retrieve",                
+                "skuSearchType" => "ACTIVE",
+                "pageSize" => 1,
+            ];
+
+            $signedRequest = $this->generateSignValue($requestBody);
+
+            $response = Http::timeout(10)
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
+
+            $data = $response->json();
+            
+            if ($data['success'] ?? false) {
+                $this->info("✅ API Connection Successful!");
+                return true;
+            } else {
+                $errorCode = $data['errorCode'] ?? 'N/A';
+                $errorMsg = $data['errorMsg'] ?? 'Unknown';
+                $this->error("❌ API Connection Failed!");
+                $this->error("Error [{$errorCode}]: {$errorMsg}");
+                $this->line("\n🔍 Debug Info:");
+                $this->line("Full Response: " . json_encode($data, JSON_PRETTY_PRINT));
+                Log::error("Temu API Verification Failed", [
+                    'error_code' => $errorCode,
+                    'error_msg' => $errorMsg,
+                    'response' => $data,
+                    'request' => $signedRequest
+                ]);
+                return false;
+            }
+        } catch (\Exception $e) {
+            $this->error("Connection test failed: " . $e->getMessage());
+            return false;
+        }
     }
 
     private function fetchProductAnalyticsData(){
@@ -595,10 +636,15 @@ class FetchTemuMetrics extends Command
         $sign = strtoupper(md5($signStr));
         $params['sign'] = $sign;
 
-        Log::debug("API Request", [
+        // Debug logging
+        Log::debug("🔍 API Request Details", [
             'type' => $requestBody['type'] ?? 'unknown',
             'timestamp' => $timestamp,
-            'sign' => substr($sign, 0, 10) . '...'
+            'app_key' => substr($appKey, 0, 10) . '...',
+            'access_token' => substr($accessToken, 0, 10) . '...',
+            'sign_string_length' => strlen($temp),
+            'sign' => $sign,
+            'full_params' => $signParams
         ]);
         
         return array_merge($params, $requestBody);
