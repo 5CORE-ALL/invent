@@ -270,27 +270,6 @@ class VerificationAdjustmentController extends Controller
 
                 $adjustedQty = isset($item->TO_ADJUST) && is_numeric($item->TO_ADJUST) ? floatval($item->TO_ADJUST) : 0;
                 $item->LOSS_GAIN = round($adjustedQty * $lp, 2);
-
-                if ($sku === $normalizeSku('SS HD 2PK ORG WOB')) {
-                    Log::info("=== DEBUG SKU SS HD 2PK ORG WOB ===", [
-                        'Normalized_SKU' => $sku,
-                        'Shopify Record Exists' => isset($shopify),
-                        'Shopify Raw' => $shopify ? $shopify->toArray() : null,
-                        'Shopify_INV' => $shopify->inv ?? null,
-                        'Shopify_ON_HAND' => $shopify->on_hand ?? null,
-                        'Shopify_COMMITTED' => $shopify->committed ?? null,
-                        'Shopify_AVAILABLE_TO_SELL' => $shopify->available_to_sell ?? null,
-                        'Shopify_QUANTITY' => $shopify->quantity ?? null,
-
-                        'Inventory Record Exists' => isset($inv),
-                        'Inventory Raw' => $inv ? $inv->toArray() : null,
-
-                        'Final INV Sent' => $item->INV,
-                        'Final ON_HAND Sent' => $item->ON_HAND,
-                        'Final AVAILABLE_TO_SELL' => $item->AVAILABLE_TO_SELL,
-                    ]);
-                }
-
             }
 
             return $item;
