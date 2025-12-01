@@ -220,9 +220,7 @@ class EbayController extends Controller
             ->get()
             ->keyBy("sku");
 
-        $ebayMetrics = DB::connection('apicentral')
-            ->table('ebay_one_metrics')
-            ->select(
+        $ebayMetrics = EbayMetric::select(
                 'sku',
                 'ebay_l30',
                 'ebay_l60',
@@ -784,9 +782,7 @@ class EbayController extends Controller
         
         // Get AD% from the product
         $adPercent = 0;
-        $ebayMetric = DB::connection('apicentral')
-            ->table('ebay_one_metrics')
-            ->where('sku', $sku)
+        $ebayMetric = EbayMetric::where('sku', $sku)
             ->first();
         
         if ($ebayMetric) {
@@ -1002,81 +998,251 @@ class EbayController extends Controller
 
     public function exportEbayAnalytics()
     {
-        $ebayData = EbayDataView::all();
+        try {
+            $ebayData = EbayDataView::all();
 
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('eBay Analytics');
 
-        // Header Row
-        $headers = ['SKU', 'Listed', 'Live'];
-        $sheet->fromArray($headers, NULL, 'A1');
+            // Set document properties
+            $spreadsheet->getProperties()
+                ->setCreator('eBay Analytics System')
+                ->setTitle('eBay Analytics Export')
+                ->setSubject('eBay Listing Data')
+                ->setDescription('Export of eBay listing status data');
 
-        // Data Rows
-        $rowIndex = 2;
-        foreach ($ebayData as $data) {
-            $values = is_array($data->value)
-                ? $data->value
-                : (json_decode($data->value, true) ?? []);
+            // Header Row with styling
+            $headers = ['SKU', 'Listed', 'Live'];
+            $sheet->fromArray($headers, NULL, 'A1');
 
-            $sheet->fromArray([
-                $data->sku,
-                isset($values['Listed']) ? ($values['Listed'] ? 'TRUE' : 'FALSE') : 'FALSE',
-                isset($values['Live']) ? ($values['Live'] ? 'TRUE' : 'FALSE') : 'FALSE',
-            ], NULL, 'A' . $rowIndex);
+            // Style header row
+            $headerStyle = [
+                'font' => [
+                    'bold' => true,
+                    'size' => 12,
+                    'color' => ['rgb' => 'FFFFFF']
+                ],
+                'fill' => [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '4472C4']
+                ],
+                'alignment' => [
+                    'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+                ],
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                        'color' => ['rgb' => '000000']
+                    ]
+                ]
+            ];
+            $sheet->getStyle('A1:C1')->applyFromArray($headerStyle);
 
-            $rowIndex++;
+            // Data Rows
+            $rowIndex = 2;
+            foreach ($ebayData as $data) {
+                $values = is_array($data->value)
+                    ? $data->value
+                    : (json_decode($data->value, true) ?? []);
+
+                // Convert boolean values to proper Excel format
+                $listed = isset($values['Listed']) ? ($values['Listed'] ? 'TRUE' : 'FALSE') : 'FALSE';
+                $live = isset($values['Live']) ? ($values['Live'] ? 'TRUE' : 'FALSE') : 'FALSE';
+
+                $sheet->setCellValue('A' . $rowIndex, $data->sku);
+                $sheet->setCellValue('B' . $rowIndex, $listed);
+                $sheet->setCellValue('C' . $rowIndex, $live);
+
+                // Apply data row styling
+                $dataStyle = [
+                    'alignment' => [
+                        'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                        'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+                    ],
+                    'borders' => [
+                        'allBorders' => [
+                            'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                            'color' => ['rgb' => 'CCCCCC']
+                        ]
+                    ]
+                ];
+                $sheet->getStyle('A' . $rowIndex . ':C' . $rowIndex)->applyFromArray($dataStyle);
+
+                // Alternate row colors
+                if ($rowIndex % 2 == 0) {
+                    $sheet->getStyle('A' . $rowIndex . ':C' . $rowIndex)->getFill()
+                        ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                        ->setStartColor(new \PhpOffice\PhpSpreadsheet\Style\Color('F8F9FA'));
+                }
+
+                $rowIndex++;
+            }
+
+            // Set column widths and formatting
+            $sheet->getColumnDimension('A')->setWidth(25);
+            $sheet->getColumnDimension('B')->setWidth(12);
+            $sheet->getColumnDimension('C')->setWidth(12);
+
+            // Auto-filter for headers
+            $sheet->setAutoFilter('A1:C' . ($rowIndex - 1));
+
+            // Freeze header row
+            $sheet->freezePane('A2');
+
+            // Generate filename with timestamp
+            $fileName = 'Ebay_Analytics_Export_' . date('Y-m-d_H-i-s') . '.xlsx';
+
+            // Clear any output buffer
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+
+            // Set proper headers for Excel download
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="' . $fileName . '"');
+            header('Cache-Control: max-age=0');
+            header('Cache-Control: max-age=1');
+            header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
+            header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
+            header('Cache-Control: cache, must-revalidate');
+            header('Pragma: public');
+
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+            
+            // Clean up memory
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+            
+            exit;
+            
+        } catch (\Exception $e) {
+            Log::error('Error exporting eBay analytics: ' . $e->getMessage());
+            return back()->with('error', 'Failed to export data: ' . $e->getMessage());
         }
-
-        // Set column widths
-        $sheet->getColumnDimension('A')->setWidth(20);
-        $sheet->getColumnDimension('B')->setWidth(10);
-        $sheet->getColumnDimension('C')->setWidth(10);
-
-        // Output Download
-        $fileName = 'Ebay_Analytics_Export_' . date('Y-m-d') . '.xlsx';
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
     }
 
     public function downloadSample()
     {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
+        try {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Sample Data');
 
-        // Header Row
-        $headers = ['SKU', 'Listed', 'Live'];
-        $sheet->fromArray($headers, NULL, 'A1');
+            // Set document properties
+            $spreadsheet->getProperties()
+                ->setCreator('eBay Analytics System')
+                ->setTitle('eBay Analytics Sample')
+                ->setSubject('Sample Import Format')
+                ->setDescription('Sample file showing correct format for eBay analytics import');
 
-        // Sample Data
-        $sampleData = [
-            ['SKU001', 'TRUE', 'FALSE'],
-            ['SKU002', 'FALSE', 'TRUE'],
-            ['SKU003', 'TRUE', 'TRUE'],
-        ];
+            // Header Row
+            $headers = ['SKU', 'Listed', 'Live'];
+            $sheet->fromArray($headers, NULL, 'A1');
 
-        $sheet->fromArray($sampleData, NULL, 'A2');
+            // Style header row
+            $headerStyle = [
+                'font' => [
+                    'bold' => true,
+                    'size' => 12,
+                    'color' => ['rgb' => 'FFFFFF']
+                ],
+                'fill' => [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '4472C4']
+                ],
+                'alignment' => [
+                    'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+                ],
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                        'color' => ['rgb' => '000000']
+                    ]
+                ]
+            ];
+            $sheet->getStyle('A1:C1')->applyFromArray($headerStyle);
 
-        // Set column widths
-        $sheet->getColumnDimension('A')->setWidth(20);
-        $sheet->getColumnDimension('B')->setWidth(10);
-        $sheet->getColumnDimension('C')->setWidth(10);
+            // Sample Data with proper cell setting
+            $sampleData = [
+                ['SKU001', 'TRUE', 'FALSE'],
+                ['SKU002', 'FALSE', 'TRUE'],
+                ['SKU003', 'TRUE', 'TRUE'],
+                ['SKU004', 'FALSE', 'FALSE'],
+                ['SKU005', 'TRUE', 'TRUE'],
+            ];
 
-        // Output Download
-        $fileName = 'Ebay_Analytics_Sample.xlsx';
+            $rowIndex = 2;
+            foreach ($sampleData as $row) {
+                $sheet->setCellValue('A' . $rowIndex, $row[0]);
+                $sheet->setCellValue('B' . $rowIndex, $row[1]);
+                $sheet->setCellValue('C' . $rowIndex, $row[2]);
 
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
+                // Apply styling to data rows
+                $dataStyle = [
+                    'alignment' => [
+                        'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                        'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+                    ],
+                    'borders' => [
+                        'allBorders' => [
+                            'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                            'color' => ['rgb' => 'CCCCCC']
+                        ]
+                    ]
+                ];
+                $sheet->getStyle('A' . $rowIndex . ':C' . $rowIndex)->applyFromArray($dataStyle);
 
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
+                $rowIndex++;
+            }
+
+            // Set column widths
+            $sheet->getColumnDimension('A')->setWidth(25);
+            $sheet->getColumnDimension('B')->setWidth(12);
+            $sheet->getColumnDimension('C')->setWidth(12);
+
+            // Auto-filter for headers
+            $sheet->setAutoFilter('A1:C' . ($rowIndex - 1));
+
+            // Freeze header row
+            $sheet->freezePane('A2');
+
+            // Add instructions in a comment
+            $sheet->getComment('A1')->getText()->createTextRun('Instructions: Use TRUE/FALSE for Listed and Live columns. SKU must match existing products.');
+
+            // Clear any output buffer
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+
+            // Output Download
+            $fileName = 'Ebay_Analytics_Sample_' . date('Y-m-d') . '.xlsx';
+
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="' . $fileName . '"');
+            header('Cache-Control: max-age=0');
+            header('Cache-Control: max-age=1');
+            header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
+            header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
+            header('Cache-Control: cache, must-revalidate');
+            header('Pragma: public');
+
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+            
+            // Clean up memory
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+            
+            exit;
+            
+        } catch (\Exception $e) {
+            Log::error('Error downloading sample file: ' . $e->getMessage());
+            return back()->with('error', 'Failed to download sample: ' . $e->getMessage());
+        }
     }
 
     public function getEbayColumnVisibility(Request $request)
@@ -1268,7 +1434,7 @@ class EbayController extends Controller
             }
             
         } catch (\Exception $e) {
-            // Fallback: Since ebay_one_metrics doesn't have historical daily data,
+            // Fallback: Since EbayMetric doesn't have historical daily data,
             // we'll just return empty data and let the frontend handle it
             Log::info('No eBay daily metrics data available. Historical data will be populated by metrics collection command.');
         }
@@ -1346,10 +1512,8 @@ class EbayController extends Controller
         $priceFloat = round($priceFloat, 2);
 
         try {
-            // Get item_id from ebay_one_metrics
-            $ebayMetric = DB::connection('apicentral')
-                ->table('ebay_one_metrics')
-                ->where('sku', $sku)
+            // Get item_id from EbayMetric
+            $ebayMetric = EbayMetric::where('sku', $sku)
                 ->first();
 
             if (!$ebayMetric || !$ebayMetric->item_id) {

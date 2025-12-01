@@ -1397,113 +1397,47 @@
                     {
                         label: 'Clicks',
                         data: {!! json_encode($clicks) !!},
-                        borderColor: 'purple',
-                        backgroundColor: 'rgba(128, 0, 128, 0.1)',
-                        yAxisID: 'y1',
-                        tension: 0.4,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        fill: false,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        tension: 0.1
                     },
                     {
-                        label: 'Spend (USD)',
+                        label: 'Spend',
                         data: {!! json_encode($spend) !!},
-                        borderColor: 'teal',
-                        backgroundColor: 'rgba(0, 128, 128, 0.1)',
-                        yAxisID: 'y2',
-                        tension: 0.4,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        fill: false,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        tension: 0.1
                     },
                     {
                         label: 'Orders',
                         data: {!! json_encode($orders) !!},
-                        borderColor: 'magenta',
-                        backgroundColor: 'rgba(255, 0, 255, 0.1)',
-                        yAxisID: 'y1',
-                        tension: 0.4,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        fill: false,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        tension: 0.1
                     },
                     {
-                        label: 'Sales (USD)',
+                        label: 'Sales',
                         data: {!! json_encode($sales) !!},
-                        borderColor: 'blue',
-                        backgroundColor: 'rgba(0, 0, 255, 0.1)',
-                        yAxisID: 'y2',
-                        tension: 0.4,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        fill: false,
+                        borderColor: 'rgb(255, 206, 86)',
+                        backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                        tension: 0.1
                     }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                spanGaps: true,
                 interaction: {
                     mode: 'index',
                     intersect: false
                 },
                 plugins: {
-                    tooltip: {
-                        backgroundColor: "#fff",
-                        titleColor: "#111",
-                        bodyColor: "#333",
-                        borderColor: "#ddd",
-                        borderWidth: 1,
-                        padding: 12,
-                        titleFont: { size: 14, weight: 'bold' },
-                        bodyFont: { size: 13 },
-                        usePointStyle: true,
-                        callbacks: {
-                            label: function(context) {
-                                let value = context.raw;
-                                if (context.dataset.label.includes("Spend") || context.dataset.label.includes("Sales")) {
-                                    return `${context.dataset.label}: $${Number(value).toFixed(2)}`;
-                                }
-                                return `${context.dataset.label}: ${value}`;
-                            }
-                        }
-                    },
                     legend: {
-                        labels: {
-                            usePointStyle: true,
-                            boxWidth: 10,
-                            padding: 20
-                        },
-                        onClick: (e, legendItem, legend) => {
-                            const index = legendItem.datasetIndex;
-                            const ci = legend.chart;
-                            const meta = ci.getDatasetMeta(index);
-                            meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
-                            ci.update();
-                        }
-                    }
-                },
-                scales: {
-                    y1: {
-                        type: 'linear',
-                        position: 'left',
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Clicks / Orders'
-                        }
+                        position: 'top',
                     },
-                    y2: {
-                        type: 'linear',
-                        position: 'right',
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Spend / Sales (USD)'
-                        },
-                        grid: {
-                            drawOnChartArea: false
-                        }
+                    title: {
+                        display: false
                     }
                 }
             }
@@ -1566,7 +1500,7 @@
                 type: "GET",
                 data: { startDate, endDate },
                 success: function(response) {
-                    const formattedDates = response.dates.map(d => moment(d).format('MMM DD'));
+                    const formattedDates = response.dates.map(d => moment(d).format('MMM D'));
                     chart.data.labels = formattedDates;
                     chart.data.datasets[0].data = response.clicks;
                     chart.data.datasets[1].data = response.spend;
@@ -1638,7 +1572,7 @@
                 modalChart.destroy();
             }
             
-            const formattedDates = response.dates.map(d => moment(d).format('MMM DD'));
+            const formattedDates = response.dates.map(d => moment(d).format('MMM D'));
             
             modalChart = new Chart(ctx, {
                 type: 'line',

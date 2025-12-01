@@ -1457,7 +1457,7 @@
                     console.log('Chart data response:', response);
                     
                     if (response.dates && response.dates.length > 0) {
-                        const formattedDates = response.dates.map(d => moment(d).format('MMM DD'));
+                        const formattedDates = response.dates.map(d => moment(d).format('MMM D'));
                         chart.data.labels = formattedDates;
                         chart.data.datasets[0].data = response.clicks;
                         chart.data.datasets[1].data = response.spend;
