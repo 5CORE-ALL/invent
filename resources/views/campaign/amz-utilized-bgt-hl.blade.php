@@ -528,7 +528,8 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
-                            return l7_cpc.toFixed(2);
+                            return Math.floor(l7_cpc * 100) / 100;
+
                         }
                     },
                     {

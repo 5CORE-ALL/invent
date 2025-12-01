@@ -33,18 +33,40 @@ class UpdateEbaySuggestedBid extends Command
                 return 1;
             }
 
-            $productMasters = ProductMaster::orderBy("parent", "asc")
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy("sku", "asc")
-                ->get();
-
-            if ($productMasters->isEmpty()) {
+            // Process ProductMaster records in chunks to prevent "Too many connections" error
+            $chunkSize = 1000;
+            $totalRecords = ProductMaster::whereNull('deleted_at')->count();
+            
+            if ($totalRecords === 0) {
                 $this->info('No product masters found.');
                 return 0;
             }
-
-            $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
-
+            
+            $this->info("Processing {$totalRecords} product masters in chunks of {$chunkSize}...");
+            
+            $allSkus = collect();
+            $processedCount = 0;
+            
+            // Collect all SKUs first using chunked processing
+            ProductMaster::whereNull('deleted_at')
+                ->orderBy("parent", "asc")
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy("sku", "asc")
+                ->chunk($chunkSize, function ($productMasters) use (&$allSkus, &$processedCount, $totalRecords) {
+                    $chunkSkus = $productMasters->pluck("sku")->filter()->unique();
+                    $allSkus = $allSkus->merge($chunkSkus);
+                    $processedCount += $productMasters->count();
+                    $this->info("Processed {$processedCount}/{$totalRecords} product masters...");
+                });
+            
+            $skus = $allSkus->unique()->values()->all();
+            
+            if (empty($skus)) {
+                $this->info('No valid SKUs found in product masters.');
+                return 0;
+            }
+            
+            $this->info('Loading Shopify and eBay metrics data...');
             $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
             $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get();
             
@@ -59,6 +81,8 @@ class UpdateEbaySuggestedBid extends Command
             return [$normalizedSku => $item];
         });
 
+        // Load campaign listings efficiently
+        $this->info('Loading campaign listings...');
         $campaignListings = DB::connection('apicentral')
             ->table('ebay_campaign_ads_listings')
             ->select('listing_id', 'campaign_id', 'bid_percentage')
@@ -80,43 +104,62 @@ class UpdateEbaySuggestedBid extends Command
             }
 
             // Get L7 clicks from ebaygeneral report
+            $this->info('Loading eBay general report data...');
             $ebayGeneralL7 = EbayGeneralReport::select('listing_id', 'clicks')
                 ->where('report_range', 'L7')
                 ->get()
                 ->keyBy('listing_id');
             
-        // Process ProductMaster data and update campaign listings
-        foreach ($productMasters as $pm) {
-            $shopify = $shopifyData[$pm->sku] ?? null;
-            $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
+        // Process ProductMaster data in chunks and update campaign listings
+        $this->info('Processing bid updates...');
+        $updatedListings = 0;
+        
+        ProductMaster::whereNull('deleted_at')
+            ->orderBy("parent", "asc")
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy("sku", "asc")
+            ->chunk($chunkSize, function ($productMasters) use (
+                $shopifyData, 
+                $ebayMetricsNormalized, 
+                $campaignListings, 
+                $ebayGeneralL7, 
+                &$updatedListings
+            ) {
+                foreach ($productMasters as $pm) {
+                    $shopify = $shopifyData[$pm->sku] ?? null;
+                    $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
 
-            if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
-                $listing = $campaignListings[$ebayMetric->item_id];
-                $currentBid = (float) ($listing->bid_percentage ?? 0);
-                $l7ClicksData = $ebayGeneralL7->get($ebayMetric->item_id);
-                $l7Clicks = $l7ClicksData ? (int) ($l7ClicksData->clicks ?? 0) : 0;
-                
-                $newBid = $currentBid;
-                
-                if ($l7Clicks < 70) {
-                    $newBid = $currentBid + 0.5;
-                } elseif ($l7Clicks > 140) {
-                    $newBid = $currentBid - 0.5;
+                    if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
+                        $listing = $campaignListings[$ebayMetric->item_id];
+                        $currentBid = (float) ($listing->bid_percentage ?? 0);
+                        $l7ClicksData = $ebayGeneralL7->get($ebayMetric->item_id);
+                        $l7Clicks = $l7ClicksData ? (int) ($l7ClicksData->clicks ?? 0) : 0;
+                        
+                        $newBid = $currentBid;
+                        
+                        if ($l7Clicks < 70) {
+                            $newBid = $currentBid + 0.5;
+                        } elseif ($l7Clicks > 140) {
+                            $newBid = $currentBid - 0.5;
+                        }
+                        
+                        // Apply 15% cap and 2% minimum
+                        if ($newBid > 15) {
+                            $newBid = 15;
+                        }
+                        
+                        // Ensure bid doesn't go below 2
+                        if ($newBid < 2) {
+                            $newBid = 2;
+                        }
+                        
+                        $listing->new_bid = $newBid;
+                        $updatedListings++;
+                    }
                 }
-                
-                // Apply 15% cap and 2% minimum
-                if ($newBid > 15) {
-                    $newBid = 15;
-                }
-                
-                // Ensure bid doesn't go below 2
-                if ($newBid < 2) {
-                    $newBid = 2;
-                }
-                
-                $listing->new_bid = $newBid;
-            }
-        }
+            });
+        
+        $this->info("Updated bids for {$updatedListings} listings.");
 
         $groupedByCampaign = collect($campaignListings)->groupBy('campaign_id');
 
@@ -154,11 +197,35 @@ class UpdateEbaySuggestedBid extends Command
                     "sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
                     ['json' => ['requests' => $requests]]
                 );
-                $this->info("Campaign {$campaignId}: Updated " . json_encode($requests, JSON_PRETTY_PRINT) . " listings.");
-                Log::info("eBay campaign {$campaignId} bulk update response: " . $response->getBody()->getContents());
+                
+                $responseBody = $response->getBody()->getContents();
+                $statusCode = $response->getStatusCode();
+                
+                if ($statusCode === 200 || $statusCode === 207) {
+                    $this->info("Campaign {$campaignId}: Successfully updated " . count($requests) . " listings.");
+                    Log::info("eBay campaign {$campaignId} bulk update SUCCESS - Status: {$statusCode} - Response: " . $responseBody);
+                } else {
+                    $this->warn("Campaign {$campaignId}: Unexpected status code {$statusCode}");
+                    Log::warning("eBay campaign {$campaignId} unexpected status {$statusCode}: " . $responseBody);
+                }
+                
+            } catch (\GuzzleHttp\Exception\ClientException $e) {
+                $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : 'unknown';
+                $responseBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : 'no response';
+                
+                Log::error("eBay campaign {$campaignId} CLIENT ERROR - Status: {$statusCode} - Response: {$responseBody} - Exception: " . $e->getMessage());
+                $this->error("Campaign {$campaignId}: Client error (Status: {$statusCode}). Check logs for details.");
+                
+            } catch (\GuzzleHttp\Exception\ServerException $e) {
+                $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : 'unknown';
+                $responseBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : 'no response';
+                
+                Log::error("eBay campaign {$campaignId} SERVER ERROR - Status: {$statusCode} - Response: {$responseBody} - Exception: " . $e->getMessage());
+                $this->error("Campaign {$campaignId}: Server error (Status: {$statusCode}). Check logs for details.");
+                
             } catch (\Exception $e) {
-                Log::error("Failed to update eBay campaign {$campaignId}: " . $e->getMessage());
-                $this->error("Failed to update campaign {$campaignId}. Check logs.");
+                Log::error("eBay campaign {$campaignId} GENERAL ERROR: " . $e->getMessage() . " - Trace: " . $e->getTraceAsString());
+                $this->error("Campaign {$campaignId}: General error. Check logs for details.");
             }
         }
 

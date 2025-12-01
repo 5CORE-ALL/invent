@@ -34,18 +34,40 @@ class UpdateEbayTwoSuggestedBid extends Command
                 return 1;
             }
 
-            $productMasters = ProductMaster::orderBy("parent", "asc")
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy("sku", "asc")
-                ->get();
-
-            if ($productMasters->isEmpty()) {
+            // Process ProductMaster records in chunks to prevent "Too many connections" error
+            $chunkSize = 1000;
+            $totalRecords = ProductMaster::whereNull('deleted_at')->count();
+            
+            if ($totalRecords === 0) {
                 $this->info('No product masters found.');
                 return 0;
             }
-
-            $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
-
+            
+            $this->info("Processing {$totalRecords} product masters in chunks of {$chunkSize}...");
+            
+            $allSkus = collect();
+            $processedCount = 0;
+            
+            // Collect all SKUs first using chunked processing
+            ProductMaster::whereNull('deleted_at')
+                ->orderBy("parent", "asc")
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy("sku", "asc")
+                ->chunk($chunkSize, function ($productMasters) use (&$allSkus, &$processedCount, $totalRecords) {
+                    $chunkSkus = $productMasters->pluck("sku")->filter()->unique();
+                    $allSkus = $allSkus->merge($chunkSkus);
+                    $processedCount += $productMasters->count();
+                    $this->info("Processed {$processedCount}/{$totalRecords} product masters...");
+                });
+            
+            $skus = $allSkus->unique()->values()->all();
+            
+            if (empty($skus)) {
+                $this->info('No valid SKUs found in product masters.');
+                return 0;
+            }
+            
+            $this->info('Loading Shopify and eBay metrics data...');
             $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
             $ebayMetrics = Ebay2Metric::whereIn("sku", $skus)->get();
             
@@ -60,64 +82,83 @@ class UpdateEbayTwoSuggestedBid extends Command
             return [$normalizedSku => $item];
         });
 
-        $campaignListings = DB::connection('apicentral')
-            ->table('ebay2_campaign_ads_listings')
-            ->select('listing_id', 'campaign_id', 'bid_percentage')
-            ->where('funding_strategy', 'COST_PER_SALE')
-            ->get()
-            ->keyBy('listing_id')
-            ->map(function ($item) {
-                return (object) [
-                    'listing_id' => $item->listing_id,
-                    'campaign_id' => $item->campaign_id,
-                    'bid_percentage' => $item->bid_percentage,
-                    'new_bid' => null
-                ];
-            });
-
-            if ($campaignListings->isEmpty()) {
+            // Load campaign listings efficiently
+            $this->info('Loading campaign listings...');
+            $campaignListings = DB::connection('apicentral')
+                ->table('ebay2_campaign_ads_listings')
+                ->select('listing_id', 'campaign_id', 'bid_percentage')
+                ->where('funding_strategy', 'COST_PER_SALE')
+                ->get()
+                ->keyBy('listing_id')
+                ->map(function ($item) {
+                    return (object) [
+                        'listing_id' => $item->listing_id,
+                        'campaign_id' => $item->campaign_id,
+                        'bid_percentage' => $item->bid_percentage,
+                        'new_bid' => null
+                    ];
+                });            if ($campaignListings->isEmpty()) {
                 $this->info('No campaign listings found.');
                 return 0;
             }
 
             // Get L7 clicks from ebaygeneral report
+            $this->info('Loading eBay general report data...');
             $ebayGeneralL7 = Ebay2GeneralReport::select('listing_id', 'clicks')
                 ->where('report_range', 'L7')
                 ->get()
                 ->keyBy('listing_id');
             
-        // Process ProductMaster data and update campaign listings
-        foreach ($productMasters as $pm) {
-            $shopify = $shopifyData[$pm->sku] ?? null;
-            $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
+        // Process ProductMaster data in chunks and update campaign listings
+        $this->info('Processing bid updates...');
+        $updatedListings = 0;
+        
+        ProductMaster::whereNull('deleted_at')
+            ->orderBy("parent", "asc")
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy("sku", "asc")
+            ->chunk($chunkSize, function ($productMasters) use (
+                $shopifyData, 
+                $ebayMetricsNormalized, 
+                $campaignListings, 
+                $ebayGeneralL7, 
+                &$updatedListings
+            ) {
+                foreach ($productMasters as $pm) {
+                    $shopify = $shopifyData[$pm->sku] ?? null;
+                    $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
 
-            if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
-                $listing = $campaignListings[$ebayMetric->item_id];
-                $currentBid = (float) ($listing->bid_percentage ?? 0);
-                $l7ClicksData = $ebayGeneralL7->get($ebayMetric->item_id);
-                $l7Clicks = $l7ClicksData ? (int) ($l7ClicksData->clicks ?? 0) : 0;
-                
-                $newBid = $currentBid;
-                
-                if ($l7Clicks < 70) {
-                    $newBid = $currentBid + 0.5;
-                } elseif ($l7Clicks > 140) {
-                    $newBid = $currentBid - 0.5;
+                    if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
+                        $listing = $campaignListings[$ebayMetric->item_id];
+                        $currentBid = (float) ($listing->bid_percentage ?? 0);
+                        $l7ClicksData = $ebayGeneralL7->get($ebayMetric->item_id);
+                        $l7Clicks = $l7ClicksData ? (int) ($l7ClicksData->clicks ?? 0) : 0;
+                        
+                        $newBid = $currentBid;
+                        
+                        if ($l7Clicks < 70) {
+                            $newBid = $currentBid + 0.5;
+                        } elseif ($l7Clicks > 140) {
+                            $newBid = $currentBid - 0.5;
+                        }
+                        
+                        // Apply 15% cap and 2% minimum
+                        if ($newBid > 15) {
+                            $newBid = 15;
+                        }
+                        
+                        // Ensure bid doesn't go below 2
+                        if ($newBid < 2) {
+                            $newBid = 2;
+                        }
+                        
+                        $listing->new_bid = $newBid;
+                        $updatedListings++;
+                    }
                 }
-                
-                // Apply 15% cap and 2% minimum
-                if ($newBid > 15) {
-                    $newBid = 15;
-                }
-                
-                // Ensure bid doesn't go below 2
-                if ($newBid < 2) {
-                    $newBid = 2;
-                }
-                
-                $listing->new_bid = $newBid;
-            }
-        }
+            });
+        
+        $this->info("Updated bids for {$updatedListings} listings.");
 
         $groupedByCampaign = collect($campaignListings)->groupBy('campaign_id');
 
