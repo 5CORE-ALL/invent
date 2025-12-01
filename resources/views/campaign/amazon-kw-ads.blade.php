@@ -1556,7 +1556,7 @@
                 modalChart.destroy();
             }
             
-            const formattedDates = response.dates.map(d => moment(d).format('MMM DD'));
+            const formattedDates = response.dates.map(d => moment(d).format('MMM D'));
             
             modalChart = new Chart(ctx, {
                 type: 'line',
@@ -1684,131 +1684,131 @@
         
         const ctx = document.getElementById('campaignChart').getContext('2d');
 
+        // Debug: Log initial chart data
+        const initialDates = {!! json_encode($dates) !!};
+        const initialClicks = {!! json_encode($clicks) !!};
+        console.log('Initial chart dates count:', initialDates.length);
+        console.log('Initial chart dates:', initialDates);
+        console.log('Initial clicks count:', initialClicks.length);
+
         const chart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: {!! json_encode(array_map(function($date) { return \Carbon\Carbon::parse($date)->format('M d'); }, $dates)) !!},
+                labels: initialDates,
                 datasets: [
                     {
                         label: 'Clicks',
-                        data: {!! json_encode($clicks) !!},
-                        borderColor: 'purple',
-                        backgroundColor: 'rgba(128, 0, 128, 0.1)',
-                        yAxisID: 'y1',
-                        tension: 0.4,
-                        pointRadius: 4,
+                        data: initialClicks,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        tension: 0.1,
+                        pointRadius: 3,
                         pointHoverRadius: 6,
-                        fill: false,
-                        spanGaps: true,
+                        pointBackgroundColor: 'rgb(75, 192, 192)',
+                        pointBorderColor: 'rgb(75, 192, 192)',
+                        spanGaps: true
                     },
                     {
-                        label: 'Spend (USD)',
+                        label: 'Spend',
                         data: {!! json_encode($spend) !!},
-                        borderColor: 'teal',
-                        backgroundColor: 'rgba(0, 128, 128, 0.1)',
-                        yAxisID: 'y2',
-                        tension: 0.4,
-                        pointRadius: 4,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        tension: 0.1,
+                        pointRadius: 3,
                         pointHoverRadius: 6,
-                        fill: false,
-                        spanGaps: true,
+                        pointBackgroundColor: 'rgb(255, 99, 132)',
+                        pointBorderColor: 'rgb(255, 99, 132)',
+                        spanGaps: true
                     },
                     {
                         label: 'Orders',
                         data: {!! json_encode($orders) !!},
-                        borderColor: 'magenta',
-                        backgroundColor: 'rgba(255, 0, 255, 0.1)',
-                        yAxisID: 'y1',
-                        tension: 0.4,
-                        pointRadius: 4,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        tension: 0.1,
+                        pointRadius: 3,
                         pointHoverRadius: 6,
-                        fill: false,
-                        spanGaps: true,
+                        pointBackgroundColor: 'rgb(54, 162, 235)',
+                        pointBorderColor: 'rgb(54, 162, 235)',
+                        spanGaps: true
                     },
                     {
-                        label: 'Sales (USD)',
+                        label: 'Sales',
                         data: {!! json_encode($sales) !!},
-                        borderColor: 'blue',
-                        backgroundColor: 'rgba(0, 0, 255, 0.1)',
-                        yAxisID: 'y2',
-                        tension: 0.4,
-                        pointRadius: 4,
+                        borderColor: 'rgb(255, 206, 86)',
+                        backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                        tension: 0.1,
+                        pointRadius: 3,
                         pointHoverRadius: 6,
-                        fill: false,
-                        spanGaps: true,
+                        pointBackgroundColor: 'rgb(255, 206, 86)',
+                        pointBorderColor: 'rgb(255, 206, 86)',
+                        spanGaps: true
                     }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                spanGaps: true,
                 interaction: {
+                    mode: 'index',
+                    intersect: false,
+                    includeInvisible: false
+                },
+                hover: {
                     mode: 'index',
                     intersect: false
                 },
                 plugins: {
-                    tooltip: {
-                        backgroundColor: "#fff",
-                        titleColor: "#111",
-                        bodyColor: "#333",
-                        borderColor: "#ddd",
-                        borderWidth: 1,
-                        padding: 12,
-                        titleFont: { size: 14, weight: 'bold' },
-                        bodyFont: { size: 13 },
-                        usePointStyle: true,
-                        callbacks: {
-                            label: function(context) {
-                                let value = context.raw;
-                                if (context.dataset.label.includes("Spend") || context.dataset.label.includes("Sales")) {
-                                    return `${context.dataset.label}: $${Math.round(Number(value))}`;
-                                }
-                                return `${context.dataset.label}: ${Math.round(Number(value))}`;
-                            }
-                        }
-                    },
                     legend: {
-                        labels: {
-                            usePointStyle: true,
-                            boxWidth: 10,
-                            padding: 20
-                        },
-                        onClick: (e, legendItem, legend) => {
-                            const index = legendItem.datasetIndex;
-                            const ci = legend.chart;
-                            const meta = ci.getDatasetMeta(index);
-                            meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
-                            ci.update();
+                        position: 'top',
+                    },
+                    title: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        position: 'nearest',
+                        callbacks: {
+                            title: function(context) {
+                                console.log('Tooltip - Date index:', context[0].dataIndex, 'Date:', context[0].label);
+                                return 'Date: ' + context[0].label;
+                            },
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.dataset.label === 'Spend' || context.dataset.label === 'Sales') {
+                                    label += 'US$' + Math.round(context.parsed.y);
+                                } else {
+                                    label += Math.round(context.parsed.y);
+                                }
+                                console.log('Tooltip - Value:', context.parsed.y, 'for', context.dataset.label);
+                                return label;
+                            }
                         }
                     }
                 },
                 scales: {
                     x: {
+                        display: true,
                         title: {
                             display: true,
                             text: 'Date'
-                        }
-                    },
-                    y1: {
-                        type: 'linear',
-                        position: 'left',
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Clicks / Orders'
-                        }
-                    },
-                    y2: {
-                        type: 'linear',
-                        position: 'right',
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Spend / Sales (USD)'
                         },
                         grid: {
-                            drawOnChartArea: false
+                            display: true
                         }
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Values'
+                        },
+                        beginAtZero: true
                     }
                 }
             }
@@ -1906,12 +1906,15 @@
                     const allOrders = [];
                     const allSales = [];
                     
+                    console.log('Date range:', startDate.format('YYYY-MM-DD'), 'to', endDate.format('YYYY-MM-DD'));
+                    console.log('Response dates:', response.dates);
+                    
                     const currentDate = startDate.clone();
                     while (currentDate.isSameOrBefore(endDate)) {
                         const dateStr = currentDate.format('YYYY-MM-DD');
                         const dataIndex = response.dates.indexOf(dateStr);
                         
-                        allDates.push(currentDate.format('MMM DD'));
+                        allDates.push(currentDate.format('MMM D'));
                         
                         if (dataIndex !== -1) {
                             allClicks.push(response.clicks[dataIndex] || 0);
@@ -1927,6 +1930,9 @@
                         
                         currentDate.add(1, 'day');
                     }
+                    
+                    console.log('Generated dates count:', allDates.length);
+                    console.log('Generated dates:', allDates);
                     
                     chart.data.labels = allDates;
                     chart.data.datasets[0].data = allClicks;

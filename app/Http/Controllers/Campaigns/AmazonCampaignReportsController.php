@@ -41,26 +41,28 @@ class AmazonCampaignReportsController extends Controller
     }
 
     public function amazonKwAdsView() {
-        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
-        $today = \Carbon\Carbon::now()->format('Y-m-d');
+        // Data comes with 1 day lag, so we use yesterday as the latest date
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(31)->format('Y-m-d'); // 31 days ago to get 30 days of data ending yesterday
+        $yesterday = \Carbon\Carbon::now()->subDay()->format('Y-m-d'); // Yesterday's date
 
         $data = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
-                endDate as report_date,
+                report_date_range as report_date,
                 SUM(clicks) as clicks, 
                 SUM(spend) as spend, 
                 SUM(purchases1d) as orders, 
                 SUM(sales1d) as sales
             ')
-            ->whereNotNull('endDate')
-            ->whereDate('endDate', '>=', $thirtyDaysAgo)
-            ->whereDate('endDate', '<=', $today)
+            ->whereNotNull('report_date_range')
+            ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
+            ->whereDate('report_date_range', '<=', $yesterday)
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1']) // Exclude period ranges, only dates
             ->where(function($query) {
                 $query->whereRaw("campaignName NOT LIKE '%PT'")
                     ->whereRaw("campaignName NOT LIKE '%PT.'");
             })
-            ->groupBy('endDate')
-            ->orderBy('endDate', 'asc')
+            ->groupBy('report_date_range')
+            ->orderBy('report_date_range', 'asc')
             ->get()
             ->keyBy('report_date');
 
@@ -71,9 +73,10 @@ class AmazonCampaignReportsController extends Controller
         $orders = [];
         $sales = [];
 
-        for ($i = 30; $i >= 0; $i--) {
+        for ($i = 30; $i >= 1; $i--) {
             $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
-            $dates[] = $date;
+            $formattedDate = \Carbon\Carbon::now()->subDays($i)->format('M j'); // Format as "Nov 1", "Nov 2", etc.
+            $dates[] = $formattedDate;
             
             if (isset($data[$date])) {
                 $clicks[] = (int) $data[$date]->clicks;
@@ -106,20 +109,21 @@ class AmazonCampaignReportsController extends Controller
 
         $data = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
-                endDate as report_date,
+                report_date_range as report_date,
                 SUM(clicks) as clicks,
                 SUM(spend) as spend,
                 SUM(purchases1d) as orders,
                 SUM(sales1d) as sales
             ')
-            ->whereNotNull('endDate')
-            ->whereBetween('endDate', [$start, $end])
+            ->whereNotNull('report_date_range')
+            ->whereBetween('report_date_range', [$start, $end])
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1']) // Exclude period ranges, only dates
             ->where(function($query) {
                 $query->whereRaw("campaignName NOT LIKE '%PT'")
                     ->whereRaw("campaignName NOT LIKE '%PT.'");
             })
-            ->groupBy('endDate')
-            ->orderBy('endDate', 'asc')
+            ->groupBy('report_date_range')
+            ->orderBy('report_date_range', 'asc')
             ->get();
 
         return response()->json([
@@ -151,20 +155,21 @@ class AmazonCampaignReportsController extends Controller
 
         $data = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
-                endDate as report_date,
+                report_date_range as report_date,
                 SUM(clicks) as clicks,
                 SUM(spend) as spend,
                 SUM(purchases1d) as orders,
                 SUM(sales1d) as sales
             ')
-            ->whereNotNull('endDate')
-            ->whereBetween('endDate', [$start, $end])
+            ->whereNotNull('report_date_range')
+            ->whereBetween('report_date_range', [$start, $end])
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1']) // Exclude period ranges, only dates
             ->where(function($query) {
                 $query->whereRaw("campaignName LIKE '%PT'")
                     ->orWhereRaw("campaignName LIKE '%PT.'");
             })
-            ->groupBy('endDate')
-            ->orderBy('endDate', 'asc')
+            ->groupBy('report_date_range')
+            ->orderBy('report_date_range', 'asc')
             ->get();
 
         return response()->json([
@@ -197,17 +202,18 @@ class AmazonCampaignReportsController extends Controller
 
         $data = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
-                endDate as report_date,
+                report_date_range as report_date,
                 SUM(clicks) as clicks,
                 SUM(spend) as spend,
                 SUM(purchases1d) as orders,
                 SUM(sales1d) as sales
             ')
-            ->whereNotNull('endDate')
-            ->whereBetween('endDate', [$startDate, $endDate])
+            ->whereNotNull('report_date_range')
+            ->whereBetween('report_date_range', [$startDate, $endDate])
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1']) // Exclude period ranges, only dates
             ->where('campaignName', $campaignName)
-            ->groupBy('endDate')
-            ->orderBy('endDate', 'asc')
+            ->groupBy('report_date_range')
+            ->orderBy('report_date_range', 'asc')
             ->get();
 
         // Fill in missing dates with zeros
@@ -440,26 +446,28 @@ class AmazonCampaignReportsController extends Controller
     }
 
     public function amazonPtAdsView(){
-        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
-        $today = \Carbon\Carbon::now()->format('Y-m-d');
+        // Data comes with 1 day lag, so we use yesterday as the latest date
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(31)->format('Y-m-d'); // 31 days ago to get 30 days of data ending yesterday
+        $yesterday = \Carbon\Carbon::now()->subDay()->format('Y-m-d'); // Yesterday's date
 
         $data = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
-                endDate as report_date,
+                report_date_range as report_date,
                 SUM(clicks) as clicks, 
                 SUM(spend) as spend, 
                 SUM(purchases1d) as orders, 
                 SUM(sales1d) as sales
             ')
-            ->whereNotNull('endDate')
-            ->whereDate('endDate', '>=', $thirtyDaysAgo)
-            ->whereDate('endDate', '<=', $today)
+            ->whereNotNull('report_date_range')
+            ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
+            ->whereDate('report_date_range', '<=', $yesterday)
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1']) // Exclude period ranges, only dates
             ->where(function($query) {
                 $query->whereRaw("campaignName LIKE '%PT'")
                     ->orWhereRaw("campaignName LIKE '%PT.'");
             })
-            ->groupBy('endDate')
-            ->orderBy('endDate', 'asc')
+            ->groupBy('report_date_range')
+            ->orderBy('report_date_range', 'asc')
             ->get()
             ->keyBy('report_date');
 
@@ -470,9 +478,10 @@ class AmazonCampaignReportsController extends Controller
         $orders = [];
         $sales = [];
 
-        for ($i = 30; $i >= 0; $i--) {
+        for ($i = 30; $i >= 1; $i--) {
             $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
-            $dates[] = $date;
+            $formattedDate = \Carbon\Carbon::now()->subDays($i)->format('M j'); // Format as "Nov 1", "Nov 2", etc.
+            $dates[] = $formattedDate;
             
             if (isset($data[$date])) {
                 $clicks[] = (int) $data[$date]->clicks;
@@ -489,6 +498,8 @@ class AmazonCampaignReportsController extends Controller
         
         return view('campaign.amazon-pt-ads', compact('dates', 'clicks', 'spend', 'orders', 'sales'));
     }
+
+
 
     public function getAmazonPtAdsData(){
 
@@ -687,45 +698,50 @@ class AmazonCampaignReportsController extends Controller
     }
 
     public function amazonHlAdsView(){
-        // For SB reports, we use L30 (Last 30 days) data by default
+        // Data comes with 1 day lag, so we use yesterday as the latest date
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(31)->format('Y-m-d'); // 31 days ago to get 30 days of data ending yesterday
+        $yesterday = \Carbon\Carbon::now()->subDay()->format('Y-m-d'); // Yesterday's date
+
         $data = DB::table('amazon_sb_campaign_reports')
             ->selectRaw('
-                SUM(clicks) as total_clicks, 
-                SUM(cost) as total_spend, 
-                SUM(purchases) as total_orders, 
-                SUM(sales) as total_sales
+                report_date_range as report_date,
+                SUM(clicks) as clicks, 
+                SUM(cost) as spend, 
+                SUM(purchases) as orders, 
+                SUM(sales) as sales
             ')
-            ->where('report_date_range', 'L30')
-            ->first();
+            ->whereNotNull('report_date_range')
+            ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
+            ->whereDate('report_date_range', '<=', $yesterday)
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1']) // Exclude period ranges, only dates
+            ->groupBy('report_date_range')
+            ->orderBy('report_date_range', 'asc')
+            ->get()
+            ->keyBy('report_date');
 
-        // Create mock daily data for chart display (since SB data is aggregate)
-        // This simulates daily distribution of the L30 totals
+        // Fill in missing dates with zeros
         $dates = [];
         $clicks = [];
         $spend = [];
         $orders = [];
         $sales = [];
 
-        $totalClicks = $data->total_clicks ?? 0;
-        $totalSpend = $data->total_spend ?? 0;
-        $totalOrders = $data->total_orders ?? 0;
-        $totalSales = $data->total_sales ?? 0;
-
-        // Distribute totals across 30 days with some variance for visual appeal
-        for ($i = 29; $i >= 0; $i--) {
+        for ($i = 30; $i >= 1; $i--) {
             $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
-            $dates[] = $date;
+            $formattedDate = \Carbon\Carbon::now()->subDays($i)->format('M j'); // Format as "Nov 1", "Nov 2", etc.
+            $dates[] = $formattedDate;
             
-            // Simple distribution: divide by 30 with small random variance
-            $dayClicks = $totalClicks > 0 ? max(0, round(($totalClicks / 30) * (0.7 + (rand(0, 60) / 100)))) : 0;
-            $daySpend = $totalSpend > 0 ? max(0, round(($totalSpend / 30) * (0.7 + (rand(0, 60) / 100)), 2)) : 0;
-            $dayOrders = $totalOrders > 0 ? max(0, round(($totalOrders / 30) * (0.7 + (rand(0, 60) / 100)))) : 0;
-            $daySales = $totalSales > 0 ? max(0, round(($totalSales / 30) * (0.7 + (rand(0, 60) / 100)), 2)) : 0;
-            
-            $clicks[] = $dayClicks;
-            $spend[] = $daySpend;
-            $orders[] = $dayOrders;
-            $sales[] = $daySales;
+            if (isset($data[$date])) {
+                $clicks[] = (int) $data[$date]->clicks;
+                $spend[] = (float) $data[$date]->spend;
+                $orders[] = (int) $data[$date]->orders;
+                $sales[] = (float) $data[$date]->sales;
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $orders[] = 0;
+                $sales[] = 0;
+            }
         }
         
         return view('campaign.amazon-hl-ads', compact('dates', 'clicks', 'spend', 'orders', 'sales'));
@@ -931,86 +947,42 @@ class AmazonCampaignReportsController extends Controller
     public function filterHlAds(Request $request)
     {
         $start = $request->startDate;
-        $end = $request->endDate;
+        $end   = $request->endDate;  
 
+        // Validate dates
         if (!$start || !$end) {
             return response()->json([
                 'error' => 'Start date and end date are required'
             ], 400);
         }
 
-        // Calculate days difference to determine which period to use
-        $startDate = \Carbon\Carbon::parse($start);
-        $endDate = \Carbon\Carbon::parse($end);
-        $daysDiff = $startDate->diffInDays($endDate) + 1;
-
-        // Map day ranges to available periods in SB table
-        $period = 'L30'; // default
-        if ($daysDiff <= 1) {
-            $period = 'L1';
-        } elseif ($daysDiff <= 7) {
-            $period = 'L7';
-        } elseif ($daysDiff <= 15) {
-            $period = 'L15';
-        } elseif ($daysDiff <= 30) {
-            $period = 'L30';
-        } else {
-            $period = 'L60';
-        }
-
-        // Get aggregate data for the period
         $data = DB::table('amazon_sb_campaign_reports')
             ->selectRaw('
-                SUM(clicks) as total_clicks,
-                SUM(cost) as total_spend,
-                SUM(purchases) as total_orders,
-                SUM(sales) as total_sales
+                report_date_range as report_date,
+                SUM(clicks) as clicks,
+                SUM(cost) as spend,
+                SUM(purchases) as orders,
+                SUM(sales) as sales
             ')
-            ->where('report_date_range', $period)
-            ->first();
-
-        $totalClicks = $data->total_clicks ?? 0;
-        $totalSpend = $data->total_spend ?? 0;
-        $totalOrders = $data->total_orders ?? 0;
-        $totalSales = $data->total_sales ?? 0;
-
-        // Create daily distribution for the requested date range
-        $dates = [];
-        $clicks = [];
-        $spend = [];
-        $orders = [];
-        $sales = [];
-
-        for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
-            $dateStr = $date->format('Y-m-d');
-            $dates[] = $dateStr;
-            
-            // Distribute totals across the date range
-            $dayClicks = $totalClicks > 0 ? max(0, round(($totalClicks / $daysDiff) * (0.7 + (rand(0, 60) / 100)))) : 0;
-            $daySpend = $totalSpend > 0 ? max(0, round(($totalSpend / $daysDiff) * (0.7 + (rand(0, 60) / 100)), 2)) : 0;
-            $dayOrders = $totalOrders > 0 ? max(0, round(($totalOrders / $daysDiff) * (0.7 + (rand(0, 60) / 100)))) : 0;
-            $daySales = $totalSales > 0 ? max(0, round(($totalSales / $daysDiff) * (0.7 + (rand(0, 60) / 100)), 2)) : 0;
-            
-            $clicks[] = $dayClicks;
-            $spend[] = $daySpend;
-            $orders[] = $dayOrders;
-            $sales[] = $daySales;
-        }
+            ->whereNotNull('report_date_range')
+            ->whereBetween('report_date_range', [$start, $end])
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1']) // Exclude period ranges, only dates
+            ->groupBy('report_date_range')
+            ->orderBy('report_date_range', 'asc')
+            ->get();
 
         return response()->json([
-            'dates' => $dates,
-            'clicks' => $clicks,
-            'spend' => $spend,
-            'orders' => $orders,
-            'sales' => $sales,
+            'dates'  => $data->pluck('report_date'),
+            'clicks' => $data->pluck('clicks')->map(fn($v) => (int) $v),
+            'spend'  => $data->pluck('spend')->map(fn($v) => (float) $v),
+            'orders' => $data->pluck('orders')->map(fn($v) => (int) $v),
+            'sales'  => $data->pluck('sales')->map(fn($v) => (float) $v),
             'totals' => [
-                'clicks' => (int) $totalClicks,
-                'spend' => (float) $totalSpend,
-                'orders' => (int) $totalOrders,
-                'sales' => (float) $totalSales,
-            ],
-            'period_used' => $period,
-            'days_requested' => $daysDiff
+                'clicks' => $data->sum('clicks'),
+                'spend'  => $data->sum('spend'),
+                'orders' => $data->sum('orders'),
+                'sales'  => $data->sum('sales'),
+            ]
         ]);
     }
 

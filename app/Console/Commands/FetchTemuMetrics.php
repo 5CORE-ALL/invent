@@ -32,19 +32,58 @@ class FetchTemuMetrics extends Command
         Log::info('Starting FetchTemuMetrics command');
         $this->info('Starting FetchTemuMetrics command');
 
+        // Verify credentials first
+        if (!$this->verifyCredentials()) {
+            $this->error('Invalid Temu API credentials. Please check your .env file.');
+            return;
+        }
+
         try {
+            // Step 1: Fetch SKUs and basic data
+            $this->info('Step 1/5: Fetching SKUs...');
             $this->fetchSkus();
-            $this->fetchQuantity();
+            
+            // Step 2: Fetch Goods IDs
+            $this->info('Step 2/5: Fetching Goods IDs...');
             $this->fetchGoodsId();
+            
+            // Step 3: Fetch L30 & L60 Order Quantities
+            $this->info('Step 3/5: Fetching Order Quantities (L30 & L60)...');
+            $this->fetchQuantity();
+            
+            // Step 4: Fetch Prices
+            $this->info('Step 4/5: Fetching Prices...');
             $this->fetchBasePrice();
+            
+            // Step 5: Fetch Product Analytics (Views/Impressions/Clicks)
+            $this->info('Step 5/5: Fetching Product Analytics Data...');
             $this->fetchProductAnalyticsData();
 
+            // Debug summary
+            $this->debugSkuStatus();
+
             Log::info('Completed FetchTemuMetrics command successfully');
-            $this->info('Completed FetchTemuMetrics command successfully');
+            $this->info('✅ Completed FetchTemuMetrics command successfully');
         } catch (\Exception $e) {
             Log::error('Error in FetchTemuMetrics command: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             $this->error('Error in FetchTemuMetrics command: ' . $e->getMessage());
         }
+    }
+
+    private function verifyCredentials()
+    {
+        $appKey = env('TEMU_APP_KEY');
+        $appSecret = env('TEMU_SECRET_KEY');
+        $accessToken = env('TEMU_ACCESS_TOKEN');
+
+        if (empty($appKey) || empty($appSecret) || empty($accessToken)) {
+            $this->error('Missing Temu API credentials in .env file');
+            $this->line('Required: TEMU_APP_KEY, TEMU_SECRET_KEY, TEMU_ACCESS_TOKEN');
+            return false;
+        }
+
+        $this->info("Credentials found - App Key: " . substr($appKey, 0, 10) . "...");
+        return true;
     }
 
     private function fetchProductAnalyticsData(){
@@ -165,15 +204,25 @@ class FetchTemuMetrics extends Command
 
                 if ($response->failed()) {
                     $this->error("Price request failed for SKU: {$skuId} | " . $response->body());
-                    Log::error("Price request failed for SKU: {$skuId}", ['response' => $response->body()]);
+                    Log::error("Price request failed for SKU: {$skuId}", [
+                        'response' => $response->body(),
+                        'request' => $signedRequest
+                    ]);
                     continue;
                 }
 
                 $data = $response->json();
 
                 if (!($data['success'] ?? false)) {
-                    $this->error("Temu Price API error for SKU: {$skuId} | " . ($data['errorMsg'] ?? 'Unknown'));
-                    Log::error("Temu Price API error for SKU: {$skuId}", ['error' => $data['errorMsg'] ?? 'Unknown']);
+                    $errorCode = $data['errorCode'] ?? 'N/A';
+                    $errorMsg = $data['errorMsg'] ?? 'Unknown';
+                    $this->error("Temu Price API error [{$errorCode}] for SKU: {$skuId} | {$errorMsg}");
+                    Log::error("Temu Price API error for SKU: {$skuId}", [
+                        'error_code' => $errorCode,
+                        'error_msg' => $errorMsg,
+                        'full_response' => $data,
+                        'request_body' => $requestBody
+                    ]);
                     continue;
                 }
 
@@ -403,17 +452,18 @@ class FetchTemuMetrics extends Command
     private function fetchSkus()
     {
         Log::info('Starting fetchSkus');
-        $this->info('Fetching SKUs...');
+        $this->info('Fetching SKUs from Temu...');
 
         try {
             $pageToken = null;
             $pageCount = 0;
+            $totalProcessed = 0;
 
             do {
                 $requestBody = [
                     "type" => "temu.local.sku.list.retrieve",                
                     "skuSearchType" => "ACTIVE",
-                    "pageSize" => 50, // reduce size to avoid timeout
+                    "pageSize" => 100,
                 ];
 
                 if ($pageToken) {
@@ -423,7 +473,7 @@ class FetchTemuMetrics extends Command
                 $signedRequest = $this->generateSignValue($requestBody);
 
                 try {
-                    $response = Http::timeout(40) // ⏳ avoid hanging forever
+                    $response = Http::timeout(60)
                         ->withHeaders(['Content-Type' => 'application/json'])
                         ->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
                 } catch (\Exception $e) {
@@ -433,24 +483,33 @@ class FetchTemuMetrics extends Command
                 }
 
                 if ($response->failed()) {
-                    $this->error("Request failed: " . $response->body());
-                    Log::error("Request failed in fetchSkus", ['response' => $response->body()]);
+                    $this->error("Request failed: " . $response->status() . " | " . $response->body());
+                    Log::error("Request failed in fetchSkus", [
+                        'status' => $response->status(),
+                        'response' => $response->body()
+                    ]);
                     break;
                 }
 
                 $data = $response->json();
                 
                 if (!($data['success'] ?? false)) {
-                    $this->error("Temu Error: " . ($data['errorMsg'] ?? 'Unknown'));
-                    Log::error("Temu Error in fetchSkus", ['error' => $data['errorMsg'] ?? 'Unknown']);
+                    $errorMsg = $data['errorMsg'] ?? 'Unknown error';
+                    $errorCode = $data['errorCode'] ?? 'N/A';
+                    $this->error("Temu API Error [{$errorCode}]: {$errorMsg}");
+                    Log::error("Temu Error in fetchSkus", [
+                        'error_code' => $errorCode,
+                        'error_msg' => $errorMsg,
+                        'full_response' => $data
+                    ]);
                     break;
                 }
 
                 $skus = $data['result']['skuList'] ?? [];
 
                 if (empty($skus)) {
-                    $this->warn("No SKUs found on page {$pageCount}");
-                    Log::warning("No SKUs found on page {$pageCount}");
+                    $this->warn("No SKUs found on page " . ($pageCount + 1));
+                    Log::warning("No SKUs found on page " . ($pageCount + 1));
                     break;
                 }
 
@@ -463,39 +522,40 @@ class FetchTemuMetrics extends Command
                         continue;
                     }
 
-                    // ✅ Extract base price safely
+                    // Extract price
                     $price = null;
-
                     if (isset($sku['priceInfo'])) {
                         $price = $sku['priceInfo']['salePrice'] 
                             ?? $sku['priceInfo']['price'] 
                             ?? null;
                     }
-
                     if (!$price && isset($sku['salePrice'])) {
                         $price = $sku['salePrice'];
                     }
-
-                    // Ensure numeric
                     $price = is_numeric($price) ? (float) $price : null;
 
                     TemuMetric::updateOrCreate(
-                        ['sku' => $outSkuSn, 'sku_id' => $skuId],
-                        ['base_price' => $price]
+                        ['sku' => $outSkuSn],
+                        [
+                            'sku_id' => $skuId,
+                            'base_price' => $price,
+                            'price_last_updated' => now()
+                        ]
                     );
-                    Log::info("Synced SKU: {$outSkuSn}", ['sku_id' => $skuId, 'price' => $price]);
+                    $totalProcessed++;
                 }
 
                 $pageToken = $data['result']['pagination']['nextToken'] ?? null;
                 $pageCount++;
+                
+                $this->info("  Page {$pageCount}: Processed " . count($skus) . " SKUs (Total: {$totalProcessed})");
 
-                // Small delay to avoid API rate limits
-                usleep(500000); // 0.5 sec
+                usleep(300000); // 0.3 sec delay
 
             } while ($pageToken);
 
-            $this->info("SKUs Synced Successfully with Prices.");
-            Log::info('Completed fetchSkus successfully');
+            $this->info("✅ SKUs Synced: {$totalProcessed} total");
+            Log::info('Completed fetchSkus successfully', ['total' => $totalProcessed]);
         } catch (\Exception $e) {
             Log::error('Error in fetchSkus: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             $this->error('Error in fetchSkus: ' . $e->getMessage());
@@ -509,7 +569,7 @@ class FetchTemuMetrics extends Command
         $appKey = env('TEMU_APP_KEY');
         $appSecret = env('TEMU_SECRET_KEY');
         $accessToken = env('TEMU_ACCESS_TOKEN');
-        $timestamp = time();
+        $timestamp = time(); // Unix timestamp in seconds
         
         // Top-level params
         $params = [
@@ -535,9 +595,12 @@ class FetchTemuMetrics extends Command
         $sign = strtoupper(md5($signStr));
         $params['sign'] = $sign;
 
+        Log::debug("API Request", [
+            'type' => $requestBody['type'] ?? 'unknown',
+            'timestamp' => $timestamp,
+            'sign' => substr($sign, 0, 10) . '...'
+        ]);
         
-        // Log the request
-        $this->info("Generated Sign: $sign");
         return array_merge($params, $requestBody);
     }
 

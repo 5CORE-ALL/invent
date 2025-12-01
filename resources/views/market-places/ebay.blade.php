@@ -18,16 +18,23 @@
             width: 100%;
             border-collapse: collapse;
             margin: 0;
+            border: 1px solid #dee2e6;
         }
 
         .custom-resizable-table th,
         .custom-resizable-table td {
             padding: 12px 15px;
             text-align: left;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid #dee2e6;
+            border-right: 1px solid #dee2e6;
             position: relative;
             white-space: nowrap;
             overflow: visible !important;
+        }
+
+        .custom-resizable-table th:last-child,
+        .custom-resizable-table td:last-child {
+            border-right: none;
         }
 
         .custom-resizable-table th {
@@ -37,23 +44,36 @@
             position: sticky;
             top: 0;
             z-index: 10;
+            border-top: 1px solid #dee2e6;
         }
 
         /* ========== RESIZABLE COLUMNS ========== */
         .resize-handle {
             position: absolute;
             top: 0;
-            right: 0;
-            width: 5px;
+            right: -3px;
+            width: 6px;
             height: 100%;
-            background: rgba(0, 0, 0, 0.1);
+            background: rgba(0, 123, 255, 0.3);
             cursor: col-resize;
-            z-index: 100;
+            z-index: 1000;
+            border-radius: 2px;
+            opacity: 0.3;
+            transition: all 0.2s ease;
+        }
+
+        .custom-resizable-table th:hover .resize-handle {
+            opacity: 1;
+            background: rgba(0, 123, 255, 0.5);
         }
 
         .resize-handle:hover,
         .resize-handle.resizing {
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(0, 123, 255, 0.8);
+            opacity: 1;
+            width: 8px;
+            right: -4px;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.6);
         }
 
         /* ========== TOOLTIP SYSTEM ========== */
@@ -279,6 +299,19 @@
 
         /* ========== CARD BODY ========== */
         .card-body {
+            position: relative;
+        }
+        
+        /* ========== RESIZING FEEDBACK ========== */
+        .custom-resizable-table.resizing-active {
+            pointer-events: none;
+        }
+        
+        .custom-resizable-table.resizing-active .resize-handle.resizing {
+            pointer-events: all;
+        }
+        
+        .custom-resizable-table th {
             position: relative;
         }
 
@@ -901,6 +934,33 @@
             display: none !important;
         }
 
+        /* NRL/REQ Dropdown Styling */
+        .nr-req-dropdown {
+            width: 100%;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        .nr-req-dropdown .req-option {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .nr-req-dropdown .nr-option {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .nr-req-dropdown option {
+            padding: 4px 8px;
+            font-weight: bold;
+        }
+
         /*popup modal style end */
     </style>
 @endsection
@@ -1344,18 +1404,18 @@
                                             name="excel_file" accept=".xlsx,.xls,.csv" required>
                                     </div>
 
-                                    <!-- Close All Modals Button -->
-                                    <button id="close-all-modals" class="btn btn-danger btn-sm" style="display: none;">
-                                        <i class="fas fa-times"></i> Close All Modals
-                                        <!-- Sample File Link -->
-                                        <div class="alert alert-info">
-                                            <small>
-                                                <i class="fas fa-info-circle me-1"></i>
-                                                Download the <a href="{{ route('ebay.analytics.sample') }}"
-                                                    class="alert-link">sample file</a>
-                                                to see the required format. Columns should be: SKU, Listed, Live.
-                                            </small>
+                                    <!-- Sample File Section -->
+                                    <div class="alert alert-info">
+                                        <small>
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            Download the sample file to see the required format. Columns should be: SKU, Listed, Live.
+                                        </small>
+                                        <div class="mt-2">
+                                            <button type="button" class="btn btn-sm btn-outline-info" id="downloadSampleBtn">
+                                                <i class="fas fa-download me-1"></i> Download Sample File
+                                            </button>
                                         </div>
+                                    </div>
                                 </div>
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-secondary"
@@ -1472,7 +1532,7 @@
                                         </div>
                                     </th>
                                     <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center sortable">
+                                        <div class="d-flex flex-column align-items-center sortable" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 Sku <span class="sort-arrow">↓</span>
                                             </div>
@@ -1481,6 +1541,8 @@
                                                     placeholder="Search SKU..." id="skuSearch">
                                                 <div class="dropdown-search-results" id="skuSearchResults"></div>
                                             </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="sku-total">0</div>
                                         </div>
                                     </th>
                                     <th data-field="inv" style="vertical-align: middle; white-space: nowrap;">
@@ -1530,7 +1592,19 @@
                                     </th>
                                     <th data-field="NRA">NRA</th>
 
-                                    <th data-field="listed" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                NRL/REQ
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="req-total"
+                                                style="display:inline-block; background:#43dc35; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
+                                                0</div>
+                                        </div>
+                                    </th>
+
+                                    <th data-field="listed" class="hide-column" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 LISTED <span class="sort-arrow">↓</span>
@@ -1803,7 +1877,7 @@
                     }
 
                     $.ajax({
-                        url: '/update-all-ebay-one-skus',
+                        url: '/update-all-ebay1-skus',
                         type: 'POST',
                         data: {
                             type: 'percentage',
@@ -1847,7 +1921,7 @@
 
                     // Ad Updates
                     $.ajax({
-                        url: '/update-all-ebay-one-skus',
+                        url: '/update-all-ebay1-skus',
                         type: 'POST',
                         data: {
                             type: 'ad_updates',
@@ -2345,6 +2419,7 @@
                     initRAEditHandlers(); // Add this line
                     initCheckBoxEditHandlers();
                     initNRSelectChangeHandler();
+                    initNRReqChangeHandler();
 
                 });
             }
@@ -2464,6 +2539,7 @@
                                         .toUpperCase().includes("PARENT") : false,
                                     raw_data: item || {},
                                     NR: item.NR || '',
+                                    nr_req: item.nr_req || 'REQ', // Default to 'REQ' if not set
                                     listed: listedVal,
                                     live: liveVal,
                                     Hide: item.Hide !== undefined ? item.Hide : '',
@@ -2556,12 +2632,12 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="16" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="16" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
@@ -2646,10 +2722,22 @@
                     $row.append($('<td>').text(item['Sl']));
                     $row.append($('<td>').text(item.Parent));
 
-                    // SKU with hover content for links
-                    const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
+                    // SKU with hover content for links and copy button
+                    const $skuCell = $('<td>').addClass('skuColumn').css('position', 'relative');
+                    const skuValue = item['(Child) sku'];
+                    
                     if (item.is_parent) {
-                        $skuCell.html(`<strong>${item['(Child) sku']}</strong>`);
+                        $skuCell.html(`
+                            <div class="d-flex align-items-center justify-content-between">
+                                <strong>${skuValue}</strong>
+                                <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                        data-sku="${skuValue}" 
+                                        title="Copy SKU"
+                                        style="padding: 2px 6px; margin-left: 5px;">
+                                    <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                </button>
+                            </div>
+                        `);
                     } else {
                         const imageUrl = item.raw_data.image || '';
                         const buyerLink = item.raw_data['B Link'] || '';
@@ -2657,17 +2745,35 @@
 
                         if (buyerLink || sellerLink || imageUrl) {
                             $skuCell.html(`
-                                <div class="sku-tooltip-container">
-                                    <span class="sku-text">${item['(Child) sku']}</span>
-                                    <div class="sku-tooltip">
-                                        ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
-                                        ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
-                                        ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="sku-tooltip-container">
+                                        <span class="sku-text">${skuValue}</span>
+                                        <div class="sku-tooltip">
+                                            ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
+                                            ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
+                                            ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
+                                        </div>
                                     </div>
+                                    <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                            data-sku="${skuValue}" 
+                                            title="Copy SKU"
+                                            style="padding: 2px 6px; margin-left: 5px;">
+                                        <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                    </button>
                                 </div>
                             `);
                         } else {
-                            $skuCell.text(item['(Child) sku']);
+                            $skuCell.html(`
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <span>${skuValue}</span>
+                                    <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                            data-sku="${skuValue}" 
+                                            title="Copy SKU"
+                                            style="padding: 2px 6px; margin-left: 5px;">
+                                        <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                    </button>
+                                </div>
+                            `);
                         }
                     }
                     $row.append($skuCell);
@@ -2771,6 +2877,36 @@
                         $row.append($('<td>').append($select));
                     }
 
+                    // NRL/REQ dropdown - only for non-parent rows
+                    if (item.is_parent) {
+                        $row.append($('<td>')); // Empty cell for parent
+                    } else {
+                        // Set default value for nr_req if missing
+                        let currentNrReq = (item.nr_req === 'REQ' || item.nr_req === 'NR') ? item.nr_req : 'REQ';
+
+                        const $nrReqSelect = $(`
+                            <select class="form-select form-select-sm nr-req-dropdown" style="min-width: 100px;">
+                                <option value="REQ" class="req-option">REQ</option>
+                                <option value="NR" class="nr-option">NRL</option>
+                            </select>
+                        `);
+
+                        // Set initial value
+                        $nrReqSelect.val(currentNrReq);
+
+                        // Set background color based on value
+                        if (currentNrReq === 'REQ') {
+                            $nrReqSelect.css('background-color', '#28a745');
+                            $nrReqSelect.css('color', '#ffffff');
+                        } else if (currentNrReq === 'NR') {
+                            $nrReqSelect.css('background-color', '#dc3545');
+                            $nrReqSelect.css('color', '#ffffff');
+                        }
+
+                        $nrReqSelect.data('sku', item['(Child) sku']);
+                        $row.append($('<td>').append($nrReqSelect));
+                    }
+
                     //Listed checkbox
                     const listedVal = rawData.Listed === true || rawData.Listed === 'true' || rawData
                         .Listed === 1 || rawData.Listed === '1';
@@ -2780,7 +2916,7 @@
                         checked: listedVal
                     }).data('sku', item['(Child) sku']);
 
-                    $row.append($('<td>').append($listedCb));
+                    $row.append($('<td class="hide-column">').append($listedCb));
 
                     // Live checkbox
                     const liveVal = rawData.Live === true || rawData.Live === 'true' || rawData.Live ===
@@ -2836,8 +2972,8 @@
                     ));
 
                     $row.append($('<td>').html(
-                        `<div style="display:flex;align-items:center">
-                            <span class="sPriceText" data-sku="${item.raw_data['Item ID']}" style="min-width:100px; display:inline-block;">
+                        `<div style="display:flex;align-items:center;justify-content:center;">
+                            <span class="sPriceText" data-sku="${item.raw_data['Item ID']}" style="display:inline-block;">
                                 ` + item['eBay Price'] + `
                             </span>
                             <input 
@@ -3246,6 +3382,52 @@
                         },
                         error: function(xhr) {
                             showNotification('danger', 'Failed to update NR.');
+                        }
+                    });
+                });
+            }
+
+            function initNRReqChangeHandler() {
+                $(document).on('change', '.nr-req-dropdown', function() {
+                    const $select = $(this);
+                    const newValue = $select.val();
+                    const sku = $select.data('sku');
+
+                    // Change background color based on selected value
+                    if (newValue === 'REQ') {
+                        $select.css('background-color', '#28a745').css('color', '#ffffff');
+                    } else if (newValue === 'NR') {
+                        $select.css('background-color', '#dc3545').css('color', '#ffffff');
+                    }
+
+                    // Send AJAX to save NRL/REQ status
+                    $.ajax({
+                        url: '/listing_ebay/save-status',
+                        type: 'POST',
+                        data: {
+                            sku: sku,
+                            nr_req: newValue,
+                            _token: $('meta[name="csrf-token"]').attr('content')
+                        },
+                        success: function(response) {
+                            showNotification('success', 'NRL/REQ updated successfully!');
+
+                            // Update tableData and filteredData
+                            tableData.forEach(item => {
+                                if (item['(Child) sku'] === sku) {
+                                    item.nr_req = newValue;
+                                }
+                            });
+                            filteredData.forEach(item => {
+                                if (item['(Child) sku'] === sku) {
+                                    item.nr_req = newValue;
+                                }
+                            });
+                            calculateTotals();
+                            renderTable();
+                        },
+                        error: function(xhr) {
+                            showNotification('danger', 'Failed to update NRL/REQ.');
                         }
                     });
                 });
@@ -4703,54 +4885,161 @@
             function initResizableColumns() {
                 const $table = $('#ebay-table');
                 const $headers = $table.find('th');
-                let startX, startWidth, columnIndex;
+                let startX, startWidth, $currentTh, $currentTd;
+                let minColumnWidth = 80;
 
-                $headers.each(function() {
-                    $(this).append('<div class="resize-handle"></div>');
-                });
-
-                $table.on('mousedown', '.resize-handle', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    isResizing = true;
-                    $(this).addClass('resizing');
-
-                    const $th = $(this).parent();
-                    columnIndex = $th.index();
-                    startX = e.pageX;
-                    startWidth = $th.outerWidth();
-
-                    $('body').css('user-select', 'none');
-                });
-
-                $(document).on('mousemove', function(e) {
-                    if (!isResizing) return;
-
-                    const $resizer = $('.resize-handle.resizing');
-                    if ($resizer.length) {
-                        const $th = $resizer.parent();
-                        const newWidth = startWidth + (e.pageX - startX);
-                        $th.css('width', newWidth + 'px');
-                        $th.css('min-width', newWidth + 'px');
-                        $th.css('max-width', newWidth + 'px');
+                // Add resize handles to headers
+                $headers.each(function(index) {
+                    const $th = $(this);
+                    // Don't add resize handle to last column
+                    if (index < $headers.length - 1) {
+                        $th.css('position', 'relative');
+                        $th.append('<div class="resize-handle"></div>');
                     }
                 });
 
-                $(document).on('mouseup', function(e) {
-                    if (!isResizing) return;
-
+                // Mouse down on resize handle
+                $table.on('mousedown', '.resize-handle', function(e) {
+                    e.preventDefault();
                     e.stopPropagation();
-                    $('.resize-handle').removeClass('resizing');
-                    $('body').css('user-select', '');
-                    isResizing = false;
+                    
+                    isResizing = true;
+                    $(this).addClass('resizing');
+                    $currentTh = $(this).parent();
+                    
+                    startX = e.pageX;
+                    startWidth = $currentTh.outerWidth();
+                    
+                    // Find corresponding td elements
+                    const columnIndex = $currentTh.index();
+                    $currentTd = $table.find('tbody tr:first td').eq(columnIndex);
+                    
+                    // Disable text selection
+                    $('body').css({
+                        'user-select': 'none',
+                        'cursor': 'col-resize'
+                    });
+                    
+                    // Add visual feedback
+                    $table.addClass('resizing-active');
                 });
+
+                // Mouse move - resize column
+                $(document).on('mousemove.resize', function(e) {
+                    if (!isResizing || !$currentTh) return;
+                    
+                    e.preventDefault();
+                    const deltaX = e.pageX - startX;
+                    const newWidth = Math.max(minColumnWidth, startWidth + deltaX);
+                    
+                    // Apply width to header
+                    $currentTh.css({
+                        'width': newWidth + 'px',
+                        'min-width': newWidth + 'px',
+                        'max-width': newWidth + 'px'
+                    });
+                    
+                    // Apply width to all cells in this column
+                    const columnIndex = $currentTh.index();
+                    $table.find('tbody tr').each(function() {
+                        $(this).find('td').eq(columnIndex).css({
+                            'width': newWidth + 'px',
+                            'min-width': newWidth + 'px',
+                            'max-width': newWidth + 'px'
+                        });
+                    });
+                });
+
+                // Mouse up - finish resizing
+                $(document).on('mouseup.resize', function(e) {
+                    if (!isResizing) return;
+                    
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Clean up
+                    $('.resize-handle').removeClass('resizing');
+                    $table.removeClass('resizing-active');
+                    $('body').css({
+                        'user-select': '',
+                        'cursor': ''
+                    });
+                    
+                    // Reset variables
+                    isResizing = false;
+                    $currentTh = null;
+                    $currentTd = null;
+                    
+                    // Save column widths to localStorage
+                    saveColumnWidths();
+                });
+                
+                // Load saved column widths
+                loadColumnWidths();
+            }
+            
+            // Save column widths to localStorage
+            function saveColumnWidths() {
+                const $table = $('#ebay-table');
+                const $headers = $table.find('th[data-field]');
+                const widths = {};
+                
+                $headers.each(function() {
+                    const field = $(this).data('field');
+                    const width = $(this).outerWidth();
+                    if (field && width) {
+                        widths[field] = width;
+                    }
+                });
+                
+                localStorage.setItem('ebayTableColumnWidths', JSON.stringify(widths));
+            }
+            
+            // Load column widths from localStorage
+            function loadColumnWidths() {
+                const saved = localStorage.getItem('ebayTableColumnWidths');
+                if (!saved) return;
+                
+                try {
+                    const widths = JSON.parse(saved);
+                    const $table = $('#ebay-table');
+                    
+                    Object.entries(widths).forEach(([field, width]) => {
+                        const $th = $table.find(`th[data-field="${field}"]`);
+                        if ($th.length) {
+                            $th.css({
+                                'width': width + 'px',
+                                'min-width': width + 'px',
+                                'max-width': width + 'px'
+                            });
+                            
+                            // Apply to corresponding cells
+                            const columnIndex = $th.index();
+                            $table.find('tbody tr').each(function() {
+                                $(this).find('td').eq(columnIndex).css({
+                                    'width': width + 'px',
+                                    'min-width': width + 'px',
+                                    'max-width': width + 'px'
+                                });
+                            });
+                        }
+                    });
+                } catch (e) {
+                    console.error('Error loading column widths:', e);
+                }
             }
 
             // Initialize sorting functionality
             function initSorting() {
                 $('th[data-field]').addClass('sortable').on('click', function(e) {
+                    // Prevent sorting when resizing
                     if (isResizing) {
                         e.stopPropagation();
+                        return;
+                    }
+                    
+                    // Prevent sorting when clicking on resize handle
+                    if ($(e.target).hasClass('resize-handle') || $(e.target).closest('.resize-handle').length) {
                         return;
                     }
 
@@ -5144,6 +5433,7 @@
                         listedCount: 0,
                         liveCount: 0,
                         totalSalesTotal: 0,
+                        reqCount: 0, // <-- NRL/REQ counter
                     };
 
                     filteredData.forEach(item => {
@@ -5169,6 +5459,11 @@
                         if (rawData.Live === true || rawData.Live === 'true' || rawData.Live === 1 ||
                             rawData.Live === '1') {
                             metrics.liveCount++;
+                        }
+
+                        // Count REQ entries (only for non-parent rows)
+                        if (!item.is_parent && item.nr_req === 'REQ') {
+                            metrics.reqCount++;
                         }
 
                         const profit = parseFloat(item.Profit) || 0;
@@ -5203,6 +5498,7 @@
                     const divisor = metrics.rowCount || 1;
 
                     // Update metric displays with correct calculations
+                    $('#sku-total').text(filteredData.length.toLocaleString());
                     $('#inv-total').text(metrics.invTotal.toLocaleString());
                     $('#ovl30-total').text(metrics.ovL30Total.toLocaleString());
                     $('#ovdil-total').text(Math.round(metrics.ovDilTotal) + '%');
@@ -5211,6 +5507,7 @@
                     $('#views-total').text(metrics.viewsTotal.toLocaleString());
                     $('#listed-total').text(metrics.listedCount.toLocaleString());
                     $('#live-total').text(metrics.liveCount.toLocaleString());
+                    $('#req-total').text(metrics.reqCount.toLocaleString());
                     $('#sale-total').text(metrics.totalSalesTotal.toLocaleString());
 
                     $.ajax({
@@ -5244,6 +5541,7 @@
             }
 
             function resetMetricsToZero() {
+                $('#sku-total').text('0');
                 $('#inv-total').text('0');
                 $('#ovl30-total').text('0');
                 $('#ovdil-total').text('0%');
@@ -5256,6 +5554,7 @@
                 $('#cvr-total').text('0%');
                 $('#listed-total').text('0');
                 $('#live-total').text('0');
+                $('#req-total').text('0');
             }
 
             // Initialize enhanced dropdowns
@@ -5907,6 +6206,82 @@
                     notification.find('.alert').alert('close');
                 }, 3000);
             }
+            // SKU Copy functionality
+            $(document).on('click', '.copy-sku-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const sku = $(this).data('sku');
+                const button = $(this);
+                const originalIcon = button.find('i');
+                
+                // Copy to clipboard
+                if (navigator.clipboard && window.isSecureContext) {
+                    // Modern browsers
+                    navigator.clipboard.writeText(sku).then(() => {
+                        // Change icon to checkmark temporarily
+                        originalIcon.removeClass('fa-copy').addClass('fa-check');
+                        button.removeClass('btn-outline-secondary').addClass('btn-success');
+                        
+                        setTimeout(() => {
+                            originalIcon.removeClass('fa-check').addClass('fa-copy');
+                            button.removeClass('btn-success').addClass('btn-outline-secondary');
+                        }, 1000);
+                        
+                        showNotification('success', `SKU "${sku}" copied to clipboard!`);
+                    }).catch(() => {
+                        showNotification('danger', 'Failed to copy SKU to clipboard');
+                    });
+                } else {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = sku;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        // Change icon to checkmark temporarily
+                        originalIcon.removeClass('fa-copy').addClass('fa-check');
+                        button.removeClass('btn-outline-secondary').addClass('btn-success');
+                        
+                        setTimeout(() => {
+                            originalIcon.removeClass('fa-check').addClass('fa-copy');
+                            button.removeClass('btn-success').addClass('btn-outline-secondary');
+                        }, 1000);
+                        
+                        showNotification('success', `SKU "${sku}" copied to clipboard!`);
+                    } catch (err) {
+                        showNotification('danger', 'Failed to copy SKU to clipboard');
+                    }
+                    document.body.removeChild(textArea);
+                }
+            });
+
+            // Download Sample functionality
+            $(document).on('click', '#downloadSampleBtn', function(e) {
+                e.preventDefault();
+                
+                const button = $(this);
+                const originalText = button.html();
+                
+                // Show loading state
+                button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Downloading...');
+                
+                // Create a temporary link and trigger download
+                const downloadUrl = '{{ route("ebay.analytics.sample") }}';
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = 'ebay_sample.xlsx';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // Reset button state after a short delay
+                setTimeout(() => {
+                    button.prop('disabled', false).html(originalText);
+                }, 1500);
+            });
+
             // Initialize everything
             initTable();
             // Make the static Hide SKU modal draggable using the existing logic
