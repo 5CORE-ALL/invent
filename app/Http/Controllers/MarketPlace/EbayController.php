@@ -220,16 +220,7 @@ class EbayController extends Controller
             ->get()
             ->keyBy("sku");
 
-        $ebayMetrics = DB::connection('apicentral')
-            ->table('ebay_one_metrics')
-            ->select(
-                'sku',
-                'ebay_l30',
-                'ebay_l60',
-                'ebay_price',
-                'views',
-                'item_id'
-            )
+        $ebayMetrics = EbayMetric::whereIn('sku', $skus)
             ->whereIn('sku', $skus)
             ->get()
             ->keyBy('sku');

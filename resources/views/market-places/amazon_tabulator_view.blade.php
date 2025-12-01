@@ -2101,7 +2101,7 @@
             // SKU Search functionality
             $('#sku-search').on('keyup', function() {
                 const value = $(this).val();
-                table.setFilter("SKU", "like", value);
+                table.setFilter("(Child) sku", "like", value);
             });
 
             table.on('cellEdited', function(cell) {
