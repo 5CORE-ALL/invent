@@ -26,51 +26,67 @@ class Ebay2ZeroController extends Controller
 
     public function getViewEbay2ZeroData(Request $request)
     {
-        // 1. Fetch all ProductMaster rows
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
+        // 1. Fetch all ProductMaster rows (excluding soft deleted)
+        $productMasters = ProductMaster::whereNull('deleted_at')
+            ->orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        // Normalize SKUs (avoid case/space mismatch)
+        $skus = $productMasters->pluck('sku')->map(fn($s) => strtoupper(trim($s)))->unique()->toArray();
 
-        // 2. Fetch ShopifySku for those SKUs
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        // 2. Fetch ShopifySku for those SKUs (normalized keys)
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()
+            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
-        $ebayMetrics = Ebay2Metric::whereIn('sku', $skus)->get()->keyBy('sku');
+        $ebayMetrics = Ebay2Metric::whereIn('sku', $skus)->get()
+            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
-
-        // 3. Fetch DobaDataView for those SKUs
-        $ebay2DataViews = EbayTwoDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+        // 3. Fetch EbayTwoDataView for those SKUs (normalized keys)
+        $ebay2DataViews = EbayTwoDataView::whereIn('sku', $skus)->get()
+            ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
         $result = [];
         foreach ($productMasters as $pm) {
-            $sku = $pm->sku;
+            $originalSku = $pm->sku;
+            $sku = strtoupper(trim($originalSku));
             $parent = $pm->parent;
 
             if (stripos($sku, 'PARENT') !== false) continue;
 
             $shopify = $shopifyData[$sku] ?? null;
 
-            $inv = $shopify ? $shopify->inv : 0;
+            $inv = $shopify ? floatval($shopify->inv) : 0;
             $ov_l30 = $shopify ? $shopify->quantity : 0;
             $ov_dil = ($inv > 0) ? round($ov_l30 / $inv, 4) : 0;
 
-              // Only include rows where inv > 0, SKU exists in Ebay3Metric, and views == 0
-            if ($inv > 0 && isset($ebayMetrics[$sku])) {
-                $views = $ebayMetrics[$sku]->views ?? null;
-                if ($views !== null && intval($views) === 0) {
+              // Only include rows where inv > 0, SKU exists in Ebay2Metric, and views == 0
+            $metricRecord = $ebayMetrics[$sku] ?? null;
+            
+            if ($inv > 0 && $metricRecord) {
+                $views = null;
 
-                    // Fetch DobaDataView values
-                    $dobaView = $ebay2DataViews[$sku] ?? null;
-                    $value = $dobaView ? $dobaView->value : [];
-                    if (is_string($value)) {
-                        $value = json_decode($value, true) ?: [];
-                    }
+                // Normalize views value (handle string "0", int 0, or empty)
+                if (!empty($metricRecord->views) || $metricRecord->views === "0" || $metricRecord->views === 0) {
+                    $views = (int)$metricRecord->views;
+                }
 
+                // Fetch EbayTwoDataView values
+                $dobaView = $ebay2DataViews[$sku] ?? null;
+                $value = $dobaView ? $dobaView->value : [];
+                if (is_string($value)) {
+                    $value = json_decode($value, true) ?: [];
+                }
+
+                // Check if NR flag is set
+                $hasNR = !empty($value['NR']) && strtoupper($value['NR']) === 'NR';
+
+                // Only include if views === 0 and no NR flag
+                if ($views === 0 && !$hasNR) {
                     $row = [
                         'parent' => $parent,
-                        'sku' => $sku,
+                        'sku' => $originalSku,
                         'inv' => $inv,
                         'ov_l30' => $ov_l30,
                         'ov_dil' => $ov_dil,
@@ -81,29 +97,7 @@ class Ebay2ZeroController extends Controller
                         'A_Z_ActionTaken' => $value['A_Z_ActionTaken'] ?? '',
                     ];
                     $result[] = $row;
-
-
-            // Only include rows where inv > 0
-            // if ($inv > 0) {
-            //     // Fetch DobaDataView values
-            //     $dobaView = $ebayMetrics[$sku] ?? null;
-            //     $value = $dobaView ? $dobaView->value : [];
-            //     if (is_string($value)) {
-            //         $value = json_decode($value, true) ?: [];
                 }
-
-                // $row = [
-                //     'parent' => $parent,
-                //     'sku' => $sku,
-                //     'inv' => $inv,
-                //     'ov_l30' => $ov_l30,
-                //     'ov_dil' => $ov_dil,
-                //     'NR' => isset($value['NR']) && in_array($value['NR'], ['REQ', 'NR']) ? $value['NR'] : 'REQ',
-                //     'A_Z_Reason' => $value['A_Z_Reason'] ?? '',
-                //     'A_Z_ActionRequired' => $value['A_Z_ActionRequired'] ?? '',
-                //     'A_Z_ActionTaken' => $value['A_Z_ActionTaken'] ?? '',
-                // ];
-                // $result[] = $row;
             }
         }
 
@@ -342,26 +336,20 @@ class Ebay2ZeroController extends Controller
             $views = null;
 
             if ($metricRecord) {
-                // Direct field
+                // Normalize views value (handle string "0", int 0, or empty)
                 if (!empty($metricRecord->views) || $metricRecord->views === "0" || $metricRecord->views === 0) {
                     $views = (int)$metricRecord->views;
-                }
-                // Or inside JSON column `value`
-                elseif (!empty($metricRecord->value)) {
-                    $metricData = json_decode($metricRecord->value, true);
-                    if (isset($metricData['views'])) {
-                        $views = (int)$metricData['views'];
-                    }
                 }
             }
 
             // Normalize $inv to numeric
             $inv = floatval($inv);
 
+            // Check NR flag
             $hasNR = !empty($dataView['NR']) && strtoupper($dataView['NR']) === 'NR';
 
-            // Count as zero-view if views are exactly 0 and inv > 0
-            if ($inv > 0 && $views === 0 && !$hasNR) {
+            // Count as zero-view if: inv > 0, views === 0, no NR flag, and metric record exists
+            if ($inv > 0 && $views === 0 && !$hasNR && $metricRecord) {
                 $zeroViewCount++;
             }
 
