@@ -2075,6 +2075,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
         Route::post('/meta-all-ads-control/sync-google-sheets', 'syncMetaAdsFromGoogleSheets')->name('meta.ads.sync');
         Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
+        
+        // AD Type specific routes
+        Route::get('/meta-ads/single-image', 'metaSingleImage')->name('meta.ads.single.image');
+        Route::get('/meta-ads/single-image/data', 'metaSingleImageData')->name('meta.ads.single.image.data');
+        Route::get('/meta-ads/single-video', 'metaSingleVideo')->name('meta.ads.single.video');
+        Route::get('/meta-ads/single-video/data', 'metaSingleVideoData')->name('meta.ads.single.video.data');
+        Route::get('/meta-ads/carousal', 'metaCarousal')->name('meta.ads.carousal');
+        Route::get('/meta-ads/carousal/data', 'metaCarousalData')->name('meta.ads.carousal.data');
+        Route::get('/meta-ads/existing-post', 'metaExistingPost')->name('meta.ads.existing.post');
+        Route::get('/meta-ads/existing-post/data', 'metaExistingPostData')->name('meta.ads.existing.post.data');
+        Route::get('/meta-ads/catalogue-ad', 'metaCatalogueAd')->name('meta.ads.catalogue');
+        Route::get('/meta-ads/catalogue-ad/data', 'metaCatalogueAdData')->name('meta.ads.catalogue.data');
+        
         Route::get('/facebook-ads-control/data', 'index')->name('facebook.ads.index');
         Route::get('/facebook-web-to-video', 'facebookWebToVideo')->name('facebook.web.to.video');
         Route::get('/facebook-web-to-video-data', 'facebookWebToVideoData')->name('facebook.web.to.video.data');

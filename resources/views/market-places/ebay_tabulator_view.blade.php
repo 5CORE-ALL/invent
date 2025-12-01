@@ -64,16 +64,6 @@
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <select id="pft-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">All Pft%</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="11-14">11-14%</option>
-                        <option value="15-20">15-20%</option>
-                        <option value="21-49">21-49%</option>
-                        <option value="50+">50%+</option>
-                    </select>
-
                     <select id="gpft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
@@ -2340,7 +2330,6 @@
             function applyFilters() {
                 const inventoryFilter = $('#inventory-filter').val();
                 const nrlFilter = $('#nrl-filter').val();
-                const pftFilter = $('#pft-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const statusFilter = $('#status-filter').val();
@@ -2364,26 +2353,13 @@
                     });
                 }
 
-                if (pftFilter !== 'all') {
-                    table.addFilter(function(data) {
-                        const pft = parseFloat(data['PFT %']) || 0;
-                        switch (pftFilter) {
-                            case '0-10': return pft >= 0 && pft <= 10;
-                            case '11-14': return pft >= 11 && pft <= 14;
-                            case '15-20': return pft >= 15 && pft <= 20;
-                            case '21-49': return pft >= 21 && pft <= 49;
-                            case '50+': return pft >= 50;
-                            default: return true;
-                        }
-                    });
-                }
-
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
                         const isParent = data.Parent && data.Parent.startsWith('PARENT');
                         if (isParent) return true;
-                        const gpftStr = data['GPFT%'] || '';
-                        const gpft = parseFloat(gpftStr.replace('%', '').replace(/<[^>]*>/g, '')) || 0;
+                        
+                        // GPFT% is stored as a number, not a string with %
+                        const gpft = parseFloat(data['GPFT%']) || 0;
                         
                         if (gpftFilter === 'negative') return gpft < 0;
                         if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
@@ -2440,7 +2416,7 @@
                 updateSummary();
             }
 
-            $('#inventory-filter, #nrl-filter, #pft-filter, #gpft-filter, #cvr-filter, #status-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter').on('change', function() {
                 applyFilters();
             });
             

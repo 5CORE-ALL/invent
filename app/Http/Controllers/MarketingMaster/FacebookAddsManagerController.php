@@ -154,7 +154,7 @@ class FacebookAddsManagerController extends Controller
     {
         $request->validate([
             'campaign_name' => 'required|string',
-            'ad_type' => 'required|string',
+            'ad_type' => 'nullable|string',
         ]);
 
         $metaAd = MetaAllAd::where('campaign_name', $request->campaign_name)->first();
@@ -163,7 +163,7 @@ class FacebookAddsManagerController extends Controller
             return response()->json(['error' => 'Campaign not found'], 404);
         }
 
-        $metaAd->ad_type = $request->ad_type;
+        $metaAd->ad_type = $request->ad_type ?: null;
         $metaAd->save();
 
         return response()->json([
@@ -517,4 +517,188 @@ class FacebookAddsManagerController extends Controller
             'status'  => 200,
         ]);
     }
+
+    // AD Type specific views and data methods
+    private function getMetaAdsDataByType($adType = null)
+    {
+        $query = MetaAllAd::orderBy('campaign_name', 'asc');
+        
+        if ($adType) {
+            $query->where('ad_type', $adType);
+        }
+        
+        $metaAds = $query->get();
+
+        // Fetch all Shopify Facebook campaign sales data grouped by campaign_id and date_range
+        $shopifySales = ShopifyFacebookCampaign::whereNotNull('campaign_id')
+            ->select('campaign_id', 'date_range', 'sales', 'orders')
+            ->get()
+            ->groupBy('campaign_id');
+
+        $data = [];
+        foreach ($metaAds as $ad) {
+            $spend_l30 = $ad->spent_l30 ?? 0;
+            $clicks_l30 = $ad->clicks_l30 ?? 0;
+            $units_sold_l30 = 0;
+            
+            $spend_l7 = $ad->spent_l7 ?? 0;
+            $clicks_l7 = $ad->clicks_l7 ?? 0;
+            $units_sold_l7 = 0;
+            
+            $spend_l60 = $ad->spent_l30 ?? 0;
+            $clicks_l60 = $ad->clicks_l30 ?? 0;
+            $units_sold_l60 = 0;
+            
+            $sales_l30 = 0;
+            $sales_l60 = 0;
+            $sales_l7 = 0;
+            
+            if ($ad->campaign_id && isset($shopifySales[$ad->campaign_id])) {
+                $campaignSales = $shopifySales[$ad->campaign_id];
+                
+                foreach ($campaignSales as $sale) {
+                    if ($sale->date_range === '30_days') {
+                        $sales_l30 = $sale->sales ?? 0;
+                    } elseif ($sale->date_range === '60_days') {
+                        $sales_l60 = $sale->sales ?? 0;
+                    } elseif ($sale->date_range === '7_days') {
+                        $sales_l7 = $sale->sales ?? 0;
+                    }
+                }
+            }
+            
+            $acos_l30 = 0;
+            if ($sales_l30 > 0) {
+                $acos_l30 = round(($spend_l30 / $sales_l30) * 100, 2);
+            } elseif ($spend_l30 > 0 && $sales_l30 == 0) {
+                $acos_l30 = 100;
+            }
+            
+            $acos_l60 = 0;
+            if ($sales_l60 > 0) {
+                $acos_l60 = round(($spend_l60 / $sales_l60) * 100, 2);
+            } elseif ($spend_l60 > 0 && $sales_l60 == 0) {
+                $acos_l60 = 100;
+            }
+            
+            $acos_l7 = 0;
+            if ($sales_l7 > 0) {
+                $acos_l7 = round(($spend_l7 / $sales_l7) * 100, 2);
+            } elseif ($spend_l7 > 0 && $sales_l7 == 0) {
+                $acos_l7 = 100;
+            }
+            
+            $cvr_l30 = null;
+            if ($clicks_l30 > 0 && $units_sold_l30 > 0) {
+                $cvr_l30 = number_format(($units_sold_l30 / $clicks_l30) * 100, 2);
+            }
+            
+            $cvr_l60 = null;
+            if ($clicks_l60 > 0 && $units_sold_l60 > 0) {
+                $cvr_l60 = number_format(($units_sold_l60 / $clicks_l60) * 100, 2);
+            }
+            
+            $cvr_l7 = null;
+            if ($clicks_l7 > 0 && $units_sold_l7 > 0) {
+                $cvr_l7 = number_format(($units_sold_l7 / $clicks_l7) * 100, 2);
+            }
+            
+            $data[] = [
+                'campaign_name' => $ad->campaign_name,
+                'campaign_id' => $ad->campaign_id,
+                'ad_type' => $ad->ad_type ?? '',
+                'budget' => $ad->bgt ?? 0,
+                'impressions_l60' => $ad->imp_l30 ?? 0,
+                'impressions_l30' => $ad->imp_l30 ?? 0,
+                'impressions_l7' => $ad->imp_l7 ?? 0,
+                'spend_l60' => $spend_l60,
+                'spend_l30' => $spend_l30,
+                'spend_l7' => $spend_l7,
+                'clicks_l60' => $clicks_l60,
+                'clicks_l30' => $clicks_l30,
+                'clicks_l7' => $clicks_l7,
+                'sales_l60' => $sales_l60,
+                'sales_l30' => $sales_l30,
+                'sales_l7' => $sales_l7,
+                'sales_delivered_l60' => 0,
+                'sales_delivered_l30' => 0,
+                'sales_delivered_l7' => 0,
+                'acos_l60' => $acos_l60,
+                'acos_l30' => $acos_l30,
+                'acos_l7' => $acos_l7,
+                'cvr_l60' => $cvr_l60,
+                'cvr_l30' => $cvr_l30,
+                'cvr_l7' => $cvr_l7,
+                'status' => strtoupper($ad->campaign_delivery)
+            ];
+        }
+
+        return $data;
+    }
+
+    public function metaSingleImage()
+    {
+        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Single Image')->latest('updated_at')->first();
+        $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
+        return view('marketing-masters.meta_ads_manager.singleImage', ['latestUpdatedAt' => $formattedDate]);
+    }
+
+    public function metaSingleImageData()
+    {
+        $data = $this->getMetaAdsDataByType('Single Image');
+        return response()->json(['message' => 'Single Image Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+    }
+
+    public function metaSingleVideo()
+    {
+        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Single Video')->latest('updated_at')->first();
+        $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
+        return view('marketing-masters.meta_ads_manager.singleVideo', ['latestUpdatedAt' => $formattedDate]);
+    }
+
+    public function metaSingleVideoData()
+    {
+        $data = $this->getMetaAdsDataByType('Single Video');
+        return response()->json(['message' => 'Single Video Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+    }
+
+    public function metaCarousal()
+    {
+        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Carousal')->latest('updated_at')->first();
+        $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
+        return view('marketing-masters.meta_ads_manager.carousal', ['latestUpdatedAt' => $formattedDate]);
+    }
+
+    public function metaCarousalData()
+    {
+        $data = $this->getMetaAdsDataByType('Carousal');
+        return response()->json(['message' => 'Carousal Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+    }
+
+    public function metaExistingPost()
+    {
+        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Existing Post')->latest('updated_at')->first();
+        $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
+        return view('marketing-masters.meta_ads_manager.existingPost', ['latestUpdatedAt' => $formattedDate]);
+    }
+
+    public function metaExistingPostData()
+    {
+        $data = $this->getMetaAdsDataByType('Existing Post');
+        return response()->json(['message' => 'Existing Post Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+    }
+
+    public function metaCatalogueAd()
+    {
+        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Catalogue Ad')->latest('updated_at')->first();
+        $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
+        return view('marketing-masters.meta_ads_manager.catalogueAd', ['latestUpdatedAt' => $formattedDate]);
+    }
+
+    public function metaCatalogueAdData()
+    {
+        $data = $this->getMetaAdsDataByType('Catalogue Ad');
+        return response()->json(['message' => 'Catalogue Ad Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+    }
 }
+
