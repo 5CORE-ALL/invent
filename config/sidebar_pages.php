@@ -32,9 +32,15 @@ return [
 
     // Marketing Masters
     ['value' => 'listing_master', 'text' => 'Listing Masters', 'group' => 'Marketing Masters'],
-    ['value' => 'mm_video_posted', 'text' => 'Video Posted', 'group' => 'Marketing Masters'],
+    ['value' => 'mm_video_posted', 'text' => 'Video Posted', 'group' => 'Marketing Masters'],
     ['value' => 'listing_LQS_masters', 'text' => 'LQS - Listing', 'group' => 'Marketing Masters'],
     ['value' => 'cvr_LQS_masters', 'text' => 'LQS - CVR', 'group' => 'Marketing Masters'],
+    ['value' => 'meta_all_ads', 'text' => 'Meta All Ads', 'group' => 'Marketing Masters'],
+    ['value' => 'meta_single_image', 'text' => 'Meta - Single Image', 'group' => 'Marketing Masters'],
+    ['value' => 'meta_single_video', 'text' => 'Meta - Single Video', 'group' => 'Marketing Masters'],
+    ['value' => 'meta_carousal', 'text' => 'Meta - Carousal', 'group' => 'Marketing Masters'],
+    ['value' => 'meta_existing_post', 'text' => 'Meta - Existing Post', 'group' => 'Marketing Masters'],
+    ['value' => 'meta_catalogue_ad', 'text' => 'Meta - Catalogue Ad', 'group' => 'Marketing Masters'],
 
     // Channel
     ['value' => 'channel_master', 'text' => 'Channel Master', 'group' => 'Channel'],
