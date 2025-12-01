@@ -758,9 +758,6 @@ $.ajax({
                             <span class="text-success w-100 py-2 fw-bold" style="font-size: 17px;">L30: <span id="total_l30_count">0</span></span>
                         </div>
                         <div class="col-md-1 col-6">
-                            <span class="text-secondary w-100 py-2 fw-bold" style="font-size: 17px;">L60: <span id="total_l60_count">0</span></span>
-                        </div>
-                        <div class="col-md-1 col-6">
                             <span class="text-info w-100 py-2 fw-bold" style="font-size: 17px;">L30V: <span id="total_l30_count_data">0</span></span>
                         </div>
                         <div class="col-md-1 col-6">
@@ -2382,6 +2379,13 @@ $.ajax({
                 const cvr = data[`${r.prefix}_cvr`];
                 const reqCvr = data[`${r.prefix}_req_view`];
 
+                // Get LP and SHIP for GPFT calculation
+                const lp = parseFloat(data.LP) || 0;
+                const ship = parseFloat(data.SHIP) || 0;
+                
+                // Calculate GPFT%
+                const gpft = price > 0 ? (((parseFloat(price) * 0.86) - ship - lp) / parseFloat(price)) * 100 : 0;
+
                 const hasAny = price != null || l30 != null || l60 != null || pft != null || roi != null;
                 if (!hasAny) return;
 
@@ -2533,8 +2537,8 @@ $.ajax({
                         </div>
                     </td>
                     <td>
-                        <div class="value-indicator">
-                            0
+                        <div class="value-indicator" style="color: ${getColor(gpft)};">
+                            ${gpft.toFixed(1)}%
                         </div>
                     </td>
                     <td>
@@ -2826,6 +2830,57 @@ $.ajax({
             console.log('OVL30 Data:', data);
             console.log('Link:', data.link);
             
+            // Calculate GPFT for top metrics (weighted average across all channels)
+            const lp = parseFloat(data.LP) || 0;
+            const ship = parseFloat(data.SHIP) || 0;
+            const temuship = parseFloat(data.temu_ship) || 0;
+            const ebay2ship = parseFloat(data.ebay2_ship) || 0;
+            
+            // Define all marketplaces with their data
+            const marketplaces = [
+                { price: data.amz_price, l30: data.amz_l30, ship: ship, multiplier: 0.67 },
+                { price: data.ebay_price, l30: data.ebay_l30, ship: ship, multiplier: 0.77 },
+                { price: data.macy_price, l30: data.macy_l30, ship: ship, multiplier: 0.76 },
+                { price: data.reverb_price, l30: data.reverb_l30, ship: ship, multiplier: 0.80 },
+                { price: data.doba_price, l30: data.doba_l30, ship: ship, multiplier: 0.95 },
+                { price: data.temu_price, l30: data.temu_l30, ship: temuship, multiplier: 0.87 },
+                { price: data.ebay3_price, l30: data.ebay3_l30, ship: ship, multiplier: 0.78 },
+                { price: data.ebay2_price, l30: data.ebay2_l30, ship: ebay2ship, multiplier: 0.79 },
+                { price: data.walmart_price, l30: data.walmart_l30, ship: ship, multiplier: 0.80 },
+                { price: data.shopifyb2c_price, l30: data.shopifyb2c_l30_data, ship: ship, multiplier: 0.75 },
+                { price: data.shein_price, l30: data.shein_l30, ship: ship, multiplier: 0.89 },
+                { price: data.bestbuy_price, l30: data.bestbuy_l30, ship: ship, multiplier: 0.80 },
+                { price: data.tiendamia_price, l30: data.tiendamia_l30, ship: ship, multiplier: 0.83 },
+                { price: data.tiktok_price, l30: data.tiktok_l30, ship: ship, multiplier: 0.80 },
+                { price: data.aliexpress_price, l30: data.aliexpress_l30, ship: ship, multiplier: 0.89 }
+            ];
+            
+            // Calculate total weighted GPFT and L30 count
+            let totalGpftWeighted = 0;
+            let totalL30 = 0;
+            let totalL30CountData = 0; // Count of channels with L30 > 0
+            
+            marketplaces.forEach(mp => {
+                const price = parseFloat(mp.price) || 0;
+                const l30 = parseFloat(mp.l30) || 0;
+                const shipCost = mp.ship || 0;
+                const multiplier = mp.multiplier;
+                
+                if (l30 > 0 && price > 0) {
+                    totalL30CountData++; // Count channels with sales
+                    const gpft = ((price * multiplier - shipCost - lp) / price) * 100;
+                    totalGpftWeighted += gpft * l30; // Weighted by L30
+                    totalL30 += l30;
+                }
+            });
+            
+            // Calculate average GPFT across all channels
+            const avgGpft = totalL30 > 0 ? (totalGpftWeighted / totalL30) : 0;
+            
+            // Add calculated values to data object
+            data.gpft_data = Math.round(avgGpft);
+            data.total_l30_count_data = totalL30CountData;
+            
             // Initialize top push button
             const topPushPrice = document.getElementById('topPushPrice');
             const topPushBtn = document.getElementById('topPushBtn');
@@ -2852,7 +2907,6 @@ $.ajax({
             document.getElementById('avgCvr').textContent = data.avgCvr ? `${data.avgCvr}` : "0";
             document.getElementById('total_views').textContent = data.total_views ? `${Math.round(data.total_views)}` : "0";
             document.getElementById('total_l30_count').textContent = data.total_l30_count ? `${data.total_l30_count}` : "0";
-            document.getElementById('total_l60_count').textContent = data.total_l60_count ? `${data.total_l60_count}` : "0";
             document.getElementById('total_l30_count_data').textContent = data.total_l30_count_data ? `${data.total_l30_count_data}` : "0";
             document.getElementById('gpft_data').textContent = data.gpft_data || "0";
             

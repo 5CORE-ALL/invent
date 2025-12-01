@@ -17,7 +17,7 @@
         :root {
             --primary-color: #4361ee;
             --secondary-color: #3f37c9;
-            --accent-color: #4895ef;
+            --accent-clor: #4895ef;
             --light-color: #f8f9fa;
             --dark-color: #212529;
             --border-radius: 12px;
@@ -780,6 +780,7 @@
                             <th>Percentage</th>
                             <th>NR</th>
                             <th>type</th>
+                            <th>Health Data</th>
                             <th>Listing Counts</th>
                             <th>W/Ads</th>
                             {{-- <th>0 Sold SKU Count</th>
@@ -844,6 +845,191 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                         <button type="button" class="btn btn-primary" onclick="saveChanges()">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Health Data Modal -->
+        <div class="modal fade" id="healthDataModal" tabindex="-1" aria-labelledby="healthDataModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title" id="healthDataModalLabel">
+                            <i class="fas fa-heartbeat me-2"></i>Account Health Data - <span id="channelNameDisplay"></span>
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="healthDataLoader" class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading health data...</p>
+                        </div>
+                        <div id="healthDataContent" style="display: none;">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <div class="card border-primary">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-primary"><i class="fas fa-chart-line me-2"></i>ODR Rate</h6>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <small class="text-muted">Current:</small>
+                                                    <h4 id="odr_rate" class="mb-0">-</h4>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">Allowed:</small>
+                                                    <h4 id="odr_rate_allowed" class="mb-0 text-success">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card border-success">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-success"><i class="fas fa-box me-2"></i>Fulfillment Rate</h6>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <small class="text-muted">Current:</small>
+                                                    <h4 id="fulfillment_rate" class="mb-0">-</h4>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">Allowed:</small>
+                                                    <h4 id="fulfillment_rate_allowed" class="mb-0 text-success">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card border-info">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-info"><i class="fas fa-map-marker-alt me-2"></i>Valid Tracking Rate</h6>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <small class="text-muted">Current:</small>
+                                                    <h4 id="valid_tracking_rate" class="mb-0">-</h4>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">Allowed:</small>
+                                                    <h4 id="valid_tracking_rate_allowed" class="mb-0 text-success">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card border-warning">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-warning"><i class="fas fa-clock me-2"></i>Late Shipment Rate</h6>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <small class="text-muted">Current:</small>
+                                                    <h4 id="late_shipment_rate" class="mb-0">-</h4>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">Allowed:</small>
+                                                    <h4 id="late_shipment_rate_allowed" class="mb-0 text-success">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card border-secondary">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-secondary"><i class="fas fa-shipping-fast me-2"></i>On Time Delivery Rate</h6>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <small class="text-muted">Current:</small>
+                                                    <h4 id="on_time_delivery_rate" class="mb-0">-</h4>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">Allowed:</small>
+                                                    <h4 id="on_time_delivery_rate_allowed" class="mb-0 text-success">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card border-danger">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-danger"><i class="fas fa-thumbs-down me-2"></i>Negative Seller Rate</h6>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <small class="text-muted">Current:</small>
+                                                    <h4 id="negative_seller_rate" class="mb-0">-</h4>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">Allowed:</small>
+                                                    <h4 id="negative_seller_rate_allowed" class="mb-0 text-success">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card border-primary">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-primary"><i class="fas fa-exclamation-triangle me-2"></i>A-to-Z Claims Rate</h6>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <small class="text-muted">Current:</small>
+                                                    <h4 id="atoz_claims_rate" class="mb-0">-</h4>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">Allowed:</small>
+                                                    <h4 id="atoz_claims_rate_allowed" class="mb-0 text-success">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card border-danger">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-danger"><i class="fas fa-ban me-2"></i>Violation Rate</h6>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <small class="text-muted">Current:</small>
+                                                    <h4 id="violation_rate" class="mb-0">-</h4>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">Allowed:</small>
+                                                    <h4 id="violation_rate_allowed" class="mb-0 text-success">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card border-warning">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-warning"><i class="fas fa-undo me-2"></i>Refund Rate</h6>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <small class="text-muted">Current:</small>
+                                                    <h4 id="refund_rate" class="mb-0">-</h4>
+                                                </div>
+                                                <div>
+                                                    <small class="text-muted">Allowed:</small>
+                                                    <h4 id="refund_rate_allowed" class="mb-0 text-success">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="healthDataError" class="alert alert-danger" style="display: none;">
+                            <i class="fas fa-exclamation-circle me-2"></i><span id="errorMessage">Error loading health data</span>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     </div>
                 </div>
             </div>
@@ -1495,6 +1681,12 @@
                             return `<span style="display:inline-block; min-width:100px;">${v ? v : '-'}</span>`;
                         }
                     },
+                    {
+                        data: null,
+                        render: function (v, t, row) {
+                            return `<i class="fas fa-eye view-health-data" style="color: #007bff; cursor: pointer; font-size: 16px;" title="View Health Data" data-channel="${row['Channel']}"></i>`;
+                        }
+                    },
                     { data: 'Listing Counts', render: v => `<span class="metric-value">${toNum(v).toLocaleString('en-US')}</span>` },
                     {
                         data: 'W/Ads',
@@ -1960,6 +2152,68 @@
 
         window.csrfToken = '{{ csrf_token() }}';
 
+        // Function to fetch and display health data
+        function showHealthData(channelName) {
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('healthDataModal'));
+            modal.show();
+
+            // Update channel name
+            document.getElementById('channelNameDisplay').textContent = channelName;
+
+            // Show loader, hide content and error
+            document.getElementById('healthDataLoader').style.display = 'block';
+            document.getElementById('healthDataContent').style.display = 'none';
+            document.getElementById('healthDataError').style.display = 'none';
+
+            // Fetch health data
+            jq.ajax({
+                url: '/account-health-master-data',
+                type: 'GET',
+                data: { channel: channelName },
+                success: function(response) {
+                    if (response.status === 200 && response.data && response.data.length > 0) {
+                        const healthData = response.data[0];
+
+                        // Populate the modal with data
+                        document.getElementById('odr_rate').textContent = healthData.odr_rate || 'N/A';
+                        document.getElementById('odr_rate_allowed').textContent = healthData.odr_rate_allowed || 'N/A';
+                        document.getElementById('fulfillment_rate').textContent = healthData.fulfillment_rate || 'N/A';
+                        document.getElementById('fulfillment_rate_allowed').textContent = healthData.fulfillment_rate_allowed || 'N/A';
+                        document.getElementById('valid_tracking_rate').textContent = healthData.valid_tracking_rate || 'N/A';
+                        document.getElementById('valid_tracking_rate_allowed').textContent = healthData.valid_tracking_rate_allowed || 'N/A';
+                        document.getElementById('late_shipment_rate').textContent = healthData.late_shipment_rate || 'N/A';
+                        document.getElementById('late_shipment_rate_allowed').textContent = healthData.late_shipment_rate_allowed || 'N/A';
+                        document.getElementById('on_time_delivery_rate').textContent = healthData.on_time_delivery_rate || 'N/A';
+                        document.getElementById('on_time_delivery_rate_allowed').textContent = healthData.on_time_delivery_rate_allowed || 'N/A';
+                        document.getElementById('negative_seller_rate').textContent = healthData.negative_seller_rate || 'N/A';
+                        document.getElementById('negative_seller_rate_allowed').textContent = healthData.negative_seller_rate_allowed || 'N/A';
+                        document.getElementById('atoz_claims_rate').textContent = healthData.atoz_claims_rate || 'N/A';
+                        document.getElementById('atoz_claims_rate_allowed').textContent = healthData.atoz_claims_rate_allowed || 'N/A';
+                        document.getElementById('violation_rate').textContent = healthData.violation_rate || 'N/A';
+                        document.getElementById('violation_rate_allowed').textContent = healthData.violation_rate_allowed || 'N/A';
+                        document.getElementById('refund_rate').textContent = healthData.refund_rate || 'N/A';
+                        document.getElementById('refund_rate_allowed').textContent = healthData.refund_rate_allowed || 'N/A';
+
+                        // Hide loader, show content
+                        document.getElementById('healthDataLoader').style.display = 'none';
+                        document.getElementById('healthDataContent').style.display = 'block';
+                    } else {
+                        // Show error
+                        document.getElementById('healthDataLoader').style.display = 'none';
+                        document.getElementById('errorMessage').textContent = 'No health data found for this channel';
+                        document.getElementById('healthDataError').style.display = 'block';
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error fetching health data:', error);
+                    document.getElementById('healthDataLoader').style.display = 'none';
+                    document.getElementById('errorMessage').textContent = 'Failed to load health data. Please try again.';
+                    document.getElementById('healthDataError').style.display = 'block';
+                }
+            });
+        }
+
         // Initialize when DOM is ready
         jq(document).ready(function() {
             try {
@@ -2338,6 +2592,14 @@
                     },
                     error: function(xhr, error, thrown) {
                         console.error('Error loading data:', error, thrown);
+                    }
+                });
+
+                // Event delegation for health data eye icon
+                jq('#channelTable').on('click', '.view-health-data', function() {
+                    const channelName = jq(this).data('channel');
+                    if (channelName) {
+                        showHealthData(channelName);
                     }
                 });
             } catch (e) {
