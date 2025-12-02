@@ -258,7 +258,7 @@ class FetchTemuMetrics extends Command
             foreach ($skus as $skuId) {
                 $requestBody = [
                     "type" => "bg.local.goods.sku.list.price.query",
-                    "skuIds" => [$skuId], // API ko array me SKU IDs bhejni hoti hain
+                    "skuIdList" => [(string)$skuId], // Changed from skuIds to skuIdList and ensure string
                 ];
 
                 $signedRequest = $this->generateSignValue($requestBody);
@@ -492,7 +492,6 @@ class FetchTemuMetrics extends Command
 
             foreach ($finalSkuQuantities as $skuId => $data) {                
                 $updated = TemuMetric::where('sku_id', $skuId)
-                    ->orWhere('sku', $skuId)
                     ->update([
                         'quantity_purchased_l30' => $data['quantity_purchased_l30'],
                         'quantity_purchased_l60' => $data['quantity_purchased_l60'],
@@ -501,8 +500,19 @@ class FetchTemuMetrics extends Command
                     $this->info("Successfully updated quantity for SKU_ID: {$skuId} ({$updated} records)");
                     Log::info("Updated quantities for SKU: {$skuId}", $data);
                 } else {
-                    $this->warn("No record found for SKU_ID: {$skuId} to update quantity");
-                    Log::warning("No record found for SKU_ID: {$skuId} to update quantity");
+                    // Try by SKU column if sku_id didn't work
+                    $updated = TemuMetric::where('sku', $skuId)
+                        ->update([
+                            'quantity_purchased_l30' => $data['quantity_purchased_l30'],
+                            'quantity_purchased_l60' => $data['quantity_purchased_l60'],
+                        ]);
+                    if ($updated) {
+                        $this->info("Successfully updated quantity for SKU: {$skuId} ({$updated} records)");
+                        Log::info("Updated quantities for SKU: {$skuId}", $data);
+                    } else {
+                        $this->warn("No record found for SKU_ID: {$skuId} to update quantity");
+                        Log::warning("No record found for SKU_ID: {$skuId} to update quantity");
+                    }
                 }
             }
 
