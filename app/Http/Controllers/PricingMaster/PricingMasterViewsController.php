@@ -494,13 +494,13 @@ class PricingMasterViewsController extends Controller
         
         try {
             // Fetch eBay Priority campaigns - only for SKUs in our list
-            // Use LIKE queries with OR conditions for better memory efficiency
-            if (count($nonParentSkus) > 0 && count($nonParentSkus) <= 100) {
-                // For small SKU lists, use whereIn with campaign_name LIKE matching
+            // Use LIKE queries with OR conditions (same as EbayController)
+            if (count($nonParentSkus) > 0) {
+                // Load campaigns for all SKUs to match EbayController behavior
                 $ebayPriorityCampaigns = EbayPriorityReport::where('report_range', 'L30')
                     ->whereIn('channels', ['ebay1', 'ebay2', 'ebay3'])
                     ->where(function($query) use ($nonParentSkus) {
-                        foreach (array_slice($nonParentSkus, 0, 50) as $sku) { // Limit to first 50 SKUs
+                        foreach ($nonParentSkus as $sku) {
                             $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
                         }
                     })
@@ -513,11 +513,11 @@ class PricingMasterViewsController extends Controller
         
         try {
             // Fetch Amazon campaigns - only for SKUs in our list
-            if (count($nonParentSkus) > 0 && count($nonParentSkus) <= 100) {
+            if (count($nonParentSkus) > 0) {
                 $amazonSpCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('report_date_range', 'L30')
                     ->where(function($query) use ($nonParentSkus) {
-                        foreach (array_slice($nonParentSkus, 0, 50) as $sku) { // Limit to first 50 SKUs
+                        foreach ($nonParentSkus as $sku) {
                             $query->orWhere('campaignName', 'LIKE', "%{$sku}%");
                         }
                     })
