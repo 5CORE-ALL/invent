@@ -1264,6 +1264,36 @@
                                 </ul>
                             </div>
 
+                            <!-- NRA Filter -->
+                            <div class="dropdown manual-dropdown-container">
+                                <button class="btn btn-light dropdown-toggle" type="button" id="nraFilterDropdown">
+                                    <span class="status-circle default"></span> NRA
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="nraFilterDropdown">
+                                    <li><a class="dropdown-item nra-filter" href="#" data-value="all">
+                                            <span class="status-circle default"></span> All</a></li>
+                                    <li><a class="dropdown-item nra-filter" href="#" data-value="RA">
+                                            <span class="status-circle green"></span> RA</a></li>
+                                    <li><a class="dropdown-item nra-filter" href="#" data-value="NRA">
+                                            <span class="status-circle red"></span> NRA</a></li>
+                                </ul>
+                            </div>
+
+                            <!-- NRL/REQ Filter -->
+                            <div class="dropdown manual-dropdown-container">
+                                <button class="btn btn-light dropdown-toggle" type="button" id="nrlReqFilterDropdown">
+                                    <span class="status-circle default"></span> NRL/REQ
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="nrlReqFilterDropdown">
+                                    <li><a class="dropdown-item nrl-req-filter" href="#" data-value="all">
+                                            <span class="status-circle default"></span> All</a></li>
+                                    <li><a class="dropdown-item nrl-req-filter" href="#" data-value="REQ">
+                                            <span class="status-circle green"></span> REQ</a></li>
+                                    <li><a class="dropdown-item nrl-req-filter" href="#" data-value="NR">
+                                            <span class="status-circle red"></span> NRL</a></li>
+                                </ul>
+                            </div>
+
                             <!-- Task Board Button -->
                             <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal"
                                 data-bs-target="#createTaskModal">
@@ -2073,6 +2103,8 @@
                     'Roi': 'all',
                     'Tacos30': 'all',
                     'SCVR': 'all',
+                    'NRA': 'all',
+                    'NRL_REQ': 'all',
                     'entryType': 'all'
                 }
             };
@@ -2587,6 +2619,7 @@
                                         .toUpperCase().includes("PARENT") : false,
                                     raw_data: item || {},
                                     NR: item.NR || '',
+                                    UI_NR: item.NR || 'RA', // Initialize UI_NR with NR value or default to 'RA'
                                     nr_req: item.nr_req || 'REQ', // Default to 'REQ' if not set
                                     listed: listedVal,
                                     live: liveVal,
@@ -2881,25 +2914,36 @@
                             item.NR : 'RA';
 
                         const adilPercent = Math.round(item['E Dil%'] * 100);
-                        if (adilPercent >= 50) {
+                        // Auto-set to NRA if E Dil% >= 50%, but only save if it's actually changing
+                        if (adilPercent >= 50 && currentNR !== 'NRA') {
                             currentNR = 'NRA';
 
-                            $.ajax({
-                                url: '/ebay/save-nr',
-                                type: 'POST',
-                                data: {
-                                    sku: item['(Child) sku'],
-                                    nr: 'NRA',
-                                    _token: $('meta[name="csrf-token"]').attr('content')
-                                },
-                                success: function(res) {
-                                    console.log("Auto NRA saved for", item['(Child) sku']);
-                                },
-                                error: function(err) {
-                                    console.error("Auto-save failed:", err);
-                                }
-                            });
+                            // Only save if SKU exists and value is actually changing
+                            if (item['(Child) sku']) {
+                                $.ajax({
+                                    url: '/ebay/save-nr',
+                                    type: 'POST',
+                                    data: {
+                                        sku: item['(Child) sku'],
+                                        nr: 'NRA',
+                                        _token: $('meta[name="csrf-token"]').attr('content')
+                                    },
+                                    success: function(res) {
+                                        // Update the item in tableData to prevent repeated saves
+                                        const foundItem = tableData.find(i => i['(Child) sku'] === item['(Child) sku']);
+                                        if (foundItem) {
+                                            foundItem.NR = 'NRA';
+                                            foundItem.UI_NR = 'NRA';
+                                        }
+                                    },
+                                    error: function(err) {
+                                        // Silent error - don't pollute console on every render
+                                    }
+                                });
+                            }
                         }
+
+                        item.UI_NR = currentNR;
 
                         const $select = $(`
                             <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
@@ -3079,22 +3123,25 @@
                         tpft = 0;
                     }
                     
-                    $.ajax({
-                        url: '/update-ebay-nr-data',
-                        type: 'POST',
-                        data: {
-                            sku: item['(Child) sku'],
-                            field: 'TPFT',
-                            value: tpft.toFixed(2),
-                            _token: $('meta[name="csrf-token"]').attr('content')
-                        },
-                        success: function(res) {
-
-                        },
-                        error: function(err) {
-                            console.error("Auto-save failed:", err);
-                        }
-                    });
+                    // Auto-save TPFT only if SKU exists and TPFT has a valid value
+                    if (item['(Child) sku'] && !isNaN(tpft) && isFinite(tpft) && tpft !== 0) {
+                        $.ajax({
+                            url: '/update-ebay-nr-data',
+                            type: 'POST',
+                            data: {
+                                sku: item['(Child) sku'],
+                                field: 'TPFT',
+                                value: tpft.toFixed(2),
+                                _token: $('meta[name="csrf-token"]').attr('content')
+                            },
+                            success: function(res) {
+                                // Silent success
+                            },
+                            error: function(err) {
+                                // Silent error - don't pollute console on every render
+                            }
+                        });
+                    }
 
                     $row.append($('<td>').html(
                         `
@@ -3411,15 +3458,17 @@
                         success: function(response) {
                             showNotification('success', 'NR updated successfully!');
 
-                            // Update tableData and filteredData
+                            // Update tableData and filteredData - Update both NR and UI_NR
                             tableData.forEach(item => {
                                 if (item['(Child) sku'] === sku) {
                                     item.NR = newValue;
+                                    item.UI_NR = newValue; // Update UI_NR as well
                                 }
                             });
                             filteredData.forEach(item => {
                                 if (item['(Child) sku'] === sku) {
                                     item.NR = newValue;
+                                    item.UI_NR = newValue; // Update UI_NR as well
                                 }
                             });
                             calculateTotals();
@@ -5305,6 +5354,46 @@
                     $('.dropdown-menu').removeClass('show');
                     applyColumnFilters();
                 });
+
+                // NRA filter
+                $('.dropdown-menu').on('click', '.nra-filter', function(e) {
+                    e.preventDefault();
+                    const $this = $(this);
+                    const value = $this.data('value');
+                    const text = $this.text().trim();
+                    
+                    // Get the color class from the status circle
+                    const $statusCircle = $this.find('.status-circle');
+                    const colorClass = $statusCircle.attr('class').replace('status-circle', '').trim() || 'default';
+
+                    $this.closest('.dropdown')
+                        .find('.dropdown-toggle')
+                        .html(`<span class="status-circle ${colorClass}"></span> NRA (${text})`);
+
+                    state.filters.NRA = value;
+                    $this.closest('.dropdown-menu').removeClass('show');
+                    applyColumnFilters();
+                });
+
+                // NRL/REQ filter
+                $('.dropdown-menu').on('click', '.nrl-req-filter', function(e) {
+                    e.preventDefault();
+                    const $this = $(this);
+                    const value = $this.data('value');
+                    const text = $this.text().trim();
+                    
+                    // Get the color class from the status circle
+                    const $statusCircle = $this.find('.status-circle');
+                    const colorClass = $statusCircle.attr('class').replace('status-circle', '').trim() || 'default';
+
+                    $this.closest('.dropdown')
+                        .find('.dropdown-toggle')
+                        .html(`<span class="status-circle ${colorClass}"></span> NRL/REQ (${text})`);
+
+                    state.filters.NRL_REQ = value;
+                    $this.closest('.dropdown-menu').removeClass('show');
+                    applyColumnFilters();
+                });
             }
 
             // Add this script after your other filter initializations:
@@ -5359,19 +5448,60 @@
 
                 // Apply other filters
                 Object.entries(state.filters).forEach(([column, filterValue]) => {
+                    // Skip if column or filterValue is undefined or null
+                    if (!column || column === 'undefined' || !filterValue || filterValue === 'undefined') {
+                        return;
+                    }
+                    
                     if (filterValue === 'all') return;
 
-                    filteredData = filteredData.filter(item => {
-                        if (column === 'entryType') {
-                            if (filterValue === 'parent') return item.is_parent;
-                            if (filterValue === 'child') return !item.is_parent;
-                            return true;
+                    // special-case: entryType
+                    if (column === 'entryType') {
+                        if (filterValue === 'parent') {
+                            filteredData = filteredData.filter(item => item.is_parent);
+                        } else if (filterValue === 'child') {
+                            filteredData = filteredData.filter(item => !item.is_parent);
                         }
+                        return;
+                    }
 
+                    // special-case: NRA -> use UI_NR (front-end selected value) only
+                    if (column === 'NRA') {
+                        filteredData = filteredData.filter(item => {
+                            // Skip parent rows - they don't have NRA dropdown
+                            if (item.is_parent) {
+                                return true; // Always show parent rows
+                            }
+                            
+                            // Only check UI_NR for child rows - this is the frontend selected value
+                            const uiNR = item.UI_NR || item.NR || 'RA';
+                            return uiNR === filterValue;
+                        });
+                        return;
+                    }
+
+                    // special-case: NRL_REQ -> filter based on nr_req field
+                    if (column === 'NRL_REQ') {
+                        filteredData = filteredData.filter(item => {
+                            // Skip parent rows - they don't have NRL/REQ dropdown
+                            if (item.is_parent) {
+                                return true; // Always show parent rows
+                            }
+                            
+                            // Check nr_req for child rows
+                            const nrReq = item.nr_req || 'NR';
+                            return nrReq === filterValue;
+                        });
+                        return;
+                    }
+
+                    // default: use getColorForColumn
+                    filteredData = filteredData.filter(item => {
                         const color = getColorForColumn(column, item);
                         return color === filterValue;
                     });
                 });
+
 
                 currentPage = 1;
                 renderTable();
@@ -5478,8 +5608,10 @@
                         listedCount: 0,
                         liveCount: 0,
                         totalSalesTotal: 0,
-                        reqCount: 0, // <-- NRL/REQ counter
-                        nraColCount: 0 // <-- NRA column counter
+                        reqCount: 0, // <-- REQ counter
+                        nrCount: 0, // <-- NR counter
+                        nraColCount: 0, // <-- NRA column counter
+                        raColCount: 0 // <-- RA column counter
                     };
 
                     filteredData.forEach(item => {
@@ -5507,13 +5639,24 @@
                             metrics.liveCount++;
                         }
 
-                        // Count REQ entries (only for non-parent rows)
-                        if (!item.is_parent && item.nr_req === 'REQ') {
-                            metrics.reqCount++;
+                        // Count NRL/REQ entries (only for non-parent rows)
+                        if (!item.is_parent) {
+                            const nrReq = item.nr_req || 'NR';
+                            if (nrReq === 'REQ') {
+                                metrics.reqCount++;
+                            } else if (nrReq === 'NR') {
+                                metrics.nrCount++;
+                            }
                         }
-                        // Count NRA entries (only for non-parent rows)
-                        if (!item.is_parent && item.NR === 'NRA') {
-                            metrics.nraColCount++;
+                        
+                        // Count NRA column entries based on UI_NR (only for non-parent rows)
+                        if (!item.is_parent) {
+                            const currentNR = item.UI_NR || item.NR || 'RA';
+                            if (currentNR === 'NRA') {
+                                metrics.nraColCount++;
+                            } else if (currentNR === 'RA') {
+                                metrics.raColCount++;
+                            }
                         }
 
                         const profit = parseFloat(item.Profit) || 0;
@@ -5557,8 +5700,40 @@
                     $('#views-total').text(metrics.viewsTotal.toLocaleString());
                     $('#listed-total').text(metrics.listedCount.toLocaleString());
                     $('#live-total').text(metrics.liveCount.toLocaleString());
-                    $('#req-total').text(metrics.reqCount.toLocaleString());
-                    $('#nra-col-count').text(metrics.nraColCount.toLocaleString());
+                    
+                    // Display NRL/REQ count based on active filter
+                    const nrlReqFilter = state.filters.NRL_REQ || 'all';
+                    if (nrlReqFilter === 'REQ') {
+                        $('#req-total').text(metrics.reqCount.toLocaleString());
+                    } else if (nrlReqFilter === 'NR') {
+                        $('#req-total').text(metrics.nrCount.toLocaleString());
+                    } else {
+                        // When filter is 'all', show total REQ count
+                        $('#req-total').text(metrics.reqCount.toLocaleString());
+                    }
+                    
+                    // Display NRA column count based on active filter
+                    const nraFilter = state.filters.NRA || 'all';
+                    // If NRA filter is active, show count based on that filter
+                    if (nraFilter === 'RA') {
+                        $('#nra-col-count').text(metrics.raColCount.toLocaleString());
+                    } else if (nraFilter === 'NRA') {
+                        $('#nra-col-count').text(metrics.nraColCount.toLocaleString());
+                    } else {
+                        // When NRA filter is 'all', check if there are more RA or NRA in filtered data
+                        // This handles cases when other filters (like NRL/REQ) are active
+                        if (metrics.raColCount > 0 && metrics.nraColCount === 0) {
+                            // Only RA rows in filtered data
+                            $('#nra-col-count').text(metrics.raColCount.toLocaleString());
+                        } else if (metrics.nraColCount > 0 && metrics.raColCount === 0) {
+                            // Only NRA rows in filtered data
+                            $('#nra-col-count').text(metrics.nraColCount.toLocaleString());
+                        } else {
+                            // Mixed or default - show NRA count
+                            $('#nra-col-count').text(metrics.nraColCount.toLocaleString());
+                        }
+                    }
+                    
                     $('#sale-total').text(metrics.totalSalesTotal.toLocaleString());
 
                     $.ajax({
