@@ -713,7 +713,7 @@ class PricingMasterViewsController extends Controller
             $ebay3_advt_percent = null;
             
             try {
-                // eBay 1 ads calculation
+                // eBay 1 ads calculation (using total revenue as denominator - matches EbayController)
                 $ebayKwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
                     return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay1';
                 });
@@ -729,19 +729,22 @@ class PricingMasterViewsController extends Controller
                 
                 if ($ebayKwCampaign || $ebayGeneralData) {
                     $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebayKwCampaign->cpc_ad_fees_payout_currency ?? '0');
-                    $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebayKwCampaign->cpc_sale_amount_payout_currency ?? '0');
                     $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebayGeneralData->ad_fees ?? '0');
-                    $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebayGeneralData->sale_amount ?? '0');
+                    $AD_Spend_L30 = $kw_spend_l30 + $pmt_spend_l30;
                     
-                    $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
-                    $ebay_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+                    // AD% = (spend / (price × units)) × 100 - matches EbayController logic
+                    $ebay_price = floatval($ebay ? ($ebay->ebay_price ?? 0) : 0);
+                    $ebay_l30 = floatval($ebay ? ($ebay->ebay_l30 ?? 0) : 0);
+                    $totalRevenue = $ebay_price * $ebay_l30;
+                    
+                    $ebay_advt_percent = $totalRevenue > 0 ? ($AD_Spend_L30 / $totalRevenue) * 100 : 0;
                 }
             } catch (Exception $e) {
                 // Skip eBay 1 ADVT% calculation if error occurs
             }
             
             try {
-                // eBay 2 ads calculation
+                // eBay 2 ads calculation (using total revenue as denominator - matches EbayController)
                 $ebay2KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
                     return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay2';
                 });
@@ -757,19 +760,22 @@ class PricingMasterViewsController extends Controller
                 
                 if ($ebay2KwCampaign || $ebay2GeneralData) {
                     $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay2KwCampaign->cpc_ad_fees_payout_currency ?? '0');
-                    $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay2KwCampaign->cpc_sale_amount_payout_currency ?? '0');
                     $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay2GeneralData->ad_fees ?? '0');
-                    $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay2GeneralData->sale_amount ?? '0');
+                    $AD_Spend_L30 = $kw_spend_l30 + $pmt_spend_l30;
                     
-                    $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
-                    $ebay2_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+                    // AD% = (spend / (price × units)) × 100 - matches EbayController logic
+                    $ebay2_price = floatval($ebay2 ? ($ebay2->ebay_price ?? 0) : 0);
+                    $ebay2_l30 = floatval($ebay2 ? ($ebay2->ebay_l30 ?? 0) : 0);
+                    $totalRevenue = $ebay2_price * $ebay2_l30;
+                    
+                    $ebay2_advt_percent = $totalRevenue > 0 ? ($AD_Spend_L30 / $totalRevenue) * 100 : 0;
                 }
             } catch (Exception $e) {
                 // Skip eBay 2 ADVT% calculation if error occurs
             }
             
             try {
-                // eBay 3 ads calculation
+                // eBay 3 ads calculation (using total revenue as denominator - matches EbayController)
                 $ebay3KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
                     return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay3';
                 });
@@ -785,12 +791,15 @@ class PricingMasterViewsController extends Controller
                 
                 if ($ebay3KwCampaign || $ebay3GeneralData) {
                     $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay3KwCampaign->cpc_ad_fees_payout_currency ?? '0');
-                    $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay3KwCampaign->cpc_sale_amount_payout_currency ?? '0');
                     $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay3GeneralData->ad_fees ?? '0');
-                    $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay3GeneralData->sale_amount ?? '0');
+                    $AD_Spend_L30 = $kw_spend_l30 + $pmt_spend_l30;
                     
-                    $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
-                    $ebay3_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+                    // AD% = (spend / (price × units)) × 100 - matches EbayController logic
+                    $ebay3_price = floatval($ebay3 ? ($ebay3->ebay_price ?? 0) : 0);
+                    $ebay3_l30 = floatval($ebay3 ? ($ebay3->ebay_l30 ?? 0) : 0);
+                    $totalRevenue = $ebay3_price * $ebay3_l30;
+                    
+                    $ebay3_advt_percent = $totalRevenue > 0 ? ($AD_Spend_L30 / $totalRevenue) * 100 : 0;
                 }
             } catch (Exception $e) {
                 // Skip eBay 3 ADVT% calculation if error occurs
