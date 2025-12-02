@@ -25,6 +25,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonFbmManual;
+use App\Models\AmazonListingStatus;
 
 class OverallAmazonController extends Controller
 {
@@ -1457,6 +1458,10 @@ class OverallAmazonController extends Controller
                 ];
             });
 
+        // Load NR values from AmazonListingStatus model instead of AmazonDataView
+        $nrListingStatuses = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Keep loading other data from AmazonDataView for backward compatibility
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku', 'fba');
 
         // Fetch LMP data from repricer database
@@ -1640,6 +1645,14 @@ class OverallAmazonController extends Controller
                 2
             );
 
+            // Load NR field from AmazonListingStatus model
+            $listingStatus = $nrListingStatuses->get($pm->sku);
+            if ($listingStatus && $listingStatus->value) {
+                $listingValue = is_array($listingStatus->value) ? $listingStatus->value : [];
+                $row['NR'] = $listingValue['nr_req'] ?? null;
+            }
+
+            // Load other data from AmazonDataView for backward compatibility
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
 
@@ -1648,7 +1661,10 @@ class OverallAmazonController extends Controller
                 }
 
                 if (is_array($raw)) {
-                    $row['NRL'] = $raw['NRL'] ?? null;
+                    // Only set NR if not already set from AmazonListingStatus
+                    if (!isset($row['NR'])) {
+                        $row['NR'] = $raw['NR'] ?? null;
+                    }
                     $row['NRA'] = $raw['NRA'] ?? null;
                     $row['FBA'] = $raw['FBA'] ?? null;
                     $row['shopify_id'] = $shopify->id ?? null;

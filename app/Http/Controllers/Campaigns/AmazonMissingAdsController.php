@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Campaigns;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\AmazonListingStatus;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ADVMastersData;
@@ -43,6 +44,7 @@ class AmazonMissingAdsController extends Controller
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
+        $nrListingValues = AmazonListingStatus::whereIn('sku', $skus)->pluck('value', 'sku');
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         $amazonKwCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
@@ -51,6 +53,8 @@ class AmazonMissingAdsController extends Controller
             })
             ->where('campaignName', 'NOT LIKE', '%PT')
             ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignName', 'NOT LIKE', '%FBA')
+            ->where('campaignName', 'NOT LIKE', '%FBA.')
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
@@ -60,6 +64,8 @@ class AmazonMissingAdsController extends Controller
                     $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
                 }
             })
+            ->where('campaignName', 'NOT LIKE', '%FBA')
+            ->where('campaignName', 'NOT LIKE', '%FBA.')
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
@@ -75,14 +81,19 @@ class AmazonMissingAdsController extends Controller
             $matchedKwCampaign = $amazonKwCampaigns->first(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return $campaignName === $cleanSku;
+                
+                // Check if campaign name matches the SKU (exact match or contains the SKU)
+                return $campaignName === $cleanSku || 
+                       str_contains($campaignName, $cleanSku);
             });
 
             $matchedPtCampaign = $amazonPtCampaigns->first(function ($item) use ($sku) {
                 $cleanName = strtoupper(trim($item->campaignName));
+                $cleanSku = strtoupper(trim($sku));
 
                 return (
-                    (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
+                    str_contains($cleanName, $cleanSku) && 
+                    (str_ends_with($cleanName, ' PT') || str_ends_with($cleanName, ' PT.'))
                 );
             });
 
@@ -100,13 +111,22 @@ class AmazonMissingAdsController extends Controller
                 'FBA' => '',
             ];
 
+            if (isset($nrListingValues[$pm->sku])) {
+                $rawListing = $nrListingValues[$pm->sku];
+                if (!is_array($rawListing)) {
+                    $rawListing = json_decode($rawListing, true);
+                }
+                if (is_array($rawListing)) {
+                    $row['NRL'] = $rawListing['nr_req'] ?? null;
+                }
+            }
+
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true);
                 }
                 if (is_array($raw)) {
-                    $row['NRL']  = $raw['NRL'] ?? null;
                     $row['NRA'] = $raw['NRA'] ?? null;
                     $row['FBA'] = $raw['FBA'] ?? null;
                     $row['TPFT'] = $raw['TPFT'] ?? null;

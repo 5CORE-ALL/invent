@@ -72,9 +72,9 @@
 
                     <select id="nrl-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">NR</option>
-                        <option value="nrl">NRL</option>
-                        <option value="req">REQ</option>
+                        <option value="all">ALL</option>
+                        <option value="nr">NRL</option>
+                        <option value="req" selected>RL</option>
                     </select>
 
                     <select id="gpft-filter" class="form-select form-select-sm"
@@ -155,10 +155,13 @@
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-percent"></i> Decrease
                     </button>
-                    
+                                        
                     <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
                     </button>
+
+                    <span class="badge bg-info fs-6 p-2" id="total-sku-count-badge" style="color: black; font-weight: bold; display: none;">Total SKUs: 0</span>
+
                 </div>
 
                 <!-- Metrics Chart Section -->
@@ -1551,7 +1554,7 @@
 
 
                     {
-                        title: "NR/REQ",
+                        title: "NR/RL",
                         field: "NR",
                         hozAlign: "center",
                         headerSort: false,
@@ -1561,13 +1564,13 @@
                             // Empty for parent rows
                             if (row.is_parent_summary) return '';
 
-                            const nrl = row['NRL'] || '';
+                            const nrl = row['NR'] || '';
                             const sku = row['(Child) sku'];
 
-                            // Determine current value (default to REQ if empty)
+                            // Determine current value (default to RL if empty)
                             let value = '';
-                            if (nrl === 'NRL') {
-                                value = 'NRL';
+                            if (nrl === 'NR') {
+                                value = 'NR';
                             } else if (nrl === 'REQ') {
                                 value = 'REQ';
                             } else {
@@ -1575,17 +1578,17 @@
                             }
 
                             // Set background color based on value
-                            let bgColor = '#28a745'; // Green for REQ
-                            let textColor = 'white';
-                            if (value === 'NRL') {
+                            let bgColor = '#28a745'; // Green for RL
+                            let textColor = 'black';
+                            if (value === 'NR') {
                                 bgColor = '#dc3545'; // Red for NR
-                                textColor = 'white';
+                                textColor = 'black';
                             }
 
                             return `<select class="form-select form-select-sm nr-select" data-sku="${sku}"
                                 style="background-color: ${bgColor}; color: ${textColor}; border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 4px;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
-                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>NR</option>
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>RL</option>
+                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>NRL</option>
                             </select>`;
                         },
                         cellClick: function(e, cell) {
@@ -2090,20 +2093,20 @@
                 // Update dropdown colors
                 if (value === 'REQ') {
                     $select.css('background-color', '#28a745').css('color', 'white');
-                } else if (value === 'NRL') {
+                } else if (value === 'NR') {
                     $select.css('background-color', '#dc3545').css('color', 'white');
                 }
 
                 // Save to database
                 $.ajax({
-                    url: '/save-amazon-nr',
+                    url: '/listing_amazon/save-status',
                     method: 'POST',
                     headers: {
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                     },
                     data: {
                         sku: sku,
-                        nr: value
+                        nr_req: value
                     },
                     success: function(response) {
                         const message = response.message || 'NR updated successfully';
@@ -2203,14 +2206,14 @@
 
                 if (nrlFilter !== 'all') {
                     if (nrlFilter === 'req') {
-                        // Show all data except NRL
+                        // Show only REQ (exclude NR)
                         table.addFilter(function(data) {
-                            return data.NRL !== 'NRL';
+                            return data.NR !== 'NR';
                         });
-                    } else {
-                        // Show only NRL
+                    } else if (nrlFilter === 'nr') {
+                        // Show only NR
                         table.addFilter(function(data) {
-                            return data.NRL === 'NRL';
+                            return data.NR === 'NR';
                         });
                     }
                 }
@@ -2344,9 +2347,11 @@
                 let totalAmazonL30 = 0;
                 let totalDilPercent = 0;
                 let dilCount = 0;
+                let totalSkuCount = 0;
 
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
+                        totalSkuCount++;
                         totalTcos += parseFloat(row['AD%'] || 0);
                         totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
@@ -2403,6 +2408,9 @@
                 $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
                 const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
                 $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
+                
+                // Update total SKU count badge
+                $('#total-sku-count-badge').text('Total SKUs: ' + totalSkuCount.toLocaleString()).show();
             }
 
             // Build Column Visibility Dropdown
