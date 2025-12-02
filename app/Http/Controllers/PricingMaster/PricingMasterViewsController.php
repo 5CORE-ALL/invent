@@ -474,19 +474,40 @@ class PricingMasterViewsController extends Controller
             ->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $plsStatuses = DB::table('pls_listing_statuses')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
 
-        // Fetch ads campaign data for ADVT% calculation
-        // eBay ads data (keyword and PMT campaigns)
-        $ebayPriorityCampaigns = EbayPriorityReport::where('report_range', 'L30')
-            ->whereIn('channels', ['ebay1', 'ebay2', 'ebay3'])
-            ->get();
+        // Fetch ads campaign data for ADVT% calculation (with error handling to prevent memory issues)
+        $ebayPriorityCampaigns = collect();
+        $ebayMetrics = collect();
+        $amazonSpCampaigns = collect();
         
-        // Fetch ebay metrics to get item_id for general reports lookup
-        $ebayMetrics = EbayMetric::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        try {
+            // Only fetch eBay campaigns for SKUs we're actually displaying
+            $ebayPriorityCampaigns = EbayPriorityReport::where('report_range', 'L30')
+                ->whereIn('channels', ['ebay1', 'ebay2', 'ebay3'])
+                ->limit(5000) // Limit to prevent memory issues
+                ->get();
+        } catch (Exception $e) {
+            Log::warning('Could not fetch eBay Priority campaigns: ' . $e->getMessage());
+        }
         
-        // Amazon ads data (keyword and product targeting campaigns)
-        $amazonSpCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L30')
-            ->get();
+        try {
+            // Fetch ebay metrics to get item_id for general reports lookup
+            $ebayMetrics = EbayMetric::whereIn('sku', $nonParentSkus)
+                ->select('sku', 'item_id') // Only select needed columns
+                ->get()
+                ->keyBy('sku');
+        } catch (Exception $e) {
+            Log::warning('Could not fetch eBay metrics: ' . $e->getMessage());
+        }
+        
+        try {
+            // Amazon ads data (keyword and product targeting campaigns)
+            $amazonSpCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', 'L30')
+                ->limit(5000) // Limit to prevent memory issues
+                ->get();
+        } catch (Exception $e) {
+            Log::warning('Could not fetch Amazon SP campaigns: ' . $e->getMessage());
+        }
 
         // Fetch LMPA and LMP data
         $lmpLookup = collect();
@@ -672,97 +693,115 @@ class PricingMasterViewsController extends Controller
             $ebay2_advt_percent = null;
             $ebay3_advt_percent = null;
             
-            // eBay 1 ads calculation
-            $ebayKwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
-                return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay1';
-            });
-            
-            $ebayMetric = $ebayMetrics[$sku] ?? null;
-            $ebayGeneralData = null;
-            if ($ebayMetric && $ebayMetric->item_id) {
-                $ebayGeneralData = DB::table('ebay_general_reports')
-                    ->where('listing_id', $ebayMetric->item_id)
-                    ->where('report_range', 'L30')
-                    ->first();
-            }
-            
-            if ($ebayKwCampaign || $ebayGeneralData) {
-                $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebayKwCampaign->cpc_ad_fees_payout_currency ?? '0');
-                $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebayKwCampaign->cpc_sale_amount_payout_currency ?? '0');
-                $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebayGeneralData->ad_fees ?? '0');
-                $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebayGeneralData->sale_amount ?? '0');
+            try {
+                // eBay 1 ads calculation
+                $ebayKwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
+                    return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay1';
+                });
                 
-                $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
-                $ebay_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
-            }
-            
-            // eBay 2 ads calculation
-            $ebay2KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
-                return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay2';
-            });
-            
-            $ebay2GeneralData = null;
-            if ($ebayMetric && $ebayMetric->item_id) {
-                $ebay2GeneralData = DB::table('ebay_2_general_reports')
-                    ->where('listing_id', $ebayMetric->item_id)
-                    ->where('report_range', 'L30')
-                    ->first();
-            }
-            
-            if ($ebay2KwCampaign || $ebay2GeneralData) {
-                $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay2KwCampaign->cpc_ad_fees_payout_currency ?? '0');
-                $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay2KwCampaign->cpc_sale_amount_payout_currency ?? '0');
-                $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay2GeneralData->ad_fees ?? '0');
-                $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay2GeneralData->sale_amount ?? '0');
+                $ebayMetric = $ebayMetrics[$sku] ?? null;
+                $ebayGeneralData = null;
+                if ($ebayMetric && $ebayMetric->item_id) {
+                    $ebayGeneralData = DB::table('ebay_general_reports')
+                        ->where('listing_id', $ebayMetric->item_id)
+                        ->where('report_range', 'L30')
+                        ->first();
+                }
                 
-                $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
-                $ebay2_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+                if ($ebayKwCampaign || $ebayGeneralData) {
+                    $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebayKwCampaign->cpc_ad_fees_payout_currency ?? '0');
+                    $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebayKwCampaign->cpc_sale_amount_payout_currency ?? '0');
+                    $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebayGeneralData->ad_fees ?? '0');
+                    $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebayGeneralData->sale_amount ?? '0');
+                    
+                    $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
+                    $ebay_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+                }
+            } catch (Exception $e) {
+                // Skip eBay 1 ADVT% calculation if error occurs
             }
             
-            // eBay 3 ads calculation
-            $ebay3KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
-                return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay3';
-            });
-            
-            $ebay3GeneralData = null;
-            if ($ebayMetric && $ebayMetric->item_id) {
-                $ebay3GeneralData = DB::table('ebay_3_general_reports')
-                    ->where('listing_id', $ebayMetric->item_id)
-                    ->where('report_range', 'L30')
-                    ->first();
-            }
-            
-            if ($ebay3KwCampaign || $ebay3GeneralData) {
-                $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay3KwCampaign->cpc_ad_fees_payout_currency ?? '0');
-                $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay3KwCampaign->cpc_sale_amount_payout_currency ?? '0');
-                $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay3GeneralData->ad_fees ?? '0');
-                $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay3GeneralData->sale_amount ?? '0');
+            try {
+                // eBay 2 ads calculation
+                $ebay2KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
+                    return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay2';
+                });
                 
-                $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
-                $ebay3_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+                $ebayMetric = $ebayMetrics[$sku] ?? null;
+                $ebay2GeneralData = null;
+                if ($ebayMetric && $ebayMetric->item_id) {
+                    $ebay2GeneralData = DB::table('ebay_2_general_reports')
+                        ->where('listing_id', $ebayMetric->item_id)
+                        ->where('report_range', 'L30')
+                        ->first();
+                }
+                
+                if ($ebay2KwCampaign || $ebay2GeneralData) {
+                    $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay2KwCampaign->cpc_ad_fees_payout_currency ?? '0');
+                    $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay2KwCampaign->cpc_sale_amount_payout_currency ?? '0');
+                    $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay2GeneralData->ad_fees ?? '0');
+                    $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay2GeneralData->sale_amount ?? '0');
+                    
+                    $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
+                    $ebay2_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+                }
+            } catch (Exception $e) {
+                // Skip eBay 2 ADVT% calculation if error occurs
+            }
+            
+            try {
+                // eBay 3 ads calculation
+                $ebay3KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
+                    return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay3';
+                });
+                
+                $ebayMetric = $ebayMetrics[$sku] ?? null;
+                $ebay3GeneralData = null;
+                if ($ebayMetric && $ebayMetric->item_id) {
+                    $ebay3GeneralData = DB::table('ebay_3_general_reports')
+                        ->where('listing_id', $ebayMetric->item_id)
+                        ->where('report_range', 'L30')
+                        ->first();
+                }
+                
+                if ($ebay3KwCampaign || $ebay3GeneralData) {
+                    $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay3KwCampaign->cpc_ad_fees_payout_currency ?? '0');
+                    $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay3KwCampaign->cpc_sale_amount_payout_currency ?? '0');
+                    $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay3GeneralData->ad_fees ?? '0');
+                    $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay3GeneralData->sale_amount ?? '0');
+                    
+                    $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
+                    $ebay3_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+                }
+            } catch (Exception $e) {
+                // Skip eBay 3 ADVT% calculation if error occurs
             }
             
             // Calculate ADVT% for Amazon (kw_sales_l30 + pt_sales_l30 as denominator)
             $amz_advt_percent = null;
             
-            // Amazon keyword (KW) campaigns
-            $amazonKwCampaigns = $amazonSpCampaigns->filter(function($c) use ($sku) {
-                return stripos($c->campaignName, $sku) !== false && stripos($c->campaignName, 'KW') !== false;
-            });
-            
-            // Amazon product targeting (PT) campaigns  
-            $amazonPtCampaigns = $amazonSpCampaigns->filter(function($c) use ($sku) {
-                return stripos($c->campaignName, $sku) !== false && stripos($c->campaignName, 'PT') !== false;
-            });
-            
-            if ($amazonKwCampaigns->count() > 0 || $amazonPtCampaigns->count() > 0) {
-                $kw_spend_l30 = $amazonKwCampaigns->sum('cost');
-                $kw_sales_l30 = $amazonKwCampaigns->sum('sales30d');
-                $pt_spend_l30 = $amazonPtCampaigns->sum('cost');
-                $pt_sales_l30 = $amazonPtCampaigns->sum('sales30d');
+            try {
+                // Amazon keyword (KW) campaigns
+                $amazonKwCampaigns = $amazonSpCampaigns->filter(function($c) use ($sku) {
+                    return stripos($c->campaignName, $sku) !== false && stripos($c->campaignName, 'KW') !== false;
+                });
                 
-                $adDenominator = $kw_sales_l30 + $pt_sales_l30;
-                $amz_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pt_spend_l30) / $adDenominator) * 100 : 0;
+                // Amazon product targeting (PT) campaigns  
+                $amazonPtCampaigns = $amazonSpCampaigns->filter(function($c) use ($sku) {
+                    return stripos($c->campaignName, $sku) !== false && stripos($c->campaignName, 'PT') !== false;
+                });
+                
+                if ($amazonKwCampaigns->count() > 0 || $amazonPtCampaigns->count() > 0) {
+                    $kw_spend_l30 = $amazonKwCampaigns->sum('cost');
+                    $kw_sales_l30 = $amazonKwCampaigns->sum('sales30d');
+                    $pt_spend_l30 = $amazonPtCampaigns->sum('cost');
+                    $pt_sales_l30 = $amazonPtCampaigns->sum('sales30d');
+                    
+                    $adDenominator = $kw_sales_l30 + $pt_sales_l30;
+                    $amz_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pt_spend_l30) / $adDenominator) * 100 : 0;
+                }
+            } catch (Exception $e) {
+                // Skip Amazon ADVT% calculation if error occurs
             }
 
             $item = (object) [
