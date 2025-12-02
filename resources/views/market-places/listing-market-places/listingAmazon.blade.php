@@ -1549,16 +1549,16 @@
                 if (!item.sku.includes('PARENT')) {
                     const $dropdown = $('<select>')
                         .addClass('nr-req-dropdown form-control form-control-sm')
-                        .append('<option value="REQ" class="req-option">REQ</option>')
+                        .append('<option value="REQ" class="req-option">RL</option>')
                         .append('<option value="NR" class="nr-option">NRL</option>');
 
                     const initialValue = item.nr_req || 'REQ';
                     $dropdown.val(initialValue);
 
                     if (initialValue === 'REQ') {
-                        $dropdown.css('background-color', '#28a745').css('color', 'white');
+                        $dropdown.css('background-color', '#28a745').css('color', 'black');
                     } else if (initialValue === 'NR') {
-                        $dropdown.css('background-color', '#dc3545').css('color', 'white');
+                        $dropdown.css('background-color', '#dc3545').css('color', 'black');
                     }
 
                     $row.append($('<td>').append($dropdown));

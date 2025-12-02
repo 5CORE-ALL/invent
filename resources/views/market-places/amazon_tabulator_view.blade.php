@@ -1549,7 +1549,7 @@
 
 
                     {
-                        title: "NR/REQ",
+                        title: "NR/RL",
                         field: "NR",
                         hozAlign: "center",
                         headerSort: false,
@@ -1559,13 +1559,13 @@
                             // Empty for parent rows
                             if (row.is_parent_summary) return '';
 
-                            const nrl = row['NRL'] || '';
+                            const nrl = row['NR'] || '';
                             const sku = row['(Child) sku'];
 
-                            // Determine current value (default to REQ if empty)
+                            // Determine current value (default to RL if empty)
                             let value = '';
-                            if (nrl === 'NRL') {
-                                value = 'NRL';
+                            if (nrl === 'NR') {
+                                value = 'NR';
                             } else if (nrl === 'REQ') {
                                 value = 'REQ';
                             } else {
@@ -1573,17 +1573,17 @@
                             }
 
                             // Set background color based on value
-                            let bgColor = '#28a745'; // Green for REQ
-                            let textColor = 'white';
-                            if (value === 'NRL') {
+                            let bgColor = '#28a745'; // Green for RL
+                            let textColor = 'black';
+                            if (value === 'NR') {
                                 bgColor = '#dc3545'; // Red for NR
-                                textColor = 'white';
+                                textColor = 'black';
                             }
 
                             return `<select class="form-select form-select-sm nr-select" data-sku="${sku}"
                                 style="background-color: ${bgColor}; color: ${textColor}; border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 4px;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
-                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>NR</option>
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>RL</option>
+                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>NRL</option>
                             </select>`;
                         },
                         cellClick: function(e, cell) {
@@ -2088,20 +2088,20 @@
                 // Update dropdown colors
                 if (value === 'REQ') {
                     $select.css('background-color', '#28a745').css('color', 'white');
-                } else if (value === 'NRL') {
+                } else if (value === 'NR') {
                     $select.css('background-color', '#dc3545').css('color', 'white');
                 }
 
                 // Save to database
                 $.ajax({
-                    url: '/save-amazon-nr',
+                    url: '/listing_amazon/save-status',
                     method: 'POST',
                     headers: {
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                     },
                     data: {
                         sku: sku,
-                        nr: value
+                        nr_req: value
                     },
                     success: function(response) {
                         const message = response.message || 'NR updated successfully';
