@@ -557,4 +557,320 @@ class AmazonSpApiService
                 ]);
         }
     }
+
+    public function getFbaShipments($status = null, $marketplaceId = null, $lastUpdatedAfter = null, $lastUpdatedBefore = null)
+    {
+        try {
+            $accessToken = $this->getAccessToken();
+            if (!$accessToken) {
+                throw new \Exception('Could not obtain access token');
+            }
+
+            $url = $this->endpoint . '/fba/inbound/v0/shipments';
+
+            // Build query parameters
+            $queryParams = ['QueryType' => 'SHIPMENT'];
+            
+            // Add marketplace if specified
+            if ($marketplaceId) {
+                $queryParams['MarketplaceId'] = $marketplaceId;
+            }
+            
+            // Add date filters if specified
+            if ($lastUpdatedAfter) {
+                $queryParams['LastUpdatedAfter'] = $lastUpdatedAfter;
+            }
+            if ($lastUpdatedBefore) {
+                $queryParams['LastUpdatedBefore'] = $lastUpdatedBefore;
+            }
+            
+            // Add shipment status list - Amazon API expects comma-separated values
+            if ($status) {
+                $statuses = is_array($status) ? $status : [$status];
+                $queryParams['ShipmentStatusList'] = implode(',', $statuses);
+            } else {
+                // Default statuses to get all shipments
+                $queryParams['ShipmentStatusList'] = 'WORKING,SHIPPED,IN_TRANSIT,DELIVERED,CHECKED_IN,RECEIVING,CLOSED,CANCELLED,DELETED,ERROR';
+            }
+
+            $allShipments = [];
+            $nextToken = null;
+            $pageCount = 0;
+            
+            // Paginate through all results
+            do {
+                $pageCount++;
+                if ($nextToken) {
+                    $queryParams['NextToken'] = $nextToken;
+                }
+                
+                $response = Http::withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Content-Type' => 'application/json',
+                ])
+                ->timeout(120) // 120 second timeout (Amazon API is slow)
+                ->retry(2, 1000) // Retry twice with 1 second delay
+                ->get($url, $queryParams);
+
+                if ($response->failed()) {
+                    Log::error('FBA Shipments API failed', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                        'url' => $url,
+                        'params' => $queryParams
+                    ]);
+                    throw new \Exception('API request failed: ' . $response->status() . ' - ' . $response->body());
+                }
+                
+                $data = $response->json();
+                
+                // Add shipments from this page
+                if (isset($data['payload']['ShipmentData'])) {
+                    $shipmentsInPage = count($data['payload']['ShipmentData']);
+                    $allShipments = array_merge($allShipments, $data['payload']['ShipmentData']);
+                    Log::info("FBA Shipments API - Page {$pageCount}: fetched {$shipmentsInPage} shipments, total so far: " . count($allShipments));
+                }
+                
+                // Get next token for pagination
+                $nextToken = $data['payload']['NextToken'] ?? null;
+                
+                if ($nextToken) {
+                    Log::info("FBA Shipments API - NextToken received, fetching next page...");
+                }
+                
+                // Rate limiting - small delay between requests
+                if ($nextToken) {
+                    usleep(500000); // 0.5 second delay
+                }
+                
+            } while ($nextToken);
+            
+            Log::info("FBA Shipments API - Completed. Total pages: {$pageCount}, Total shipments: " . count($allShipments));
+            
+            // Return all shipments in standard format
+            return [
+                'payload' => [
+                    'ShipmentData' => $allShipments
+                ]
+            ];
+        } catch (\Exception $e) {
+            Log::error('Error fetching FBA shipments', [
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Fetch FBA shipments with streaming/callback approach
+     * Calls the callback function after each page is fetched
+     * This allows processing data incrementally instead of waiting for all pages
+     * 
+     * CRITICAL FIX: Added QueryType parameter based on Amazon SP-API documentation
+     * - QueryType=SHIPMENT: Use when filtering by ShipmentStatusList/ShipmentIdList WITHOUT dates
+     * - QueryType=DATE_RANGE: Use when filtering by LastUpdatedAfter/LastUpdatedBefore WITH dates
+     * - QueryType=NEXT_TOKEN: Automatically used when NextToken is present
+     */
+    public function getFbaShipmentsStreaming($status = null, $marketplaceId = null, $lastUpdatedAfter = null, $lastUpdatedBefore = null, $callback = null)
+    {
+        try {
+            $url = $this->endpoint . '/fba/inbound/v0/shipments';
+
+            // Build query parameters based on documentation requirements
+            $queryParams = [];
+            
+            // Default marketplace to US if not specified
+            if (!$marketplaceId) {
+                $marketplaceId = 'ATVPDKIKX0DER'; // Amazon US marketplace
+            }
+            $queryParams['MarketplaceId'] = $marketplaceId;
+            
+            // CRITICAL FIX: Use proper QueryType based on filter type
+            // According to Amazon SP-API docs, QueryType determines which parameters are valid
+            if ($lastUpdatedAfter || $lastUpdatedBefore) {
+                // Use DATE_RANGE query type when filtering by dates
+                $queryParams['QueryType'] = 'DATE_RANGE';
+                
+                if ($lastUpdatedAfter) {
+                    $queryParams['LastUpdatedAfter'] = $lastUpdatedAfter;
+                }
+                
+                if ($lastUpdatedBefore) {
+                    $queryParams['LastUpdatedBefore'] = $lastUpdatedBefore;
+                }
+                
+                // When using DATE_RANGE, we can optionally filter by status
+                if ($status) {
+                    $statuses = is_array($status) ? $status : [$status];
+                    $queryParams['ShipmentStatusList'] = implode(',', $statuses);
+                }
+            } else {
+                // Use SHIPMENT query type when filtering by status without dates
+                $queryParams['QueryType'] = 'SHIPMENT';
+                
+                if ($status) {
+                    $statuses = is_array($status) ? $status : [$status];
+                    $queryParams['ShipmentStatusList'] = implode(',', $statuses);
+                } else {
+                    // Default to all statuses if none specified
+                    $queryParams['ShipmentStatusList'] = 'WORKING,SHIPPED,IN_TRANSIT,DELIVERED,CHECKED_IN,RECEIVING,CLOSED,CANCELLED,DELETED,ERROR';
+                }
+            }
+
+            $nextToken = null;
+            $pageCount = 0;
+            $totalShipments = 0;
+            
+            // Paginate and process each page immediately
+            do {
+                $pageCount++;
+                
+                // Get fresh access token for each page to avoid expiration
+                $accessToken = $this->getAccessToken();
+                if (!$accessToken) {
+                    throw new \Exception('Could not obtain access token for page ' . $pageCount);
+                }
+                
+                if ($nextToken) {
+                    $queryParams['NextToken'] = $nextToken;
+                    // When using NextToken, QueryType must be NEXT_TOKEN
+                    $queryParams['QueryType'] = 'NEXT_TOKEN';
+                }
+                
+                // DEBUG: Log exact API call details
+                Log::info("FBA API Call - Page {$pageCount}", [
+                    'url' => $url,
+                    'query_params' => $queryParams,
+                    'has_next_token' => !empty($nextToken)
+                ]);
+                
+                try {
+                    $response = Http::withHeaders([
+                        'x-amz-access-token' => $accessToken,
+                        'Content-Type' => 'application/json',
+                    ])
+                    ->timeout(120)
+                    ->retry(2, 1000)
+                    ->get($url, $queryParams);
+
+                    if ($response->failed()) {
+                        $errorBody = $response->body();
+                        Log::error('FBA Shipments API failed', [
+                            'page' => $pageCount,
+                            'status' => $response->status(),
+                            'body' => $errorBody,
+                        ]);
+                        
+                        // If 403 Unauthorized, try to get fresh token and retry once
+                        if ($response->status() === 403) {
+                            Log::warning("Got 403 on page {$pageCount}, clearing token cache and retrying...");
+                            Cache::forget('amazon_spapi_access_token');
+                            $accessToken = $this->getAccessToken();
+                            
+                            $response = Http::withHeaders([
+                                'x-amz-access-token' => $accessToken,
+                                'Content-Type' => 'application/json',
+                            ])
+                            ->timeout(120)
+                            ->get($url, $queryParams);
+                            
+                            if ($response->failed()) {
+                                throw new \Exception('API request failed after token refresh: ' . $response->status() . ' - ' . $errorBody);
+                            }
+                        } else {
+                            throw new \Exception('API request failed: ' . $response->status() . ' - ' . $errorBody);
+                        }
+                    }
+                    
+                    $data = $response->json();
+                    
+                    // Process this page immediately via callback
+                    if (isset($data['payload']['ShipmentData']) && is_callable($callback)) {
+                        $shipments = $data['payload']['ShipmentData'];
+                        $shipmentsInPage = count($shipments);
+                        $totalShipments += $shipmentsInPage;
+                        
+                        // Log first 3 shipment IDs from this page for debugging
+                        $shipmentIds = array_slice(array_map(function($s) {
+                            return $s['ShipmentId'] ?? 'unknown';
+                        }, $shipments), 0, 3);
+                        
+                        Log::info("FBA Streaming - Page {$pageCount}: fetched {$shipmentsInPage} shipments, calling callback...", [
+                            'sample_ids' => implode(', ', $shipmentIds)
+                        ]);
+                        
+                        // Call the callback to process this page
+                        try {
+                            $callback($shipments);
+                            Log::info("FBA Streaming - Page {$pageCount}: callback completed successfully");
+                        } catch (\Exception $callbackError) {
+                            Log::error("FBA Streaming - Page {$pageCount}: callback error", [
+                                'error' => $callbackError->getMessage()
+                            ]);
+                            // Continue to next page even if callback fails
+                        }
+                    }
+                    
+                    $nextToken = $data['payload']['NextToken'] ?? null;
+                    
+                    if ($nextToken) {
+                        usleep(500000); // 0.5 second delay between requests
+                    }
+                    
+                } catch (\Exception $pageError) {
+                    Log::error("FBA Streaming - Page {$pageCount}: error", [
+                        'error' => $pageError->getMessage(),
+                        'total_shipments_processed' => $totalShipments
+                    ]);
+                    
+                    // Don't throw - just break the loop and return what we've processed so far
+                    Log::warning("Stopping pagination due to error. Processed {$pageCount} pages with {$totalShipments} total shipments.");
+                    break;
+                }
+                
+            } while ($nextToken);
+            
+            Log::info("FBA Streaming - Completed. Total pages: {$pageCount}, Total shipments: {$totalShipments}");
+            
+        } catch (\Exception $e) {
+            Log::error('Error in FBA shipments streaming', [
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    public function getFbaShipmentItems($shipmentId)
+    {
+        try {
+            $accessToken = $this->getAccessToken();
+            if (!$accessToken) {
+                throw new \Exception('Could not obtain access token');
+            }
+
+            $url = $this->endpoint . "/fba/inbound/v0/shipments/{$shipmentId}/items";
+
+            $response = Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->get($url);
+
+            if ($response->failed()) {
+                Log::error('FBA Shipment Items API failed', [
+                    'shipment_id' => $shipmentId,
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
+                throw new \Exception('API request failed: ' . $response->status());
+            }
+
+            return $response->json();
+        } catch (\Exception $e) {
+            Log::error('Error fetching FBA shipment items', [
+                'shipment_id' => $shipmentId,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
 }
