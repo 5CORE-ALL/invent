@@ -2037,6 +2037,19 @@ class OverallAmazonController extends Controller
         ]);
     }
 
+    /**
+     * Apply Amazon price with automatic verification
+     * 
+     * IMPORTANT FIX: The AmazonSpApiService now includes automatic verification
+     * to ensure prices are actually updated on Amazon. It will:
+     * 1. Update the price on Amazon
+     * 2. Wait 1 second and verify the price was applied
+     * 3. If verification fails, retry with fresh token (up to 2 attempts)
+     * 4. Return error only if price truly wasn't applied after verification
+     * 
+     * This fixes the issue where Amazon API returns success but doesn't actually
+     * apply the price on the first attempt (often due to token refresh timing).
+     */
     public function applyAmazonPrice(Request $request)
     {
         // Validate and sanitize inputs
