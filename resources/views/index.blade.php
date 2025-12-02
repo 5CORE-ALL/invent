@@ -3,13 +3,12 @@
 @section('css')
 <!-- task dashboard css -->
 <style>
-    .dashboard-card {
+        .dashboard-card {
             background: #ffffff !important;
             border-radius: 12px !important;
             padding: 20px !important;
             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06) !important;
             transition: all 0.2s ease !important;
-            cursor: pointer !important;
             position: relative !important;
             overflow: visible !important;
             border: 1px solid #e5e7eb !important;
@@ -24,7 +23,36 @@
             border-color: #d1d5db !important;
         }
 
-        .dashboard-card::before {
+        .card-actions {
+            position: absolute !important;
+            top: 12px !important;
+            right: 12px !important;
+            z-index: 10 !important;
+        }
+
+        .eye-icon-btn {
+            width: 36px !important;
+            height: 36px !important;
+            border-radius: 50% !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            border: none !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            cursor: pointer !important;
+            transition: all 0.3s ease !important;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3) !important;
+        }
+
+        .eye-icon-btn:hover {
+            transform: scale(1.1) !important;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5) !important;
+        }
+
+        .eye-icon-btn i {
+            color: white !important;
+            font-size: 18px !important;
+        }        .dashboard-card::before {
             content: '' !important;
             position: absolute !important;
             top: 0 !important;
@@ -344,6 +372,23 @@
             align-items: center;
             justify-content: center;
             backdrop-filter: blur(5px);
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from { 
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to { 
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .modal.active {
@@ -352,135 +397,46 @@
 
         .modal-content {
             background: white;
-            padding: 30px;
+            padding: 0;
             border-radius: 20px;
-            max-width: 600px;
+            max-width: 700px;
             width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
+            max-height: 85vh;
+            overflow: hidden;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-
-        .chart-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.9);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(10px);
-        }
-
-        .chart-modal.active {
-            display: flex;
-        }
-
-        .chart-modal-content {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            width: 95%;
-            height: 90vh;
-            max-width: 1400px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            animation: slideUp 0.3s ease;
             display: flex;
             flex-direction: column;
-        }
-
-        .chart-modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #e5e7eb;
-        }
-
-        .chart-modal-title {
-            font-size: 1.5em;
-            font-weight: 600;
-            color: #1f2937;
-        }
-
-        .chart-modal-body {
-            flex: 1;
-            position: relative;
-            min-height: 0;
-        }
-
-        .chart-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.9);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(10px);
-        }
-
-        .chart-modal.active {
-            display: flex;
-        }
-
-        .chart-modal-content {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            width: 95%;
-            height: 90vh;
-            max-width: 1400px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-            display: flex;
-            flex-direction: column;
-        }
-
-        .chart-modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #e5e7eb;
-        }
-
-        .chart-modal-title {
-            font-size: 1.5em;
-            font-weight: 600;
-            color: #1f2937;
-        }
-
-        .chart-modal-body {
-            flex: 1;
-            position: relative;
-            min-height: 0;
         }
 
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            padding: 25px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 20px 20px 0 0;
         }
 
         .modal-title {
-            font-size: 1.8em;
-            font-weight: 600;
-            color: #1f2937;
+            font-size: 1.5em;
+            font-weight: 700;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .modal-title-icon {
+            font-size: 1.3em;
         }
 
         .close-btn {
             width: 40px;
             height: 40px;
             border-radius: 50%;
-            background: #f3f4f6;
+            background: rgba(255, 255, 255, 0.2);
             border: none;
             font-size: 1.5em;
             cursor: pointer;
@@ -488,41 +444,182 @@
             align-items: center;
             justify-content: center;
             transition: all 0.3s;
+            color: white;
         }
 
         .close-btn:hover {
-            background: #e5e7eb;
+            background: rgba(255, 255, 255, 0.3);
             transform: rotate(90deg);
         }
 
-        .subcard-grid {
+        .modal-body {
+            padding: 30px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .menu-grid {
             display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 15px;
         }
 
-        .subcard {
-            background: #f9fafb;
-            padding: 20px;
+        .menu-item {
+            background: linear-gradient(135deg, #f6f8fb 0%, #ffffff 100%);
+            padding: 18px 20px;
             border-radius: 12px;
-            border-left: 4px solid #3b82f6;
-            transition: all 0.3s;
+            border: 2px solid #e5e7eb;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: #1f2937;
+            position: relative;
+            overflow: hidden;
         }
 
-        .subcard:hover {
-            background: #f3f4f6;
-            transform: translateX(5px);
+        .menu-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transform: scaleY(0);
+            transition: transform 0.3s ease;
         }
 
-        .subcard-title {
+        .menu-item:hover {
+            transform: translateX(8px);
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .menu-item:hover::before {
+            transform: scaleY(1);
+        }
+
+        .menu-item-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3em;
+            flex-shrink: 0;
+        }
+
+        .menu-item-text {
+            font-weight: 600;
+            font-size: 0.95em;
+            flex: 1;
+        }
+
+        .menu-item-arrow {
+            color: #9ca3af;
+            font-size: 1.2em;
+            transition: transform 0.3s ease;
+        }
+
+        .menu-item:hover .menu-item-arrow {
+            transform: translateX(4px);
+            color: #667eea;
+        }
+
+        .no-items {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6b7280;
+        }
+
+        .no-items i {
+            font-size: 3em;
+            color: #d1d5db;
+            margin-bottom: 15px;
+        }
+
+        .modal-search {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .modal-search input {
+            width: 100%;
+            padding: 12px 45px 12px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 0.95em;
+            transition: all 0.3s ease;
+        }
+
+        .modal-search input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .modal-search i {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+        }
+
+        .chart-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .chart-modal.active {
+            display: flex;
+        }
+
+        .chart-modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            width: 95%;
+            height: 90vh;
+            max-width: 1400px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .chart-modal-title {
+            font-size: 1.5em;
             font-weight: 600;
             color: #1f2937;
-            margin-bottom: 5px;
         }
 
-        .subcard-value {
-            font-size: 1.5em;
-            font-weight: 700;
-            color: #3b82f6;
+        .chart-modal-body {
+            flex: 1;
+            position: relative;
+            min-height: 0;
         }
 
         .dashboard-grid {
@@ -856,19 +953,24 @@
             </div>
         </div>
 
-        <div class="dashboard-card" onclick="openModal('Purchase')">
+        <div class="dashboard-card">
+            <div class="card-actions">
+                <button class="eye-icon-btn" onclick="openModal('Purchase'); event.stopPropagation();">
+                    <i class="ri-eye-line"></i>
+                </button>
+            </div>
             <div class="card-icon" style="background: #1e3a5f; color: white;">🛒</div>
             <div class="card-header">
                 <div>
                     <div class="card-title">Purchase</div>
-                    <div class="card-description">Generate reports and view analytics</div>
+                    <div class="card-description">Purchase management and analytics</div>
                 </div>
-                <span class="card-badge badge-indigo">0 Metrics</span>
+                <span class="card-badge badge-indigo">3 Modules</span>
             </div>
             <div class="subcards-preview">
-                <span class="subcard-item">🛍️ Orders</span>
-                <span class="subcard-item">💳 Payments</span>
-                <span class="subcard-item">📦 Suppliers</span>
+                <span class="subcard-item">📦 Categories</span>
+                <span class="subcard-item">🏢 Suppliers</span>
+                <span class="subcard-item">⚙️ MFRG</span>
             </div>
         </div>
 
@@ -985,6 +1087,30 @@
     </div>
     
     <!-- end row -->
+
+    <!-- Menu Modal -->
+    <div class="modal" id="menuModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="modal-title-icon" id="modalIcon">📦</span>
+                    <span id="modalCategory">Menu</span>
+                </div>
+                <button class="close-btn" onclick="closeMenuModal()">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-search">
+                    <input type="text" id="menuSearch" placeholder="Search menu items..." onkeyup="filterMenuItems()">
+                    <i class="ri-search-line"></i>
+                </div>
+                <div class="menu-grid" id="menuGrid">
+                    <!-- Menu items will be dynamically loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Channel Sales Fullscreen Modal -->
     <div class="chart-modal" id="chartModal">
@@ -1589,6 +1715,216 @@
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeChartModal();
+                closeMenuModal();
+            }
+        });
+
+        // ============================================
+        // MENU MODAL SYSTEM
+        // ============================================
+
+        // Menu data structure with routes
+        const menuData = {
+            'Purchase': {
+                icon: '🛒',
+                color: '#1e3a5f',
+                items: [
+                    { name: 'Categories', icon: '📦', route: '/purchase-masters/categories' },
+                    { name: 'Suppliers', icon: '🏢', route: '/purchase-masters/suppliers' },
+                    { name: 'MFRG In Progress', icon: '⚙️', route: '/purchase-masters/mfrg-in-progress' }
+                ]
+            },
+            'Tasks': {
+                icon: '✓',
+                color: '#0891b2',
+                items: [
+                    { name: 'My Tasks', icon: '📋', route: '/tasks/my-tasks' },
+                    { name: 'Team Tasks', icon: '👥', route: '/tasks/team-tasks' },
+                    { name: 'Completed Tasks', icon: '✅', route: '/tasks/completed' }
+                ]
+            },
+            'My Team': {
+                icon: '👥',
+                color: '#059669',
+                items: [
+                    { name: 'Team Members', icon: '👤', route: '/team/members' },
+                    { name: 'Performance', icon: '📊', route: '/team/performance' },
+                    { name: 'Goals & Targets', icon: '🎯', route: '/team/goals' }
+                ]
+            },
+            'Inventory': {
+                icon: '📦',
+                color: '#ea580c',
+                items: [
+                    { name: 'Stock Levels', icon: '📈', route: '/inventory/stock-levels' },
+                    { name: 'Valuation', icon: '💰', route: '/inventory/valuation' }
+                ]
+            },
+            'Operations': {
+                icon: '⏰',
+                color: '#db2777',
+                items: [
+                    { name: 'Shipping Analysis', icon: '🚚', route: '/operations/shipping' },
+                    { name: 'Reviews Management', icon: '⭐', route: '/operations/reviews' },
+                    { name: 'Customer Care', icon: '👥', route: '/operations/customer-care' }
+                ]
+            },
+            'Human Resources': {
+                icon: '👨‍💼',
+                color: '#9333ea',
+                items: [
+                    { name: 'Employee Directory', icon: '👥', route: '/hr/employees' },
+                    { name: 'Attendance Tracking', icon: '📅', route: '/hr/attendance' },
+                    { name: 'Payroll Management', icon: '💼', route: '/hr/payroll' }
+                ]
+            },
+            'Software & IT': {
+                icon: '💻',
+                color: '#0d9488',
+                items: [
+                    { name: 'System Management', icon: '🖥️', route: '/it/systems' },
+                    { name: 'Maintenance', icon: '🔧', route: '/it/maintenance' },
+                    { name: 'Analytics Dashboard', icon: '📊', route: '/it/analytics' }
+                ]
+            },
+            'Pricing': {
+                icon: '💵',
+                color: '#d97706',
+                items: [
+                    { name: 'Price Lists', icon: '💰', route: '/pricing/lists' },
+                    { name: 'Pricing Trends', icon: '📈', route: '/pricing/trends' }
+                ]
+            },
+            'Advertisements': {
+                icon: '📢',
+                color: '#4b5563',
+                items: [
+                    { name: 'Digital Ads', icon: '📱', route: '/ads/digital' },
+                    { name: 'Campaigns', icon: '📺', route: '/ads/campaigns' },
+                    { name: 'ROI Analysis', icon: '📊', route: '/ads/roi' }
+                ]
+            },
+            'Content': {
+                icon: '📝',
+                color: '#dc2626',
+                items: [
+                    { name: 'Articles', icon: '✍️', route: '/content/articles' },
+                    { name: 'Media Library', icon: '🎨', route: '/content/media' },
+                    { name: 'Content Schedule', icon: '📅', route: '/content/schedule' }
+                ]
+            },
+            'Marketing': {
+                icon: '🎯',
+                color: '#2563eb',
+                items: [
+                    { name: 'Email Marketing', icon: '📧', route: '/marketing/email' },
+                    { name: 'Campaigns', icon: '🎯', route: '/marketing/campaigns' },
+                    { name: 'Analytics', icon: '📊', route: '/marketing/analytics' }
+                ]
+            },
+            'Social Media': {
+                icon: '📱',
+                color: '#d97706',
+                items: [
+                    { name: 'Facebook', icon: '📘', route: '/social/facebook' },
+                    { name: 'Instagram', icon: '📷', route: '/social/instagram' },
+                    { name: 'Twitter', icon: '🐦', route: '/social/twitter' }
+                ]
+            },
+            'Videos': {
+                icon: '🎬',
+                color: '#ea580c',
+                items: [
+                    { name: 'Video Library', icon: '🎥', route: '/videos/library' },
+                    { name: 'Views Analytics', icon: '▶️', route: '/videos/analytics' },
+                    { name: 'Engagement', icon: '👍', route: '/videos/engagement' }
+                ]
+            },
+            'Logistics': {
+                icon: '🚚',
+                color: '#4f46e5',
+                items: [
+                    { name: 'Shipments', icon: '📦', route: '/logistics/shipments' },
+                    { name: 'Tracking', icon: '🚛', route: '/logistics/tracking' },
+                    { name: 'Delivery Status', icon: '📍', route: '/logistics/delivery' }
+                ]
+            }
+        };
+
+        // Open menu modal
+        function openModal(category) {
+            const modal = document.getElementById('menuModal');
+            const modalIcon = document.getElementById('modalIcon');
+            const modalCategory = document.getElementById('modalCategory');
+            const menuGrid = document.getElementById('menuGrid');
+            const menuSearch = document.getElementById('menuSearch');
+
+            // Set modal title and icon
+            const categoryData = menuData[category];
+            if (categoryData) {
+                modalIcon.textContent = categoryData.icon;
+                modalCategory.textContent = category;
+                
+                // Clear search
+                menuSearch.value = '';
+                
+                // Generate menu items
+                let html = '';
+                if (categoryData.items && categoryData.items.length > 0) {
+                    categoryData.items.forEach(item => {
+                        html += `
+                            <a href="${item.route}" class="menu-item">
+                                <div class="menu-item-icon">${item.icon}</div>
+                                <div class="menu-item-text">${item.name}</div>
+                                <i class="ri-arrow-right-line menu-item-arrow"></i>
+                            </a>
+                        `;
+                    });
+                } else {
+                    html = `
+                        <div class="no-items">
+                            <i class="ri-inbox-line"></i>
+                            <p>No items available in this category</p>
+                        </div>
+                    `;
+                }
+                
+                menuGrid.innerHTML = html;
+            }
+            
+            // Show modal
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        // Close menu modal
+        function closeMenuModal() {
+            const modal = document.getElementById('menuModal');
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        // Filter menu items
+        function filterMenuItems() {
+            const searchInput = document.getElementById('menuSearch');
+            const filter = searchInput.value.toLowerCase();
+            const menuItems = document.querySelectorAll('.menu-item');
+            
+            menuItems.forEach(item => {
+                const text = item.querySelector('.menu-item-text').textContent.toLowerCase();
+                if (text.includes(filter)) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        // Close modal when clicking outside
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('menuModal');
+            if (e.target === modal) {
+                closeMenuModal();
             }
         });
     </script>
