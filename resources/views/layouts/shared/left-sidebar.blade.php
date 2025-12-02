@@ -1271,7 +1271,7 @@
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#tiktok-web-ads" aria-expanded="false"
                                 aria-controls="tiktok-web-ads" class="side-nav-link">
-                                <span>Tiktok Web Ads</span>
+                                <span>Tiktok Ads Manager</span>
                                 <span class="menu-arrow"></span>
                             </a>
                             <div class="collapse" id="tiktok-web-ads">
@@ -1285,6 +1285,8 @@
                                         <a href="{{ route('tk.img.caraousal.to.web') }}">Tiktok Img Caraousal to
                                             Web</a>
                                     </li>
+                                    <li><a href="{{ url('tiktok-gmv-max') }}">Tiktok GMV MAX</a></li>
+                                    <li><a href="{{ url('tiktok-video-ad-analytics') }}">Tiktok VIDEO AD</a></li>
                                 </ul>
                             </div>
                         </li>

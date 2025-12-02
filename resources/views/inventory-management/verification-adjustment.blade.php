@@ -2053,6 +2053,7 @@
                     success: function(response) {
                         if (response && response.data) {
                             console.log('FULL API RESPONSE:', response);
+                            
                             tableData = response.data.map((item, index) => {
                                 const INV = parseFloat(item.INV) || 0;
                                 const L30 = parseFloat(item.L30) || 0;
@@ -2061,6 +2062,7 @@
                                 if (INV !== 0) {
                                     DIL = (L30 / INV).toFixed(2);
                                 }
+                                
                                 return {
                                     // sl_no: index + 1, // Serial number
                                     IMAGE_URL: item.IMAGE_URL || '',
@@ -2089,15 +2091,18 @@
                                     is_parent: (() => {
                                         const skuVal = (item.sku || item.SKU || '').toString().trim().toUpperCase();
                                         const parentVal = (item.Parent || item.parent || item.parent_asin || item.Parent_ASIN || '').toString().trim().toUpperCase();
-                                        return skuVal.startsWith('PARENT') || (skuVal !== '' && skuVal === parentVal);
+                                        // Only treat as parent if SKU explicitly starts with 'PARENT'
+                                        // Don't treat standalone SKUs (where SKU === Parent) as parents
+                                        return skuVal.startsWith('PARENT');
                                     })(),
 
                                     raw_data: item || {} // Full original row, in case needed later
                                 };
                             });
 
-                            // filteredData = [...tableData];
-                            filteredData = tableData.filter(row => row.ON_HAND !== "N/A");
+                            // Show all products from product_master, including those without Shopify data
+                            filteredData = [...tableData];
+                            // filteredData = tableData.filter(row => row.ON_HAND !== "N/A");
 
                             renderTable(filteredData);
                            

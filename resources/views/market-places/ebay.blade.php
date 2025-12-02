@@ -5,55 +5,90 @@
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ asset('css/ebay-table-compact.css') }}">
     <style>
         /* ========== TABLE STRUCTURE ========== */
         .table-container {
             overflow-x: auto;
             overflow-y: visible;
             position: relative;
-            max-height: 600px;
+            max-height: 650px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
         .custom-resizable-table {
             width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
             margin: 0;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
         }
 
         .custom-resizable-table th,
         .custom-resizable-table td {
-            padding: 12px 15px;
+            padding: 14px 16px;
             text-align: left;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid #f0f0f0;
+            border-right: 1px solid #f0f0f0;
             position: relative;
             white-space: nowrap;
             overflow: visible !important;
+            transition: background-color 0.2s ease;
+        }
+
+        .custom-resizable-table th:last-child,
+        .custom-resizable-table td:last-child {
+            border-right: none;
+        }
+
+        .custom-resizable-table tbody tr:hover {
+            background-color: #f8f9ff;
         }
 
         .custom-resizable-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
+            background: #00d5d5;
+            font-weight: 700;
+            font-size: 13px;
+            color: #000000;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             user-select: none;
             position: sticky;
             top: 0;
             z-index: 10;
+            border-bottom: 2px solid #3b82f6;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
         /* ========== RESIZABLE COLUMNS ========== */
         .resize-handle {
             position: absolute;
             top: 0;
-            right: 0;
-            width: 5px;
+            right: -3px;
+            width: 6px;
             height: 100%;
-            background: rgba(0, 0, 0, 0.1);
+            background: linear-gradient(180deg, rgba(59, 130, 246, 0.3) 0%, rgba(59, 130, 246, 0.5) 100%);
             cursor: col-resize;
-            z-index: 100;
+            z-index: 1000;
+            border-radius: 3px;
+            opacity: 0;
+            transition: all 0.25s ease;
+        }
+
+        .custom-resizable-table th:hover .resize-handle {
+            opacity: 1;
         }
 
         .resize-handle:hover,
         .resize-handle.resizing {
-            background: rgba(0, 0, 0, 0.3);
+            background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+            opacity: 1;
+            width: 8px;
+            right: -4px;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
         }
 
         /* ========== TOOLTIP SYSTEM ========== */
@@ -96,38 +131,47 @@
 
         .dil-percent-value {
             display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: all 0.25s ease;
+            cursor: default;
+        }
+
+        .dil-percent-value:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
         }
 
         .dil-percent-value.red {
-            background-color: #dc3545;
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
             color: white;
         }
 
         .dil-percent-value.blue {
-            background-color: #3591dc;
+            background: linear-gradient(135deg, #3591dc 0%, #2875b8 100%);
             color: white;
         }
 
         .dil-percent-value.yellow {
-            background-color: #ffc107;
+            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
             color: #212529;
         }
 
         .dil-percent-value.green {
-            background-color: #28a745;
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
             color: white;
         }
 
         .dil-percent-value.pink {
-            background-color: #e83e8c;
+            background: linear-gradient(135deg, #e83e8c 0%, #d02670 100%);
             color: white;
         }
 
         .dil-percent-value.gray {
-            background-color: #6c757d;
+            background: linear-gradient(135deg, #6c757d 0%, #545b62 100%);
             color: white;
         }
 
@@ -156,7 +200,18 @@
 
         /* ========== PARENT ROWS ========== */
         .parent-row {
-            background-color: rgba(69, 233, 255, 0.1) !important;
+            background: linear-gradient(135deg, rgba(69, 233, 255, 0.15) 0%, rgba(69, 233, 255, 0.05) 100%) !important;
+            font-weight: 600;
+            border-left: 4px solid #3b82f6;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .parent-row:hover {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.08) 100%) !important;
+            border-left-color: #2563eb;
+            box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
+            transform: translateX(2px);
         }
 
         /* ========== SKU TOOLTIPS ========== */
@@ -279,6 +334,19 @@
 
         /* ========== CARD BODY ========== */
         .card-body {
+            position: relative;
+        }
+        
+        /* ========== RESIZING FEEDBACK ========== */
+        .custom-resizable-table.resizing-active {
+            pointer-events: none;
+        }
+        
+        .custom-resizable-table.resizing-active .resize-handle.resizing {
+            pointer-events: all;
+        }
+        
+        .custom-resizable-table th {
             position: relative;
         }
 
@@ -901,6 +969,33 @@
             display: none !important;
         }
 
+        /* NRL/REQ Dropdown Styling */
+        .nr-req-dropdown {
+            width: 100%;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        .nr-req-dropdown .req-option {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .nr-req-dropdown .nr-option {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .nr-req-dropdown option {
+            padding: 4px 8px;
+            font-weight: bold;
+        }
+
         /*popup modal style end */
     </style>
 @endsection
@@ -943,8 +1038,11 @@
                             style="font-size: 1rem; border-radius: 8px;">
                             SOLD - <span id="sold-count">0</span>
                         </div>
-                        <div class="badge bg-danger text-white px-3 py-2" style="font-size: 1rem; border-radius: 8px;">
+                        <div class="badge bg-danger text-white px-3 py-2 me-2" style="font-size: 1rem; border-radius: 8px;">
                             RED MARGIN - <span id="red-margin-count">0</span>
+                        </div>
+                        <div class="badge bg-warning text-dark px-3 py-2" style="font-size: 1rem; border-radius: 8px;">
+                            NRA - <span id="nra-count">0</span>
                         </div>
                     </div>
                     <div id="" class="d-flex align-items-right">
@@ -1166,6 +1264,36 @@
                                 </ul>
                             </div>
 
+                            <!-- NRA Filter -->
+                            <div class="dropdown manual-dropdown-container">
+                                <button class="btn btn-light dropdown-toggle" type="button" id="nraFilterDropdown">
+                                    <span class="status-circle default"></span> NRA
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="nraFilterDropdown">
+                                    <li><a class="dropdown-item nra-filter" href="#" data-value="all">
+                                            <span class="status-circle default"></span> All</a></li>
+                                    <li><a class="dropdown-item nra-filter" href="#" data-value="RA">
+                                            <span class="status-circle green"></span> RA</a></li>
+                                    <li><a class="dropdown-item nra-filter" href="#" data-value="NRA">
+                                            <span class="status-circle red"></span> NRA</a></li>
+                                </ul>
+                            </div>
+
+                            <!-- NRL/REQ Filter -->
+                            <div class="dropdown manual-dropdown-container">
+                                <button class="btn btn-light dropdown-toggle" type="button" id="nrlReqFilterDropdown">
+                                    <span class="status-circle default"></span> NRL/REQ
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="nrlReqFilterDropdown">
+                                    <li><a class="dropdown-item nrl-req-filter" href="#" data-value="all">
+                                            <span class="status-circle default"></span> All</a></li>
+                                    <li><a class="dropdown-item nrl-req-filter" href="#" data-value="REQ">
+                                            <span class="status-circle green"></span> REQ</a></li>
+                                    <li><a class="dropdown-item nrl-req-filter" href="#" data-value="NR">
+                                            <span class="status-circle red"></span> NRL</a></li>
+                                </ul>
+                            </div>
+
                             <!-- Task Board Button -->
                             <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal"
                                 data-bs-target="#createTaskModal">
@@ -1344,18 +1472,18 @@
                                             name="excel_file" accept=".xlsx,.xls,.csv" required>
                                     </div>
 
-                                    <!-- Close All Modals Button -->
-                                    <button id="close-all-modals" class="btn btn-danger btn-sm" style="display: none;">
-                                        <i class="fas fa-times"></i> Close All Modals
-                                        <!-- Sample File Link -->
-                                        <div class="alert alert-info">
-                                            <small>
-                                                <i class="fas fa-info-circle me-1"></i>
-                                                Download the <a href="{{ route('ebay.analytics.sample') }}"
-                                                    class="alert-link">sample file</a>
-                                                to see the required format. Columns should be: SKU, Listed, Live.
-                                            </small>
+                                    <!-- Sample File Section -->
+                                    <div class="alert alert-info">
+                                        <small>
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            Download the sample file to see the required format. Columns should be: SKU, Listed, Live.
+                                        </small>
+                                        <div class="mt-2">
+                                            <button type="button" class="btn btn-sm btn-outline-info" id="downloadSampleBtn">
+                                                <i class="fas fa-download me-1"></i> Download Sample File
+                                            </button>
                                         </div>
+                                    </div>
                                 </div>
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-secondary"
@@ -1458,7 +1586,7 @@
                         <table class="custom-resizable-table" id="ebay-table">
                             <thead>
                                 <tr>
-                                    <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th>
+                                    <th data-field="sl_no" style="min-width: 70px; width: 70px;">SL No. <span class="sort-arrow">↓</span></th>
                                     <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center sortable-header">
@@ -1472,7 +1600,7 @@
                                         </div>
                                     </th>
                                     <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center sortable">
+                                        <div class="d-flex flex-column align-items-center sortable" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 Sku <span class="sort-arrow">↓</span>
                                             </div>
@@ -1481,9 +1609,11 @@
                                                     placeholder="Search SKU..." id="skuSearch">
                                                 <div class="dropdown-search-results" id="skuSearchResults"></div>
                                             </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="sku-total">0</div>
                                         </div>
                                     </th>
-                                    <th data-field="inv" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="inv" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 INV <span class="sort-arrow">↓</span>
@@ -1528,9 +1658,29 @@
                                             <div class="metric-total" id="eDil-total">0%</div>
                                         </div>
                                     </th>
-                                    <th data-field="NRA">NRA</th>
+                                    <th data-field="NRA" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                NRA
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="nra-col-count">0</div>
+                                        </div>
+                                    </th>
 
-                                    <th data-field="listed" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap; min-width: 100px; width: 100px;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                NRL/REQ
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="req-total"
+                                                style="display:inline-block; background:#43dc35; color:white; border-radius:8px; padding:6px 12px; font-weight:600; font-size:13px;">
+                                                0</div>
+                                        </div>
+                                    </th>
+
+                                    <th data-field="listed" class="hide-column" style="vertical-align: middle; white-space: nowrap; min-width: 90px; width: 90px;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 LISTED <span class="sort-arrow">↓</span>
@@ -1540,7 +1690,7 @@
                                         </div>
                                     </th>
 
-                                    <th data-field="live" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="live" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 LIVE <span class="sort-arrow">↓</span>
@@ -1550,7 +1700,7 @@
                                         </div>
                                     </th>
 
-                                    <th>Hide</th>
+                                    <th style="min-width: 60px; width: 60px; text-align: center;">Hide</th>
 
                                     <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
@@ -1589,6 +1739,8 @@
                                             <div class="d-flex align-items-center">
                                                 PFT
                                             </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="gpft-total">0%</div>
                                         </div>
                                     </th>
                                     <th data-field="tprft" style="vertical-align: middle; white-space: nowrap;">
@@ -1803,7 +1955,7 @@
                     }
 
                     $.ajax({
-                        url: '/update-all-ebay-one-skus',
+                        url: '/update-all-ebay1-skus',
                         type: 'POST',
                         data: {
                             type: 'percentage',
@@ -1847,7 +1999,7 @@
 
                     // Ad Updates
                     $.ajax({
-                        url: '/update-all-ebay-one-skus',
+                        url: '/update-all-ebay1-skus',
                         type: 'POST',
                         data: {
                             type: 'ad_updates',
@@ -1951,6 +2103,8 @@
                     'Roi': 'all',
                     'Tacos30': 'all',
                     'SCVR': 'all',
+                    'NRA': 'all',
+                    'NRL_REQ': 'all',
                     'entryType': 'all'
                 }
             };
@@ -2345,6 +2499,7 @@
                     initRAEditHandlers(); // Add this line
                     initCheckBoxEditHandlers();
                     initNRSelectChangeHandler();
+                    initNRReqChangeHandler();
 
                 });
             }
@@ -2464,6 +2619,8 @@
                                         .toUpperCase().includes("PARENT") : false,
                                     raw_data: item || {},
                                     NR: item.NR || '',
+                                    UI_NR: item.NR || 'RA', // Initialize UI_NR with NR value or default to 'RA'
+                                    nr_req: item.nr_req || 'REQ', // Default to 'REQ' if not set
                                     listed: listedVal,
                                     live: liveVal,
                                     Hide: item.Hide !== undefined ? item.Hide : '',
@@ -2476,7 +2633,7 @@
 
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
-                                    spend_l30: item.spend_l30 || 0,
+                                    spend_l30: item.AD_Spend_L30 || 0,
                                 };
                             });
 
@@ -2500,6 +2657,7 @@
                 let zeroSold = 0;
                 let totalSku = 0;
                 let lowProfitCount = 0;
+                let nraCount = 0;
 
                 filteredData.forEach(item => {
                     if (!item.is_parent) {
@@ -2508,13 +2666,13 @@
                         const pftDecimal = parseFloat(item['PFT %']) || 0;
                         const pftPercentage = pftDecimal * 100;
 
-
                         if (l30 === 0 && inv > 0) zeroSold++;
-
                         totalSku++;
-
                         if (pftPercentage < 10) {
                             lowProfitCount++;
+                        }
+                        if (item.NR === 'NRA') {
+                            nraCount++;
                         }
                     }
                 });
@@ -2522,6 +2680,7 @@
                 $('#zero-sold-count').text(zeroSold);
                 $('#sold-count').text(totalSku - zeroSold);
                 $('#red-margin-count').text(lowProfitCount);
+                $('#nra-count').text(nraCount);
 
                 updateRedMarginDataToChannelMaster(lowProfitCount);
             }
@@ -2556,12 +2715,12 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="16" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="16" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
@@ -2646,62 +2805,87 @@
                     $row.append($('<td>').text(item['Sl']));
                     $row.append($('<td>').text(item.Parent));
 
-                    // SKU with hover content for links
-                    const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
+                    // SKU with hover content for links and copy button
+                    const $skuCell = $('<td>').addClass('skuColumn').css('position', 'relative');
+                    const skuValue = item['(Child) sku'];
+                    
                     if (item.is_parent) {
-                        $skuCell.html(`<strong>${item['(Child) sku']}</strong>`);
+                        $skuCell.html(`
+                            <div class="d-flex align-items-center justify-content-between">
+                                <strong>${skuValue}</strong>
+                                <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                        data-sku="${skuValue}" 
+                                        title="Copy SKU"
+                                        style="padding: 2px 6px; margin-left: 5px;">
+                                    <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                </button>
+                            </div>
+                        `);
                     } else {
-                        const imageUrl = item.raw_data.image || '';
                         const buyerLink = item.raw_data['B Link'] || '';
-                        const sellerLink = item.raw_data['S Link'] || '';
-
-                        if (buyerLink || sellerLink || imageUrl) {
+                        if (buyerLink) {
                             $skuCell.html(`
-                                <div class="sku-tooltip-container">
-                                    <span class="sku-text">${item['(Child) sku']}</span>
-                                    <div class="sku-tooltip">
-                                        ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
-                                        ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
-                                        ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="sku-tooltip-container">
+                                        <span class="sku-text">${skuValue}</span>
+                                        <div class="sku-tooltip">
+                                            <div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>
+                                        </div>
                                     </div>
+                                    <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                            data-sku="${skuValue}" 
+                                            title="Copy SKU"
+                                            style="padding: 2px 6px; margin-left: 5px;">
+                                        <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                    </button>
                                 </div>
                             `);
                         } else {
-                            $skuCell.text(item['(Child) sku']);
+                            $skuCell.html(`
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <span>${skuValue}</span>
+                                    <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                            data-sku="${skuValue}" 
+                                            title="Copy SKU"
+                                            style="padding: 2px 6px; margin-left: 5px;">
+                                        <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                    </button>
+                                </div>
+                            `);
                         }
                     }
                     $row.append($skuCell);
 
                     // Only create the checkbox cell if navigation is active
-                    if (isNavigationActive) {
-                        const $raCell = $('<td>').addClass('ra-cell');
+                    // if (isNavigationActive) {
+                    //     const $raCell = $('<td>').addClass('ra-cell');
 
-                        if (item['R&A'] !== undefined && item['R&A'] !== null && item['R&A'] !== '') {
-                            const $container = $('<div>').addClass(
-                                'ra-edit-container d-flex align-items-center');
+                    //     if (item['R&A'] !== undefined && item['R&A'] !== null && item['R&A'] !== '') {
+                    //         const $container = $('<div>').addClass(
+                    //             'ra-edit-container d-flex align-items-center');
 
-                            // Checkbox with proper boolean value
-                            const $checkbox = $('<input>', {
-                                type: 'checkbox',
-                                checked: item['R&A'] === true || item['R&A'] === 'true' || item[
-                                    'R&A'] === '1',
-                                class: 'ra-checkbox',
-                                disabled: true
-                            }).data('original-value', item['R&A']); // Store original value
+                    //         // Checkbox with proper boolean value
+                    //         const $checkbox = $('<input>', {
+                    //             type: 'checkbox',
+                    //             checked: item['R&A'] === true || item['R&A'] === 'true' || item[
+                    //                 'R&A'] === '1',
+                    //             class: 'ra-checkbox',
+                    //             disabled: true
+                    //         }).data('original-value', item['R&A']); // Store original value
 
-                            // Edit/Save icon
-                            const $editIcon = $('<i>').addClass('fas fa-pen edit-icon ml-2 text-primary')
-                                .css('cursor', 'pointer')
-                                .attr('title', 'Edit R&A');
+                    //         // Edit/Save icon
+                    //         const $editIcon = $('<i>').addClass('fas fa-pen edit-icon ml-2 text-primary')
+                    //             .css('cursor', 'pointer')
+                    //             .attr('title', 'Edit R&A');
 
-                            $container.append($checkbox, $editIcon);
-                            $raCell.append($container);
-                        } else {
-                            $raCell.html('&nbsp;');
-                        }
+                    //         $container.append($checkbox, $editIcon);
+                    //         $raCell.append($container);
+                    //     } else {
+                    //         $raCell.html('&nbsp;');
+                    //     }
 
-                        $row.append($raCell);
-                    }
+                    //     $row.append($raCell);
+                    // }
 
                     $row.append($('<td>').text(item.INV));
                     $row.append($('<td>').text(item.L30));
@@ -2730,25 +2914,36 @@
                             item.NR : 'RA';
 
                         const adilPercent = Math.round(item['E Dil%'] * 100);
-                        if (adilPercent >= 50) {
+                        // Auto-set to NRA if E Dil% >= 50%, but only save if it's actually changing
+                        if (adilPercent >= 50 && currentNR !== 'NRA') {
                             currentNR = 'NRA';
 
-                            $.ajax({
-                                url: '/ebay/save-nr',
-                                type: 'POST',
-                                data: {
-                                    sku: item['(Child) sku'],
-                                    nr: 'NRA',
-                                    _token: $('meta[name="csrf-token"]').attr('content')
-                                },
-                                success: function(res) {
-                                    console.log("Auto NRA saved for", item['(Child) sku']);
-                                },
-                                error: function(err) {
-                                    console.error("Auto-save failed:", err);
-                                }
-                            });
+                            // Only save if SKU exists and value is actually changing
+                            if (item['(Child) sku']) {
+                                $.ajax({
+                                    url: '/ebay/save-nr',
+                                    type: 'POST',
+                                    data: {
+                                        sku: item['(Child) sku'],
+                                        nr: 'NRA',
+                                        _token: $('meta[name="csrf-token"]').attr('content')
+                                    },
+                                    success: function(res) {
+                                        // Update the item in tableData to prevent repeated saves
+                                        const foundItem = tableData.find(i => i['(Child) sku'] === item['(Child) sku']);
+                                        if (foundItem) {
+                                            foundItem.NR = 'NRA';
+                                            foundItem.UI_NR = 'NRA';
+                                        }
+                                    },
+                                    error: function(err) {
+                                        // Silent error - don't pollute console on every render
+                                    }
+                                });
+                            }
                         }
+
+                        item.UI_NR = currentNR;
 
                         const $select = $(`
                             <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
@@ -2771,16 +2966,46 @@
                         $row.append($('<td>').append($select));
                     }
 
-                    //Listed checkbox
-                    const listedVal = rawData.Listed === true || rawData.Listed === 'true' || rawData
-                        .Listed === 1 || rawData.Listed === '1';
-                    const $listedCb = $('<input>', {
-                        type: 'checkbox',
-                        class: 'listed-checkbox',
-                        checked: listedVal
-                    }).data('sku', item['(Child) sku']);
+                    // NRL/REQ dropdown - only for non-parent rows
+                    if (item.is_parent) {
+                        $row.append($('<td>')); // Empty cell for parent
+                    } else {
+                        // Set default value for nr_req if missing
+                        let currentNrReq = (item.nr_req === 'REQ' || item.nr_req === 'NR') ? item.nr_req : 'REQ';
 
-                    $row.append($('<td>').append($listedCb));
+                        const $nrReqSelect = $(`
+                            <select class="form-select form-select-sm nr-req-dropdown" style="min-width: 100px;">
+                                <option value="REQ" class="req-option">REQ</option>
+                                <option value="NR" class="nr-option">NRL</option>
+                            </select>
+                        `);
+
+                        // Set initial value
+                        $nrReqSelect.val(currentNrReq);
+
+                        // Set background color based on value
+                        if (currentNrReq === 'REQ') {
+                            $nrReqSelect.css('background-color', '#28a745');
+                            $nrReqSelect.css('color', '#ffffff');
+                        } else if (currentNrReq === 'NR') {
+                            $nrReqSelect.css('background-color', '#dc3545');
+                            $nrReqSelect.css('color', '#ffffff');
+                        }
+
+                        $nrReqSelect.data('sku', item['(Child) sku']);
+                        $row.append($('<td>').append($nrReqSelect));
+                    }
+
+                    //Listed checkbox
+                    // const listedVal = rawData.Listed === true || rawData.Listed === 'true' || rawData
+                    //     .Listed === 1 || rawData.Listed === '1';
+                    // const $listedCb = $('<input>', {
+                    //     type: 'checkbox',
+                    //     class: 'listed-checkbox',
+                    //     checked: listedVal
+                    // }).data('sku', item['(Child) sku']);
+
+                    // $row.append($('<td class="hide-column">').append($listedCb));
 
                     // Live checkbox
                     const liveVal = rawData.Live === true || rawData.Live === 'true' || rawData.Live ===
@@ -2836,8 +3061,8 @@
                     ));
 
                     $row.append($('<td>').html(
-                        `<div style="display:flex;align-items:center">
-                            <span class="sPriceText" data-sku="${item.raw_data['Item ID']}" style="min-width:100px; display:inline-block;">
+                        `<div style="display:flex;align-items:center;justify-content:center;">
+                            <span class="sPriceText" data-sku="${item.raw_data['Item ID']}" style="display:inline-block;">
                                 ` + item['eBay Price'] + `
                             </span>
                             <input 
@@ -2898,22 +3123,25 @@
                         tpft = 0;
                     }
                     
-                    $.ajax({
-                        url: '/update-ebay-nr-data',
-                        type: 'POST',
-                        data: {
-                            sku: item['(Child) sku'],
-                            field: 'TPFT',
-                            value: tpft.toFixed(2),
-                            _token: $('meta[name="csrf-token"]').attr('content')
-                        },
-                        success: function(res) {
-
-                        },
-                        error: function(err) {
-                            console.error("Auto-save failed:", err);
-                        }
-                    });
+                    // Auto-save TPFT only if SKU exists and TPFT has a valid value
+                    if (item['(Child) sku'] && !isNaN(tpft) && isFinite(tpft) && tpft !== 0) {
+                        $.ajax({
+                            url: '/update-ebay-nr-data',
+                            type: 'POST',
+                            data: {
+                                sku: item['(Child) sku'],
+                                field: 'TPFT',
+                                value: tpft.toFixed(2),
+                                _token: $('meta[name="csrf-token"]').attr('content')
+                            },
+                            success: function(res) {
+                                // Silent success
+                            },
+                            error: function(err) {
+                                // Silent error - don't pollute console on every render
+                            }
+                        });
+                    }
 
                     $row.append($('<td>').html(
                         `
@@ -3230,15 +3458,17 @@
                         success: function(response) {
                             showNotification('success', 'NR updated successfully!');
 
-                            // Update tableData and filteredData
+                            // Update tableData and filteredData - Update both NR and UI_NR
                             tableData.forEach(item => {
                                 if (item['(Child) sku'] === sku) {
                                     item.NR = newValue;
+                                    item.UI_NR = newValue; // Update UI_NR as well
                                 }
                             });
                             filteredData.forEach(item => {
                                 if (item['(Child) sku'] === sku) {
                                     item.NR = newValue;
+                                    item.UI_NR = newValue; // Update UI_NR as well
                                 }
                             });
                             calculateTotals();
@@ -3246,6 +3476,52 @@
                         },
                         error: function(xhr) {
                             showNotification('danger', 'Failed to update NR.');
+                        }
+                    });
+                });
+            }
+
+            function initNRReqChangeHandler() {
+                $(document).on('change', '.nr-req-dropdown', function() {
+                    const $select = $(this);
+                    const newValue = $select.val();
+                    const sku = $select.data('sku');
+
+                    // Change background color based on selected value
+                    if (newValue === 'REQ') {
+                        $select.css('background-color', '#28a745').css('color', '#ffffff');
+                    } else if (newValue === 'NR') {
+                        $select.css('background-color', '#dc3545').css('color', '#ffffff');
+                    }
+
+                    // Send AJAX to save NRL/REQ status
+                    $.ajax({
+                        url: '/listing_ebay/save-status',
+                        type: 'POST',
+                        data: {
+                            sku: sku,
+                            nr_req: newValue,
+                            _token: $('meta[name="csrf-token"]').attr('content')
+                        },
+                        success: function(response) {
+                            showNotification('success', 'NRL/REQ updated successfully!');
+
+                            // Update tableData and filteredData
+                            tableData.forEach(item => {
+                                if (item['(Child) sku'] === sku) {
+                                    item.nr_req = newValue;
+                                }
+                            });
+                            filteredData.forEach(item => {
+                                if (item['(Child) sku'] === sku) {
+                                    item.nr_req = newValue;
+                                }
+                            });
+                            calculateTotals();
+                            renderTable();
+                        },
+                        error: function(xhr) {
+                            showNotification('danger', 'Failed to update NRL/REQ.');
                         }
                     });
                 });
@@ -4703,54 +4979,161 @@
             function initResizableColumns() {
                 const $table = $('#ebay-table');
                 const $headers = $table.find('th');
-                let startX, startWidth, columnIndex;
+                let startX, startWidth, $currentTh, $currentTd;
+                let minColumnWidth = 80;
 
-                $headers.each(function() {
-                    $(this).append('<div class="resize-handle"></div>');
-                });
-
-                $table.on('mousedown', '.resize-handle', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    isResizing = true;
-                    $(this).addClass('resizing');
-
-                    const $th = $(this).parent();
-                    columnIndex = $th.index();
-                    startX = e.pageX;
-                    startWidth = $th.outerWidth();
-
-                    $('body').css('user-select', 'none');
-                });
-
-                $(document).on('mousemove', function(e) {
-                    if (!isResizing) return;
-
-                    const $resizer = $('.resize-handle.resizing');
-                    if ($resizer.length) {
-                        const $th = $resizer.parent();
-                        const newWidth = startWidth + (e.pageX - startX);
-                        $th.css('width', newWidth + 'px');
-                        $th.css('min-width', newWidth + 'px');
-                        $th.css('max-width', newWidth + 'px');
+                // Add resize handles to headers
+                $headers.each(function(index) {
+                    const $th = $(this);
+                    // Don't add resize handle to last column
+                    if (index < $headers.length - 1) {
+                        $th.css('position', 'relative');
+                        $th.append('<div class="resize-handle"></div>');
                     }
                 });
 
-                $(document).on('mouseup', function(e) {
-                    if (!isResizing) return;
-
+                // Mouse down on resize handle
+                $table.on('mousedown', '.resize-handle', function(e) {
+                    e.preventDefault();
                     e.stopPropagation();
-                    $('.resize-handle').removeClass('resizing');
-                    $('body').css('user-select', '');
-                    isResizing = false;
+                    
+                    isResizing = true;
+                    $(this).addClass('resizing');
+                    $currentTh = $(this).parent();
+                    
+                    startX = e.pageX;
+                    startWidth = $currentTh.outerWidth();
+                    
+                    // Find corresponding td elements
+                    const columnIndex = $currentTh.index();
+                    $currentTd = $table.find('tbody tr:first td').eq(columnIndex);
+                    
+                    // Disable text selection
+                    $('body').css({
+                        'user-select': 'none',
+                        'cursor': 'col-resize'
+                    });
+                    
+                    // Add visual feedback
+                    $table.addClass('resizing-active');
                 });
+
+                // Mouse move - resize column
+                $(document).on('mousemove.resize', function(e) {
+                    if (!isResizing || !$currentTh) return;
+                    
+                    e.preventDefault();
+                    const deltaX = e.pageX - startX;
+                    const newWidth = Math.max(minColumnWidth, startWidth + deltaX);
+                    
+                    // Apply width to header
+                    $currentTh.css({
+                        'width': newWidth + 'px',
+                        'min-width': newWidth + 'px',
+                        'max-width': newWidth + 'px'
+                    });
+                    
+                    // Apply width to all cells in this column
+                    const columnIndex = $currentTh.index();
+                    $table.find('tbody tr').each(function() {
+                        $(this).find('td').eq(columnIndex).css({
+                            'width': newWidth + 'px',
+                            'min-width': newWidth + 'px',
+                            'max-width': newWidth + 'px'
+                        });
+                    });
+                });
+
+                // Mouse up - finish resizing
+                $(document).on('mouseup.resize', function(e) {
+                    if (!isResizing) return;
+                    
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Clean up
+                    $('.resize-handle').removeClass('resizing');
+                    $table.removeClass('resizing-active');
+                    $('body').css({
+                        'user-select': '',
+                        'cursor': ''
+                    });
+                    
+                    // Reset variables
+                    isResizing = false;
+                    $currentTh = null;
+                    $currentTd = null;
+                    
+                    // Save column widths to localStorage
+                    saveColumnWidths();
+                });
+                
+                // Load saved column widths
+                loadColumnWidths();
+            }
+            
+            // Save column widths to localStorage
+            function saveColumnWidths() {
+                const $table = $('#ebay-table');
+                const $headers = $table.find('th[data-field]');
+                const widths = {};
+                
+                $headers.each(function() {
+                    const field = $(this).data('field');
+                    const width = $(this).outerWidth();
+                    if (field && width) {
+                        widths[field] = width;
+                    }
+                });
+                
+                localStorage.setItem('ebayTableColumnWidths', JSON.stringify(widths));
+            }
+            
+            // Load column widths from localStorage
+            function loadColumnWidths() {
+                const saved = localStorage.getItem('ebayTableColumnWidths');
+                if (!saved) return;
+                
+                try {
+                    const widths = JSON.parse(saved);
+                    const $table = $('#ebay-table');
+                    
+                    Object.entries(widths).forEach(([field, width]) => {
+                        const $th = $table.find(`th[data-field="${field}"]`);
+                        if ($th.length) {
+                            $th.css({
+                                'width': width + 'px',
+                                'min-width': width + 'px',
+                                'max-width': width + 'px'
+                            });
+                            
+                            // Apply to corresponding cells
+                            const columnIndex = $th.index();
+                            $table.find('tbody tr').each(function() {
+                                $(this).find('td').eq(columnIndex).css({
+                                    'width': width + 'px',
+                                    'min-width': width + 'px',
+                                    'max-width': width + 'px'
+                                });
+                            });
+                        }
+                    });
+                } catch (e) {
+                    console.error('Error loading column widths:', e);
+                }
             }
 
             // Initialize sorting functionality
             function initSorting() {
                 $('th[data-field]').addClass('sortable').on('click', function(e) {
+                    // Prevent sorting when resizing
                     if (isResizing) {
                         e.stopPropagation();
+                        return;
+                    }
+                    
+                    // Prevent sorting when clicking on resize handle
+                    if ($(e.target).hasClass('resize-handle') || $(e.target).closest('.resize-handle').length) {
                         return;
                     }
 
@@ -4971,6 +5354,46 @@
                     $('.dropdown-menu').removeClass('show');
                     applyColumnFilters();
                 });
+
+                // NRA filter
+                $('.dropdown-menu').on('click', '.nra-filter', function(e) {
+                    e.preventDefault();
+                    const $this = $(this);
+                    const value = $this.data('value');
+                    const text = $this.text().trim();
+                    
+                    // Get the color class from the status circle
+                    const $statusCircle = $this.find('.status-circle');
+                    const colorClass = $statusCircle.attr('class').replace('status-circle', '').trim() || 'default';
+
+                    $this.closest('.dropdown')
+                        .find('.dropdown-toggle')
+                        .html(`<span class="status-circle ${colorClass}"></span> NRA (${text})`);
+
+                    state.filters.NRA = value;
+                    $this.closest('.dropdown-menu').removeClass('show');
+                    applyColumnFilters();
+                });
+
+                // NRL/REQ filter
+                $('.dropdown-menu').on('click', '.nrl-req-filter', function(e) {
+                    e.preventDefault();
+                    const $this = $(this);
+                    const value = $this.data('value');
+                    const text = $this.text().trim();
+                    
+                    // Get the color class from the status circle
+                    const $statusCircle = $this.find('.status-circle');
+                    const colorClass = $statusCircle.attr('class').replace('status-circle', '').trim() || 'default';
+
+                    $this.closest('.dropdown')
+                        .find('.dropdown-toggle')
+                        .html(`<span class="status-circle ${colorClass}"></span> NRL/REQ (${text})`);
+
+                    state.filters.NRL_REQ = value;
+                    $this.closest('.dropdown-menu').removeClass('show');
+                    applyColumnFilters();
+                });
             }
 
             // Add this script after your other filter initializations:
@@ -5025,19 +5448,60 @@
 
                 // Apply other filters
                 Object.entries(state.filters).forEach(([column, filterValue]) => {
+                    // Skip if column or filterValue is undefined or null
+                    if (!column || column === 'undefined' || !filterValue || filterValue === 'undefined') {
+                        return;
+                    }
+                    
                     if (filterValue === 'all') return;
 
-                    filteredData = filteredData.filter(item => {
-                        if (column === 'entryType') {
-                            if (filterValue === 'parent') return item.is_parent;
-                            if (filterValue === 'child') return !item.is_parent;
-                            return true;
+                    // special-case: entryType
+                    if (column === 'entryType') {
+                        if (filterValue === 'parent') {
+                            filteredData = filteredData.filter(item => item.is_parent);
+                        } else if (filterValue === 'child') {
+                            filteredData = filteredData.filter(item => !item.is_parent);
                         }
+                        return;
+                    }
 
+                    // special-case: NRA -> use UI_NR (front-end selected value) only
+                    if (column === 'NRA') {
+                        filteredData = filteredData.filter(item => {
+                            // Skip parent rows - they don't have NRA dropdown
+                            if (item.is_parent) {
+                                return true; // Always show parent rows
+                            }
+                            
+                            // Only check UI_NR for child rows - this is the frontend selected value
+                            const uiNR = item.UI_NR || item.NR || 'RA';
+                            return uiNR === filterValue;
+                        });
+                        return;
+                    }
+
+                    // special-case: NRL_REQ -> filter based on nr_req field
+                    if (column === 'NRL_REQ') {
+                        filteredData = filteredData.filter(item => {
+                            // Skip parent rows - they don't have NRL/REQ dropdown
+                            if (item.is_parent) {
+                                return true; // Always show parent rows
+                            }
+                            
+                            // Check nr_req for child rows
+                            const nrReq = item.nr_req || 'NR';
+                            return nrReq === filterValue;
+                        });
+                        return;
+                    }
+
+                    // default: use getColorForColumn
+                    filteredData = filteredData.filter(item => {
                         const color = getColorForColumn(column, item);
                         return color === filterValue;
                     });
                 });
+
 
                 currentPage = 1;
                 renderTable();
@@ -5144,6 +5608,10 @@
                         listedCount: 0,
                         liveCount: 0,
                         totalSalesTotal: 0,
+                        reqCount: 0, // <-- REQ counter
+                        nrCount: 0, // <-- NR counter
+                        nraColCount: 0, // <-- NRA column counter
+                        raColCount: 0 // <-- RA column counter
                     };
 
                     filteredData.forEach(item => {
@@ -5169,6 +5637,26 @@
                         if (rawData.Live === true || rawData.Live === 'true' || rawData.Live === 1 ||
                             rawData.Live === '1') {
                             metrics.liveCount++;
+                        }
+
+                        // Count NRL/REQ entries (only for non-parent rows)
+                        if (!item.is_parent) {
+                            const nrReq = item.nr_req || 'NR';
+                            if (nrReq === 'REQ') {
+                                metrics.reqCount++;
+                            } else if (nrReq === 'NR') {
+                                metrics.nrCount++;
+                            }
+                        }
+                        
+                        // Count NRA column entries based on UI_NR (only for non-parent rows)
+                        if (!item.is_parent) {
+                            const currentNR = item.UI_NR || item.NR || 'RA';
+                            if (currentNR === 'NRA') {
+                                metrics.nraColCount++;
+                            } else if (currentNR === 'RA') {
+                                metrics.raColCount++;
+                            }
                         }
 
                         const profit = parseFloat(item.Profit) || 0;
@@ -5203,6 +5691,7 @@
                     const divisor = metrics.rowCount || 1;
 
                     // Update metric displays with correct calculations
+                    $('#sku-total').text(filteredData.length.toLocaleString());
                     $('#inv-total').text(metrics.invTotal.toLocaleString());
                     $('#ovl30-total').text(metrics.ovL30Total.toLocaleString());
                     $('#ovdil-total').text(Math.round(metrics.ovDilTotal) + '%');
@@ -5211,6 +5700,40 @@
                     $('#views-total').text(metrics.viewsTotal.toLocaleString());
                     $('#listed-total').text(metrics.listedCount.toLocaleString());
                     $('#live-total').text(metrics.liveCount.toLocaleString());
+                    
+                    // Display NRL/REQ count based on active filter
+                    const nrlReqFilter = state.filters.NRL_REQ || 'all';
+                    if (nrlReqFilter === 'REQ') {
+                        $('#req-total').text(metrics.reqCount.toLocaleString());
+                    } else if (nrlReqFilter === 'NR') {
+                        $('#req-total').text(metrics.nrCount.toLocaleString());
+                    } else {
+                        // When filter is 'all', show total REQ count
+                        $('#req-total').text(metrics.reqCount.toLocaleString());
+                    }
+                    
+                    // Display NRA column count based on active filter
+                    const nraFilter = state.filters.NRA || 'all';
+                    // If NRA filter is active, show count based on that filter
+                    if (nraFilter === 'RA') {
+                        $('#nra-col-count').text(metrics.raColCount.toLocaleString());
+                    } else if (nraFilter === 'NRA') {
+                        $('#nra-col-count').text(metrics.nraColCount.toLocaleString());
+                    } else {
+                        // When NRA filter is 'all', check if there are more RA or NRA in filtered data
+                        // This handles cases when other filters (like NRL/REQ) are active
+                        if (metrics.raColCount > 0 && metrics.nraColCount === 0) {
+                            // Only RA rows in filtered data
+                            $('#nra-col-count').text(metrics.raColCount.toLocaleString());
+                        } else if (metrics.nraColCount > 0 && metrics.raColCount === 0) {
+                            // Only NRA rows in filtered data
+                            $('#nra-col-count').text(metrics.nraColCount.toLocaleString());
+                        } else {
+                            // Mixed or default - show NRA count
+                            $('#nra-col-count').text(metrics.nraColCount.toLocaleString());
+                        }
+                    }
+                    
                     $('#sale-total').text(metrics.totalSalesTotal.toLocaleString());
 
                     $.ajax({
@@ -5244,6 +5767,7 @@
             }
 
             function resetMetricsToZero() {
+                $('#sku-total').text('0');
                 $('#inv-total').text('0');
                 $('#ovl30-total').text('0');
                 $('#ovdil-total').text('0%');
@@ -5256,6 +5780,7 @@
                 $('#cvr-total').text('0%');
                 $('#listed-total').text('0');
                 $('#live-total').text('0');
+                $('#req-total').text('0');
             }
 
             // Initialize enhanced dropdowns
@@ -5907,6 +6432,82 @@
                     notification.find('.alert').alert('close');
                 }, 3000);
             }
+            // SKU Copy functionality
+            $(document).on('click', '.copy-sku-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const sku = $(this).data('sku');
+                const button = $(this);
+                const originalIcon = button.find('i');
+                
+                // Copy to clipboard
+                if (navigator.clipboard && window.isSecureContext) {
+                    // Modern browsers
+                    navigator.clipboard.writeText(sku).then(() => {
+                        // Change icon to checkmark temporarily
+                        originalIcon.removeClass('fa-copy').addClass('fa-check');
+                        button.removeClass('btn-outline-secondary').addClass('btn-success');
+                        
+                        setTimeout(() => {
+                            originalIcon.removeClass('fa-check').addClass('fa-copy');
+                            button.removeClass('btn-success').addClass('btn-outline-secondary');
+                        }, 1000);
+                        
+                        showNotification('success', `SKU "${sku}" copied to clipboard!`);
+                    }).catch(() => {
+                        showNotification('danger', 'Failed to copy SKU to clipboard');
+                    });
+                } else {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = sku;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        // Change icon to checkmark temporarily
+                        originalIcon.removeClass('fa-copy').addClass('fa-check');
+                        button.removeClass('btn-outline-secondary').addClass('btn-success');
+                        
+                        setTimeout(() => {
+                            originalIcon.removeClass('fa-check').addClass('fa-copy');
+                            button.removeClass('btn-success').addClass('btn-outline-secondary');
+                        }, 1000);
+                        
+                        showNotification('success', `SKU "${sku}" copied to clipboard!`);
+                    } catch (err) {
+                        showNotification('danger', 'Failed to copy SKU to clipboard');
+                    }
+                    document.body.removeChild(textArea);
+                }
+            });
+
+            // Download Sample functionality
+            $(document).on('click', '#downloadSampleBtn', function(e) {
+                e.preventDefault();
+                
+                const button = $(this);
+                const originalText = button.html();
+                
+                // Show loading state
+                button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Downloading...');
+                
+                // Create a temporary link and trigger download
+                const downloadUrl = '{{ route("ebay.analytics.sample") }}';
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = 'ebay_sample.xlsx';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // Reset button state after a short delay
+                setTimeout(() => {
+                    button.prop('disabled', false).html(originalText);
+                }, 1500);
+            });
+
             // Initialize everything
             initTable();
             // Make the static Hide SKU modal draggable using the existing logic
