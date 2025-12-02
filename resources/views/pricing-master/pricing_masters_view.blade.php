@@ -2378,13 +2378,16 @@ $.ajax({
                 const roi = data[`${r.prefix}_roi`];
                 const cvr = data[`${r.prefix}_cvr`];
                 const reqCvr = data[`${r.prefix}_req_view`];
+                const advtPercent = data[`${r.prefix}_advt_percent`];
 
                 // Get LP and SHIP for GPFT calculation
                 const lp = parseFloat(data.LP) || 0;
                 const ship = parseFloat(data.SHIP) || 0;
                 
-                // Calculate GPFT%
-                const gpft = price > 0 ? (((parseFloat(price) * 0.86) - ship - lp) / parseFloat(price)) * 100 : 0;
+                // Calculate GPFT% = PFT% + ADVT%
+                // PFT comes as decimal from backend, ADVT% comes as percentage
+                const pftPercent = pft ? parseFloat(pft) * 100 : 0;
+                const gpft = pftPercent + (advtPercent || 0);
 
                 const hasAny = price != null || l30 != null || l60 != null || pft != null || roi != null;
                 if (!hasAny) return;
@@ -2538,12 +2541,12 @@ $.ajax({
                     </td>
                     <td>
                         <div class="value-indicator" style="color: ${getColor(gpft)};">
-                            ${gpft.toFixed(1)}%
+                            ${Math.round(gpft)}%
                         </div>
                     </td>
                     <td>
-                        <div class="value-indicator">
-                            0
+                        <div class="value-indicator" style="color: ${getColor(advtPercent)};">
+                            ${advtPercent !== null && advtPercent !== undefined ? advtPercent.toFixed(2) + '%' : '-'}
                         </div>
                     </td>
                     <td>
