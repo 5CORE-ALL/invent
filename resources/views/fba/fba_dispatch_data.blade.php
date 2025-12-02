@@ -119,6 +119,34 @@
         </div>
     </div>
 
+    <!-- SKU Metrics Chart Modal -->
+    <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Metrics Chart for <span id="modalSkuName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Date Range:</label>
+                        <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                            <option value="7" selected>Last 7 Days</option>
+                            <option value="14">Last 14 Days</option>
+                            <option value="30">Last 30 Days</option>
+                        </select>
+                    </div>
+                    <div id="chart-no-data-message" class="alert alert-info" style="display: none;">
+                        No historical data available for this SKU. Data will appear after running the metrics collection command.
+                    </div>
+                    <div style="height: 400px;">
+                        <canvas id="skuMetricsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Import Modal -->
     <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
@@ -182,7 +210,259 @@
 
     @section('script-bottom')
         <script>
+            // SKU-specific chart
+            let skuMetricsChart = null;
+            let currentSku = null;
+
+            function initSkuMetricsChart() {
+                const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+                skuMetricsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                label: 'Price (USD)',
+                                data: [],
+                                borderColor: '#FF0000',
+                                backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Views',
+                                data: [],
+                                borderColor: '#0000FF',
+                                backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'CVR%',
+                                data: [],
+                                borderColor: '#008000',
+                                backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y1',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'TACOS%',
+                                data: [],
+                                borderColor: '#FFD700',
+                                backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y1',
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 15,
+                                    font: {
+                                        size: 12
+                                    }
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'FBA SKU Metrics',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                },
+                                padding: {
+                                    top: 10,
+                                    bottom: 20
+                                }
+                            },
+                            tooltip: {
+                                enabled: true,
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        let value = context.parsed.y || 0;
+                                        
+                                        if (label.includes('Price')) {
+                                            return label + ': $' + value.toFixed(2);
+                                        } else if (label.includes('Views')) {
+                                            return label + ': ' + value.toLocaleString();
+                                        } else if (label.includes('CVR')) {
+                                            return label + ': ' + value.toFixed(1) + '%';
+                                        } else if (label.includes('TACOS')) {
+                                            return label + ': ' + Math.round(value) + '%';
+                                        } else if (label.includes('%')) {
+                                            return label + ': ' + value.toFixed(2) + '%';
+                                        }
+                                        return label + ': ' + value;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Date',
+                                    font: {
+                                        size: 12,
+                                        weight: 'bold'
+                                    }
+                                },
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    }
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Price/Views',
+                                    font: {
+                                        size: 12,
+                                        weight: 'bold'
+                                    }
+                                },
+                                beginAtZero: true,
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    },
+                                    callback: function(value, index, values) {
+                                        if (values.length > 0 && Math.max(...values.map(v => v.value)) < 1000) {
+                                            return '$' + value.toFixed(0);
+                                        }
+                                        return value.toLocaleString();
+                                    }
+                                }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Percent (%)',
+                                    font: {
+                                        size: 12,
+                                        weight: 'bold'
+                                    }
+                                },
+                                beginAtZero: true,
+                                grid: {
+                                    drawOnChartArea: false,
+                                },
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    },
+                                    callback: function(value) {
+                                        return value.toFixed(0) + '%';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function loadSkuMetricsData(sku, days = 7) {
+                console.log('Loading metrics data for SKU:', sku, 'Days:', days);
+                fetch(`/fba-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Metrics data received:', data);
+                        if (skuMetricsChart) {
+                            if (!data || data.length === 0) {
+                                console.warn('No data returned for SKU:', sku);
+                                $('#chart-no-data-message').show();
+                                skuMetricsChart.data.labels = [];
+                                skuMetricsChart.data.datasets.forEach(dataset => {
+                                    dataset.data = [];
+                                });
+                                skuMetricsChart.options.plugins.title.text = 'FBA Metrics';
+                                skuMetricsChart.update();
+                                return;
+                            }
+                            
+                            $('#chart-no-data-message').hide();
+                            skuMetricsChart.options.plugins.title.text = `FBA Metrics (${days} Days)`;
+                            skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
+                            skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
+                            skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
+                            skuMetricsChart.data.datasets[2].data = data.map(d => d.cvr_percent || 0);
+                            skuMetricsChart.data.datasets[3].data = data.map(d => d.tacos_percent || 0);
+                            skuMetricsChart.update('active');
+                            console.log('Chart updated successfully with', data.length, 'data points');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading SKU metrics data:', error);
+                        alert('Error loading metrics data. Please check console for details.');
+                    });
+            }
+
             $(document).ready(function() {
+                // Initialize SKU metrics chart
+                initSkuMetricsChart();
+
+                // SKU chart days filter
+                $('#sku-chart-days-filter').on('change', function() {
+                    const days = $(this).val();
+                    if (currentSku) {
+                        if (skuMetricsChart) {
+                            skuMetricsChart.options.plugins.title.text = `FBA Metrics (${days} Days)`;
+                            skuMetricsChart.update();
+                        }
+                        loadSkuMetricsData(currentSku, days);
+                    }
+                });
+
+                // Event delegation for eye button clicks
+                $(document).on('click', '.view-sku-chart', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const sku = $(this).data('sku');
+                    currentSku = sku;
+                    $('#modalSkuName').text(sku);
+                    $('#sku-chart-days-filter').val('7');
+                    $('#chart-no-data-message').hide();
+                    loadSkuMetricsData(sku, 7);
+                    $('#skuMetricsModal').modal('show');
+                });
+
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
                     layout: "fitData",
@@ -218,7 +498,20 @@
                             headerFilterPlaceholder: "Search SKU...",
                             cssClass: "font-weight-bold",
                             tooltip: true,
-                            frozen: true
+                            frozen: true,
+                            formatter: function(cell) {
+                                const fbaSku = cell.getValue();
+                                const sku = cell.getRow().getData().SKU;
+                                const ratings = cell.getRow().getData().Ratings;
+                                if (!fbaSku || cell.getRow().getData().is_parent) return fbaSku;
+                                
+                                let ratingDisplay = '';
+                                if (ratings && ratings > 0) {
+                                    ratingDisplay = ` <i class="fa fa-star" style="color: orange;"></i> ${ratings}`;
+                                }
+                                
+                                return `${fbaSku}${ratingDisplay} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                            }
                         },
 
                         {
