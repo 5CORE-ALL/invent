@@ -2120,6 +2120,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/tk-img-caraousal-to-web-data', 'TkImgCaraousalToWebData')->name('tk.img.caraousal.to.web.data');
         Route::get('/tiktok-gmv-ads', 'tiktokGMVAds')->name('tiktok.gmv.ads');
         Route::get('/tiktok-gmv-ads-data', 'tiktokGMVAdsData')->name('tiktok.gmv.ads.data');
+        Route::get('/tiktok-gmv-max', 'tiktokGmvMax')->name('tiktok.gmv.max');
+        Route::get('/tiktok-gmv-max-data', 'tiktokGmvMaxData')->name('tiktok.gmv.max.data');
+        Route::get('/tiktok-video-ad-analytics', 'tiktokVideoAd')->name('tiktok.video.ad.analytics');
+        Route::get('/tiktok-video-ad-analytics-data', 'tiktokVideoAdData')->name('tiktok.video.ad.analytics.data');
         Route::post('/tiktok/import', 'import')->name('tiktok.import');
         Route::post('/tiktok-gmv-ad/update-status', 'updateGMVAdStatus')->name('tiktok.gmv.ad.update.status');
     });

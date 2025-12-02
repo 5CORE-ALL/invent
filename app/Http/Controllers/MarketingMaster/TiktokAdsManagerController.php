@@ -376,4 +376,90 @@ class TiktokAdsManagerController extends Controller
         return response()->json(['message' => 'Status updated successfully']);
     }
 
+    public function tiktokGmvMax() {
+        $latestUpdatedAt = TiktokGmvAd::latest('updated_at')->first();
+
+        $formattedDate = $latestUpdatedAt
+            ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A')
+            : null;
+
+        return view('marketing-masters.tiktok_shop_ads.tiktok-gmv-max', [
+            'latestUpdatedAt' => $formattedDate,
+        ]);
+    }
+
+    public function tiktokGmvMaxData() {
+        $productMasters = DB::table('product_master')->orderBy('id', 'asc')->get();
+
+        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $result = [];
+
+        foreach ($productMasters as $pm) {
+            $sku = strtoupper($pm->sku);
+            $parent = $pm->parent;
+
+            $shopify = $shopifyData[$pm->sku] ?? null;
+
+            $row = [];
+            $row['parent'] = $parent;
+            $row['sku']    = $pm->sku;
+            $row['INV']    = $shopify->inv ?? 0;
+            $row['L30']    = $shopify->quantity ?? 0;
+
+            $result[] = (object) $row;
+        }
+
+        return response()->json([
+            'message' => 'Data fetched successfully',
+            'data'    => $result,
+            'status'  => 200,
+        ]);
+    }
+
+    public function tiktokVideoAd() {
+        $latestUpdatedAt = TiktokGmvAd::latest('updated_at')->first();
+
+        $formattedDate = $latestUpdatedAt
+            ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A')
+            : null;
+
+        return view('marketing-masters.tiktok_shop_ads.tiktok-video-ad', [
+            'latestUpdatedAt' => $formattedDate,
+        ]);
+    }
+
+    public function tiktokVideoAdData() {
+        $productMasters = DB::table('product_master')->orderBy('id', 'asc')->get();
+
+        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $result = [];
+
+        foreach ($productMasters as $pm) {
+            $sku = strtoupper($pm->sku);
+            $parent = $pm->parent;
+
+            $shopify = $shopifyData[$pm->sku] ?? null;
+
+            $row = [];
+            $row['parent'] = $parent;
+            $row['sku']    = $pm->sku;
+            $row['INV']    = $shopify->inv ?? 0;
+            $row['L30']    = $shopify->quantity ?? 0;
+
+            $result[] = (object) $row;
+        }
+
+        return response()->json([
+            'message' => 'Data fetched successfully',
+            'data'    => $result,
+            'status'  => 200,
+        ]);
+    }
+
 }
