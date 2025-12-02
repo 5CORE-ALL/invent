@@ -83,8 +83,32 @@ class FetchTemuMetrics extends Command
         }
 
         $this->info("Credentials found - App Key: " . substr($appKey, 0, 10) . "...");
+        $this->line("Full App Key: " . $appKey);
         $this->line("Access Token: " . substr($accessToken, 0, 15) . "...");
+        $this->line("Full Access Token: " . $accessToken);
         $this->line("Secret Key: " . substr($appSecret, 0, 10) . "...");
+        $this->line("Full Secret: " . $appSecret);
+        
+        // Verify exact match with expected values
+        $expectedAppKey = "6262ed18350450f708c3ed19faee7fdu";
+        $expectedSecret = "26971aaf2ddd3c16213d88a5da1f8f65aa724832";
+        $expectedToken = "upldldgr3z4kkxevvrenm6kk3sd1hufnahzenwyiwz4priye9uzfbfwntks";
+        
+        if ($appKey !== $expectedAppKey) {
+            $this->error("⚠️ APP_KEY MISMATCH!");
+            $this->line("Expected: " . $expectedAppKey);
+            $this->line("Got:      " . $appKey);
+        }
+        if ($appSecret !== $expectedSecret) {
+            $this->error("⚠️ SECRET_KEY MISMATCH!");
+            $this->line("Expected: " . $expectedSecret);
+            $this->line("Got:      " . $appSecret);
+        }
+        if ($accessToken !== $expectedToken) {
+            $this->error("⚠️ ACCESS_TOKEN MISMATCH!");
+            $this->line("Expected: " . $expectedToken);
+            $this->line("Got:      " . $accessToken);
+        }
         
         // Test API connection with a simple call
         $this->info("Testing API connection...");
