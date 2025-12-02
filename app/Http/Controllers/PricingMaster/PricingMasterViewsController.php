@@ -496,15 +496,15 @@ class PricingMasterViewsController extends Controller
             // Fetch eBay Priority campaigns - only for SKUs in our list
             // Use LIKE queries with OR conditions for better memory efficiency
             if (count($nonParentSkus) > 0 && count($nonParentSkus) <= 100) {
-                // For small SKU lists, use whereIn with campaign_id LIKE matching
+                // For small SKU lists, use whereIn with campaign_name LIKE matching
                 $ebayPriorityCampaigns = EbayPriorityReport::where('report_range', 'L30')
                     ->whereIn('channels', ['ebay1', 'ebay2', 'ebay3'])
                     ->where(function($query) use ($nonParentSkus) {
                         foreach (array_slice($nonParentSkus, 0, 50) as $sku) { // Limit to first 50 SKUs
-                            $query->orWhere('campaign_id', 'LIKE', "%{$sku}%");
+                            $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
                         }
                     })
-                    ->select('campaign_id', 'channels', 'cpc_ad_fees_payout_currency', 'cpc_sale_amount_payout_currency')
+                    ->select('campaign_name', 'channels', 'cpc_ad_fees_payout_currency', 'cpc_sale_amount_payout_currency')
                     ->get();
             }
         } catch (Exception $e) {
@@ -715,7 +715,7 @@ class PricingMasterViewsController extends Controller
             try {
                 // eBay 1 ads calculation (using total revenue as denominator - matches EbayController)
                 $ebayKwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
-                    return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay1';
+                    return strtoupper(trim($c->campaign_name)) === strtoupper(trim($sku)) && $c->channels === 'ebay1';
                 });
                 
                 $ebayMetric = $ebayMetrics[$sku] ?? null;
@@ -746,7 +746,7 @@ class PricingMasterViewsController extends Controller
             try {
                 // eBay 2 ads calculation (using total revenue as denominator - matches EbayController)
                 $ebay2KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
-                    return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay2';
+                    return strtoupper(trim($c->campaign_name)) === strtoupper(trim($sku)) && $c->channels === 'ebay2';
                 });
                 
                 $ebayMetric = $ebayMetrics[$sku] ?? null;
@@ -777,7 +777,7 @@ class PricingMasterViewsController extends Controller
             try {
                 // eBay 3 ads calculation (using total revenue as denominator - matches EbayController)
                 $ebay3KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
-                    return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay3';
+                    return strtoupper(trim($c->campaign_name)) === strtoupper(trim($sku)) && $c->channels === 'ebay3';
                 });
                 
                 $ebayMetric = $ebayMetrics[$sku] ?? null;

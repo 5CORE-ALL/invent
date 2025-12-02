@@ -596,6 +596,7 @@
         <!-- end col-->
 
         <div class="col-xxl-3 col-sm-6">
+            <a href="https://inventory.5coremanagement.com/channel/channels/channel-masters" target="_blank" style="text-decoration: none;">       
             <div class="card widget-flat text-bg-success">
                 <div class="card-body">
                     <div class="float-end">
@@ -608,9 +609,11 @@
                     </p>
                 </div>
             </div>
+            </a>
         </div> <!-- end col-->
 
         <div class="col-xxl-3 col-sm-6">
+            <a href="https://inventory.5coremanagement.com/channel/channels/channel-masters" target="_blank" style="text-decoration: none;">       
             <div class="card widget-flat text-bg-warning">
                 <div class="card-body">
                     <div class="float-end">
@@ -623,6 +626,7 @@
                     </p>
                 </div>
             </div>
+            </a>
         </div> <!-- end col-->
 
         <div class="col-xxl-3 col-sm-6" style="display:none">
