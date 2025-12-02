@@ -693,21 +693,26 @@
                         if (hasKW) stats.kwRunning++;
                         if (hasPT) stats.ptRunning++;
                         
-                        // Count combined statuses (mutually exclusive)
+                        // Count missing campaigns independently (includes both missing in each count)
+                        if (!hasKW) {
+                            stats.kwMissing++;  // KW is missing (includes both missing)
+                        }
+                        if (!hasPT) {
+                            stats.ptMissing++;  // PT is missing (includes both missing)
+                        }
+                        
+                        // Count combined statuses
                         if (hasKW && hasPT) {
                             stats.bothRunning++;
-                        } else if (!hasKW && hasPT) {
-                            stats.kwMissing++;  // Only KW is missing
-                        } else if (hasKW && !hasPT) {
-                            stats.ptMissing++;  // Only PT is missing
                         } else if (!hasKW && !hasPT) {
                             stats.bothMissing++;  // Both are missing
                         }
                     }
                 });
 
-                // Total Missing Ads Count (all three categories are mutually exclusive, no double counting)
-                let totalMissingAds2 = stats.kwMissing + stats.ptMissing + stats.bothMissing;
+                // Total Missing Ads Count (unique SKUs with at least one missing ad)
+                // Since kwMissing and ptMissing now include bothMissing, we calculate unique missing SKUs
+                let totalMissingAds2 = stats.bothMissing + (stats.kwMissing - stats.bothMissing) + (stats.ptMissing - stats.bothMissing);
 
                 // Batch update all DOM elements at once
                 const updates = {
