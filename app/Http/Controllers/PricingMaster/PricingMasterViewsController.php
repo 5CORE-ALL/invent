@@ -474,40 +474,11 @@ class PricingMasterViewsController extends Controller
             ->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $plsStatuses = DB::table('pls_listing_statuses')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
 
-        // Fetch ads campaign data for ADVT% calculation (with error handling to prevent memory issues)
+        // ADVT% calculation disabled to prevent memory exhaustion on production
+        // TODO: Implement as separate on-demand API endpoint
         $ebayPriorityCampaigns = collect();
         $ebayMetrics = collect();
         $amazonSpCampaigns = collect();
-        
-        try {
-            // Only fetch eBay campaigns for SKUs we're actually displaying
-            $ebayPriorityCampaigns = EbayPriorityReport::where('report_range', 'L30')
-                ->whereIn('channels', ['ebay1', 'ebay2', 'ebay3'])
-                ->limit(5000) // Limit to prevent memory issues
-                ->get();
-        } catch (Exception $e) {
-            Log::warning('Could not fetch eBay Priority campaigns: ' . $e->getMessage());
-        }
-        
-        try {
-            // Fetch ebay metrics to get item_id for general reports lookup
-            $ebayMetrics = EbayMetric::whereIn('sku', $nonParentSkus)
-                ->select('sku', 'item_id') // Only select needed columns
-                ->get()
-                ->keyBy('sku');
-        } catch (Exception $e) {
-            Log::warning('Could not fetch eBay metrics: ' . $e->getMessage());
-        }
-        
-        try {
-            // Amazon ads data (keyword and product targeting campaigns)
-            $amazonSpCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('report_date_range', 'L30')
-                ->limit(5000) // Limit to prevent memory issues
-                ->get();
-        } catch (Exception $e) {
-            Log::warning('Could not fetch Amazon SP campaigns: ' . $e->getMessage());
-        }
 
         // Fetch LMPA and LMP data
         $lmpLookup = collect();
