@@ -1,0 +1,50 @@
+/* Compact column widths for eBay table */
+th[data-field="sl_no"] {
+    min-width: 70px !important;
+    width: 70px !important;
+}
+
+th[data-field="inv"] {
+    min-width: 80px !important;
+    width: 80px !important;
+}
+
+th[data-field="NRA"] {
+    min-width: 80px !important;
+    width: 80px !important;
+}
+
+th[data-field="nr_req"] {
+    min-width: 100px !important;
+    width: 100px !important;
+}
+
+th[data-field="listed"] {
+    min-width: 90px !important;
+    width: 90px !important;
+}
+
+th[data-field="live"] {
+    min-width: 80px !important;
+    width: 80px !important;
+}
+
+th:has(+ th[data-field="views"]) {
+    /* Hide column before views */
+    min-width: 60px !important;
+    width: 60px !important;
+    text-align: center !important;
+}
+
+/* Smaller NRL/REQ badge */
+#req-total {
+    padding: 5px 10px !important;
+    font-size: 13px !important;
+    border-radius: 6px !important;
+}
+
+/* Compact metric totals */
+.metric-total {
+    font-size: 13px !important;
+    padding: 4px 8px !important;
+}
