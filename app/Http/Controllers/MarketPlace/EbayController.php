@@ -307,8 +307,12 @@ class EbayController extends Controller
             if ($listingStatus) {
                 $statusValue = is_array($listingStatus->value) ? $listingStatus->value : json_decode($listingStatus->value, true);
                 $row['nr_req'] = $statusValue['nr_req'] ?? 'REQ';
+                $row['B Link'] = $statusValue['buyer_link'] ?? '';
+                $row['S Link'] = $statusValue['seller_link'] ?? '';
             } else {
                 $row['nr_req'] = 'REQ';
+                $row['B Link'] = '';
+                $row['S Link'] = '';
             }
 
             // eBay Metrics

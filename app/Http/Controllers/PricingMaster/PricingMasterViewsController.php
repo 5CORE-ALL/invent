@@ -71,6 +71,8 @@ use App\Models\AliexpressListingStatus;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\ShopifyB2CListingStatus;
 use App\Models\TiktokShopListingStatus;
+use App\Models\EbayPriorityReport;
+use App\Models\AmazonSpCampaignReport;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\View\ViewServiceProvider;
 use App\Models\BusinessFiveCoreSheetdata;
@@ -472,6 +474,20 @@ class PricingMasterViewsController extends Controller
             ->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $plsStatuses = DB::table('pls_listing_statuses')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
 
+        // Fetch ads campaign data for ADVT% calculation
+        // eBay ads data (keyword and PMT campaigns)
+        $ebayPriorityCampaigns = EbayPriorityReport::where('report_range', 'L30')
+            ->whereIn('channels', ['ebay1', 'ebay2', 'ebay3'])
+            ->get();
+        
+        // Fetch ebay metrics to get item_id for general reports lookup
+        $ebayMetrics = EbayMetric::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        
+        // Amazon ads data (keyword and product targeting campaigns)
+        $amazonSpCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->get();
+
         // Fetch LMPA and LMP data
         $lmpLookup = collect();
         try {
@@ -651,6 +667,104 @@ class PricingMasterViewsController extends Controller
                 ? number_format(($total_l30_count / $total_views) * 100, 1) . ' %'
                 : '0.0 %';
 
+            // Calculate ADVT% for eBay (kw_sales_l30 + pmt_sales_l30 as denominator)
+            $ebay_advt_percent = null;
+            $ebay2_advt_percent = null;
+            $ebay3_advt_percent = null;
+            
+            // eBay 1 ads calculation
+            $ebayKwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
+                return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay1';
+            });
+            
+            $ebayMetric = $ebayMetrics[$sku] ?? null;
+            $ebayGeneralData = null;
+            if ($ebayMetric && $ebayMetric->item_id) {
+                $ebayGeneralData = DB::table('ebay_general_reports')
+                    ->where('listing_id', $ebayMetric->item_id)
+                    ->where('report_range', 'L30')
+                    ->first();
+            }
+            
+            if ($ebayKwCampaign || $ebayGeneralData) {
+                $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebayKwCampaign->cpc_ad_fees_payout_currency ?? '0');
+                $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebayKwCampaign->cpc_sale_amount_payout_currency ?? '0');
+                $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebayGeneralData->ad_fees ?? '0');
+                $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebayGeneralData->sale_amount ?? '0');
+                
+                $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
+                $ebay_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+            }
+            
+            // eBay 2 ads calculation
+            $ebay2KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
+                return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay2';
+            });
+            
+            $ebay2GeneralData = null;
+            if ($ebayMetric && $ebayMetric->item_id) {
+                $ebay2GeneralData = DB::table('ebay_2_general_reports')
+                    ->where('listing_id', $ebayMetric->item_id)
+                    ->where('report_range', 'L30')
+                    ->first();
+            }
+            
+            if ($ebay2KwCampaign || $ebay2GeneralData) {
+                $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay2KwCampaign->cpc_ad_fees_payout_currency ?? '0');
+                $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay2KwCampaign->cpc_sale_amount_payout_currency ?? '0');
+                $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay2GeneralData->ad_fees ?? '0');
+                $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay2GeneralData->sale_amount ?? '0');
+                
+                $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
+                $ebay2_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+            }
+            
+            // eBay 3 ads calculation
+            $ebay3KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
+                return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay3';
+            });
+            
+            $ebay3GeneralData = null;
+            if ($ebayMetric && $ebayMetric->item_id) {
+                $ebay3GeneralData = DB::table('ebay_3_general_reports')
+                    ->where('listing_id', $ebayMetric->item_id)
+                    ->where('report_range', 'L30')
+                    ->first();
+            }
+            
+            if ($ebay3KwCampaign || $ebay3GeneralData) {
+                $kw_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay3KwCampaign->cpc_ad_fees_payout_currency ?? '0');
+                $kw_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay3KwCampaign->cpc_sale_amount_payout_currency ?? '0');
+                $pmt_spend_l30 = (float) str_replace(['USD ', ','], '', $ebay3GeneralData->ad_fees ?? '0');
+                $pmt_sales_l30 = (float) str_replace(['USD ', ','], '', $ebay3GeneralData->sale_amount ?? '0');
+                
+                $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
+                $ebay3_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
+            }
+            
+            // Calculate ADVT% for Amazon (kw_sales_l30 + pt_sales_l30 as denominator)
+            $amz_advt_percent = null;
+            
+            // Amazon keyword (KW) campaigns
+            $amazonKwCampaigns = $amazonSpCampaigns->filter(function($c) use ($sku) {
+                return stripos($c->campaignName, $sku) !== false && stripos($c->campaignName, 'KW') !== false;
+            });
+            
+            // Amazon product targeting (PT) campaigns  
+            $amazonPtCampaigns = $amazonSpCampaigns->filter(function($c) use ($sku) {
+                return stripos($c->campaignName, $sku) !== false && stripos($c->campaignName, 'PT') !== false;
+            });
+            
+            if ($amazonKwCampaigns->count() > 0 || $amazonPtCampaigns->count() > 0) {
+                $kw_spend_l30 = $amazonKwCampaigns->sum('cost');
+                $kw_sales_l30 = $amazonKwCampaigns->sum('sales30d');
+                $pt_spend_l30 = $amazonPtCampaigns->sum('cost');
+                $pt_sales_l30 = $amazonPtCampaigns->sum('sales30d');
+                
+                $adDenominator = $kw_sales_l30 + $pt_sales_l30;
+                $amz_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pt_spend_l30) / $adDenominator) * 100 : 0;
+            }
+
             $item = (object) [
                 'SKU' => $sku,
                 'Parent' => $product->parent,
@@ -687,11 +801,12 @@ class PricingMasterViewsController extends Controller
                 'amz_buyer_link' => isset($amazonListingData[$sku]) ? ($amazonListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'amz_seller_link' => isset($amazonListingData[$sku]) ? ($amazonListingData[$sku]->value['seller_link'] ?? null) : null,
                 'price_lmpa' => $lmpa ? ($lmpa->lowest_price ?? 0) : ($amazon ? ($amazon->price_lmpa ?? 0) : 0),
-                'amz_pft' => $amazon && ($amazon->price ?? 0) > 0 ? (($amazon->price * 0.67 - $lp - $ship) / $amazon->price) : 0,
+                'amz_pft' => $amazon && ($amazon->price ?? 0) > 0 ? (($amazon->price * 0.67 - $lp - $ship) / $amazon->price) - (($amz_advt_percent ?? 0) / 100) : 0,
                 'amz_roi' => $amazon && $lp > 0 && ($amazon->price ?? 0) > 0 ? (($amazon->price * 0.67 - $lp - $ship) / $lp) : 0,
                 'amz_req_view' => $amazon && $amazon->sessions_l30 > 0 && $amazon->units_ordered_l30 > 0
                     ? (($inv / 90) * 30) / (($amazon->units_ordered_l30 / $amazon->sessions_l30))
                     : 0,
+                'amz_advt_percent' => $amz_advt_percent,
                 // eBay
                 'ebay_price' => $ebay ? ($ebay->ebay_price ?? 0) : 0,
                 'ebay_l30' => $ebay ? ($ebay->ebay_l30 ?? 0) : 0,
@@ -699,11 +814,12 @@ class PricingMasterViewsController extends Controller
                 'ebay_views' => $ebay ? ($ebay->views ?? 0) : 0,
                 'ebay_price_lmpa' => $lmp ? ($lmp->lowest_price ?? 0) : ($ebay ? ($ebay->price_lmpa ?? 0) : 0),
                 'ebay_cvr' => $ebay ? $this->calculateCVR($ebay->ebay_l30 ?? 0, $ebay->views ?? 0) : null,
-                'ebay_pft' => $ebay && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * 0.77 - $lp - $ship) / $ebay->ebay_price) : 0,
+                'ebay_pft' => $ebay && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * 0.77 - $lp - $ship) / $ebay->ebay_price) - (($ebay_advt_percent ?? 0) / 100) : 0,
                 'ebay_roi' => $ebay && $lp > 0 && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * 0.77 - $lp - $ship) / $lp) : 0,
                 'ebay_req_view' => $ebay && $ebay->views > 0 && $ebay->ebay_l30 > 0
                     ? (($inv / 90) * 30) / (($ebay->ebay_l30 / $ebay->views))
                     : 0,
+                'ebay_advt_percent' => $ebay_advt_percent,
                 'ebay_buyer_link' => isset($ebayListingData[$sku]) ? ($ebayListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'ebay_seller_link' => isset($ebayListingData[$sku]) ? ($ebayListingData[$sku]->value['seller_link'] ?? null) : null,
                 // Doba
@@ -761,9 +877,10 @@ class PricingMasterViewsController extends Controller
                 'ebay2_l60' => $ebay2 ? ($ebay2->ebay_l60 ?? 0) : 0,
                 'ebay2_views' => $ebay2 ? ($ebay2->views ?? 0) : 0,
                 'ebay2_dil' => $ebay2 ? (float) ($ebay2->dil ?? 0) : 0,
-                'ebay2_pft' => $ebay2 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.79 - $lp - $ebay2ship) / $ebay2->ebay_price) : 0,
+                'ebay2_pft' => $ebay2 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.79 - $lp - $ebay2ship) / $ebay2->ebay_price) - (($ebay2_advt_percent ?? 0) / 100) : 0,
                 'ebay2_roi' => $ebay2 && $lp > 0 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.79 - $lp - $ebay2ship) / $lp) : 0,
                 'ebay2_req_view' => $ebay2 && $ebay2->views > 0 && $ebay2->ebay_l30 ? (($inv / 90) * 30) / (($ebay2->ebay_l30 / $ebay2->views)) : 0,
+                'ebay2_advt_percent' => $ebay2_advt_percent,
                 'ebay2_buyer_link' => isset($ebayTwoListingData[$sku]) ? ($ebayTwoListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'ebay2_seller_link' => isset($ebayTwoListingData[$sku]) ? ($ebayTwoListingData[$sku]->value['seller_link'] ?? null) : null,
                 // eBay3
@@ -773,9 +890,10 @@ class PricingMasterViewsController extends Controller
                 'ebay3_views' => $ebay3 ? ($ebay3->views ?? 0) : 0,
                 'ebay3_dil' => $ebay3 ? (float) ($ebay3->dil ?? 0) : 0,
                 'ebay3_cvr' => $ebay3 ? $this->calculateCVR($ebay3->ebay_l30 ?? 0, $ebay3->views ?? 0) : null,
-                'ebay3_pft' => $ebay3 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * 0.78 - $lp - $ship) / $ebay3->ebay_price) : 0,
+                'ebay3_pft' => $ebay3 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * 0.78 - $lp - $ship) / $ebay3->ebay_price) - (($ebay3_advt_percent ?? 0) / 100) : 0,
                 'ebay3_roi' => $ebay3 && $lp > 0 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * 0.78 - $lp - $ship) / $lp) : 0,
                 'ebay3_req_view' => $ebay3 && $ebay3->views && $ebay3->ebay_l30 ? (($inv / 90) * 30) / (($ebay3->ebay_l30 / $ebay3->views)) : 0,
+                'ebay3_advt_percent' => $ebay3_advt_percent,
                 'ebay3_buyer_link' => isset($ebayThreeListingData[$sku]) ? ($ebayThreeListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'ebay3_seller_link' => isset($ebayThreeListingData[$sku]) ? ($ebayThreeListingData[$sku]->value['seller_link'] ?? null) : null,
                 'shopifyb2c_buyer_link' => isset($shopifyb2cListingData[$sku]) ? ($shopifyb2cListingData[$sku]->value['buyer_link'] ?? null) : null,
@@ -888,8 +1006,8 @@ class PricingMasterViewsController extends Controller
                 'business5core_price' => isset($businessFiveCoreSheet[$sku]) ? ($businessFiveCoreSheet[$sku]->price ?? 0) : 0,
                 'business5core_l30' => isset($businessFiveCoreSheet[$sku]) ? ($businessFiveCoreSheet[$sku]->l30 ?? 0) : 0,
                 'business5core_l60' => isset($businessFiveCoreSheet[$sku]) ? ($businessFiveCoreSheet[$sku]->l60 ?? 0) : 0,
-                'business5core_pft' => isset($businessFiveCoreSheet[$sku]) && ($businessFiveCoreSheet[$sku]->price ?? 0) > 0 ? ((($businessFiveCoreSheet[$sku]->price * 0.95) - $lp - $ship) / $businessFiveCoreSheet[$sku]->price) : 0,
-                'business5core_roi' => isset($businessFiveCoreSheet[$sku]) && $lp > 0 && ($businessFiveCoreSheet[$sku]->price ?? 0) > 0 ? ((($businessFiveCoreSheet[$sku]->price * 0.95) - $lp - $ship) / $lp) : 0,
+                'business5core_pft' => isset($businessFiveCoreSheet[$sku]) && ($businessFiveCoreSheet[$sku]->price ?? 0) > 0 ? ((($businessFiveCoreSheet[$sku]->price * 0.95) - $lp) / $businessFiveCoreSheet[$sku]->price) : 0,
+                'business5core_roi' => isset($businessFiveCoreSheet[$sku]) && $lp > 0 && ($businessFiveCoreSheet[$sku]->price ?? 0) > 0 ? ((($businessFiveCoreSheet[$sku]->price * 0.95) - $lp) / $lp) : 0,
                 'business5core_views' => isset($businessFiveCoreSheet[$sku]) ? ($businessFiveCoreSheet[$sku]->views ?? 0) : 0,
                 'business5core_buyer_link' => isset($businessFiveCoreSheet[$sku]) && ($businessFiveCoreSheet[$sku]->buyer_link ?? null)
                     ? $businessFiveCoreSheet[$sku]->buyer_link
@@ -920,41 +1038,101 @@ class PricingMasterViewsController extends Controller
                 'wayfair_l30' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->l30 ?? 0) : 0,
                 'wayfair_l60' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->l60 ?? 0) : 0,
                 'wayfair_views' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->views ?? 0) : 0,
-                'wayfair_pft' => isset($wayfairSheetLookup[$sku]) && ($wayfairSheetLookup[$sku]->price ?? 0) > 0 ? ((($wayfairSheetLookup[$sku]->price * 0.97) - $lp - $ship) / $wayfairSheetLookup[$sku]->price) : 0,
-                'wayfair_roi' => isset($wayfairSheetLookup[$sku]) && $lp > 0 && ($wayfairSheetLookup[$sku]->price ?? 0) > 0 ? ((($wayfairSheetLookup[$sku]->price * 0.97) - $lp - $ship) / $lp) : 0,
+                'wayfair_pft' => isset($wayfairSheetLookup[$sku]) && ($wayfairSheetLookup[$sku]->price ?? 0) > 0 ? ((($wayfairSheetLookup[$sku]->price * 0.97) - $lp) / $wayfairSheetLookup[$sku]->price) : 0,
+                'wayfair_roi' => isset($wayfairSheetLookup[$sku]) && $lp > 0 && ($wayfairSheetLookup[$sku]->price ?? 0) > 0 ? ((($wayfairSheetLookup[$sku]->price * 0.97) - $lp) / $lp) : 0,
                 'wayfair_buyer_link' => isset($wayfairListingData[$sku]) ? $this->getListingStatusLink($wayfairListingData[$sku], 'buyer_link') : null,
                 'wayfair_seller_link' => isset($wayfairListingData[$sku]) ? $this->getListingStatusLink($wayfairListingData[$sku], 'seller_link') : null,
 
-                // Mercari WO Ship
+                // Mercari With Out Ship
+
+                'mercariwoship_price' => isset($mercariWoShipSheet[$sku]) ? ($mercariWoShipSheet[$sku]->price ?? 0) : 0,
+                'mercariwoship_l30' => isset($mercariWoShipSheet[$sku]) ? ($mercariWoShipSheet[$sku]->l30 ?? 0) : 0,
+                'mercariwoship_l60' => isset($mercariWoShipSheet[$sku]) ? ($mercariWoShipSheet[$sku]->l60 ?? 0) : 0,
+                'mercariwoship_pft' => isset($mercariWoShipSheet[$sku]) && ($mercariWoShipSheet[$sku]->price ?? 0) > 0 ? ((($mercariWoShipSheet[$sku]->price * 0.88) - $lp) / $mercariWoShipSheet[$sku]->price) : 0,
+                'mercariwoship_roi' => isset($mercariWoShipSheet[$sku]) && $lp > 0 && ($mercariWoShipSheet[$sku]->price ?? 0) > 0 ? ((($mercariWoShipSheet[$sku]->price * 0.88) - $lp) / $lp) : 0,
+                'mercariwoship_views' => isset($mercariWoShipSheet[$sku]) ? ($mercariWoShipSheet[$sku]->views ?? 0) : 0,
+                'mercariwoship_buyer_link' => isset($mercariWoShipSheet[$sku]) && ($mercariWoShipSheet[$sku]->buyer_link ?? null)
+                    ? $mercariWoShipSheet[$sku]->buyer_link
+                    : (isset($mercariWoShipStatuses[$sku]) ? $this->getListingStatusLink($mercariWoShipStatuses[$sku], 'buyer_link') : null),
+                'mercariwoship_seller_link' => isset($mercariWoShipSheet[$sku]) && ($mercariWoShipSheet[$sku]->seller_link ?? null)
+                    ? $mercariWoShipSheet[$sku]->seller_link
+                    : (isset($mercariWoShipStatuses[$sku]) ? $this->getListingStatusLink($mercariWoShipStatuses[$sku], 'seller_link') : null),
 
 
-                // Mercari W Ship
+                // Mercari With Ship
+
+                'mercariwship_price' => isset($mercariWShipSheet[$sku]) ? ($mercariWShipSheet[$sku]->price ?? 0) : 0,
+                'mercariwship_l30' => isset($mercariWShipSheet[$sku]) ? ($mercariWShipSheet[$sku]->l30 ?? 0) : 0,
+                'mercariwship_l60' => isset($mercariWShipSheet[$sku]) ? ($mercariWShipSheet[$sku]->l60 ?? 0) : 0,
+                'mercariwship_pft' => isset($mercariWShipSheet[$sku]) && ($mercariWShipSheet[$sku]->price ?? 0) > 0 ? ((($mercariWShipSheet[$sku]->price * 0.88) - $lp - $ship) / $mercariWShipSheet[$sku]->price) : 0,
+                'mercariwship_roi' => isset($mercariWShipSheet[$sku]) && $lp > 0 && ($mercariWShipSheet[$sku]->price ?? 0) > 0 ? ((($mercariWShipSheet[$sku]->price * 0.88) - $lp - $ship) / $lp) : 0,
+                'mercariwship_views' => isset($mercariWShipSheet[$sku]) ? ($mercariWShipSheet[$sku]->views ?? 0) : 0,
+                'mercariwship_buyer_link' => isset($mercariWShipSheet[$sku]) && ($mercariWShipSheet[$sku]->buyer_link ?? null)
+                    ? $mercariWShipSheet[$sku]->buyer_link
+                    : (isset($mercariWShipStatuses[$sku]) ? $this->getListingStatusLink($mercariWShipStatuses[$sku], 'buyer_link') : null),
+                'mercariwship_seller_link' => isset($mercariWShipSheet[$sku]) && ($mercariWShipSheet[$sku]->seller_link ?? null)
+                    ? $mercariWShipSheet[$sku]->seller_link
+                    : (isset($mercariWShipStatuses[$sku]) ? $this->getListingStatusLink($mercariWShipStatuses[$sku], 'seller_link') : null),
 
 
 
-                // Direct assignments
-                'views_clicks' => $shein ? ($shein->views_clicks ?? 0) : 0,
-                'lmp' => $shein ? ($shein->lmp ?? 0) : 0,
-                'link' => $lmp ? ($lmp->link ?? null) : null,
-                'link_amz' => $lmpa ? ($lmpa->link ?? null) : null,
-                'link_ebay' => $lmp ? ($lmp->link ?? null) : null,
-                'link_shein' => $shein ? ($shein->link1 ?? null) : null,
-                'link_tiktok' => $tiktok ? ($tiktok->link ?? null) : null,
-                'link_aliexpress' => $aliexpress ? ($aliexpress->link ?? null) : null,
-                // OLD CODE: 'shopify_sheinl30' => $shein ? ($shein->shopify_sheinl30 ?? 0) : 0,
-                'shopify_sheinl30' => isset($sheinOrdersL30[$sku]) ? ($sheinOrdersL30[$sku]->shein_l30 ?? 0) : 0,
-                'total_req_view' => (
-                    ($ebay && $ebay->views && $ebay->ebay_l30 ? ($inv * 20) : 0) +
-                    ($ebay2 && $ebay2->views && $ebay2->ebay_l30 ? ($inv * 20) : 0) +
-                    ($ebay3 && $ebay3->views && $ebay3->ebay_l30 ? ($inv * 20) : 0) +
-                    ($amazon && $amazon->sessions_l30 && $amazon->units_ordered_l30 ? ($inv * 20) : 0) +
-                    // OLD CODE: ($shein && $shein->views_clicks && $shein->shopify_sheinl30 ? ($inv * 20) : 0) +
-                    ($shein && $shein->views_clicks && isset($sheinOrdersL30[$sku]) && $sheinOrdersL30[$sku]->shein_l30 ? ($inv * 20) : 0) +
-                    ($reverb && $reverb->views && $reverb->r_l30 ? ($inv * 20) : 0) +
-                    ($temuMetric && ($temuMetric->product_clicks_l30 ?? 0) && ($temuMetric->quantity_purchased_l30 ?? 0) ? ($inv * 20) : 0) +
-                    ($walmartSheet && ($walmart->l30 ?? 0) > 0 && ($walmartSheet->views ?? 0) > 0 ? ($walmartSheet->views ?? 0) : 0) +
-                    ($dobaSheet && ($doba->l30 ?? 0) > 0 && ($dobaSheet->views ?? 0) > 0 ? ($dobaSheet->views ?? 0) : 0)
-                ),
+                // FB Marketplace
+                'fbmarketplace_price' => isset($fbMarketplaceSheet[$sku]) ? ($fbMarketplaceSheet[$sku]->price ?? 0) : 0,
+                'fbmarketplace_l30' => isset($fbMarketplaceSheet[$sku]) ? ($fbMarketplaceSheet[$sku]->l30 ?? 0) : 0,
+                'fbmarketplace_l60' => isset($fbMarketplaceSheet[$sku]) ? ($fbMarketplaceSheet[$sku]->l60 ?? 0) : 0,
+                'fbmarketplace_pft' => isset($fbMarketplaceSheet[$sku]) && ($fbMarketplaceSheet[$sku]->price ?? 0) > 0 ? ((($fbMarketplaceSheet[$sku]->price * 0.80) - $lp - $ship) / $fbMarketplaceSheet[$sku]->price) : 0,
+                'fbmarketplace_roi' => isset($fbMarketplaceSheet[$sku]) && $lp > 0 && ($fbMarketplaceSheet[$sku]->price ?? 0) > 0 ? ((($fbMarketplaceSheet[$sku]->price * 0.80) - $lp - $ship) / $lp) : 0,
+                'fbmarketplace_views' => isset($fbMarketplaceSheet[$sku]) ? ($fbMarketplaceSheet[$sku]->views ?? 0) : 0,
+                'fbmarketplace_buyer_link' => isset($fbMarketplaceSheet[$sku]) && ($fbMarketplaceSheet[$sku]->buyer_link ?? null)
+                    ? $fbMarketplaceSheet[$sku]->buyer_link
+                    : (isset($fbMarketplaceStatuses[$sku]) ? $this->getListingStatusLink($fbMarketplaceStatuses[$sku], 'buyer_link') : null),
+                'fbmarketplace_seller_link' => isset($fbMarketplaceSheet[$sku]) && ($fbMarketplaceSheet[$sku]->seller_link ?? null)
+                    ? $fbMarketplaceSheet[$sku]->seller_link
+                    : (isset($fbMarketplaceStatuses[$sku]) ? $this->getListingStatusLink($fbMarketplaceStatuses[$sku], 'seller_link') : null),
+
+
+
+                // Business Five Core
+                'business5core_price' => isset($businessFiveCoreSheet[$sku]) ? ($businessFiveCoreSheet[$sku]->price ?? 0) : 0,
+                'business5core_l30' => isset($businessFiveCoreSheet[$sku]) ? ($businessFiveCoreSheet[$sku]->l30 ?? 0) : 0,
+                'business5core_l60' => isset($businessFiveCoreSheet[$sku]) ? ($businessFiveCoreSheet[$sku]->l60 ?? 0) : 0,
+                'business5core_pft' => isset($businessFiveCoreSheet[$sku]) && ($businessFiveCoreSheet[$sku]->price ?? 0) > 0 ? ((($businessFiveCoreSheet[$sku]->price * 0.95) - $lp) / $businessFiveCoreSheet[$sku]->price) : 0,
+                'business5core_roi' => isset($businessFiveCoreSheet[$sku]) && $lp > 0 && ($businessFiveCoreSheet[$sku]->price ?? 0) > 0 ? ((($businessFiveCoreSheet[$sku]->price * 0.95) - $lp) / $lp) : 0,
+                'business5core_views' => isset($businessFiveCoreSheet[$sku]) ? ($businessFiveCoreSheet[$sku]->views ?? 0) : 0,
+                'business5core_buyer_link' => isset($businessFiveCoreSheet[$sku]) && ($businessFiveCoreSheet[$sku]->buyer_link ?? null)
+                    ? $businessFiveCoreSheet[$sku]->buyer_link
+                    : (isset($businessFiveCoreStatuses[$sku]) ? $this->getListingStatusLink($businessFiveCoreStatuses[$sku], 'buyer_link') : null),
+                'business5core_seller_link' => isset($businessFiveCoreSheet[$sku]) && ($businessFiveCoreSheet[$sku]->seller_link ?? null)
+                    ? $businessFiveCoreSheet[$sku]->seller_link
+                    : (isset($businessFiveCoreStatuses[$sku]) ? $this->getListingStatusLink($businessFiveCoreStatuses[$sku], 'seller_link') : null),
+
+
+
+
+                // PLS
+                'pls_price' => isset($plsProducts[$sku]) ? ($plsProducts[$sku]->price ?? 0) : 0,
+                'pls_l30' => isset($plsProducts[$sku]) ? ($plsProducts[$sku]->p_l30 ?? 0) : 0,
+                'pls_l60' => isset($plsProducts[$sku]) ? ($plsProducts[$sku]->p_l60 ?? 0) : 0,
+                'pls_pft' => isset($plsProducts[$sku]) && ($plsProducts[$sku]->price ?? 0) > 0 ? ((($plsProducts[$sku]->price * 0.80) - $lp - $ship) / $plsProducts[$sku]->price) : 0,
+                'pls_roi' => isset($plsProducts[$sku]) && $lp > 0 && ($plsProducts[$sku]->price ?? 0) > 0 ? ((($plsProducts[$sku]->price * 0.80) - $lp - $ship) / $lp) : 0,
+                'pls_buyer_link' => isset($plsProducts[$sku]) && ($plsProducts[$sku]->buyer_link ?? null)
+                    ? $plsProducts[$sku]->buyer_link
+                    : (isset($plsStatuses[$sku]) ? $this->getListingStatusLink($plsStatuses[$sku], 'buyer_link') : null),
+                'pls_seller_link' => isset($plsProducts[$sku]) && ($plsProducts[$sku]->seller_link ?? null)
+                    ? $plsProducts[$sku]->seller_link
+                    : (isset($plsStatuses[$sku]) ? $this->getListingStatusLink($plsStatuses[$sku], 'seller_link') : null),
+
+
+                // Wayfair (from sheet)
+                'wayfair_price' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->price ?? 0) : 0,
+                'wayfair_l30' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->l30 ?? 0) : 0,
+                'wayfair_l60' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->l60 ?? 0) : 0,
+                'wayfair_views' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->views ?? 0) : 0,
+                'wayfair_pft' => isset($wayfairSheetLookup[$sku]) && ($wayfairSheetLookup[$sku]->price ?? 0) > 0 ? ((($wayfairSheetLookup[$sku]->price * 0.97) - $lp) / $wayfairSheetLookup[$sku]->price) : 0,
+                'wayfair_roi' => isset($wayfairSheetLookup[$sku]) && $lp > 0 && ($wayfairSheetLookup[$sku]->price ?? 0) > 0 ? ((($wayfairSheetLookup[$sku]->price * 0.97) - $lp) / $lp) : 0,
+                'wayfair_buyer_link' => isset($wayfairListingData[$sku]) ? $this->getListingStatusLink($wayfairListingData[$sku], 'buyer_link') : null,
+                'wayfair_seller_link' => isset($wayfairListingData[$sku]) ? $this->getListingStatusLink($wayfairListingData[$sku], 'seller_link') : null,
+                
                 // DataView values
                 'amz_sprice' => isset($amazonDataView[$sku]) ? (is_array($amazonDataView[$sku]->value) ? ($amazonDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($amazonDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
                 'amz_spft' => isset($amazonDataView[$sku]) ? (is_array($amazonDataView[$sku]->value) ? ($amazonDataView[$sku]->value['SPFT'] ?? null) : (json_decode($amazonDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
@@ -1043,9 +1221,6 @@ class PricingMasterViewsController extends Controller
             $item->shopifyb2c_roi = ($lp > 0 && $item->shopifyb2c_price > 0) ? (($item->shopifyb2c_price * 0.75 - $lp - $ship) / $lp) : 0;
 
             // Add inv_value and COGS calculations
-            $item->inv_value = $inv * $item->shopifyb2c_price;
-            $item->COGS = $lp * $inv;
-            $item->lp_value = $lp * $inv;
 
             // Add analysis action buttons
             $item->l30_analysis = '<button class="btn btn-sm btn-info" onclick="showL30Modal(this)" data-sku="' . $item->SKU . '">L30</button>';

@@ -5,31 +5,38 @@
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ asset('css/ebay-table-compact.css') }}">
     <style>
         /* ========== TABLE STRUCTURE ========== */
         .table-container {
             overflow-x: auto;
             overflow-y: visible;
             position: relative;
-            max-height: 600px;
+            max-height: 650px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
         .custom-resizable-table {
             width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
             margin: 0;
-            border: 1px solid #dee2e6;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
         }
 
         .custom-resizable-table th,
         .custom-resizable-table td {
-            padding: 12px 15px;
+            padding: 14px 16px;
             text-align: left;
-            border-bottom: 1px solid #dee2e6;
-            border-right: 1px solid #dee2e6;
+            border-bottom: 1px solid #f0f0f0;
+            border-right: 1px solid #f0f0f0;
             position: relative;
             white-space: nowrap;
             overflow: visible !important;
+            transition: background-color 0.2s ease;
         }
 
         .custom-resizable-table th:last-child,
@@ -37,14 +44,23 @@
             border-right: none;
         }
 
+        .custom-resizable-table tbody tr:hover {
+            background-color: #f8f9ff;
+        }
+
         .custom-resizable-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
+            background: #00d5d5;
+            font-weight: 700;
+            font-size: 13px;
+            color: #000000;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             user-select: none;
             position: sticky;
             top: 0;
             z-index: 10;
-            border-top: 1px solid #dee2e6;
+            border-bottom: 2px solid #3b82f6;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
         /* ========== RESIZABLE COLUMNS ========== */
@@ -54,26 +70,25 @@
             right: -3px;
             width: 6px;
             height: 100%;
-            background: rgba(0, 123, 255, 0.3);
+            background: linear-gradient(180deg, rgba(59, 130, 246, 0.3) 0%, rgba(59, 130, 246, 0.5) 100%);
             cursor: col-resize;
             z-index: 1000;
-            border-radius: 2px;
-            opacity: 0.3;
-            transition: all 0.2s ease;
+            border-radius: 3px;
+            opacity: 0;
+            transition: all 0.25s ease;
         }
 
         .custom-resizable-table th:hover .resize-handle {
             opacity: 1;
-            background: rgba(0, 123, 255, 0.5);
         }
 
         .resize-handle:hover,
         .resize-handle.resizing {
-            background: rgba(0, 123, 255, 0.8);
+            background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
             opacity: 1;
             width: 8px;
             right: -4px;
-            box-shadow: 0 0 5px rgba(0, 123, 255, 0.6);
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
         }
 
         /* ========== TOOLTIP SYSTEM ========== */
@@ -116,38 +131,47 @@
 
         .dil-percent-value {
             display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: all 0.25s ease;
+            cursor: default;
+        }
+
+        .dil-percent-value:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
         }
 
         .dil-percent-value.red {
-            background-color: #dc3545;
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
             color: white;
         }
 
         .dil-percent-value.blue {
-            background-color: #3591dc;
+            background: linear-gradient(135deg, #3591dc 0%, #2875b8 100%);
             color: white;
         }
 
         .dil-percent-value.yellow {
-            background-color: #ffc107;
+            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
             color: #212529;
         }
 
         .dil-percent-value.green {
-            background-color: #28a745;
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
             color: white;
         }
 
         .dil-percent-value.pink {
-            background-color: #e83e8c;
+            background: linear-gradient(135deg, #e83e8c 0%, #d02670 100%);
             color: white;
         }
 
         .dil-percent-value.gray {
-            background-color: #6c757d;
+            background: linear-gradient(135deg, #6c757d 0%, #545b62 100%);
             color: white;
         }
 
@@ -176,7 +200,18 @@
 
         /* ========== PARENT ROWS ========== */
         .parent-row {
-            background-color: rgba(69, 233, 255, 0.1) !important;
+            background: linear-gradient(135deg, rgba(69, 233, 255, 0.15) 0%, rgba(69, 233, 255, 0.05) 100%) !important;
+            font-weight: 600;
+            border-left: 4px solid #3b82f6;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .parent-row:hover {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.08) 100%) !important;
+            border-left-color: #2563eb;
+            box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
+            transform: translateX(2px);
         }
 
         /* ========== SKU TOOLTIPS ========== */
@@ -1003,8 +1038,11 @@
                             style="font-size: 1rem; border-radius: 8px;">
                             SOLD - <span id="sold-count">0</span>
                         </div>
-                        <div class="badge bg-danger text-white px-3 py-2" style="font-size: 1rem; border-radius: 8px;">
+                        <div class="badge bg-danger text-white px-3 py-2 me-2" style="font-size: 1rem; border-radius: 8px;">
                             RED MARGIN - <span id="red-margin-count">0</span>
+                        </div>
+                        <div class="badge bg-warning text-dark px-3 py-2" style="font-size: 1rem; border-radius: 8px;">
+                            NRA - <span id="nra-count">0</span>
                         </div>
                     </div>
                     <div id="" class="d-flex align-items-right">
@@ -1518,7 +1556,7 @@
                         <table class="custom-resizable-table" id="ebay-table">
                             <thead>
                                 <tr>
-                                    <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th>
+                                    <th data-field="sl_no" style="min-width: 70px; width: 70px;">SL No. <span class="sort-arrow">↓</span></th>
                                     <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center sortable-header">
@@ -1545,7 +1583,7 @@
                                             <div class="metric-total" id="sku-total">0</div>
                                         </div>
                                     </th>
-                                    <th data-field="inv" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="inv" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 INV <span class="sort-arrow">↓</span>
@@ -1590,21 +1628,29 @@
                                             <div class="metric-total" id="eDil-total">0%</div>
                                         </div>
                                     </th>
-                                    <th data-field="NRA">NRA</th>
+                                    <th data-field="NRA" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                NRA
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="nra-col-count">0</div>
+                                        </div>
+                                    </th>
 
-                                    <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap; min-width: 100px; width: 100px;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 NRL/REQ
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="req-total"
-                                                style="display:inline-block; background:#43dc35; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
+                                                style="display:inline-block; background:#43dc35; color:white; border-radius:8px; padding:6px 12px; font-weight:600; font-size:13px;">
                                                 0</div>
                                         </div>
                                     </th>
 
-                                    <th data-field="listed" class="hide-column" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="listed" class="hide-column" style="vertical-align: middle; white-space: nowrap; min-width: 90px; width: 90px;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 LISTED <span class="sort-arrow">↓</span>
@@ -1614,7 +1660,7 @@
                                         </div>
                                     </th>
 
-                                    <th data-field="live" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="live" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 LIVE <span class="sort-arrow">↓</span>
@@ -1624,7 +1670,7 @@
                                         </div>
                                     </th>
 
-                                    <th>Hide</th>
+                                    <th style="min-width: 60px; width: 60px; text-align: center;">Hide</th>
 
                                     <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
@@ -1663,6 +1709,8 @@
                                             <div class="d-flex align-items-center">
                                                 PFT
                                             </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="gpft-total">0%</div>
                                         </div>
                                     </th>
                                     <th data-field="tprft" style="vertical-align: middle; white-space: nowrap;">
@@ -2552,7 +2600,7 @@
 
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
-                                    spend_l30: item.spend_l30 || 0,
+                                    spend_l30: item.AD_Spend_L30 || 0,
                                 };
                             });
 
@@ -2576,6 +2624,7 @@
                 let zeroSold = 0;
                 let totalSku = 0;
                 let lowProfitCount = 0;
+                let nraCount = 0;
 
                 filteredData.forEach(item => {
                     if (!item.is_parent) {
@@ -2584,13 +2633,13 @@
                         const pftDecimal = parseFloat(item['PFT %']) || 0;
                         const pftPercentage = pftDecimal * 100;
 
-
                         if (l30 === 0 && inv > 0) zeroSold++;
-
                         totalSku++;
-
                         if (pftPercentage < 10) {
                             lowProfitCount++;
+                        }
+                        if (item.NR === 'NRA') {
+                            nraCount++;
                         }
                     }
                 });
@@ -2598,6 +2647,7 @@
                 $('#zero-sold-count').text(zeroSold);
                 $('#sold-count').text(totalSku - zeroSold);
                 $('#red-margin-count').text(lowProfitCount);
+                $('#nra-count').text(nraCount);
 
                 updateRedMarginDataToChannelMaster(lowProfitCount);
             }
@@ -2739,19 +2789,14 @@
                             </div>
                         `);
                     } else {
-                        const imageUrl = item.raw_data.image || '';
                         const buyerLink = item.raw_data['B Link'] || '';
-                        const sellerLink = item.raw_data['S Link'] || '';
-
-                        if (buyerLink || sellerLink || imageUrl) {
+                        if (buyerLink) {
                             $skuCell.html(`
                                 <div class="d-flex align-items-center justify-content-between">
                                     <div class="sku-tooltip-container">
                                         <span class="sku-text">${skuValue}</span>
                                         <div class="sku-tooltip">
-                                            ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
-                                            ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
-                                            ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
+                                            <div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>
                                         </div>
                                     </div>
                                     <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
@@ -2779,35 +2824,35 @@
                     $row.append($skuCell);
 
                     // Only create the checkbox cell if navigation is active
-                    if (isNavigationActive) {
-                        const $raCell = $('<td>').addClass('ra-cell');
+                    // if (isNavigationActive) {
+                    //     const $raCell = $('<td>').addClass('ra-cell');
 
-                        if (item['R&A'] !== undefined && item['R&A'] !== null && item['R&A'] !== '') {
-                            const $container = $('<div>').addClass(
-                                'ra-edit-container d-flex align-items-center');
+                    //     if (item['R&A'] !== undefined && item['R&A'] !== null && item['R&A'] !== '') {
+                    //         const $container = $('<div>').addClass(
+                    //             'ra-edit-container d-flex align-items-center');
 
-                            // Checkbox with proper boolean value
-                            const $checkbox = $('<input>', {
-                                type: 'checkbox',
-                                checked: item['R&A'] === true || item['R&A'] === 'true' || item[
-                                    'R&A'] === '1',
-                                class: 'ra-checkbox',
-                                disabled: true
-                            }).data('original-value', item['R&A']); // Store original value
+                    //         // Checkbox with proper boolean value
+                    //         const $checkbox = $('<input>', {
+                    //             type: 'checkbox',
+                    //             checked: item['R&A'] === true || item['R&A'] === 'true' || item[
+                    //                 'R&A'] === '1',
+                    //             class: 'ra-checkbox',
+                    //             disabled: true
+                    //         }).data('original-value', item['R&A']); // Store original value
 
-                            // Edit/Save icon
-                            const $editIcon = $('<i>').addClass('fas fa-pen edit-icon ml-2 text-primary')
-                                .css('cursor', 'pointer')
-                                .attr('title', 'Edit R&A');
+                    //         // Edit/Save icon
+                    //         const $editIcon = $('<i>').addClass('fas fa-pen edit-icon ml-2 text-primary')
+                    //             .css('cursor', 'pointer')
+                    //             .attr('title', 'Edit R&A');
 
-                            $container.append($checkbox, $editIcon);
-                            $raCell.append($container);
-                        } else {
-                            $raCell.html('&nbsp;');
-                        }
+                    //         $container.append($checkbox, $editIcon);
+                    //         $raCell.append($container);
+                    //     } else {
+                    //         $raCell.html('&nbsp;');
+                    //     }
 
-                        $row.append($raCell);
-                    }
+                    //     $row.append($raCell);
+                    // }
 
                     $row.append($('<td>').text(item.INV));
                     $row.append($('<td>').text(item.L30));
@@ -2908,15 +2953,15 @@
                     }
 
                     //Listed checkbox
-                    const listedVal = rawData.Listed === true || rawData.Listed === 'true' || rawData
-                        .Listed === 1 || rawData.Listed === '1';
-                    const $listedCb = $('<input>', {
-                        type: 'checkbox',
-                        class: 'listed-checkbox',
-                        checked: listedVal
-                    }).data('sku', item['(Child) sku']);
+                    // const listedVal = rawData.Listed === true || rawData.Listed === 'true' || rawData
+                    //     .Listed === 1 || rawData.Listed === '1';
+                    // const $listedCb = $('<input>', {
+                    //     type: 'checkbox',
+                    //     class: 'listed-checkbox',
+                    //     checked: listedVal
+                    // }).data('sku', item['(Child) sku']);
 
-                    $row.append($('<td class="hide-column">').append($listedCb));
+                    // $row.append($('<td class="hide-column">').append($listedCb));
 
                     // Live checkbox
                     const liveVal = rawData.Live === true || rawData.Live === 'true' || rawData.Live ===
@@ -5434,6 +5479,7 @@
                         liveCount: 0,
                         totalSalesTotal: 0,
                         reqCount: 0, // <-- NRL/REQ counter
+                        nraColCount: 0 // <-- NRA column counter
                     };
 
                     filteredData.forEach(item => {
@@ -5464,6 +5510,10 @@
                         // Count REQ entries (only for non-parent rows)
                         if (!item.is_parent && item.nr_req === 'REQ') {
                             metrics.reqCount++;
+                        }
+                        // Count NRA entries (only for non-parent rows)
+                        if (!item.is_parent && item.NR === 'NRA') {
+                            metrics.nraColCount++;
                         }
 
                         const profit = parseFloat(item.Profit) || 0;
@@ -5508,6 +5558,7 @@
                     $('#listed-total').text(metrics.listedCount.toLocaleString());
                     $('#live-total').text(metrics.liveCount.toLocaleString());
                     $('#req-total').text(metrics.reqCount.toLocaleString());
+                    $('#nra-col-count').text(metrics.nraColCount.toLocaleString());
                     $('#sale-total').text(metrics.totalSalesTotal.toLocaleString());
 
                     $.ajax({
