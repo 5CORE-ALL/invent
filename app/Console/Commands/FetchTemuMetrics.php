@@ -83,8 +83,32 @@ class FetchTemuMetrics extends Command
         }
 
         $this->info("Credentials found - App Key: " . substr($appKey, 0, 10) . "...");
+        $this->line("Full App Key: " . $appKey);
         $this->line("Access Token: " . substr($accessToken, 0, 15) . "...");
+        $this->line("Full Access Token: " . $accessToken);
         $this->line("Secret Key: " . substr($appSecret, 0, 10) . "...");
+        $this->line("Full Secret: " . $appSecret);
+        
+        // Verify exact match with expected values
+        $expectedAppKey = "6262ed18350450f708c3ed19faee7fdu";
+        $expectedSecret = "26971aaf2ddd3c16213d88a5da1f8f65aa724832";
+        $expectedToken = "upldldgr3z4kkxevvrenm6kk3sd1hufnahzenwyiwz4priye9uzfbfwntks";
+        
+        if ($appKey !== $expectedAppKey) {
+            $this->error("⚠️ APP_KEY MISMATCH!");
+            $this->line("Expected: " . $expectedAppKey);
+            $this->line("Got:      " . $appKey);
+        }
+        if ($appSecret !== $expectedSecret) {
+            $this->error("⚠️ SECRET_KEY MISMATCH!");
+            $this->line("Expected: " . $expectedSecret);
+            $this->line("Got:      " . $appSecret);
+        }
+        if ($accessToken !== $expectedToken) {
+            $this->error("⚠️ ACCESS_TOKEN MISMATCH!");
+            $this->line("Expected: " . $expectedToken);
+            $this->line("Got:      " . $accessToken);
+        }
         
         // Test API connection with a simple call
         $this->info("Testing API connection...");
@@ -234,7 +258,7 @@ class FetchTemuMetrics extends Command
             foreach ($skus as $skuId) {
                 $requestBody = [
                     "type" => "bg.local.goods.sku.list.price.query",
-                    "skuIds" => [$skuId], // API ko array me SKU IDs bhejni hoti hain
+                    "skuIdList" => [(string)$skuId], // Changed from skuIds to skuIdList and ensure string
                 ];
 
                 $signedRequest = $this->generateSignValue($requestBody);
@@ -468,7 +492,6 @@ class FetchTemuMetrics extends Command
 
             foreach ($finalSkuQuantities as $skuId => $data) {                
                 $updated = TemuMetric::where('sku_id', $skuId)
-                    ->orWhere('sku', $skuId)
                     ->update([
                         'quantity_purchased_l30' => $data['quantity_purchased_l30'],
                         'quantity_purchased_l60' => $data['quantity_purchased_l60'],
@@ -477,8 +500,19 @@ class FetchTemuMetrics extends Command
                     $this->info("Successfully updated quantity for SKU_ID: {$skuId} ({$updated} records)");
                     Log::info("Updated quantities for SKU: {$skuId}", $data);
                 } else {
-                    $this->warn("No record found for SKU_ID: {$skuId} to update quantity");
-                    Log::warning("No record found for SKU_ID: {$skuId} to update quantity");
+                    // Try by SKU column if sku_id didn't work
+                    $updated = TemuMetric::where('sku', $skuId)
+                        ->update([
+                            'quantity_purchased_l30' => $data['quantity_purchased_l30'],
+                            'quantity_purchased_l60' => $data['quantity_purchased_l60'],
+                        ]);
+                    if ($updated) {
+                        $this->info("Successfully updated quantity for SKU: {$skuId} ({$updated} records)");
+                        Log::info("Updated quantities for SKU: {$skuId}", $data);
+                    } else {
+                        $this->warn("No record found for SKU_ID: {$skuId} to update quantity");
+                        Log::warning("No record found for SKU_ID: {$skuId} to update quantity");
+                    }
                 }
             }
 
