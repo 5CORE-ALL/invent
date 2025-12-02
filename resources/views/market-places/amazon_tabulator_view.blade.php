@@ -72,9 +72,9 @@
 
                     <select id="nrl-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">NR</option>
-                        <option value="nrl">NRL</option>
-                        <option value="req">REQ</option>
+                        <option value="all">ALL</option>
+                        <option value="nr">NRL</option>
+                        <option value="req" selected>RL</option>
                     </select>
 
                     <select id="gpft-filter" class="form-select form-select-sm"
@@ -2201,14 +2201,14 @@
 
                 if (nrlFilter !== 'all') {
                     if (nrlFilter === 'req') {
-                        // Show all data except NRL
+                        // Show only REQ (exclude NR)
                         table.addFilter(function(data) {
-                            return data.NRL !== 'NRL';
+                            return data.NR !== 'NR';
                         });
-                    } else {
-                        // Show only NRL
+                    } else if (nrlFilter === 'nr') {
+                        // Show only NR
                         table.addFilter(function(data) {
-                            return data.NRL === 'NRL';
+                            return data.NR === 'NR';
                         });
                     }
                 }
