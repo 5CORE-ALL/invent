@@ -303,12 +303,6 @@
     <script>
         document.addEventListener("DOMContentLoaded", function() {
 
-            const invFilter  = document.querySelector("#inv-filter");
-            const nrlFilter  = document.querySelector("#nrl-filter");
-            const nraFilter  = document.querySelector("#nra-filter");
-            const fbaFilter  = document.querySelector("#fba-filter");
-
-
             const getDilColor = (value) => {
                 const percent = parseFloat(value) * 100;
                 if (percent < 16.66) return 'red';
@@ -597,9 +591,16 @@
                                             style="cursor:pointer; margin-left:8px;">
                                         </i>
                                     `;
+                                } else if(nra === 'LATER'){
+                                    return `
+                                        <span style="color: orange;">LATER</span>
+                                        <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
+                                            style="cursor:pointer; margin-left:8px;">
+                                        </i>
+                                    `;
                                 }
                             }
-                            
+                            return '';
                         }
                     },
                     {
@@ -625,14 +626,37 @@
                     let field = e.target.getAttribute("data-field");
                     let value = e.target.value;
 
-                    // Set background color if NRA
-                    if(field === "NRA" && value === "NRA") {
-                        e.target.style.backgroundColor = "#dc3545";
-                        e.target.style.color = "#fff";
-                    }
-                    else if(field === "NRA" && value === "RA") {
-                        e.target.style.backgroundColor = "#28a745";
-                        e.target.style.color = "#000";
+                    // Set background color based on field and value
+                    if(field === "NRA") {
+                        if(value === "NRA") {
+                            e.target.style.backgroundColor = "#dc3545";
+                            e.target.style.color = "#fff";
+                        } else if(value === "RA") {
+                            e.target.style.backgroundColor = "#28a745";
+                            e.target.style.color = "#000";
+                        } else if(value === "LATER") {
+                            e.target.style.backgroundColor = "#ffc107";
+                            e.target.style.color = "#000";
+                        }
+                    } else if(field === "NRL") {
+                        if(value === "NRL") {
+                            e.target.style.backgroundColor = "#dc3545";
+                            e.target.style.color = "#fff";
+                        } else if(value === "RL") {
+                            e.target.style.backgroundColor = "#28a745";
+                            e.target.style.color = "#fff";
+                        }
+                    } else if(field === "FBA") {
+                        if(value === "FBA") {
+                            e.target.style.backgroundColor = "#007bff";
+                            e.target.style.color = "#fff";
+                        } else if(value === "FBM") {
+                            e.target.style.backgroundColor = "#6f42c1";
+                            e.target.style.color = "#fff";
+                        } else if(value === "BOTH") {
+                            e.target.style.backgroundColor = "#90ee90";
+                            e.target.style.color = "#000";
+                        }
                     }
 
                     fetch('/update-amazon-nr-nrl-fba', {
@@ -649,11 +673,105 @@
                     })
                     .then(res => res.json())
                     .then(data => {
-                        table.replaceData();
+                        // Update the row data in the table instead of replacing all data
+                        let row = table.getRow(sku);
+                        if(row) {
+                            let rowData = row.getData();
+                            rowData[field] = value;
+                            row.update(rowData);
+                            
+                            // Immediately update stats to reflect the change
+                            if(typeof window.updateCampaignStats === 'function') {
+                                window.updateCampaignStats();
+                            }
+                        }
+                        
+                        console.log('✅ Saved:', field, '=', value, 'for SKU:', sku);
                     })
-                    .catch(err => console.error(err));
+                    .catch(err => {
+                        console.error('❌ Save failed:', err);
+                        alert('Failed to save changes. Please try again.');
+                    });
                 }
             });
+
+            // ✅ Update Stats Based on *Visible (Filtered)* Data - Make it globally accessible
+            window.updateCampaignStats = function() {
+                let visibleData = table.getData("active");
+
+                let bothMissing = 0;
+                let kwMissing = 0;
+                let ptMissing = 0;
+                let bothRunning = 0;
+                let kwRunning = 0;
+                let ptRunning = 0;
+                let totalMissingAds = 0;
+                let totalNRA = 0;
+                let totalRA = 0;
+                let totalMissingAds2 = 0;
+
+                visibleData.forEach(row => {
+                    let kw = row.kw_campaign_name || "";
+                    let pt = row.pt_campaign_name || "";
+                    let nra = (row.NRA || "").trim();
+                    let inv = parseFloat(row.INV) || 0;
+
+                    // Total NRA Count (all NRA regardless of inventory)
+                    if(nra === "NRA"){
+                        totalNRA++;
+                    }
+
+                    // Total RA Count (all non-NRA with INV > 0)
+                    if(nra !== "NRA" && inv > 0){
+                        totalRA++;
+                    }
+
+                    // Only process remaining counts for non-NRA with INV > 0
+                    if(nra !== "NRA" && inv > 0) {
+                        // Campaign status counts
+                        if (kw && pt) {
+                            bothRunning++;
+                        } else if (kw && !pt) {
+                            ptMissing++;
+                        } else if (!kw && pt) {
+                            kwMissing++;
+                        } else {
+                            bothMissing++;
+                        }
+
+                        // Running counts
+                        if (kw) kwRunning++;
+                        if (pt) ptRunning++;
+                    }
+                });
+
+                // Total Missing Ads Count
+                totalMissingAds2 = ptMissing + kwMissing + bothMissing;
+                totalMissingAds = `( ${totalMissingAds2} ) `;
+
+                // Update HTML in batch
+                $("#total-campaigns").text(visibleData.length);
+                $("#both-missing").text(bothMissing);
+                $("#kw-missing").text(kwMissing);
+                $("#pt-missing").text(ptMissing);
+                $("#both-running").text(bothRunning);
+                $("#total-missing-ads").text(totalMissingAds);
+                $("#kw-running").text(kwRunning);
+                $("#pt-running").text(ptRunning);
+                $("#total-nra").text(totalNRA);
+                $("#total-ra").text(totalRA);
+
+                // Send to backend (non-blocking)
+                $.ajax({
+                    url: "{{ route('adv-amazon.missing.save-data') }}",
+                    method: 'GET',
+                    data: {
+                        totalMissingAds: totalMissingAds2,
+                        kwMissing: kwMissing + bothMissing,
+                        ptMissing: ptMissing + bothMissing,
+                    }
+                });
+            };
 
             table.on("tableBuilt", function () {
 
@@ -695,9 +813,14 @@
                         if (nraFilterVal === "ALL") {
                             // Show all records
                         } else if (nraFilterVal === "RA") {
+                            // RA filter should show RA and LATER, exclude only NRA
                             if (nra === "NRA") return false;
-                        } else if (nra !== nraFilterVal) {
-                            return false;
+                        } else if (nraFilterVal === "LATER") {
+                            // LATER filter shows only LATER
+                            if (nra !== "LATER") return false;
+                        } else if (nraFilterVal === "NRA") {
+                            // NRA filter shows only NRA
+                            if (nra !== "NRA") return false;
                         }
                     }
                     
@@ -722,130 +845,48 @@
                 // ✅ Apply Filter
                 table.setFilter(combinedFilter);
 
-                // ✅ Update Stats Based on *Visible (Filtered)* Data
-                function updateCampaignStats() {
-                    let visibleData = table.getData("active");
-
-                    let bothMissing = 0;
-                    let kwMissing = 0;
-                    let ptMissing = 0;
-                    let bothRunning = 0;
-                    let kwRunning = 0;
-                    let ptRunning = 0;
-                    let totalMissingAds = 0;
-                    let totalNRA = 0;
-                    let totalRA = 0;
-                    let totalMissingAds2 = 0;
-
-                    visibleData.forEach(row => {
-                        let kw = row.kw_campaign_name || "";
-                        let pt = row.pt_campaign_name || "";
-                        let nra = (row.NRA || "").trim();
-
-                        // Existing counts
-                        if(nra !== "NRA" && (parseFloat(row.INV) || 0) > 0) {
-                            if (kw && pt) bothRunning++;
-                            else if (kw && !pt) ptMissing++;
-                            else if (!kw && pt) kwMissing++;
-                            else bothMissing++;
-                        }
-
-                        // New running counts
-                        if(nra !== "NRA" && (parseFloat(row.INV) || 0) > 0) {
-                            if (kw) kwRunning++;
-                            if (pt) ptRunning++;
-                        }
-
-                        // Total Missing Ads Count
-                        if(nra !== "NRA" && (parseFloat(row.INV) || 0) > 0) {
-                            totalMissingAds = `( ${ptMissing + kwMissing + (bothMissing)} ) `;
-                            totalMissingAds2 = parseFloat(ptMissing) + parseFloat(kwMissing) + parseFloat(bothMissing);
-                        }
-
-                        // Total NRA Count
-                        if(row.NRA && row.NRA.trim() === "NRA" && (parseFloat(row.INV) || 0) > 0){
-                            totalNRA++;
-                        }
-
-                        // Total RA Count
-                        if(!row.NRA || row.NRA.trim() !== "NRA" && (parseFloat(row.INV) || 0) > 0){
-                            totalRA++;
-                        }
-                    });
-
-                    $.ajax({
-                        url: "{{ route('adv-amazon.missing.save-data') }}",
-                        method: 'GET',
-                        data: {
-                            totalMissingAds: totalMissingAds2,
-                            kwMissing: parseFloat(kwMissing) + parseFloat(bothMissing),
-                            ptMissing: parseFloat(ptMissing) + parseFloat(bothMissing),
-                        },
-                        success: function(response) {
-                        },
-                        error: function(xhr) {
-                        }
-                    });
-
-                    // Update HTML
-                    $("#total-campaigns").text(visibleData.length);
-                    $("#both-missing").text(bothMissing);
-                    $("#kw-missing").text(kwMissing);
-                    $("#pt-missing").text(ptMissing);
-                    $("#both-running").text(bothRunning);
-                    $("#total-missing-ads").text(totalMissingAds);
-
-                    // New stats
-                    $("#kw-running").text(kwRunning);
-                    $("#pt-running").text(ptRunning);
-
-                    $("#total-nra").text(totalNRA);
-                    $("#total-ra").text(totalRA);
-
-                    // Update All Missing Button Text
-                    $("#all-missing-btn").on("click", function() {
-                        // Clear all filters first
-                        $("#global-search").val("");
-                        $("#status-filter").val("");
-                        $("#inv-filter").val("");
-                        $("#nra-filter").val("RA");
-                        
-                        // Custom filter to show only rows with missing ads
-                        table.setFilter(function(data) {
-                            const sku = data.sku || '';
-                            const isParent = sku.toUpperCase().includes("PARENT");
-                            
-                            let kw = data.kw_campaign_name || "";
-                            let pt = data.pt_campaign_name || "";
-                            let nra = (data.NRA || "").trim();
-                            
-                            return !isParent && nra !== "NRA" && (!kw || !pt);
-                        });
-                        
-                        // Update stats
-                        updateCampaignStats();
-                    });
-
-                    $(document)
-                }
-
-
                 // ✅ Trigger Update on Every Filter / Search Change
                 function reapplyFiltersAndUpdate() {
                     table.setFilter(combinedFilter);
-                    updateCampaignStats();
+                    window.updateCampaignStats();
                 }
 
                 // ✅ Events
                 $("#global-search").on("keyup", reapplyFiltersAndUpdate);
                 $("#status-filter, #inv-filter, #nra-filter, #missingAds-filter").on("change", reapplyFiltersAndUpdate);
 
-                table.on("dataFiltered", updateCampaignStats);
-                table.on("pageLoaded", updateCampaignStats);
-                table.on("dataProcessed", updateCampaignStats);
+                table.on("dataFiltered", window.updateCampaignStats);
+                table.on("pageLoaded", window.updateCampaignStats);
+                table.on("dataProcessed", window.updateCampaignStats);
 
                 // ✅ Initial Stats Load
-                updateCampaignStats();
+                window.updateCampaignStats();
+
+                // Update All Missing Button Handler
+                $("#all-missing-btn").off("click").on("click", function() {
+                    // Clear all filters first
+                    $("#global-search").val("");
+                    $("#status-filter").val("");
+                    $("#inv-filter").val("");
+                    $("#nra-filter").val("RA");
+                    $("#missingAds-filter").val("");
+                    
+                    // Custom filter to show only rows with missing ads
+                    table.setFilter(function(data) {
+                        const sku = data.sku || '';
+                        const isParent = sku.toUpperCase().includes("PARENT");
+                        
+                        let kw = data.kw_campaign_name || "";
+                        let pt = data.pt_campaign_name || "";
+                        let nra = (data.NRA || "").trim();
+                        let inv = parseFloat(data.INV) || 0;
+                        
+                        return !isParent && nra !== "NRA" && inv > 0 && (!kw || !pt);
+                    });
+                    
+                    // Update stats
+                    window.updateCampaignStats();
+                });
             });
 
 
@@ -893,11 +934,15 @@
                     if (!isParent) {
                         let kwCampaign = row.kw_campaign_name || '';
                         let ptCampaign = row.pt_campaign_name || '';
-                        let nra = row.NRA || '';
+                        let nra = (row.NRA || '').trim();
                         let inv = row.INV || 0;
 
                         if (inv > 0) {
-                            if (nra !== 'NRA') {
+                            if (nra === 'NRA') {
+                                missingStatus = 'NRA';
+                            } else if (nra === 'LATER') {
+                                missingStatus = 'LATER';
+                            } else {
                                 if (kwCampaign && ptCampaign) {
                                     missingStatus = 'Both Running';
                                 } else if (kwCampaign) {
@@ -907,12 +952,12 @@
                                 } else {
                                     missingStatus = 'KW & PT Missing';
                                 }
-                            } else {
-                                missingStatus = 'NRA';
                             }
                         }
                     } else if (row.NRA === 'NRA') {
                         missingStatus = 'NRA';
+                    } else if ((row.NRA || '').trim() === 'LATER') {
+                        missingStatus = 'LATER';
                     }
 
                     return {
