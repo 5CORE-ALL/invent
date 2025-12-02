@@ -155,10 +155,13 @@
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-percent"></i> Decrease
                     </button>
-                    
+                                        
                     <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
                     </button>
+
+                    <span class="badge bg-info fs-6 p-2" id="total-sku-count-badge" style="color: black; font-weight: bold; display: none;">Total SKUs: 0</span>
+
                 </div>
 
                 <!-- Metrics Chart Section -->
@@ -2342,9 +2345,11 @@
                 let totalAmazonL30 = 0;
                 let totalDilPercent = 0;
                 let dilCount = 0;
+                let totalSkuCount = 0;
 
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
+                        totalSkuCount++;
                         totalTcos += parseFloat(row['AD%'] || 0);
                         totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
@@ -2401,6 +2406,9 @@
                 $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
                 const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
                 $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
+                
+                // Update total SKU count badge
+                $('#total-sku-count-badge').text('Total SKUs: ' + totalSkuCount.toLocaleString()).show();
             }
 
             // Build Column Visibility Dropdown
