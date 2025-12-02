@@ -474,11 +474,59 @@ class PricingMasterViewsController extends Controller
             ->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $plsStatuses = DB::table('pls_listing_statuses')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
 
-        // ADVT% calculation disabled to prevent memory exhaustion on production
-        // TODO: Implement as separate on-demand API endpoint
+        // Fetch ads campaign data for ADVT% calculation (optimized for memory efficiency)
+        // Strategy: Fetch only campaigns that match our SKU list to minimize memory usage
         $ebayPriorityCampaigns = collect();
         $ebayMetrics = collect();
         $amazonSpCampaigns = collect();
+        
+        try {
+            // First, fetch ebay metrics for item_id mapping (only needed columns)
+            if (count($nonParentSkus) > 0) {
+                $ebayMetrics = EbayMetric::whereIn('sku', $nonParentSkus)
+                    ->select('sku', 'item_id')
+                    ->get()
+                    ->keyBy('sku');
+            }
+        } catch (Exception $e) {
+            Log::warning('Could not fetch eBay metrics: ' . $e->getMessage());
+        }
+        
+        try {
+            // Fetch eBay Priority campaigns - only for SKUs in our list
+            // Use LIKE queries with OR conditions for better memory efficiency
+            if (count($nonParentSkus) > 0 && count($nonParentSkus) <= 100) {
+                // For small SKU lists, use whereIn with campaign_id LIKE matching
+                $ebayPriorityCampaigns = EbayPriorityReport::where('report_range', 'L30')
+                    ->whereIn('channels', ['ebay1', 'ebay2', 'ebay3'])
+                    ->where(function($query) use ($nonParentSkus) {
+                        foreach (array_slice($nonParentSkus, 0, 50) as $sku) { // Limit to first 50 SKUs
+                            $query->orWhere('campaign_id', 'LIKE', "%{$sku}%");
+                        }
+                    })
+                    ->select('campaign_id', 'channels', 'cpc_ad_fees_payout_currency', 'cpc_sale_amount_payout_currency')
+                    ->get();
+            }
+        } catch (Exception $e) {
+            Log::warning('Could not fetch eBay Priority campaigns: ' . $e->getMessage());
+        }
+        
+        try {
+            // Fetch Amazon campaigns - only for SKUs in our list
+            if (count($nonParentSkus) > 0 && count($nonParentSkus) <= 100) {
+                $amazonSpCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                    ->where('report_date_range', 'L30')
+                    ->where(function($query) use ($nonParentSkus) {
+                        foreach (array_slice($nonParentSkus, 0, 50) as $sku) { // Limit to first 50 SKUs
+                            $query->orWhere('campaignName', 'LIKE', "%{$sku}%");
+                        }
+                    })
+                    ->select('campaignName', 'cost', 'sales30d')
+                    ->get();
+            }
+        } catch (Exception $e) {
+            Log::warning('Could not fetch Amazon SP campaigns: ' . $e->getMessage());
+        }
 
         // Fetch LMPA and LMP data
         $lmpLookup = collect();
