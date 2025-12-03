@@ -156,9 +156,6 @@
                 pagination: "local",
                 paginationSize: 50,
                 height: "700px",
-                initialSort: [
-                    {column: "l7_acos", dir: "desc"}
-                ],
                 columns: [{
                         title: "#",
                         formatter: "rownum",

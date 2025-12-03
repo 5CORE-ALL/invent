@@ -272,8 +272,7 @@
                 height: "700px",             
                 virtualDom: true,
                 initialSort:[
-                    {column:"parent", dir:"asc"},  
-                    {column:"sku", dir:"asc"},     
+                    {column:"acos_L30", dir:"desc"},     
                 ],
                 rowFormatter: function(row) {
                     const data = row.getData();
