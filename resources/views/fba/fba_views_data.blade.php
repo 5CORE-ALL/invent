@@ -884,6 +884,8 @@
             }
             
             // Apply price with retry logic
+            // NOTE: Backend now includes automatic verification and retry (2 attempts with fresh token)
+            // This frontend retry handles network issues and background retries for failed pushes
             async function applyPriceWithRetry(sku, price, cell, retries = 0, isBackgroundRetry = false) {
                 const $btn = cell ? $(cell.getElement()).find('.apply-price-btn') : null;
                 const row = cell ? cell.getRow() : null;
@@ -1073,6 +1075,8 @@
             }
 
             // Retry function for applying price with up to 5 attempts (Promise-based for Apply All)
+            // NOTE: Backend now includes automatic verification and retry (2 attempts with fresh token)
+            // This frontend retry is for network errors, timeouts, or persistent failures
             function applyPriceWithRetryPromise(sku, price, maxRetries = 5, delay = 5000) {
                 return new Promise((resolve, reject) => {
                     let attempt = 0;

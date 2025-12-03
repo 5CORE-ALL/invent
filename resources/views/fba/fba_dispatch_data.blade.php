@@ -4,6 +4,33 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <style>
+        .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+        
+        /* Vertical column headers */
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            transform: rotate(180deg);
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .tabulator .tabulator-header .tabulator-col {
+            height: 80px !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0px !important;
+        }
+    </style>
 @endsection
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -46,6 +73,16 @@
                             <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success me-2">
                                 <i class="fa fa-file-excel"></i>
                             </a>
+                            <div class="btn-group me-2" role="group">
+                                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fa fa-columns"></i> Columns
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end" id="column-dropdown-menu" style="max-height: 400px; overflow-y: auto;">
+                                </ul>
+                            </div>
+                            <button id="show-all-columns-btn" type="button" class="btn btn-sm btn-outline-secondary me-2">
+                                <i class="fa fa-eye"></i> Show All
+                            </button>
                             <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                                 data-bs-target="#importModal">
                                 <i class="fa fa-upload"></i>
@@ -82,6 +119,34 @@
         </div>
     </div>
 
+    <!-- SKU Metrics Chart Modal -->
+    <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Metrics Chart for <span id="modalSkuName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Date Range:</label>
+                        <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                            <option value="7" selected>Last 7 Days</option>
+                            <option value="14">Last 14 Days</option>
+                            <option value="30">Last 30 Days</option>
+                        </select>
+                    </div>
+                    <div id="chart-no-data-message" class="alert alert-info" style="display: none;">
+                        No historical data available for this SKU. Data will appear after running the metrics collection command.
+                    </div>
+                    <div style="height: 400px;">
+                        <canvas id="skuMetricsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Import Modal -->
     <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
@@ -99,8 +164,8 @@
                                 required>
                         </div>
                         <small class="text-muted">
-                            <i class="fa fa-info-circle"></i> CSV must have: SKU, Dimensions, Weight, Qty in each box, Total
-                            qty Sent, Total Send Cost, Inbound qty, Send cost, IN Charges
+                            <i class="fa fa-info-circle"></i> CSV must have: SKU, Length, Width, Height, Weight, Qty in each box, Total
+                            qty Sent, Total Send Cost, Inbound qty, Send cost, Commission Percentage, S Price, Ratings, Shipment Track Status
                         </small>
                     </div>
                     <div class="modal-footer">
@@ -124,11 +189,280 @@
                 </div>
             </div>
         </div>
+        <!-- Monthly Sales Modal (Jan-Dec) -->
+        <div class="modal fade" id="monthlySalesModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-centered" style="max-width:900px;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Monthly Sales for <span id="monthlyModalSku"></span></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="monthlySalesModalBody" style="min-width:300px; overflow-x:auto;">
+                        <!-- Content populated by JS -->
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     @endsection
 
     @section('script-bottom')
         <script>
+            // SKU-specific chart
+            let skuMetricsChart = null;
+            let currentSku = null;
+
+            function initSkuMetricsChart() {
+                const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+                skuMetricsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                label: 'Price (USD)',
+                                data: [],
+                                borderColor: '#FF0000',
+                                backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Views',
+                                data: [],
+                                borderColor: '#0000FF',
+                                backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'CVR%',
+                                data: [],
+                                borderColor: '#008000',
+                                backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y1',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'TACOS%',
+                                data: [],
+                                borderColor: '#FFD700',
+                                backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y1',
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 15,
+                                    font: {
+                                        size: 12
+                                    }
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'FBA SKU Metrics',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                },
+                                padding: {
+                                    top: 10,
+                                    bottom: 20
+                                }
+                            },
+                            tooltip: {
+                                enabled: true,
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        let value = context.parsed.y || 0;
+                                        
+                                        if (label.includes('Price')) {
+                                            return label + ': $' + value.toFixed(2);
+                                        } else if (label.includes('Views')) {
+                                            return label + ': ' + value.toLocaleString();
+                                        } else if (label.includes('CVR')) {
+                                            return label + ': ' + value.toFixed(1) + '%';
+                                        } else if (label.includes('TACOS')) {
+                                            return label + ': ' + Math.round(value) + '%';
+                                        } else if (label.includes('%')) {
+                                            return label + ': ' + value.toFixed(2) + '%';
+                                        }
+                                        return label + ': ' + value;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Date',
+                                    font: {
+                                        size: 12,
+                                        weight: 'bold'
+                                    }
+                                },
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    }
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Price/Views',
+                                    font: {
+                                        size: 12,
+                                        weight: 'bold'
+                                    }
+                                },
+                                beginAtZero: true,
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    },
+                                    callback: function(value, index, values) {
+                                        if (values.length > 0 && Math.max(...values.map(v => v.value)) < 1000) {
+                                            return '$' + value.toFixed(0);
+                                        }
+                                        return value.toLocaleString();
+                                    }
+                                }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Percent (%)',
+                                    font: {
+                                        size: 12,
+                                        weight: 'bold'
+                                    }
+                                },
+                                beginAtZero: true,
+                                grid: {
+                                    drawOnChartArea: false,
+                                },
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    },
+                                    callback: function(value) {
+                                        return value.toFixed(0) + '%';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function loadSkuMetricsData(sku, days = 7) {
+                console.log('Loading metrics data for SKU:', sku, 'Days:', days);
+                fetch(`/fba-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Metrics data received:', data);
+                        if (skuMetricsChart) {
+                            if (!data || data.length === 0) {
+                                console.warn('No data returned for SKU:', sku);
+                                $('#chart-no-data-message').show();
+                                skuMetricsChart.data.labels = [];
+                                skuMetricsChart.data.datasets.forEach(dataset => {
+                                    dataset.data = [];
+                                });
+                                skuMetricsChart.options.plugins.title.text = 'FBA Metrics';
+                                skuMetricsChart.update();
+                                return;
+                            }
+                            
+                            $('#chart-no-data-message').hide();
+                            skuMetricsChart.options.plugins.title.text = `FBA Metrics (${days} Days)`;
+                            skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
+                            skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
+                            skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
+                            skuMetricsChart.data.datasets[2].data = data.map(d => d.cvr_percent || 0);
+                            skuMetricsChart.data.datasets[3].data = data.map(d => d.tacos_percent || 0);
+                            skuMetricsChart.update('active');
+                            console.log('Chart updated successfully with', data.length, 'data points');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading SKU metrics data:', error);
+                        alert('Error loading metrics data. Please check console for details.');
+                    });
+            }
+
             $(document).ready(function() {
+                // Initialize SKU metrics chart
+                initSkuMetricsChart();
+
+                // SKU chart days filter
+                $('#sku-chart-days-filter').on('change', function() {
+                    const days = $(this).val();
+                    if (currentSku) {
+                        if (skuMetricsChart) {
+                            skuMetricsChart.options.plugins.title.text = `FBA Metrics (${days} Days)`;
+                            skuMetricsChart.update();
+                        }
+                        loadSkuMetricsData(currentSku, days);
+                    }
+                });
+
+                // Event delegation for eye button clicks
+                $(document).on('click', '.view-sku-chart', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const sku = $(this).data('sku');
+                    currentSku = sku;
+                    $('#modalSkuName').text(sku);
+                    $('#sku-chart-days-filter').val('7');
+                    $('#chart-no-data-message').hide();
+                    loadSkuMetricsData(sku, 7);
+                    $('#skuMetricsModal').modal('show');
+                });
+
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
                     layout: "fitData",
@@ -164,7 +498,20 @@
                             headerFilterPlaceholder: "Search SKU...",
                             cssClass: "font-weight-bold",
                             tooltip: true,
-                            frozen: true
+                            frozen: true,
+                            formatter: function(cell) {
+                                const fbaSku = cell.getValue();
+                                const sku = cell.getRow().getData().SKU;
+                                const ratings = cell.getRow().getData().Ratings;
+                                if (!fbaSku || cell.getRow().getData().is_parent) return fbaSku;
+                                
+                                let ratingDisplay = '';
+                                if (ratings && ratings > 0) {
+                                    ratingDisplay = ` <i class="fa fa-star" style="color: orange;"></i> ${ratings}`;
+                                }
+                                
+                                return `${fbaSku}${ratingDisplay} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                            }
                         },
 
                         {
@@ -196,14 +543,42 @@
                         },
 
                         {
+                            title: "Shipment Status",
+                            field: "FBA_Shipment_Status",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const status = cell.getValue() || '';
+                                if (!status) return '';
+                                
+                                const statusColors = {
+                                    'WORKING': '#FF8C00',
+                                    'SHIPPED': '#1E90FF',
+                                    'IN_TRANSIT': '#0066CC',
+                                    'DELIVERED': '#228B22',
+                                    'RECEIVING': '#DAA520',
+                                    'CLOSED': '#696969',
+                                    'CANCELLED': '#B22222',
+                                    'ERROR': '#CC0000'
+                                };
+                                const color = statusColors[status] || '#000';
+                                return `<span style="color: ${color}; font-weight: 700; font-size: 12px;">${status}</span>`;
+                            }
+                        },
+
+                        {
                             title: "Shopify INV",
                             field: "Shopify_INV",
                             hozAlign: "center"
                         },
 
                         {
-                            title: "L30 Units",
+                            title: "L30 FBA",
                             field: "l30_units",
+                            hozAlign: "center"
+                        },
+                        {
+                            title: "AMZ L30",
+                            field: "AMZ_L30",
                             hozAlign: "center"
                         },
                         {
@@ -233,7 +608,7 @@
 
 
                         {
-                            title: "Quantity Box",
+                            title: "Q in E box",
                             field: "Quantity_in_each_box",
                             hozAlign: "center",
                             editor: "input"
@@ -280,7 +655,14 @@
                             title: "MSL",
                             field: "MSL",
                             hozAlign: "center",
-                            editor: "input"
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue());
+                                if (isNaN(value) || value === 0) return value || '';
+                                
+                                const bgColor = value < 0 ? '#ffeb3b' : '#f44336'; // yellow for negative, red for positive
+                                const textColor = value < 0 ? '#000' : '#fff';
+                                return `<span style="background-color:${bgColor}; color:${textColor}; padding:4px 8px; border-radius:3px; font-weight:600;">${value}</span>`;
+                            }
                         },
                         {
                             title: "Correct Cost",
@@ -293,19 +675,6 @@
                                 cell.setValue(!currentValue);
                             }
                         },
-                        {
-                            title: "0 STOCK",
-                            field: "Zero_Stock",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-
                         {
                             title: "FBA Send",
                             field: "FBA_Send",
@@ -518,10 +887,103 @@
                         },
 
                         {
-                            title: "L x W x H",
-                            field: "Dimensions",
+                            title: "Length",
+                            field: "Length",
                             hozAlign: "center",
-                            editor: "input"
+                            editor: "input",
+                            cellEdited: function(cell) {
+                                var data = cell.getRow().getData();
+                                var value = cell.getValue();
+
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.FBA_SKU,
+                                        field: 'length',
+                                        value: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function() {
+                                        table.replaceData();
+                                    }
+                                });
+                            }
+                        },
+
+                        {
+                            title: "Width",
+                            field: "Width",
+                            hozAlign: "center",
+                            editor: "input",
+                            cellEdited: function(cell) {
+                                var data = cell.getRow().getData();
+                                var value = cell.getValue();
+
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.FBA_SKU,
+                                        field: 'width',
+                                        value: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function() {
+                                        table.replaceData();
+                                    }
+                                });
+                            }
+                        },
+
+                        {
+                            title: "Height",
+                            field: "Height",
+                            hozAlign: "center",
+                            editor: "input",
+                            cellEdited: function(cell) {
+                                var data = cell.getRow().getData();
+                                var value = cell.getValue();
+
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.FBA_SKU,
+                                        field: 'height',
+                                        value: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function() {
+                                        table.replaceData();
+                                    }
+                                });
+                            }
+                        },
+
+                        {
+                            title: "Shipment Track Status",
+                            field: "Shipment_Track_Status",
+                            hozAlign: "center",
+                            editor: "input",
+                            cellEdited: function(cell) {
+                                var data = cell.getRow().getData();
+                                var value = cell.getValue();
+
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.FBA_SKU,
+                                        field: 'shipment_track_status',
+                                        value: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function() {
+                                        table.replaceData();
+                                    }
+                                });
+                            }
                         },
 
                         {
@@ -587,7 +1049,7 @@
 
 
                         {
-                            title: "Shipping Amount",
+                            title: "T Sent C",
                             field: "Shipping_Amount",
                             hozAlign: "center",
                             editor: "input"
@@ -597,65 +1059,32 @@
 
 
                         {
-                            title: "Jan",
-                            field: "Jan",
-                            hozAlign: "center"
+                            title: "T sales",
+                            field: "T_sales",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = cell.getValue() || 0;
+                                const row = cell.getRow().getData();
+                                const months = {
+                                    Jan: row.Jan || 0,
+                                    Feb: row.Feb || 0,
+                                    Mar: row.Mar || 0,
+                                    Apr: row.Apr || 0,
+                                    May: row.May || 0,
+                                    Jun: row.Jun || 0,
+                                    Jul: row.Jul || 0,
+                                    Aug: row.Aug || 0,
+                                    Sep: row.Sep || 0,
+                                    Oct: row.Oct || 0,
+                                    Nov: row.Nov || 0,
+                                    Dec: row.Dec || 0,
+                                };
+                                const payload = encodeURIComponent(JSON.stringify(months));
+                                return `<span style='font-weight:600;'>${value}</span> &nbsp; <i class='fa fa-eye monthly-eye' data-months='${payload}' data-sku='${row.SKU}' style='cursor:pointer; color:#3b7ddd;' title='View monthly breakdown'></i>`;
+                            }
                         },
-                        {
-                            title: "Feb",
-                            field: "Feb",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Mar",
-                            field: "Mar",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Apr",
-                            field: "Apr",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "May",
-                            field: "May",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Jun",
-                            field: "Jun",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Jul",
-                            field: "Jul",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Aug",
-                            field: "Aug",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Sep",
-                            field: "Sep",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Oct",
-                            field: "Oct",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Nov",
-                            field: "Nov",
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Dec",
-                            field: "Dec",
-                            hozAlign: "center"
-                        }
+
+                        // Jan–Dec columns intentionally removed — values are available in modal via the T_sales eye icon
                     ]
                 });
 
@@ -671,9 +1100,9 @@
                         field === 'Total_quantity_sent' || field === 'Send_Cost' || field ===
                         'IN_Charges' ||
                         field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
-                        'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
+                        'Inbound_Quantity' || field === 'FBA_Send' || field ===
                         'FBA_Fee_Manual' || field === 'MSL' || field === 'Correct_Cost' || field ===
-                        'Zero_Stock' || field === 'Approval' || field === 'Profit_is_ok') {
+                        'Approval' || field === 'Profit_is_ok') {
                         $.ajax({
                             url: '/update-fba-manual-data',
                             method: 'POST',
@@ -787,6 +1216,109 @@
                         }
                     });
                 });
+
+                // Build Column Visibility Dropdown
+                function buildColumnDropdown() {
+                    const menu = document.getElementById("column-dropdown-menu");
+                    menu.innerHTML = '';
+
+                    table.getColumns().forEach(col => {
+                        const def = col.getDefinition();
+                        const field = def.field;
+                        const title = def.title || field;
+                        
+                        if (field && field !== '_select' && field !== '_accept' && title) {
+                            const li = document.createElement('li');
+                            const label = document.createElement('label');
+                            label.className = 'dropdown-item';
+                            label.style.cursor = 'pointer';
+                            
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.checked = col.isVisible();
+                            checkbox.style.marginRight = '8px';
+                            checkbox.dataset.field = field;
+                            
+                            label.appendChild(checkbox);
+                            label.appendChild(document.createTextNode(title));
+                            li.appendChild(label);
+                            menu.appendChild(li);
+                            
+                            checkbox.addEventListener('change', function() {
+                                if (this.checked) {
+                                    col.show();
+                                } else {
+                                    col.hide();
+                                }
+                                saveColumnVisibilityToServer();
+                            });
+                        }
+                    });
+                }
+
+                function saveColumnVisibilityToServer() {
+                    const visibility = {};
+                    table.getColumns().forEach(col => {
+                        const def = col.getDefinition();
+                        if (def.field) {
+                            visibility[def.field] = col.isVisible();
+                        }
+                    });
+
+                    fetch('/fba-dispatch-column-visibility', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ visibility: visibility })
+                    });
+                }
+
+                function applyColumnVisibilityFromServer() {
+                    fetch('/fba-dispatch-column-visibility', {
+                            method: 'GET',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(savedVisibility => {
+                            table.getColumns().forEach(col => {
+                                const def = col.getDefinition();
+                                if (def.field && savedVisibility[def.field] !== undefined) {
+                                    if (savedVisibility[def.field]) {
+                                        col.show();
+                                    } else {
+                                        col.hide();
+                                    }
+                                }
+                            });
+                        })
+                        .catch(error => console.error('Error loading column visibility:', error));
+                }
+
+                // Apply saved visibility and build dropdown when table is ready
+                setTimeout(() => {
+                    applyColumnVisibilityFromServer();
+                    buildColumnDropdown();
+                }, 500);
+
+                // Show All Columns button
+                document.getElementById("show-all-columns-btn").addEventListener("click", function() {
+                    table.getColumns().forEach(col => {
+                        col.show();
+                    });
+                    buildColumnDropdown();
+                    saveColumnVisibilityToServer();
+                });
+
+                // Toggle column from dropdown
+                document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
+                    if (e.target.type === 'checkbox') {
+                        buildColumnDropdown();
+                    }
+                });
             });
 
             // LMP Modal Event Listener
@@ -827,5 +1359,40 @@
                 $('#lmpModal').appendTo('body').modal('show');
                 console.log('Modal shown');
             }
+
+            // Monthly sales modal handler (twelve-month breakdown)
+            $(document).on('click', '.monthly-eye', function(e) {
+                e.preventDefault();
+                try {
+                    // data-months is url-encoded JSON
+                    const raw = $(this).attr('data-months') || '';
+                    const json = decodeURIComponent(String(raw));
+                    const months = JSON.parse(json || '{}');
+                    const sku = $(this).data('sku') || '';
+
+                    // Render months horizontally: one header row with months and one row with values
+                    const monthKeys = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    let html = '<div style="overflow-x:auto;"><table class="table table-sm table-bordered"><thead><tr>';
+                    monthKeys.forEach(m => {
+                        html += `<th class="text-center" style="min-width:60px;">${m}</th>`;
+                    });
+                    html += '</tr></thead><tbody><tr>';
+                    monthKeys.forEach(m => {
+                        const v = months[m] || 0;
+                        // format numbers with commas
+                        const formatted = (typeof v === 'number') ? v.toLocaleString() : (parseFloat(v) ? parseFloat(v).toLocaleString() : v);
+                        html += `<td class='text-end' style="vertical-align:middle;">${formatted}</td>`;
+                    });
+                    html += '</tr></tbody></table></div>';
+                    html += '</tbody></table>';
+
+                    $('#monthlyModalSku').text(sku);
+                    $('#monthlySalesModalBody').html(html);
+                    $('#monthlySalesModal').appendTo('body').modal('show');
+                } catch (err) {
+                    console.error('Failed to show monthly sales modal', err);
+                    alert('Failed to load monthly sales details');
+                }
+            });
         </script>
     @endsection

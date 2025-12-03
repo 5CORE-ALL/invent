@@ -58,6 +58,7 @@ class Kernel extends ConsoleKernel
         AmazonSdCampaignReports::class,
         FetchGoogleAdsCampaigns::class,
         \App\Console\Commands\SyncMetaAllAds::class,
+        \App\Console\Commands\SyncFbaShipmentStatus::class,
 
     ];
 
@@ -317,6 +318,13 @@ class Kernel extends ConsoleKernel
         $schedule->command('fba:sync-ship-calculations')
             ->dailyAt('03:00')
             ->timezone('America/Los_Angeles');
+
+        // Sync FBA Shipment Status - Daily at 4 AM PST
+        $schedule->command('fba:sync-shipment-status')
+            ->dailyAt('04:00')
+            ->timezone('America/Los_Angeles')
+            ->name('fba-sync-shipment-status-daily')
+            ->withoutOverlapping();
 
         $schedule->command('app:sync-shopify-all-channels-data')->dailyAt('12:00')->timezone('Asia/Kolkata');
         // Movement Analysis Command for Shopify Order Items (apicentral database)

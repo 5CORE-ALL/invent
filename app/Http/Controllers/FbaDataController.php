@@ -8,6 +8,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\FbaTable;
 use App\Models\FbaPrice;
+use App\Models\AmazonDatasheet;
 use App\Models\FbaReportsMaster;
 use App\Models\FbaMonthlySale;
 use App\Models\FbaManualData;
@@ -105,6 +106,30 @@ class FbaDataController extends Controller
          return strtoupper(trim($item->sku));
       });
 
+      $amazonDatasheet = AmazonDatasheet::all()->keyBy(function ($item) {
+         return strtoupper(trim($item->sku));
+      });
+
+      // Fetch latest FBA shipment status for each SKU based on shipment_name date
+      $fbaShipments = \App\Models\FbaShipment::select('sku', 'shipment_status', 'shipment_id', 'shipment_name', 'updated_at', 'quantity_shipped')
+         ->get()
+         ->groupBy(function($item) {
+            return strtoupper(trim($item->sku));
+         })
+         ->map(function($shipments) {
+            // Sort by date extracted from shipment_name (format: "FBA STA (MM/DD/YYYY HH:MM)-XXX")
+            return $shipments->sortByDesc(function($shipment) {
+               // Extract date from shipment_name
+               if (preg_match('/\((\d{2}\/\d{2}\/\d{4} \d{2}:\d{2})\)/', $shipment->shipment_name, $matches)) {
+                  try {
+                     return \Carbon\Carbon::createFromFormat('m/d/Y H:i', $matches[1]);
+                  } catch (\Exception $e) {
+                     return \Carbon\Carbon::parse($shipment->updated_at);
+                  }
+               }
+               return \Carbon\Carbon::parse($shipment->updated_at);
+            })->first(); // Get the shipment with latest date from shipment_name
+         });
 
       $amazonSpCampaignReportsL60 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
          ->where('report_date_range', 'L60')
@@ -184,7 +209,7 @@ class FbaDataController extends Controller
       $matchedSkus = $fbaData->keys()->toArray();
       $unmatchedSkus = array_diff($skus, $matchedSkus);
 
-      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'fbaDispatchDates', 'fbaShipCalculations', 'amazonSpCampaignReportsL60', 'amazonSpCampaignReportsL30', 'amazonSpCampaignReportsL15', 'amazonSpCampaignReportsL7', 'amazonSpCampaignReportsL1');
+      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'fbaDispatchDates', 'fbaShipCalculations', 'amazonDatasheet', 'fbaShipments', 'amazonSpCampaignReportsL60', 'amazonSpCampaignReportsL30', 'amazonSpCampaignReportsL15', 'amazonSpCampaignReportsL7', 'amazonSpCampaignReportsL1');
    }
 
    public function fbaPageView()
@@ -542,6 +567,8 @@ class FbaDataController extends Controller
       $fbaManualData = $data['fbaManualData'];
       $fbaDispatchDates = $data['fbaDispatchDates'];
       $fbaShipCalculations = $data['fbaShipCalculations'];
+      $amazonDatasheet = $data['amazonDatasheet'];
+      $fbaShipments = $data['fbaShipments'];
       $productData = $data['productData']->keyBy(function ($p) {
          return strtoupper(trim($p->sku));
       });
@@ -613,7 +640,7 @@ class FbaDataController extends Controller
       $overallAvgPrice = $totalL30 > 0 ? $totalPrice * $totalL30 / $totalL30 : 0;
 
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -745,16 +772,36 @@ class FbaDataController extends Controller
 
          $lp_amt = $LP * $l30Units;
 
+         // Calculate Amazon L30 data from Amazon Datasheet
+         $amazonData = $amazonDatasheet->get($sku);
+         $amzL30 = $amazonData ? ($amazonData->units_ordered_l30 ?? 0) : 0;
+
+         // Use separate dimension fields if available, otherwise split combined dimensions
+         $length = $manual ? ($manual->data['length'] ?? '') : '';
+         $width = $manual ? ($manual->data['width'] ?? '') : '';
+         $height = $manual ? ($manual->data['height'] ?? '') : '';
+
+         // If any separate fields are missing, try to fill from combined dimensions
+         if (empty($length) || empty($width) || empty($height)) {
+            $dimensions = $manual ? ($manual->data['dimensions'] ?? '') : '';
+            $dimensionsParts = explode('x', str_replace(' ', '', $dimensions));
+            if (empty($length)) $length = $dimensionsParts[0] ?? '';
+            if (empty($width)) $width = $dimensionsParts[1] ?? '';
+            if (empty($height)) $height = $dimensionsParts[2] ?? '';
+         }
+
          return [
             'Parent' => $product ? ($product->parent ?? '') : '',
             'SKU' => $sku,
             'FBA_SKU' => $fba->seller_sku,
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
             'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
+            'AMZ_L30' => $amzL30,
             'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
             'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
             'l60_units' => $monthlySales ? ($monthlySales->l60_units ?? 0) : 0,
             'FBA_Quantity' => $fba->quantity_available,
+            'FBA_Shipment_Status' => $fbaShipments->get(strtoupper(trim($fba->seller_sku))) ? $fbaShipments->get(strtoupper(trim($fba->seller_sku)))->shipment_status : '',
             'Dil' => ($shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0) / max($shopifyInfo ? ($shopifyInfo->inv ?? 0) : 1, 1) * 100,
             'FBA_Dil' => ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fba->quantity_available ?: 1) * 100,
             'Current_Month_Views' => $fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?? 0) : 0,
@@ -801,8 +848,24 @@ class FbaDataController extends Controller
             'FBA_Send' => $manual ? ($manual->data['fba_send'] ?? false) : false,
             'Approval' => $manual ? ($manual->data['approval'] ?? false) : false,
             'Profit_is_ok' => $manual ? ($manual->data['profit_is_ok'] ?? false) : false,
-            'Dimensions' => $manual ? ($manual->data['dimensions'] ?? '') : '',
-            'MSL' => $manual ? ($manual->data['msl'] ?? '') : '',
+            'Length' => $length,
+            'Width' => $width,
+            'Height' => $height,
+            'Shipment_Track_Status' => $manual ? ($manual->data['shipment_track_status'] ?? '') : '',
+            'MSL' => (
+                ($monthlySales ? ($monthlySales->jan ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->feb ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->mar ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->apr ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->may ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->jun ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->jul ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->aug ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->sep ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->oct ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->nov ?? 0) : 0) +
+                ($monthlySales ? ($monthlySales->dec ?? 0) : 0)
+            ) - ($fba->quantity_available ?? 0) - ($fbaShipments->get(strtoupper(trim($fba->seller_sku)))->quantity_shipped ?? 0),
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
             'Zero_Stock' => $manual ? ($manual->data['zero_stock'] ?? false) : false,
@@ -839,6 +902,21 @@ class FbaDataController extends Controller
             'Oct' => $monthlySales ? ($monthlySales->oct ?? 0) : 0,
             'Nov' => $monthlySales ? ($monthlySales->nov ?? 0) : 0,
             'Dec' => $monthlySales ? ($monthlySales->dec ?? 0) : 0,
+            // Total sales for the 12 months - used in view (T sales)
+            'T_sales' => (
+               ($monthlySales ? ($monthlySales->jan ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->feb ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->mar ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->apr ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->may ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->jun ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->jul ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->aug ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->sep ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->oct ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->nov ?? 0) : 0) +
+               ($monthlySales ? ($monthlySales->dec ?? 0) : 0)
+            ),
             'PFT_AMT' => round($pft_amt, 2),
             'SALES_AMT' => round($sales_amt, 2),
             'LP_AMT' => round($lp_amt, 2),
@@ -901,8 +979,10 @@ class FbaDataController extends Controller
             'Profit_is_ok' => false,
             'Shipping_Amount' => round($children->sum(fn($item) => is_numeric($item['Shipping_Amount']) ? $item['Shipping_Amount'] : 0), 2),
             'Inbound_Quantity' => round($children->sum(fn($item) => is_numeric($item['Inbound_Quantity']) ? $item['Inbound_Quantity'] : 0), 2),
-            'Dimensions' => '',
-            'MSL' => '',
+            'Length' => '',
+            'Width' => '',
+            'Height' => '',
+            'MSL' => $children->sum('MSL'),
             'SEND' => '',
             'Correct_Cost' => false,
             'Zero_Stock' => false,
@@ -1044,6 +1124,14 @@ class FbaDataController extends Controller
       // Update JSON fields
       $data = $manual->data ?? [];
       $data[$field] = $value;
+
+      // Special handling for dimension fields - reconstruct combined dimensions
+      if (in_array($field, ['length', 'width', 'height'])) {
+         $length = $data['length'] ?? '';
+         $width = $data['width'] ?? '';
+         $height = $data['height'] ?? '';
+         $data['dimensions'] = trim($length . 'x' . $width . 'x' . $height, 'x');
+      }
 
       // Extract only 3 fields
       $FBA_FEE_MANUAL = floatval($data['fba_fee_manual'] ?? 0);
@@ -1209,6 +1297,19 @@ class FbaDataController extends Controller
       return floatval($str);
    }
 
+   /**
+    * Push FBA price to Amazon with automatic verification
+    * 
+    * IMPORTANT FIX: The AmazonSpApiService now includes automatic verification
+    * to ensure prices are actually updated on Amazon. It will:
+    * 1. Update the price on Amazon
+    * 2. Wait 1 second and verify the price was applied
+    * 3. If verification fails, retry with fresh token (up to 2 attempts)
+    * 4. Return error only if price truly wasn't applied after verification
+    * 
+    * This fixes the issue where Amazon API returns success but doesn't actually
+    * apply the price on the first attempt (often due to token refresh timing).
+    */
    public function pushFbaPrice(Request $request)
    {
       $sku = strtoupper(trim($request->input('sku')));
@@ -1514,5 +1615,31 @@ class FbaDataController extends Controller
       $chartData = array_values($dataByDate);
 
       return response()->json($chartData);
+   }
+
+   public function getFbaDispatchColumnVisibility()
+   {
+      $userId = auth()->id();
+      if (!$userId) {
+         return response()->json([]);
+      }
+
+      $cacheKey = 'fba_dispatch_columns_' . $userId;
+      return response()->json(cache($cacheKey, []));
+   }
+
+   public function setFbaDispatchColumnVisibility(Request $request)
+   {
+      $userId = auth()->id();
+      if (!$userId) {
+         return response()->json(['success' => false]);
+      }
+
+      $visibility = $request->input('visibility', []);
+      $cacheKey = 'fba_dispatch_columns_' . $userId;
+      
+      cache([$cacheKey => $visibility], 60 * 24 * 30); // Cache for 30 days
+
+      return response()->json(['success' => true]);
    }
 }
