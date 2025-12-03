@@ -2353,6 +2353,7 @@ $.ajax({
                     <th class="fw-bold default-sort" data-sort="number">L30 <i class="bi bi-arrow-down"></i></th>
                     <th class="fw-bold" data-sort="number">PRC <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">GPFT% <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">SGPFT% <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">ADVT% <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">PFT% <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">ROI% <i class="bi bi-arrow-down-up"></i></th>
@@ -2388,6 +2389,17 @@ $.ajax({
                 // PFT comes as decimal from backend, ADVT% comes as percentage
                 const pftPercent = pft ? parseFloat(pft) * 100 : 0;
                 const gpft = pftPercent + (advtPercent || 0);
+
+                // Calculate SGPFT% = ((price * multiplier - ship - lp) / price) * 100
+                // Get multiplier based on channel
+                let multiplier = 0.86; // Default for eBay channels
+                if (r.prefix === 'amz') multiplier = 0.80;
+                else if (['reverb', 'temu', 'wayfair'].includes(r.prefix)) multiplier = 0.80;
+                else if (['macy'].includes(r.prefix)) multiplier = 0.76;
+                else if (['shopifyb2c', 'shein'].includes(r.prefix)) multiplier = 0.94;
+                else if (['doba'].includes(r.prefix)) multiplier = 0.95;
+                
+                const sgpft = price > 0 ? ((price * multiplier - ship - lp) / price) * 100 : 0;
 
                 const hasAny = price != null || l30 != null || l60 != null || pft != null || roi != null;
                 if (!hasAny) return;
@@ -2542,6 +2554,11 @@ $.ajax({
                     <td>
                         <div class="value-indicator" style="color: ${getColor(gpft)};">
                             ${Math.round(gpft)}%
+                        </div>
+                    </td>
+                    <td>
+                        <div class="value-indicator" style="color: ${getColor(sgpft)};">
+                            ${Math.round(sgpft)}%
                         </div>
                     </td>
                     <td>
