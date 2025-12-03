@@ -851,6 +851,31 @@ $.ajax({
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Channel Graph Modal -->
+                            <div class="modal fade" id="channelGraphModal" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog modal-md">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Metrics Chart for <span id="modalChannelName"></span></h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <div class="mb-3">
+                                                <label class="form-label">Date Range:</label>
+                                                <select id="channel-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                                                    <option value="7" selected>Last 7 Days</option>
+                                                    <option value="14">Last 14 Days</option>
+                                                    <option value="30">Last 30 Days</option>
+                                                </select>
+                                            </div>
+                                            <div style="height: 300px;">
+                                                <canvas id="channelPerformanceChart"></canvas>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
             </div>
         </div>
     </div>
@@ -2410,8 +2435,7 @@ $.ajax({
                     <th class="fw-bold" data-sort="string">Channel <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold default-sort" data-sort="number">L30 <i class="bi bi-arrow-down"></i></th>
                     <th class="fw-bold" data-sort="number">PRC <i class="bi bi-arrow-down-up"></i></th>
-                    <th class="fw-bold" data-sort="number">GPFT% <i class="bi bi-arrow-down-up"></i></th>
-                    <th class="fw-bold" data-sort="number">SGPFT% <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold" data-sort="number">GPFT% <i class="bi bi-arrow-down-up"></i></th>                    
                     <th class="fw-bold" data-sort="number">ADVT% <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">PFT% <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">ROI% <i class="bi bi-arrow-down-up"></i></th>
@@ -2419,8 +2443,10 @@ $.ajax({
                     <th class="fw-bold" data-sort="number">CVR <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">LMP <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold">S Price</th>
+                    <th class="fw-bold" data-sort="number">SGPFT% <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">S PFT <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">S ROI <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="fw-bold">Graph</th>
                    
                 </tr>
             </thead>
@@ -2457,7 +2483,11 @@ $.ajax({
                 else if (['shopifyb2c', 'shein'].includes(r.prefix)) multiplier = 0.94;
                 else if (['doba'].includes(r.prefix)) multiplier = 0.95;
                 
-                const sgpft = price > 0 ? ((price * multiplier - ship - lp) / price) * 100 : 0;
+                // Channels where ship cost is NOT subtracted (ship minus not required)
+                const noShipChannels = ['wayfair', 'mercariwoship', 'business5core'];
+                const shipCost = noShipChannels.includes(r.prefix) ? 0 : ship;
+                
+                const sgpft = price > 0 ? ((price * multiplier - shipCost - lp) / price) * 100 : 0;
 
                 const hasAny = price != null || l30 != null || l60 != null || pft != null || roi != null;
                 if (!hasAny) return;
@@ -2613,12 +2643,7 @@ $.ajax({
                         <div class="value-indicator" style="color: ${getColor(gpft)};">
                             ${Math.round(gpft)}%
                         </div>
-                    </td>
-                    <td>
-                        <div class="value-indicator" style="color: ${getColor(sgpft)};">
-                            ${Math.round(sgpft)}%
-                        </div>
-                    </td>
+                    </td>                    
                     <td>
                         <div class="value-indicator" style="color: ${getColor(advtPercent)};">
                             ${advtPercent !== null && advtPercent !== undefined ? Math.round(advtPercent) + '%' : '-'}
@@ -2741,6 +2766,12 @@ $.ajax({
                         </button>
                     </div>
                 </td>
+
+                <td>
+                        <div class="value-indicator" style="color: ${getColor(sgpft)};">
+                            ${Math.round(sgpft)}%
+                        </div>
+                    </td>
 
 
                     <td class="spft-field">
@@ -2889,7 +2920,26 @@ $.ajax({
                         })()}
                     </td>
                    
-                   
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-primary" onclick="showChannelGraph('${r.prefix}', '${r.label}', '${data.SKU}', ${price || 0}, ${l30 || 0}, ${cvr?.value || 0}, ${(() => {
+                            if (r.prefix === 'amz') return data.sessions_l30 || 0;
+                            else if (r.prefix === 'ebay') return data.ebay_views || 0;
+                            else if (r.prefix === 'ebay2') return data.ebay2_views || 0;
+                            else if (r.prefix === 'ebay3') return data.ebay3_views || 0;
+                            else if (r.prefix === 'shein') return data.views_clicks || 0;
+                            else if (r.prefix === 'reverb') return data.reverb_views || 0;
+                            else if (r.prefix === 'temu') return data.temu_views || 0;
+                            else if (r.prefix === 'wayfair') return data.wayfair_views || 0;
+                            else if (r.prefix === 'fbmarketplace') return data.fbmarketplace_views || 0;
+                            else if (r.prefix === 'mercariwoship') return data.mercariwoship_views || 0;
+                            else if (r.prefix === 'mercariwship') return data.mercariwship_views || 0;
+                            else if (r.prefix === 'tiktok') return data.tiktok_views || 0;
+                            else if (r.prefix === 'aliexpress') return data.aliexpress_views || 0;
+                            else return 0;
+                        })()})" title="View Channel Graph">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </td>
 
                 </tr>
                 `;
@@ -3128,6 +3178,446 @@ $.ajax({
         // Line Graph Variables
         let performanceChart = null;
         let currentModalData = null;
+        let channelChart = null;
+        let currentChannelData = { prefix: '', label: '', sku: '', price: 0, orders: 0, cvr: 0, views: 0 };
+
+        // Show Channel-Specific Graph
+        function showChannelGraph(prefix, label, sku, price, orders, cvr, views) {
+            const modalEl = document.getElementById('channelGraphModal');
+            const modalChannelName = document.getElementById('modalChannelName');
+            
+            // Store current channel data
+            currentChannelData = { prefix, label, sku, price, orders, cvr, views };
+            
+            // Update modal title
+            modalChannelName.textContent = `${label} - SKU: ${sku}`;
+            
+            // Show modal
+            const modal = new bootstrap.Modal(modalEl);
+            modal.show();
+            
+            // Wait for modal to be shown before rendering chart
+            modalEl.addEventListener('shown.bs.modal', function() {
+                renderChannelChart(label, price, orders, cvr, views);
+            }, { once: true });
+        }
+
+        // Render Channel Performance Chart
+        function renderChannelChart(channelName, price, orders, cvr, views, days = 7) {
+            const ctx = document.getElementById('channelPerformanceChart');
+            if (!ctx) return;
+
+            // Destroy existing chart if exists
+            if (channelChart) {
+                channelChart.destroy();
+            }
+
+            // If we have currentChannelData with prefix and sku, try to load historical data
+            if (currentChannelData.prefix && currentChannelData.sku) {
+                loadChannelMetricsData(currentChannelData.prefix, currentChannelData.sku, channelName, days);
+            } else {
+                // Fallback to single point display
+                renderSinglePointChart(channelName, price, orders, cvr, views);
+            }
+        }
+
+        function loadChannelMetricsData(prefix, sku, channelName, days = 7) {
+            fetch(`/pricing-master/channel-metrics-history?sku=${encodeURIComponent(sku)}&channel=${prefix}&days=${days}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data && data.length > 0) {
+                        renderHistoricalChart(channelName, data, days);
+                    } else {
+                        // No historical data, show single point
+                        renderSinglePointChart(channelName, currentChannelData.price, currentChannelData.orders, currentChannelData.cvr, currentChannelData.views);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading channel metrics:', error);
+                    // Fallback to single point
+                    renderSinglePointChart(channelName, currentChannelData.price, currentChannelData.orders, currentChannelData.cvr, currentChannelData.views);
+                });
+        }
+
+        function renderHistoricalChart(channelName, data, days) {
+            const ctx = document.getElementById('channelPerformanceChart');
+            if (!ctx) return;
+
+            if (channelChart) {
+                channelChart.destroy();
+            }
+
+            const labels = data.map(d => d.date_formatted || d.date || '');
+            const priceData = data.map(d => d.price || 0);
+            const ordersData = data.map(d => d.orders || 0);
+            const cvrData = data.map(d => d.cvr || 0);
+            const viewsData = data.map(d => d.views || 0);
+
+            channelChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Price (USD)',
+                            data: priceData,
+                            borderColor: '#FF0000',
+                            backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Views',
+                            data: viewsData,
+                            borderColor: '#0000FF',
+                            backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'CVR%',
+                            data: cvrData,
+                            borderColor: '#008000',
+                            backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Orders (L30)',
+                            data: ordersData,
+                            borderColor: '#FFD700',
+                            backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: `${channelName} Metrics (${days} Days)`,
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: {
+                                top: 10,
+                                bottom: 20
+                            }
+                        },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    let value = context.parsed.y || 0;
+                                    
+                                    if (label.includes('Price')) {
+                                        return label + ': $' + value.toFixed(2);
+                                    } else if (label.includes('Views')) {
+                                        return label + ': ' + value.toLocaleString();
+                                    } else if (label.includes('CVR')) {
+                                        return label + ': ' + value.toFixed(1) + '%';
+                                    } else if (label.includes('Orders')) {
+                                        return label + ': ' + Math.round(value);
+                                    }
+                                    return label + ': ' + value;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Price/Views/Orders',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            beginAtZero: true,
+                            ticks: {
+                                font: {
+                                    size: 11
+                                },
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Percent (%)',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            beginAtZero: true,
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                },
+                                callback: function(value) {
+                                    return value.toFixed(0) + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderSinglePointChart(channelName, price, orders, cvr, views) {
+            const ctx = document.getElementById('channelPerformanceChart');
+            if (!ctx) return;
+
+            if (channelChart) {
+                channelChart.destroy();
+            }
+
+            // Parse values
+            const priceValue = parseFloat(price) || 0;
+            const ordersValue = parseFloat(orders) || 0;
+            const cvrValue = parseFloat(cvr) || 0;
+            const viewsValue = parseFloat(views) || 0;
+            
+            // Create single point data (current values)
+            const labels = ['Current'];
+            
+            channelChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Price (USD)',
+                            data: [priceValue],
+                            borderColor: '#FF0000',
+                            backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Views',
+                            data: [viewsValue],
+                            borderColor: '#0000FF',
+                            backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'CVR%',
+                            data: [cvrValue],
+                            borderColor: '#008000',
+                            backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Orders (L30)',
+                            data: [ordersValue],
+                            borderColor: '#FFD700',
+                            backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: channelName + ' Metrics',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: {
+                                top: 10,
+                                bottom: 20
+                            }
+                        },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    let value = context.parsed.y || 0;
+                                    
+                                    if (label.includes('Price')) {
+                                        return label + ': $' + value.toFixed(2);
+                                    } else if (label.includes('Views')) {
+                                        return label + ': ' + value.toLocaleString();
+                                    } else if (label.includes('CVR')) {
+                                        return label + ': ' + value.toFixed(1) + '%';
+                                    } else if (label.includes('Orders')) {
+                                        return label + ': ' + Math.round(value);
+                                    }
+                                    return label + ': ' + value;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Current Value',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Price/Views/Orders',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            beginAtZero: true,
+                            ticks: {
+                                font: {
+                                    size: 11
+                                },
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Percent (%)',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            beginAtZero: true,
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                },
+                                callback: function(value) {
+                                    return value.toFixed(0) + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
         // Toggle Line Graph Function
         function toggleLineGraph() {
@@ -3324,6 +3814,20 @@ $.ajax({
             });
         }
 
+        // Hide Channel Graph
+        function hideChannelGraph() {
+            const modalEl = document.getElementById('channelGraphModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) {
+                modal.hide();
+            }
+            // Destroy chart when hiding
+            if (channelChart) {
+                channelChart.destroy();
+                channelChart = null;
+            }
+        }
+
         
 
         // Table sorting functionality
@@ -3430,6 +3934,25 @@ $.ajax({
                 currentIndex = (currentIndex - 1 + parentKeys().length) % parentKeys().length;
                 renderGroup(parentKeys()[currentIndex]);
             });
+
+            // Channel chart days filter
+            const channelDaysFilter = document.getElementById('channel-chart-days-filter');
+            if (channelDaysFilter) {
+                channelDaysFilter.addEventListener('change', function() {
+                    const days = parseInt(this.value);
+                    // Reload chart with new days filter
+                    if (currentChannelData && currentChannelData.label) {
+                        renderChannelChart(
+                            currentChannelData.label,
+                            currentChannelData.price,
+                            currentChannelData.orders,
+                            currentChannelData.cvr,
+                            currentChannelData.views,
+                            days
+                        );
+                    }
+                });
+            }
         });
 
         // Draggable Modal for Chart 

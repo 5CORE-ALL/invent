@@ -2944,4 +2944,161 @@ class PricingMasterViewsController extends Controller
             ], 500);
         }
     }
+
+    public function getChannelMetricsHistory(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'channel' => 'required|string',
+            'days' => 'nullable|integer|min:7|max:90',
+        ]);
+
+        $sku = strtoupper(trim($request->input('sku')));
+        $channel = strtolower($request->input('channel'));
+        $days = $request->input('days', 7);
+
+        $startDate = Carbon::today()->subDays($days - 1);
+        $endDate = Carbon::today();
+
+        try {
+            $dataByDate = [];
+
+            // Map channel to appropriate daily data table/model
+            switch ($channel) {
+                case 'amz':
+                case 'amazon':
+                    // Amazon metrics from amazon_sku_daily_data or similar
+                    $metricsData = DB::connection('mysql')
+                        ->table('amazon_sku_daily_data')
+                        ->where('sku', $sku)
+                        ->where('record_date', '>=', $startDate)
+                        ->where('record_date', '<=', $endDate)
+                        ->orderBy('record_date', 'asc')
+                        ->get();
+
+                    foreach ($metricsData as $record) {
+                        $data = json_decode($record->daily_data, true) ?? [];
+                        $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                            'price' => round($data['price'] ?? 0, 2),
+                            'orders' => $data['amz_l30'] ?? 0,
+                            'cvr' => round($data['cvr_percent'] ?? 0, 2),
+                            'views' => $data['sessions_l30'] ?? 0,
+                        ];
+                    }
+                    break;
+
+                case 'ebay':
+                    $metricsData = DB::connection('mysql')
+                        ->table('ebay_sku_daily_data')
+                        ->where('sku', $sku)
+                        ->where('record_date', '>=', $startDate)
+                        ->where('record_date', '<=', $endDate)
+                        ->orderBy('record_date', 'asc')
+                        ->get();
+
+                    foreach ($metricsData as $record) {
+                        $data = json_decode($record->daily_data, true) ?? [];
+                        $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                            'price' => round($data['price'] ?? 0, 2),
+                            'orders' => $data['ebay_l30'] ?? 0,
+                            'cvr' => round($data['cvr_percent'] ?? 0, 2),
+                            'views' => $data['views'] ?? 0,
+                        ];
+                    }
+                    break;
+
+                case 'ebay2':
+                    $metricsData = DB::connection('mysql')
+                        ->table('ebay2_sku_daily_data')
+                        ->where('sku', $sku)
+                        ->where('record_date', '>=', $startDate)
+                        ->where('record_date', '<=', $endDate)
+                        ->orderBy('record_date', 'asc')
+                        ->get();
+
+                    foreach ($metricsData as $record) {
+                        $data = json_decode($record->daily_data, true) ?? [];
+                        $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                            'price' => round($data['price'] ?? 0, 2),
+                            'orders' => $data['ebay2_l30'] ?? 0,
+                            'cvr' => round($data['cvr_percent'] ?? 0, 2),
+                            'views' => $data['views'] ?? 0,
+                        ];
+                    }
+                    break;
+
+                case 'ebay3':
+                    $metricsData = DB::connection('mysql')
+                        ->table('ebay3_sku_daily_data')
+                        ->where('sku', $sku)
+                        ->where('record_date', '>=', $startDate)
+                        ->where('record_date', '<=', $endDate)
+                        ->orderBy('record_date', 'asc')
+                        ->get();
+
+                    foreach ($metricsData as $record) {
+                        $data = json_decode($record->daily_data, true) ?? [];
+                        $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                            'price' => round($data['price'] ?? 0, 2),
+                            'orders' => $data['ebay3_l30'] ?? 0,
+                            'cvr' => round($data['cvr_percent'] ?? 0, 2),
+                            'views' => $data['views'] ?? 0,
+                        ];
+                    }
+                    break;
+
+                default:
+                    // For other channels, return empty array
+                    // You can add more cases as needed
+                    break;
+            }
+
+            // Fill missing dates
+            $currentDate = Carbon::parse($startDate);
+            $chartData = [];
+            
+            while ($currentDate <= $endDate) {
+                $dateKey = $currentDate->format('Y-m-d');
+                if (isset($dataByDate[$dateKey])) {
+                    $chartData[] = $dataByDate[$dateKey];
+                } else {
+                    $chartData[] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'price' => 0,
+                        'orders' => 0,
+                        'cvr' => 0,
+                        'views' => 0,
+                    ];
+                }
+                $currentDate->addDay();
+            }
+
+            return response()->json($chartData);
+
+        } catch (Exception $e) {
+            Log::error('Failed to load channel metrics history', [
+                'sku' => $sku,
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to fetch channel metrics history',
+            ], 500);
+        }
+    }
 }
