@@ -526,10 +526,10 @@
                             var tpftInt = Math.floor(tpft);
                             var sbgt;
 
-                            sbgt = Math.round(price * 0.10, 0);
+                            sbgt = Math.round(price * 0.07, 0);
 
-                            if(sbgt > 10){
-                                sbgt = 10;
+                            if(sbgt > 5){
+                                sbgt = 5;
                             } else if(sbgt < 1){
                                 sbgt = 1;
                             }
