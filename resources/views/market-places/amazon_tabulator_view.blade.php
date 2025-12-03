@@ -1551,7 +1551,18 @@
                         width: 50
                     },
 
-
+                    {
+                        title: "Reviews",
+                        field: "total_review_count",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<span style="color: #6c757d;">0</span>';
+                            return `<span style="font-weight: 600;">${parseInt(value).toLocaleString()}</span>`;
+                        },
+                        width: 70
+                    },
 
                     {
                         title: "NR/RL",
