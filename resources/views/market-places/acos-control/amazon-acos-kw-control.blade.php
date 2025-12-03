@@ -466,6 +466,7 @@
                         title: "ACOS L30",
                         field: "acos_L30",
                         hozAlign: "right",
+                        sorter: "number",
                         formatter: function(cell) {
                             return `
                                 <span>${parseFloat(cell.getValue() || 0).toFixed(0) + "%"}</span>
