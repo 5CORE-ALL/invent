@@ -2546,7 +2546,7 @@ $.ajax({
                     </td>
                     <td>
                         <div class="value-indicator" style="color: ${getColor(advtPercent)};">
-                            ${advtPercent !== null && advtPercent !== undefined ? advtPercent.toFixed(2) + '%' : '-'}
+                            ${advtPercent !== null && advtPercent !== undefined ? Math.round(advtPercent) + '%' : '-'}
                         </div>
                     </td>
                     <td>
@@ -2839,16 +2839,16 @@ $.ajax({
             const temuship = parseFloat(data.temu_ship) || 0;
             const ebay2ship = parseFloat(data.ebay2_ship) || 0;
             
-            // Define all marketplaces with their data
+            // Define all marketplaces with their data (matching tabulator view multipliers)
             const marketplaces = [
-                { price: data.amz_price, l30: data.amz_l30, ship: ship, multiplier: 0.67 },
-                { price: data.ebay_price, l30: data.ebay_l30, ship: ship, multiplier: 0.77 },
+                { price: data.amz_price, l30: data.amz_l30, ship: ship, multiplier: 0.80 }, // Amazon: 0.80 (amazon-tabulator-view)
+                { price: data.ebay_price, l30: data.ebay_l30, ship: ship, multiplier: 0.86 }, // eBay: 0.86 (ebay-tabulator-view)
                 { price: data.macy_price, l30: data.macy_l30, ship: ship, multiplier: 0.76 },
                 { price: data.reverb_price, l30: data.reverb_l30, ship: ship, multiplier: 0.80 },
                 { price: data.doba_price, l30: data.doba_l30, ship: ship, multiplier: 0.95 },
                 { price: data.temu_price, l30: data.temu_l30, ship: temuship, multiplier: 0.87 },
-                { price: data.ebay3_price, l30: data.ebay3_l30, ship: ship, multiplier: 0.78 },
-                { price: data.ebay2_price, l30: data.ebay2_l30, ship: ebay2ship, multiplier: 0.79 },
+                { price: data.ebay3_price, l30: data.ebay3_l30, ship: ship, multiplier: 0.86 }, // eBay3: 0.86 (ebay-tabulator-view)
+                { price: data.ebay2_price, l30: data.ebay2_l30, ship: ebay2ship, multiplier: 0.86 }, // eBay2: 0.86 (ebay-tabulator-view)
                 { price: data.walmart_price, l30: data.walmart_l30, ship: ship, multiplier: 0.80 },
                 { price: data.shopifyb2c_price, l30: data.shopifyb2c_l30_data, ship: ship, multiplier: 0.75 },
                 { price: data.shein_price, l30: data.shein_l30, ship: ship, multiplier: 0.89 },

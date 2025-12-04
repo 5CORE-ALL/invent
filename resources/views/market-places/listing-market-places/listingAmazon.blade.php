@@ -1617,9 +1617,9 @@
                     $dropdown.val(initialValue);
 
                     if (initialValue === 'REQ') {
-                        $dropdown.css('background-color', '#28a745').css('color', 'white');
+                        $dropdown.css('background-color', '#28a745').css('color', 'black');
                     } else if (initialValue === 'NR') {
-                        $dropdown.css('background-color', '#dc3545').css('color', 'white');
+                        $dropdown.css('background-color', '#dc3545').css('color', 'black');
                     }
 
                     $row.append($('<td>').append($dropdown));

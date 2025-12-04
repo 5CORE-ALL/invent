@@ -494,17 +494,17 @@ class PricingMasterViewsController extends Controller
         
         try {
             // Fetch eBay Priority campaigns - only for SKUs in our list
-            // Use LIKE queries with OR conditions for better memory efficiency
-            if (count($nonParentSkus) > 0 && count($nonParentSkus) <= 100) {
-                // For small SKU lists, use whereIn with campaign_id LIKE matching
+            // Use LIKE queries with OR conditions (same as EbayController)
+            if (count($nonParentSkus) > 0) {
+                // Load campaigns for all SKUs to match EbayController behavior
                 $ebayPriorityCampaigns = EbayPriorityReport::where('report_range', 'L30')
                     ->whereIn('channels', ['ebay1', 'ebay2', 'ebay3'])
                     ->where(function($query) use ($nonParentSkus) {
-                        foreach (array_slice($nonParentSkus, 0, 50) as $sku) { // Limit to first 50 SKUs
-                            $query->orWhere('campaign_id', 'LIKE', "%{$sku}%");
+                        foreach ($nonParentSkus as $sku) {
+                            $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
                         }
                     })
-                    ->select('campaign_id', 'channels', 'cpc_ad_fees_payout_currency', 'cpc_sale_amount_payout_currency')
+                    ->select('campaign_name', 'channels', 'cpc_ad_fees_payout_currency', 'cpc_sale_amount_payout_currency')
                     ->get();
             }
         } catch (Exception $e) {
@@ -513,11 +513,11 @@ class PricingMasterViewsController extends Controller
         
         try {
             // Fetch Amazon campaigns - only for SKUs in our list
-            if (count($nonParentSkus) > 0 && count($nonParentSkus) <= 100) {
+            if (count($nonParentSkus) > 0) {
                 $amazonSpCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('report_date_range', 'L30')
                     ->where(function($query) use ($nonParentSkus) {
-                        foreach (array_slice($nonParentSkus, 0, 50) as $sku) { // Limit to first 50 SKUs
+                        foreach ($nonParentSkus as $sku) {
                             $query->orWhere('campaignName', 'LIKE', "%{$sku}%");
                         }
                     })
@@ -715,7 +715,7 @@ class PricingMasterViewsController extends Controller
             try {
                 // eBay 1 ads calculation (using total revenue as denominator - matches EbayController)
                 $ebayKwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
-                    return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay1';
+                    return strtoupper(trim($c->campaign_name)) === strtoupper(trim($sku)) && $c->channels === 'ebay1';
                 });
                 
                 $ebayMetric = $ebayMetrics[$sku] ?? null;
@@ -737,7 +737,7 @@ class PricingMasterViewsController extends Controller
                     $ebay_l30 = floatval($ebay ? ($ebay->ebay_l30 ?? 0) : 0);
                     $totalRevenue = $ebay_price * $ebay_l30;
                     
-                    $ebay_advt_percent = $totalRevenue > 0 ? ($AD_Spend_L30 / $totalRevenue) * 100 : 0;
+                    $ebay_advt_percent = $totalRevenue > 0 ? round(($AD_Spend_L30 / $totalRevenue) * 100, 4) : 0;
                 }
             } catch (Exception $e) {
                 // Skip eBay 1 ADVT% calculation if error occurs
@@ -746,7 +746,7 @@ class PricingMasterViewsController extends Controller
             try {
                 // eBay 2 ads calculation (using total revenue as denominator - matches EbayController)
                 $ebay2KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
-                    return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay2';
+                    return strtoupper(trim($c->campaign_name)) === strtoupper(trim($sku)) && $c->channels === 'ebay2';
                 });
                 
                 $ebayMetric = $ebayMetrics[$sku] ?? null;
@@ -768,7 +768,7 @@ class PricingMasterViewsController extends Controller
                     $ebay2_l30 = floatval($ebay2 ? ($ebay2->ebay_l30 ?? 0) : 0);
                     $totalRevenue = $ebay2_price * $ebay2_l30;
                     
-                    $ebay2_advt_percent = $totalRevenue > 0 ? ($AD_Spend_L30 / $totalRevenue) * 100 : 0;
+                    $ebay2_advt_percent = $totalRevenue > 0 ? round(($AD_Spend_L30 / $totalRevenue) * 100, 4) : 0;
                 }
             } catch (Exception $e) {
                 // Skip eBay 2 ADVT% calculation if error occurs
@@ -777,7 +777,7 @@ class PricingMasterViewsController extends Controller
             try {
                 // eBay 3 ads calculation (using total revenue as denominator - matches EbayController)
                 $ebay3KwCampaign = $ebayPriorityCampaigns->firstWhere(function($c) use ($sku) {
-                    return stripos($c->campaign_id, $sku) !== false && $c->channels === 'ebay3';
+                    return strtoupper(trim($c->campaign_name)) === strtoupper(trim($sku)) && $c->channels === 'ebay3';
                 });
                 
                 $ebayMetric = $ebayMetrics[$sku] ?? null;
@@ -799,7 +799,7 @@ class PricingMasterViewsController extends Controller
                     $ebay3_l30 = floatval($ebay3 ? ($ebay3->ebay_l30 ?? 0) : 0);
                     $totalRevenue = $ebay3_price * $ebay3_l30;
                     
-                    $ebay3_advt_percent = $totalRevenue > 0 ? ($AD_Spend_L30 / $totalRevenue) * 100 : 0;
+                    $ebay3_advt_percent = $totalRevenue > 0 ? round(($AD_Spend_L30 / $totalRevenue) * 100, 4) : 0;
                 }
             } catch (Exception $e) {
                 // Skip eBay 3 ADVT% calculation if error occurs
@@ -821,12 +821,15 @@ class PricingMasterViewsController extends Controller
                 
                 if ($amazonKwCampaigns->count() > 0 || $amazonPtCampaigns->count() > 0) {
                     $kw_spend_l30 = $amazonKwCampaigns->sum('cost');
-                    $kw_sales_l30 = $amazonKwCampaigns->sum('sales30d');
                     $pt_spend_l30 = $amazonPtCampaigns->sum('cost');
-                    $pt_sales_l30 = $amazonPtCampaigns->sum('sales30d');
+                    $AD_Spend_L30 = $kw_spend_l30 + $pt_spend_l30;
                     
-                    $adDenominator = $kw_sales_l30 + $pt_sales_l30;
-                    $amz_advt_percent = $adDenominator > 0 ? (($kw_spend_l30 + $pt_spend_l30) / $adDenominator) * 100 : 0;
+                    // AD% = (AD_Spend_L30 / (price × units_ordered_l30)) × 100 - matches OverallAmazonController
+                    $amz_price = floatval($amazon ? ($amazon->price ?? 0) : 0);
+                    $amz_l30 = floatval($amazon ? ($amazon->units_ordered_l30 ?? 0) : 0);
+                    $totalRevenue = $amz_price * $amz_l30;
+                    
+                    $amz_advt_percent = $totalRevenue > 0 ? round(($AD_Spend_L30 / $totalRevenue) * 100, 4) : 0;
                 }
             } catch (Exception $e) {
                 // Skip Amazon ADVT% calculation if error occurs
@@ -868,8 +871,8 @@ class PricingMasterViewsController extends Controller
                 'amz_buyer_link' => isset($amazonListingData[$sku]) ? ($amazonListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'amz_seller_link' => isset($amazonListingData[$sku]) ? ($amazonListingData[$sku]->value['seller_link'] ?? null) : null,
                 'price_lmpa' => $lmpa ? ($lmpa->lowest_price ?? 0) : ($amazon ? ($amazon->price_lmpa ?? 0) : 0),
-                'amz_pft' => $amazon && ($amazon->price ?? 0) > 0 ? (($amazon->price * 0.67 - $lp - $ship) / $amazon->price) - (($amz_advt_percent ?? 0) / 100) : 0,
-                'amz_roi' => $amazon && $lp > 0 && ($amazon->price ?? 0) > 0 ? (($amazon->price * 0.67 - $lp - $ship) / $lp) : 0,
+                'amz_pft' => $amazon && ($amazon->price ?? 0) > 0 ? (($amazon->price * 0.80 - $lp - $ship) / $amazon->price) - (($amz_advt_percent ?? 0) / 100) : 0,
+                'amz_roi' => $amazon && $lp > 0 && ($amazon->price ?? 0) > 0 ? (($amazon->price * 0.80 - $lp - $ship) / $lp) : 0,
                 'amz_req_view' => $amazon && $amazon->sessions_l30 > 0 && $amazon->units_ordered_l30 > 0
                     ? (($inv / 90) * 30) / (($amazon->units_ordered_l30 / $amazon->sessions_l30))
                     : 0,
