@@ -170,13 +170,19 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
+        try {
+            $processedData = $this->processPricingData();
 
-        return view('pricing-master.pricing_masters_view', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'records' => $processedData,
-        ]);
+            return view('pricing-master.pricing_masters_view', [
+                'mode' => $mode,
+                'demo' => $demo,
+                'records' => $processedData,
+            ]);
+        } finally {
+            // Clean up database connections to prevent pool exhaustion
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
 
@@ -185,13 +191,19 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
+        try {
+            $processedData = $this->processPricingData();
 
-        return view('pricing-master.pricing_masters_l90_views', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'records' => $processedData,
-        ]);
+            return view('pricing-master.pricing_masters_l90_views', [
+                'mode' => $mode,
+                'demo' => $demo,
+                'records' => $processedData,
+            ]);
+        } finally {
+            // Clean up database connections
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
     public function inventoryBySalesValue(Request $request)
@@ -199,13 +211,19 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
+        try {
+            $processedData = $this->processPricingData();
 
-        return view('pricing-master.inventory_by_sales_value', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'records' => $processedData,
-        ]);
+            return view('pricing-master.inventory_by_sales_value', [
+                'mode' => $mode,
+                'demo' => $demo,
+                'records' => $processedData,
+            ]);
+        } finally {
+            // Clean up database connections
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
 
@@ -214,14 +232,19 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
+        try {
+            $processedData = $this->processPricingData();
 
-        return view('pricing-master.cvr_master', [
-            'mode' => $mode,
-            'demo' => $demo,
+            return view('pricing-master.cvr_master', [
+                'mode' => $mode,
+                'demo' => $demo,
 
-            'records' => $processedData,
-        ]);
+                'records' => $processedData,
+            ]);
+        } finally {
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
     public function calculateWMPMasters(Request $request)
@@ -229,14 +252,19 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
+        try {
+            $processedData = $this->processPricingData();
 
-        return view('pricing-master.wmp_master', [
-            'mode' => $mode,
-            'demo' => $demo,
+            return view('pricing-master.wmp_master', [
+                'mode' => $mode,
+                'demo' => $demo,
 
-            'records' => $processedData,
-        ]);
+                'records' => $processedData,
+            ]);
+        } finally {
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
 
@@ -245,13 +273,18 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
+        try {
+            $processedData = $this->processPricingData();
 
-        return view('pricing-master.pricing_master_incr', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'records' => $processedData,
-        ]);
+            return view('pricing-master.pricing_master_incr', [
+                'mode' => $mode,
+                'demo' => $demo,
+                'records' => $processedData,
+            ]);
+        } finally {
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
 
