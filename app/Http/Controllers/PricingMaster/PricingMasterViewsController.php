@@ -73,6 +73,8 @@ use App\Models\ShopifyB2CListingStatus;
 use App\Models\TiktokShopListingStatus;
 use App\Models\EbayPriorityReport;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\WalmartCampaignReport;
+use App\Models\ShopifyFacebookCampaign;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\View\ViewServiceProvider;
 use App\Models\BusinessFiveCoreSheetdata;
@@ -528,6 +530,38 @@ class PricingMasterViewsController extends Controller
             Log::warning('Could not fetch Amazon SP campaigns: ' . $e->getMessage());
         }
 
+        try {
+            // Fetch Walmart campaigns
+            if (count($nonParentSkus) > 0) {
+                $walmartCampaigns = WalmartCampaignReport::where('report_range', 'L30')
+                    ->where(function($query) use ($nonParentSkus) {
+                        foreach ($nonParentSkus as $sku) {
+                            $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
+                        }
+                    })
+                    ->select('campaign_name', 'spend', 'sales')
+                    ->get();
+            }
+        } catch (Exception $e) {
+            Log::warning('Could not fetch Walmart campaigns: ' . $e->getMessage());
+        }
+
+        try {
+            // Fetch Shopify Facebook campaigns
+            if (count($nonParentSkus) > 0) {
+                $shopifyFbCampaigns = ShopifyFacebookCampaign::where('date_range', 'L30')
+                    ->where(function($query) use ($nonParentSkus) {
+                        foreach ($nonParentSkus as $sku) {
+                            $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
+                        }
+                    })
+                    ->select('campaign_name', 'spend', 'revenue')
+                    ->get();
+            }
+        } catch (Exception $e) {
+            Log::warning('Could not fetch Shopify FB campaigns: ' . $e->getMessage());
+        }
+
         // Fetch LMPA and LMP data
         $lmpLookup = collect();
         try {
@@ -835,6 +869,52 @@ class PricingMasterViewsController extends Controller
                 // Skip Amazon ADVT% calculation if error occurs
             }
 
+            // Calculate ADVT% for Walmart
+            $walmart_advt_percent = null;
+            
+            try {
+                $walmartCampaignsForSku = isset($walmartCampaigns) ? $walmartCampaigns->filter(function($c) use ($sku) {
+                    return strtoupper(trim($c->campaign_name)) === strtoupper(trim($sku));
+                }) : collect();
+                
+                if ($walmartCampaignsForSku->count() > 0) {
+                    $AD_Spend_L30 = $walmartCampaignsForSku->sum(function($c) {
+                        return floatval(str_replace(['USD ', ','], '', $c->spend ?? '0'));
+                    });
+                    
+                    $walmart_price = floatval($walmartData ? ($walmartData->price ?? 0) : 0);
+                    $walmart_l30 = floatval($walmartData ? ($walmartData->l30 ?? 0) : 0);
+                    $totalRevenue = $walmart_price * $walmart_l30;
+                    
+                    $walmart_advt_percent = $totalRevenue > 0 ? round(($AD_Spend_L30 / $totalRevenue) * 100, 4) : 0;
+                }
+            } catch (Exception $e) {
+                // Skip Walmart ADVT% calculation if error occurs
+            }
+
+            // Calculate ADVT% for Shopify B2C
+            $shopifyb2c_advt_percent = null;
+            
+            try {
+                $shopifyFbCampaignsForSku = isset($shopifyFbCampaigns) ? $shopifyFbCampaigns->filter(function($c) use ($sku) {
+                    return strtoupper(trim($c->campaign_name)) === strtoupper(trim($sku));
+                }) : collect();
+                
+                if ($shopifyFbCampaignsForSku->count() > 0) {
+                    $AD_Spend_L30 = $shopifyFbCampaignsForSku->sum(function($c) {
+                        return floatval($c->spend ?? 0);
+                    });
+                    
+                    $shopifyb2c_price = floatval($shopifyb2cData ? ($shopifyb2cData->price ?? 0) : 0);
+                    $shopifyb2c_l30 = floatval($shopifyb2cData ? ($shopifyb2cData->shopify_l30 ?? 0) : 0);
+                    $totalRevenue = $shopifyb2c_price * $shopifyb2c_l30;
+                    
+                    $shopifyb2c_advt_percent = $totalRevenue > 0 ? round(($AD_Spend_L30 / $totalRevenue) * 100, 4) : 0;
+                }
+            } catch (Exception $e) {
+                // Skip Shopify B2C ADVT% calculation if error occurs
+            }
+
             $item = (object) [
                 'SKU' => $sku,
                 'Parent' => $product->parent,
@@ -871,6 +951,7 @@ class PricingMasterViewsController extends Controller
                 'amz_buyer_link' => isset($amazonListingData[$sku]) ? ($amazonListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'amz_seller_link' => isset($amazonListingData[$sku]) ? ($amazonListingData[$sku]->value['seller_link'] ?? null) : null,
                 'price_lmpa' => $lmpa ? ($lmpa->lowest_price ?? 0) : ($amazon ? ($amazon->price_lmpa ?? 0) : 0),
+                'amz_sgpft' => $amazon && ($amazon->price ?? 0) > 0 ? (($amazon->price * 0.80 - $lp - $ship) / $amazon->price) * 100 : 0,
                 'amz_pft' => $amazon && ($amazon->price ?? 0) > 0 ? (($amazon->price * 0.80 - $lp - $ship) / $amazon->price) - (($amz_advt_percent ?? 0) / 100) : 0,
                 'amz_roi' => $amazon && $lp > 0 && ($amazon->price ?? 0) > 0 ? (($amazon->price * 0.80 - $lp - $ship) / $lp) : 0,
                 'amz_req_view' => $amazon && $amazon->sessions_l30 > 0 && $amazon->units_ordered_l30 > 0
@@ -884,6 +965,7 @@ class PricingMasterViewsController extends Controller
                 'ebay_views' => $ebay ? ($ebay->views ?? 0) : 0,
                 'ebay_price_lmpa' => $lmp ? ($lmp->lowest_price ?? 0) : ($ebay ? ($ebay->price_lmpa ?? 0) : 0),
                 'ebay_cvr' => $ebay ? $this->calculateCVR($ebay->ebay_l30 ?? 0, $ebay->views ?? 0) : null,
+                'ebay_sgpft' => $ebay && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * 0.86 - $lp - $ship) / $ebay->ebay_price) * 100 : 0,
                 'ebay_pft' => $ebay && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * 0.86 - $lp - $ship) / $ebay->ebay_price) - (($ebay_advt_percent ?? 0) / 100) : 0,
                 'ebay_roi' => $ebay && $lp > 0 && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * 0.86 - $lp - $ship) / $lp) : 0,
                 'ebay_req_view' => $ebay && $ebay->views > 0 && $ebay->ebay_l30 > 0
@@ -897,6 +979,7 @@ class PricingMasterViewsController extends Controller
                 'doba_l30' => $doba ? ($doba->l30 ?? 0) : 0,
                 'doba_l60' => $doba ? ($doba->l60 ?? 0) : 0,
                 'doba_views' => $dobaSheet ? ($dobaSheet->views ?? 0) : 0,
+                'doba_sgpft' => $doba && ($doba->doba_price ?? 0) > 0 ? (($doba->doba_price * 0.95 - $lp - $ship) / $doba->doba_price) * 100 : 0,
                 'doba_pft' => $doba && ($doba->doba_price ?? 0) > 0 ? (($doba->doba_price * 0.95 - $lp - $ship) / $doba->doba_price) : 0,
                 'doba_roi' => $doba && $lp > 0 && ($doba->doba_price ?? 0) > 0 ? (($doba->doba_price * 0.95 - $lp - $ship) / $lp) : 0,
                 'doba_buyer_link' => isset($dobaListingData[$sku]) ? ($dobaListingData[$sku]->value['buyer_link'] ?? null) : null,
@@ -904,6 +987,7 @@ class PricingMasterViewsController extends Controller
                 // Macy
                 'macy_price' => $macy ? ($macy->price ?? 0) : 0,
                 'macy_l30' => $macy ? ($macy->m_l30 ?? 0) : 0,
+                'macy_sgpft' => $macy && $macy->price > 0 ? (($macy->price * 0.76 - $lp - $ship) / $macy->price) * 100 : 0,
                 'macy_pft' => $macy && $macy->price > 0 ? (($macy->price * 0.76 - $lp - $ship) / $macy->price) : 0,
                 'macy_roi' => $macy && $lp > 0 && $macy->price > 0 ? (($macy->price * 0.76 - $lp - $ship) / $lp) : 0,
                 'macy_buyer_link' => isset($macysListingStatus[$sku]) ? ($macysListingStatus[$sku]->value['buyer_link'] ?? null) : null,
@@ -913,6 +997,7 @@ class PricingMasterViewsController extends Controller
                 'reverb_l30' => $reverb ? ($reverb->r_l30 ?? 0) : 0,
                 'reverb_l60' => $reverb ? ($reverb->r_l60 ?? 0) : 0,
                 'reverb_views' => $reverb ? ($reverb->views ?? 0) : 0,
+                'reverb_sgpft' => $reverb && $reverb->price > 0 ? (($reverb->price * 0.80 - $lp - $ship) / $reverb->price) * 100 : 0,
                 'reverb_pft' => $reverb && $reverb->price > 0 ? (($reverb->price * 0.80 - $lp - $ship) / $reverb->price) : 0,
                 'reverb_roi' => $reverb && $lp > 0 && $reverb->price > 0 ? (($reverb->price * 0.80 - $lp - $ship) / $lp) : 0,
                 'reverb_req_view' => $reverb && $reverb->views > 0 && $reverb->r_l30 > 0 ? (($inv / 90) * 30) / (($reverb->r_l30 / $reverb->views)) : 0,
@@ -937,8 +1022,10 @@ class PricingMasterViewsController extends Controller
                 'walmart_l60' => $walmart ? ($walmart->l60 ?? 0) : 0,
                 'walmart_dil' => $walmart ? ($walmart->dil ?? 0) : 0,
                 'walmart_views' => $walmartSheet ? ($walmartSheet->views ?? 0) : 0,
-                'walmart_pft' => $walmart && ($walmart->price ?? 0) > 0 ? (($walmart->price * 0.80 - $lp - $ship) / $walmart->price) : 0,
+                'walmart_sgpft' => $walmart && ($walmart->price ?? 0) > 0 ? (($walmart->price * 0.80 - $lp - $ship) / $walmart->price) * 100 : 0,
+                'walmart_pft' => $walmart && ($walmart->price ?? 0) > 0 ? (($walmart->price * 0.80 - $lp - $ship) / $walmart->price) - (($walmart_advt_percent ?? 0) / 100) : 0,
                 'walmart_roi' => $walmart && $lp > 0 && ($walmart->price ?? 0) > 0 ? (($walmart->price * 0.80 - $lp - $ship) / $lp) : 0,
+                'walmart_advt_percent' => $walmart_advt_percent,
                 'walmart_buyer_link' => isset($walmartListingData[$sku]) ? ($walmartListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'walmart_seller_link' => isset($walmartListingData[$sku]) ? ($walmartListingData[$sku]->value['seller_link'] ?? null) : null,
                 // eBay2
@@ -947,6 +1034,7 @@ class PricingMasterViewsController extends Controller
                 'ebay2_l60' => $ebay2 ? ($ebay2->ebay_l60 ?? 0) : 0,
                 'ebay2_views' => $ebay2 ? ($ebay2->views ?? 0) : 0,
                 'ebay2_dil' => $ebay2 ? (float) ($ebay2->dil ?? 0) : 0,
+                'ebay2_sgpft' => $ebay2 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.86 - $lp - $ebay2ship) / $ebay2->ebay_price) * 100 : 0,
                 'ebay2_pft' => $ebay2 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.86 - $lp - $ebay2ship) / $ebay2->ebay_price) - (($ebay2_advt_percent ?? 0) / 100) : 0,
                 'ebay2_roi' => $ebay2 && $lp > 0 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.86 - $lp - $ebay2ship) / $lp) : 0,
                 'ebay2_req_view' => $ebay2 && $ebay2->views > 0 && $ebay2->ebay_l30 ? (($inv / 90) * 30) / (($ebay2->ebay_l30 / $ebay2->views)) : 0,
@@ -960,6 +1048,7 @@ class PricingMasterViewsController extends Controller
                 'ebay3_views' => $ebay3 ? ($ebay3->views ?? 0) : 0,
                 'ebay3_dil' => $ebay3 ? (float) ($ebay3->dil ?? 0) : 0,
                 'ebay3_cvr' => $ebay3 ? $this->calculateCVR($ebay3->ebay_l30 ?? 0, $ebay3->views ?? 0) : null,
+                'ebay3_sgpft' => $ebay3 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * 0.86 - $lp - $ship) / $ebay3->ebay_price) * 100 : 0,
                 'ebay3_pft' => $ebay3 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * 0.86 - $lp - $ship) / $ebay3->ebay_price) - (($ebay3_advt_percent ?? 0) / 100) : 0,
                 'ebay3_roi' => $ebay3 && $lp > 0 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * 0.86 - $lp - $ship) / $lp) : 0,
                 'ebay3_req_view' => $ebay3 && $ebay3->views && $ebay3->ebay_l30 ? (($inv / 90) * 30) / (($ebay3->ebay_l30 / $ebay3->views)) : 0,
@@ -975,6 +1064,7 @@ class PricingMasterViewsController extends Controller
                 'shein_l60'   => $shein ? ($shein->shopify_sheinl60 ?? $shein->l60 ?? 0) : 0,
                 'shein_dil'   => $shein ? ($shein->dil ?? 0) : 0,
                 'shein_views_clicks' => $shein ? ($shein->views_clicks ?? 0) : 0,
+                'shein_sgpft'   => $shein && ($shein->price ?? 0) > 0 ? (($shein->price * 0.89 - $lp - $ship) / $shein->price) * 100 : 0,
                 'shein_pft'   => $shein && ($shein->price ?? 0) > 0 ? (($shein->price * 0.89 - $lp - $ship) / $shein->price) : 0,
                 'shein_roi'   => $shein && $lp > 0 && ($shein->price ?? 0) > 0 ? (($shein->price * 0.89 - $lp - $ship) / $lp) : 0,
                 'shein_req_view' => $shein && $shein->views && $shein->l30 ? (($inv / 90) * 30) / (($shein->l30 / $shein->views)) : 0,
@@ -987,6 +1077,7 @@ class PricingMasterViewsController extends Controller
                 'bestbuy_price' => $bestbuyUsa ? ($bestbuyUsa->price ?? 0) : 0,
                 'bestbuy_l30' => $bestbuyUsa ? ($bestbuyUsa->m_l30 ?? 0) : 0,
                 'bestbuy_l60' => $bestbuyUsa ? ($bestbuyUsa->m_l60 ?? 0) : 0,
+                'bestbuy_sgpft' => $bestbuyUsa && ($bestbuyUsa->price ?? 0) > 0 ? (($bestbuyUsa->price * 0.80 - $lp - $ship) / $bestbuyUsa->price) * 100 : 0,
                 'bestbuy_pft' => $bestbuyUsa && ($bestbuyUsa->price ?? 0) > 0 ? (($bestbuyUsa->price * 0.80 - $lp - $ship) / $bestbuyUsa->price) : 0,
                 'bestbuy_roi' => $bestbuyUsa && $lp > 0 && ($bestbuyUsa->price ?? 0) > 0 ? (($bestbuyUsa->price * 0.80 - $lp - $ship) / $lp) : 0,
                 'bestbuy_req_view' => 0,
@@ -997,6 +1088,7 @@ class PricingMasterViewsController extends Controller
                 'tiendamia_price' => $tiendamia ? ($tiendamia->price ?? 0) : 0,
                 'tiendamia_l30' => $tiendamia ? ($tiendamia->m_l30 ?? 0) : 0,
                 'tiendamia_l60' => $tiendamia ? ($tiendamia->m_l60 ?? 0) : 0,
+                'tiendamia_sgpft' => $tiendamia && ($tiendamia->price ?? 0) > 0 ? (($tiendamia->price * 0.83 - $lp - $ship) / $tiendamia->price) * 100 : 0,
                 'tiendamia_pft' => $tiendamia && ($tiendamia->price ?? 0) > 0 ? (($tiendamia->price * 0.83 - $lp - $ship) / $tiendamia->price) : 0,
                 'tiendamia_roi' => $tiendamia && $lp > 0 && ($tiendamia->price ?? 0) > 0 ? (($tiendamia->price * 0.83 - $lp - $ship) / $lp) : 0,
                 'tiendamia_req_view' => 0,
@@ -1008,6 +1100,7 @@ class PricingMasterViewsController extends Controller
                 'tiktok_l30' => $tiktok ? ($tiktok->shopify_tiktokl30 ?? 0) : 0,
                 'tiktok_l60' => $tiktok ? ($tiktok->shopify_tiktokl60 ?? 0) : 0,
                 'tiktok_views' => $tiktok ? ($tiktok->views ?? 0) : 0,
+                'tiktok_sgpft' => $tiktok && ($tiktok->price ?? 0) > 0 ? (($tiktok->price * 0.80 - $lp - $ship) / $tiktok->price) * 100 : 0,
                 'tiktok_pft' => $tiktok && ($tiktok->price ?? 0) > 0 ? (($tiktok->price * 0.80 - $lp - $ship) / $tiktok->price) : 0,
                 'tiktok_roi' => $tiktok && $lp > 0 && ($tiktok->price ?? 0) > 0 ? (($tiktok->price * 0.80 - $lp - $ship) / $lp) : 0,
                 'tiktok_req_view' => $tiktok && $tiktok->views > 0 && $tiktok->shopify_tiktokl30 ? (($inv / 90) * 30) / (($tiktok->shopify_tiktokl30 / $tiktok->views)) : 0,
@@ -1018,6 +1111,7 @@ class PricingMasterViewsController extends Controller
                 'aliexpress_price' => $aliexpress ? ($aliexpress->price ?? 0) : 0,
                 'aliexpress_l30' => $aliexpress ? ($aliexpress->aliexpress_l30 ?? 0) : 0,
                 'aliexpress_l60' => $aliexpress ? ($aliexpress->aliexpress_l60 ?? 0) : 0,
+                'aliexpress_sgpft' => $aliexpress && ($aliexpress->price ?? 0) > 0 ? (($aliexpress->price * 0.89 - $lp - $ship) / $aliexpress->price) * 100 : 0,
                 'aliexpress_pft' => $aliexpress && ($aliexpress->price ?? 0) > 0 ? (($aliexpress->price * 0.89 - $lp - $ship) / $aliexpress->price) : 0,
                 'aliexpress_roi' => $aliexpress && $lp > 0 && ($aliexpress->price ?? 0) > 0 ? (($aliexpress->price * 0.89 - $lp - $ship) / $lp) : 0,
                 'aliexpress_buyer_link' => isset($aliexpressListingData[$sku]) ? ($aliexpressListingData[$sku]->value['buyer_link'] ?? null) : null,
@@ -1287,8 +1381,10 @@ class PricingMasterViewsController extends Controller
             $item->shopifyb2c_l30_data = $shopify ? $shopify->shopify_l30 : 0;
             $item->shopifyb2c_image = $shopify ? $shopify->image_src : null;
             $item->image_url = $product->image_url;
-            $item->shopifyb2c_pft = $item->shopifyb2c_price > 0 ? (($item->shopifyb2c_price * 0.75 - $lp - $ship) / $item->shopifyb2c_price) : 0;
+            $item->shopifyb2c_sgpft = $item->shopifyb2c_price > 0 ? (($item->shopifyb2c_price * 0.75 - $lp - $ship) / $item->shopifyb2c_price) * 100 : 0;
+            $item->shopifyb2c_pft = $item->shopifyb2c_price > 0 ? (($item->shopifyb2c_price * 0.75 - $lp - $ship) / $item->shopifyb2c_price) - (($shopifyb2c_advt_percent ?? 0) / 100) : 0;
             $item->shopifyb2c_roi = ($lp > 0 && $item->shopifyb2c_price > 0) ? (($item->shopifyb2c_price * 0.75 - $lp - $ship) / $lp) : 0;
+            $item->shopifyb2c_advt_percent = $shopifyb2c_advt_percent ?? 0;
 
             // Add inv_value and COGS calculations
 
@@ -2845,6 +2941,163 @@ class PricingMasterViewsController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Unable to fetch LMP history',
+            ], 500);
+        }
+    }
+
+    public function getChannelMetricsHistory(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'channel' => 'required|string',
+            'days' => 'nullable|integer|min:7|max:90',
+        ]);
+
+        $sku = strtoupper(trim($request->input('sku')));
+        $channel = strtolower($request->input('channel'));
+        $days = $request->input('days', 7);
+
+        $startDate = Carbon::today()->subDays($days - 1);
+        $endDate = Carbon::today();
+
+        try {
+            $dataByDate = [];
+
+            // Map channel to appropriate daily data table/model
+            switch ($channel) {
+                case 'amz':
+                case 'amazon':
+                    // Amazon metrics from amazon_sku_daily_data or similar
+                    $metricsData = DB::connection('mysql')
+                        ->table('amazon_sku_daily_data')
+                        ->where('sku', $sku)
+                        ->where('record_date', '>=', $startDate)
+                        ->where('record_date', '<=', $endDate)
+                        ->orderBy('record_date', 'asc')
+                        ->get();
+
+                    foreach ($metricsData as $record) {
+                        $data = json_decode($record->daily_data, true) ?? [];
+                        $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                            'price' => round($data['price'] ?? 0, 2),
+                            'orders' => $data['amz_l30'] ?? 0,
+                            'cvr' => round($data['cvr_percent'] ?? 0, 2),
+                            'views' => $data['sessions_l30'] ?? 0,
+                        ];
+                    }
+                    break;
+
+                case 'ebay':
+                    $metricsData = DB::connection('mysql')
+                        ->table('ebay_sku_daily_data')
+                        ->where('sku', $sku)
+                        ->where('record_date', '>=', $startDate)
+                        ->where('record_date', '<=', $endDate)
+                        ->orderBy('record_date', 'asc')
+                        ->get();
+
+                    foreach ($metricsData as $record) {
+                        $data = json_decode($record->daily_data, true) ?? [];
+                        $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                            'price' => round($data['price'] ?? 0, 2),
+                            'orders' => $data['ebay_l30'] ?? 0,
+                            'cvr' => round($data['cvr_percent'] ?? 0, 2),
+                            'views' => $data['views'] ?? 0,
+                        ];
+                    }
+                    break;
+
+                case 'ebay2':
+                    $metricsData = DB::connection('mysql')
+                        ->table('ebay2_sku_daily_data')
+                        ->where('sku', $sku)
+                        ->where('record_date', '>=', $startDate)
+                        ->where('record_date', '<=', $endDate)
+                        ->orderBy('record_date', 'asc')
+                        ->get();
+
+                    foreach ($metricsData as $record) {
+                        $data = json_decode($record->daily_data, true) ?? [];
+                        $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                            'price' => round($data['price'] ?? 0, 2),
+                            'orders' => $data['ebay2_l30'] ?? 0,
+                            'cvr' => round($data['cvr_percent'] ?? 0, 2),
+                            'views' => $data['views'] ?? 0,
+                        ];
+                    }
+                    break;
+
+                case 'ebay3':
+                    $metricsData = DB::connection('mysql')
+                        ->table('ebay3_sku_daily_data')
+                        ->where('sku', $sku)
+                        ->where('record_date', '>=', $startDate)
+                        ->where('record_date', '<=', $endDate)
+                        ->orderBy('record_date', 'asc')
+                        ->get();
+
+                    foreach ($metricsData as $record) {
+                        $data = json_decode($record->daily_data, true) ?? [];
+                        $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                            'price' => round($data['price'] ?? 0, 2),
+                            'orders' => $data['ebay3_l30'] ?? 0,
+                            'cvr' => round($data['cvr_percent'] ?? 0, 2),
+                            'views' => $data['views'] ?? 0,
+                        ];
+                    }
+                    break;
+
+                default:
+                    // For other channels, return empty array
+                    // You can add more cases as needed
+                    break;
+            }
+
+            // Fill missing dates
+            $currentDate = Carbon::parse($startDate);
+            $chartData = [];
+            
+            while ($currentDate <= $endDate) {
+                $dateKey = $currentDate->format('Y-m-d');
+                if (isset($dataByDate[$dateKey])) {
+                    $chartData[] = $dataByDate[$dateKey];
+                } else {
+                    $chartData[] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'price' => 0,
+                        'orders' => 0,
+                        'cvr' => 0,
+                        'views' => 0,
+                    ];
+                }
+                $currentDate->addDay();
+            }
+
+            return response()->json($chartData);
+
+        } catch (Exception $e) {
+            Log::error('Failed to load channel metrics history', [
+                'sku' => $sku,
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to fetch channel metrics history',
             ], 500);
         }
     }

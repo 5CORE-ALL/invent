@@ -1297,6 +1297,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/pricing-master-data-views', [PricingMasterViewsController::class, 'getViewPricingAnalysisData']);
     Route::get('/pricing-master/export', [PricingMasterViewsController::class, 'exportPricingMaster'])->name('pricing-master.export');
     Route::get('/pricing-master/lmp-history', [PricingMasterViewsController::class, 'getLmpHistory']);
+    Route::get('/pricing-master/channel-metrics-history', [PricingMasterViewsController::class, 'getChannelMetricsHistory']);
     Route::post('/pricing-master/import-site-l90', [PricingMasterViewsController::class, 'importSiteL90Data'])->name('pricing-master.import-site-l90');
     Route::get('/pricing-master/download-site-l90-sample', [PricingMasterViewsController::class, 'downloadSiteL90Sample'])->name('pricing-master.download-site-l90-sample');
     Route::get('/pricing-master/roi-dashboard', [PricingMasterViewsController::class, 'getViewPricingAnalysisROIDashboardData']);

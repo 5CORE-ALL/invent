@@ -272,8 +272,7 @@
                 height: "700px",             
                 virtualDom: true,
                 initialSort:[
-                    {column:"parent", dir:"asc"},  
-                    {column:"sku", dir:"asc"},     
+                    {column:"acos_L30", dir:"desc"},     
                 ],
                 rowFormatter: function(row) {
                     const data = row.getData();
@@ -467,6 +466,7 @@
                         title: "ACOS L30",
                         field: "acos_L30",
                         hozAlign: "right",
+                        sorter: "number",
                         formatter: function(cell) {
                             return `
                                 <span>${parseFloat(cell.getValue() || 0).toFixed(0) + "%"}</span>
@@ -526,10 +526,10 @@
                             var tpftInt = Math.floor(tpft);
                             var sbgt;
 
-                            sbgt = Math.round(price * 0.10, 0);
+                            sbgt = Math.round(price * 0.07, 0);
 
-                            if(sbgt > 10){
-                                sbgt = 10;
+                            if(sbgt > 5){
+                                sbgt = 5;
                             } else if(sbgt < 1){
                                 sbgt = 1;
                             }
