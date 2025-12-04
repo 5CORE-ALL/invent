@@ -2933,23 +2933,29 @@
                 })
                 .catch(err => console.error('Failed to load live pending total:', err));
         }
-        // ===== STOCK MAPPING NOT MATCHING TOTAL =====
+        // ===== STOCK MAPPING NOT MATCHING TOTAL ===== (DISABLED TO PREVENT CONNECTION ISSUES)
+        // if (stockBadge) {
+        //     fetch('/stock/mapping/inventory/data')
+        //         .then(res => {
+        //             if (!res.ok) throw new Error('HTTP ' + res.status);
+        //             return res.json();
+        //         })
+        //         .then(json => {
+        //             const total = parseInt(json.totalNotMatching) || 0;
+        //             stockBadge.textContent = total.toLocaleString('en-US');
+        //             // keep visible even if zero to match other badges
+        //         })
+        //         .catch(err => {
+        //             console.error('Failed to load stock mapping total:', err);
+        //             stockBadge.textContent = '0';
+        //         });
+        // }
+        
+        // Set stock badge to 0 to avoid display issues
         if (stockBadge) {
-            fetch('/stock/mapping/inventory/data')
-                .then(res => {
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    return res.json();
-                })
-                .then(json => {
-                    const total = parseInt(json.totalNotMatching) || 0;
-                    stockBadge.textContent = total.toLocaleString('en-US');
-                    // keep visible even if zero to match other badges
-                })
-                .catch(err => {
-                    console.error('Failed to load stock mapping total:', err);
-                    stockBadge.textContent = '0';
-                });
+            stockBadge.textContent = '0';
         }
+        
         // ===== MISSING LISTING NOT LISTED TOTAL ===== (DISABLED TO PREVENT CONNECTION ISSUES)
         // if (missingBadge) {
         //     fetch('/stock/missing/listing/data')

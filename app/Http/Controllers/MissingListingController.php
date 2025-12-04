@@ -997,9 +997,6 @@ protected function filterParentSKU(array $data): array
                 'data'    => [],
                 'status'  => 500,
             ], 500);
-        } finally {
-            // Explicitly disconnect to free up connection
-            DB::disconnect();
         }
     }
 
