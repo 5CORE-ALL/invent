@@ -6,6 +6,7 @@ use App\Models\BestbuyUsaProduct;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use App\Models\MacyProduct;
 use App\Models\TiendamiaProduct;
 use Carbon\Carbon;
@@ -361,11 +362,13 @@ class FetchMacyProducts extends Command
             $products = $json['data'] ?? [];
             $pageToken = $json['next_page_token'] ?? null;
 
-            // Process products in smaller batches to reduce memory
-            $batchSize = 100;
+            // Process products in batches with single DB connection
+            $batchSize = 50;
             $productBatches = array_chunk($products, $batchSize);
             
-            foreach ($productBatches as $batch) {
+            foreach ($productBatches as $batchIndex => $batch) {
+                $dataToInsert = [];
+                
                 foreach ($batch as $product) {
                     $sku = $product['id'] ?? null;
                     
@@ -386,37 +389,37 @@ class FetchMacyProducts extends Command
                     // Get sales data for this SKU in this channel
                     $l30 = $skuSales[$channelName][$sku]['l30'] ?? 0;
 
-                    // Store in the appropriate table based on channel
+                    $dataToInsert[] = [
+                        'sku' => $originalSku,
+                        'price' => $price,
+                        'm_l30' => $l30,
+                    ];
+                }
+
+                // Bulk insert/update for each channel using upsert
+                if (!empty($dataToInsert)) {
                     switch ($channelName) {
                         case "Macy's, Inc.":
-                            MacyProduct::updateOrCreate(
-                                ['sku' => $originalSku],
-                                ['price' => $price, 'm_l30' => $l30]
-                            );
+                            MacyProduct::upsert($dataToInsert, ['sku'], ['price', 'm_l30']);
                             break;
 
                         case "Tiendamia":
-                            TiendamiaProduct::updateOrCreate(
-                                ['sku' => $originalSku],
-                                ['price' => $price, 'm_l30' => $l30]
-                            );
+                            TiendamiaProduct::upsert($dataToInsert, ['sku'], ['price', 'm_l30']);
                             break;
 
                         case "Best Buy USA":
-                            BestbuyUsaProduct::updateOrCreate(
-                                ['sku' => $originalSku],
-                                ['price' => $price, 'm_l30' => $l30]
-                            );
+                            BestbuyUsaProduct::upsert($dataToInsert, ['sku'], ['price', 'm_l30']);
                             break;
                     }
-                    
-                    // Unset product data to free memory
-                    unset($product);
                 }
                 
                 // Free memory after each batch
-                unset($batch);
-                gc_collect_cycles();
+                unset($batch, $dataToInsert);
+                
+                // Disconnect and reconnect DB every few batches to prevent connection buildup
+                if ($batchIndex % 5 === 0) {
+                    \DB::disconnect();
+                }
             }
             
             // Free memory after processing all products from this page
