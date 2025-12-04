@@ -338,6 +338,17 @@ class FetchMacyProducts extends Command
             }
 
             $response = Http::withoutVerifying()->withToken($token)->get($url);
+            
+            // Check if token expired and refresh if needed
+            if (!$response->successful()) {
+                $newToken = $this->refreshTokenIfNeeded($response);
+                if ($newToken) {
+                    $token = $newToken;
+                    // Retry the request with new token
+                    $response = Http::withoutVerifying()->withToken($token)->get($url);
+                }
+            }
+            
             if (!$response->successful()) {
                 $this->error("{$channelName} product fetch failed: " . $response->body());
                 return;
@@ -409,15 +420,40 @@ class FetchMacyProducts extends Command
 
     private function getAccessToken()
     {
-        return Cache::remember('macy_access_token', 3500, function () {
+        // Try to get cached token
+        $token = Cache::get('macy_access_token');
+        
+        // If no token or token might be expired, get a fresh one
+        if (!$token) {
             $response = Http::withoutVerifying()->asForm()->post('https://auth.mirakl.net/oauth/token', [
                 'grant_type' => 'client_credentials',
                 'client_id' => config('services.macy.client_id'),
                 'client_secret' => config('services.macy.client_secret'),
             ]);
 
-            return $response->successful() ? $response->json()['access_token'] : null;
-        });
+            if ($response->successful()) {
+                $token = $response->json()['access_token'];
+                // Cache for 50 minutes (3000 seconds) to be safe
+                Cache::put('macy_access_token', $token, 3000);
+                Log::info("New Macy access token obtained and cached");
+            } else {
+                Log::error("Failed to get Macy access token: " . $response->body());
+                return null;
+            }
+        }
+        
+        return $token;
+    }
+    
+    private function refreshTokenIfNeeded($response)
+    {
+        // If we get unauthorized, clear cache and retry
+        if (!$response->successful() && str_contains($response->body(), 'Unauthorized')) {
+            Log::warning("Macy token unauthorized, clearing cache and getting new token");
+            Cache::forget('macy_access_token');
+            return $this->getAccessToken();
+        }
+        return null;
     }
 
     private function getSalesTotals(string $token): array
@@ -446,6 +482,17 @@ class FetchMacyProducts extends Command
             }
 
             $response = Http::withoutVerifying()->withToken($token)->get($url);
+            
+            // Check if token expired and refresh if needed
+            if (!$response->successful()) {
+                $newToken = $this->refreshTokenIfNeeded($response);
+                if ($newToken) {
+                    $token = $newToken;
+                    // Retry the request with new token
+                    $response = Http::withoutVerifying()->withToken($token)->get($url);
+                }
+            }
+            
             if (!$response->successful()) {
                 $this->error("Order fetch failed: " . $response->body());
                 break;
