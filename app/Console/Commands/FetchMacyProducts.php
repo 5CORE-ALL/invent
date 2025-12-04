@@ -332,6 +332,7 @@ class FetchMacyProducts extends Command
     {
         $pageToken = null;
         $page = 1;
+        $totalProcessed = 0;
 
         do {
             $this->info("Fetching {$channelName} products - page $page...");
@@ -348,7 +349,6 @@ class FetchMacyProducts extends Command
                 $newToken = $this->refreshTokenIfNeeded($response);
                 if ($newToken) {
                     $token = $newToken;
-                    // Retry the request with new token
                     $response = Http::withoutVerifying()->withToken($token)->get($url);
                 }
             }
@@ -362,19 +362,30 @@ class FetchMacyProducts extends Command
             $products = $json['data'] ?? [];
             $pageToken = $json['next_page_token'] ?? null;
 
-            // Process products in batches with single DB connection
-            $batchSize = 50;
+            // Determine table name based on channel
+            $tableName = match($channelName) {
+                "Macy's, Inc." => 'macy_products',
+                "Tiendamia" => 'tiendamia_products',
+                "Best Buy USA" => 'bestbuy_usa_products',
+                default => null,
+            };
+
+            if (!$tableName) {
+                $this->error("Unknown channel: {$channelName}");
+                return;
+            }
+
+            // Process in smaller batches
+            $batchSize = 25;
             $productBatches = array_chunk($products, $batchSize);
             
-            foreach ($productBatches as $batchIndex => $batch) {
-                $dataToInsert = [];
+            foreach ($productBatches as $batch) {
+                $updates = [];
                 
                 foreach ($batch as $product) {
                     $sku = $product['id'] ?? null;
-                    
                     if (!$sku) continue;
                     
-                    // Try multiple price sources in order of preference
                     $price = $product['discount_prices'][0]['price']['amount'] ?? 
                              $product['standard_prices'][0]['price']['amount'] ?? 
                              $product['price']['amount'] ?? 
@@ -385,51 +396,49 @@ class FetchMacyProducts extends Command
 
                     $originalSku = $sku;
                     $sku = strtolower($sku);
-
-                    // Get sales data for this SKU in this channel
                     $l30 = $skuSales[$channelName][$sku]['l30'] ?? 0;
 
-                    $dataToInsert[] = [
-                        'sku' => $originalSku,
+                    $updates[] = [
+                        'sku' => DB::connection()->getPdo()->quote($originalSku),
                         'price' => $price,
                         'm_l30' => $l30,
+                        'updated_at' => "'" . now()->toDateTimeString() . "'"
                     ];
                 }
 
-                // Bulk insert/update for each channel using upsert
-                if (!empty($dataToInsert)) {
-                    switch ($channelName) {
-                        case "Macy's, Inc.":
-                            MacyProduct::upsert($dataToInsert, ['sku'], ['price', 'm_l30']);
-                            break;
-
-                        case "Tiendamia":
-                            TiendamiaProduct::upsert($dataToInsert, ['sku'], ['price', 'm_l30']);
-                            break;
-
-                        case "Best Buy USA":
-                            BestbuyUsaProduct::upsert($dataToInsert, ['sku'], ['price', 'm_l30']);
-                            break;
+                // Execute batch update using INSERT ON DUPLICATE KEY UPDATE
+                if (!empty($updates)) {
+                    try {
+                        $values = [];
+                        foreach ($updates as $update) {
+                            $values[] = "({$update['sku']}, {$update['price']}, {$update['m_l30']}, {$update['updated_at']}, {$update['updated_at']})";
+                        }
+                        
+                        $sql = "INSERT INTO {$tableName} (sku, price, m_l30, created_at, updated_at) VALUES " 
+                             . implode(', ', $values)
+                             . " ON DUPLICATE KEY UPDATE price = VALUES(price), m_l30 = VALUES(m_l30), updated_at = VALUES(updated_at)";
+                        
+                        DB::connection()->getPdo()->exec($sql);
+                        $totalProcessed += count($updates);
+                        
+                    } catch (\Exception $e) {
+                        Log::error("Failed to update {$channelName} batch: " . $e->getMessage());
                     }
                 }
                 
-                // Free memory after each batch
-                unset($batch, $dataToInsert);
-                
-                // Disconnect and reconnect DB every few batches to prevent connection buildup
-                if ($batchIndex % 5 === 0) {
-                    \DB::disconnect();
-                }
+                unset($batch, $updates);
+                usleep(50000); // 50ms delay between batches to reduce server load
             }
             
-            // Free memory after processing all products from this page
             unset($products, $productBatches, $json);
             gc_collect_cycles();
 
+            $this->info("Page {$page}: Processed {$totalProcessed} {$channelName} products");
             $page++;
+            
         } while ($pageToken);
 
-        $this->info("{$channelName} products stored successfully.");
+        $this->info("{$channelName} products stored successfully. Total: {$totalProcessed}");
     }
 
     private function getAccessToken()
