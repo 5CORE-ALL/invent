@@ -171,12 +171,12 @@ class PricingMasterViewsController extends Controller
         $demo = $request->query('demo');
 
         try {
-            $processedData = $this->processPricingData();
-
+            // Don't load data here - let AJAX handle it via getViewPricingAnalysisData
+            // This prevents memory exhaustion on initial page load
             return view('pricing-master.pricing_masters_view', [
                 'mode' => $mode,
                 'demo' => $demo,
-                'records' => $processedData,
+                'records' => [], // Empty - data loaded via AJAX
             ]);
         } finally {
             // Clean up database connections to prevent pool exhaustion
@@ -192,12 +192,12 @@ class PricingMasterViewsController extends Controller
         $demo = $request->query('demo');
 
         try {
-            $processedData = $this->processPricingData();
-
+            // Don't load data here - let AJAX handle it
+            // This prevents memory exhaustion on initial page load
             return view('pricing-master.pricing_masters_l90_views', [
                 'mode' => $mode,
                 'demo' => $demo,
-                'records' => $processedData,
+                'records' => [], // Empty - data loaded via AJAX
             ]);
         } finally {
             // Clean up database connections
@@ -212,12 +212,11 @@ class PricingMasterViewsController extends Controller
         $demo = $request->query('demo');
 
         try {
-            $processedData = $this->processPricingData();
-
+            // Don't load data here - let AJAX handle it
             return view('pricing-master.inventory_by_sales_value', [
                 'mode' => $mode,
                 'demo' => $demo,
-                'records' => $processedData,
+                'records' => [], // Empty - data loaded via AJAX
             ]);
         } finally {
             // Clean up database connections
@@ -233,13 +232,11 @@ class PricingMasterViewsController extends Controller
         $demo = $request->query('demo');
 
         try {
-            $processedData = $this->processPricingData();
-
+            // Don't load data here - let AJAX handle it
             return view('pricing-master.cvr_master', [
                 'mode' => $mode,
                 'demo' => $demo,
-
-                'records' => $processedData,
+                'records' => [], // Empty - data loaded via AJAX
             ]);
         } finally {
             DB::disconnect();
@@ -253,13 +250,11 @@ class PricingMasterViewsController extends Controller
         $demo = $request->query('demo');
 
         try {
-            $processedData = $this->processPricingData();
-
+            // Don't load data here - let AJAX handle it
             return view('pricing-master.wmp_master', [
                 'mode' => $mode,
                 'demo' => $demo,
-
-                'records' => $processedData,
+                'records' => [], // Empty - data loaded via AJAX
             ]);
         } finally {
             DB::disconnect();
@@ -274,12 +269,11 @@ class PricingMasterViewsController extends Controller
         $demo = $request->query('demo');
 
         try {
-            $processedData = $this->processPricingData();
-
+            // Don't load data here - let AJAX handle it
             return view('pricing-master.pricing_master_incr', [
                 'mode' => $mode,
                 'demo' => $demo,
-                'records' => $processedData,
+                'records' => [], // Empty - data loaded via AJAX
             ]);
         } finally {
             DB::disconnect();
@@ -332,12 +326,51 @@ class PricingMasterViewsController extends Controller
     }
 
 
-    protected function processPricingData($searchTerm = '')
+    /**
+     * Process pricing data with memory optimization
+     * 
+     * @param string $searchTerm Search filter for SKU or Parent
+     * @param int|null $limit Number of records to fetch (null = all)
+     * @param int $offset Offset for pagination
+     * @return array Processed pricing data
+     */
+    protected function processPricingData($searchTerm = '', $limit = null, $offset = 0)
     {
-        // Fetch all product data
-        $productData = ProductMaster::whereNull('deleted_at')
-            ->orderBy('id', 'asc')
-            ->get();
+        // Memory optimization: Increase memory limit for this operation if needed
+        $currentMemoryLimit = ini_get('memory_limit');
+        if (preg_match('/^(\d+)(.)$/', $currentMemoryLimit, $matches)) {
+            $memoryInBytes = $matches[1];
+            if ($matches[2] == 'M') {
+                $memoryInBytes *= 1024 * 1024;
+            } elseif ($matches[2] == 'K') {
+                $memoryInBytes *= 1024;
+            }
+            // If current limit is less than 256M, increase it
+            if ($memoryInBytes < 256 * 1024 * 1024) {
+                @ini_set('memory_limit', '256M');
+            }
+        }
+        
+        // Memory optimization: Add limit support for pagination
+        // Build the query with optional limit and offset
+        $query = ProductMaster::whereNull('deleted_at')
+            ->orderBy('id', 'asc');
+        
+        // Apply search filter early to reduce data
+        if (!empty($searchTerm)) {
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('sku', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('parent', 'LIKE', "%{$searchTerm}%");
+            });
+        }
+        
+        // Apply pagination if limit is set
+        if ($limit !== null && $limit > 0) {
+            $query->limit($limit)->offset($offset);
+        }
+        
+        // Fetch product data
+        $productData = $query->get();
 
         // Get all SKUs (including those with "PARENT" for WmpMarkAsDone)
         $allSkus = $productData
@@ -1441,39 +1474,64 @@ class PricingMasterViewsController extends Controller
         $skuFilter = $request->input('sku', '');
         $distinctOnly = $request->input('distinct_only', false);
 
+        // Memory optimization: Set reasonable limits
         if ($perPage === 'all') {
-            $perPage = 1000000;
+            $perPage = 500; // Limit to 500 records max instead of all
         } else {
-            $perPage = (int) $perPage;
+            $perPage = min((int) $perPage, 500); // Cap at 500
         }
 
-        $processedData = $this->processPricingData($searchTerm);
+        try {
+            // Calculate offset for pagination
+            $offset = ($page - 1) * $perPage;
+            
+            // Get total count for pagination (efficient query)
+            $totalQuery = ProductMaster::whereNull('deleted_at');
+            if (!empty($searchTerm)) {
+                $totalQuery->where(function($q) use ($searchTerm) {
+                    $q->where('sku', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('parent', 'LIKE', "%{$searchTerm}%");
+                });
+            }
+            $total = $totalQuery->count();
+            
+            // Process only the requested page of data
+            $processedData = $this->processPricingData($searchTerm, $perPage, $offset);
 
-        $filteredData = $this->applyFilters($processedData, $dilFilter, $dataType, $parentFilter, $skuFilter);
+            // Apply additional filters
+            $filteredData = $this->applyFilters($processedData, $dilFilter, $dataType, $parentFilter, $skuFilter);
 
-        if ($distinctOnly) {
+            if ($distinctOnly) {
+                return response()->json([
+                    'distinct_values' => $this->getDistinctValues($filteredData),
+                    'status' => 200,
+                ]);
+            }
+
+            $totalPages = ceil($total / $perPage);
+
             return response()->json([
-                'distinct_values' => $this->getDistinctValues($processedData),
+                'message' => 'Data fetched successfully',
+                'data' => array_values($filteredData), // Re-index array
+                'distinct_values' => $this->getDistinctValues($filteredData),
+                'current_page' => (int) $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => $totalPages,
                 'status' => 200,
             ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in getViewPricingAnalysisData: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Error fetching data: ' . $e->getMessage(),
+                'data' => [],
+                'status' => 500,
+            ], 500);
+        } finally {
+            // Clean up connections
+            DB::disconnect();
+            DB::disconnect('apicentral');
         }
-
-        $total = count($filteredData);
-        $totalPages = ceil($total / $perPage);
-        $offset = ($page - 1) * $perPage;
-        $paginatedData = array_slice($filteredData, $offset, $perPage);
-
-
-        return response()->json([
-            'message' => 'Data fetched successfully',
-            'data' => $paginatedData,
-            'distinct_values' => $this->getDistinctValues($processedData),
-            'current_page' => (int) $page,
-            'per_page' => $perPage,
-            'total' => $total,
-            'last_page' => $totalPages,
-            'status' => 200,
-        ]);
     }
 
 
