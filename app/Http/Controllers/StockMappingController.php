@@ -166,13 +166,15 @@ class StockMappingController extends Controller
         }
         } catch (\Exception $e) {
             \Log::error('Stock mapping error: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json([
-                'message' => 'Data fetched successfully',
+                'message' => 'Error fetching data',
+                'error' => $e->getMessage(),
                 'data' => [],
                 'datainfo' => [],
                 'totalNotMatching' => 0,
-                'status' => 200
-            ]);
+                'status' => 500
+            ], 500);
         }
 }
 
