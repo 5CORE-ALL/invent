@@ -385,28 +385,27 @@ class FetchMacyProducts extends Command
 
                     // Get sales data for this SKU in this channel
                     $l30 = $skuSales[$channelName][$sku]['l30'] ?? 0;
-                    $l60 = $skuSales[$channelName][$sku]['l60'] ?? 0;
 
                     // Store in the appropriate table based on channel
                     switch ($channelName) {
                         case "Macy's, Inc.":
                             MacyProduct::updateOrCreate(
                                 ['sku' => $originalSku],
-                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
+                                ['price' => $price, 'm_l30' => $l30]
                             );
                             break;
 
                         case "Tiendamia":
                             TiendamiaProduct::updateOrCreate(
                                 ['sku' => $originalSku],
-                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
+                                ['price' => $price, 'm_l30' => $l30]
                             );
                             break;
 
                         case "Best Buy USA":
                             BestbuyUsaProduct::updateOrCreate(
                                 ['sku' => $originalSku],
-                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
+                                ['price' => $price, 'm_l30' => $l30]
                             );
                             break;
                     }
@@ -470,18 +469,16 @@ class FetchMacyProducts extends Command
 
     private function getSalesTotals(string $token): array
     {
-        $this->info("Fetching Macy, Tiendamia, BestbuyUSA orders in last 60 days...");
+        $this->info("Fetching Macy, Tiendamia, BestbuyUSA orders in last 30 days...");
 
         $pageToken = null;
         $sales = [];
 
         $now = now('America/New_York');
-        $startDate = $now->copy()->subDays(60)->startOfDay()->toIso8601String();
+        $startDate = $now->copy()->subDays(29)->startOfDay()->toIso8601String();
 
         $startL30 = $now->copy()->subDays(29)->startOfDay();
         $endL30   = $now->copy()->endOfDay();
-        $startL60 = $now->copy()->subDays(59)->startOfDay();
-        $endL60   = $now->copy()->subDays(30)->endOfDay();
 
         do {
             $url = 'https://miraklconnect.com/api/v2/orders'
@@ -530,13 +527,11 @@ class FetchMacyProducts extends Command
                     }
 
                     if (!isset($sales[$channel][$sku])) {
-                        $sales[$channel][$sku] = ['l30' => 0, 'l60' => 0];
+                        $sales[$channel][$sku] = ['l30' => 0];
                     }
 
                     if ($created->between($startL30, $endL30)) {
                         $sales[$channel][$sku]['l30'] += $qty;
-                    } elseif ($created->between($startL60, $endL60)) {
-                        $sales[$channel][$sku]['l60'] += $qty;
                     }
                 }
             }
@@ -548,11 +543,7 @@ class FetchMacyProducts extends Command
         //     $this->info("Channel {$channel} has " . count($skuMap) . " SKUs with orders.");
         // }
 
-        if (isset($sales['Best Buy USA'])) {
-            foreach ($sales['Best Buy USA'] as $sku => $data) {
-                Log::info("Best Buy SKU: {$sku}, L30: {$data['l30']}, L60: {$data['l60']}");
-            }
-        }
+        // Debug logging removed to save memory
 
         return $sales;
     }
