@@ -2894,14 +2894,20 @@
         // ===== ZERO VISIBILITY TOTAL =====
         if (zeroBadge) {
             fetch('/show-zero-visibility-data')
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                })
                 .then(json => {
                     const data = json.data || [];
                     const zeroTotal = data.reduce((sum, row) => sum + (parseInt(row[
                         'Zero Visibility SKU Count']) || 0), 0);
                     zeroBadge.textContent = zeroTotal;
                 })
-                .catch(err => console.error('Failed to load zero visibility total:', err));
+                .catch(err => {
+                    console.error('Failed to load zero visibility total:', err);
+                    zeroBadge.textContent = '0';
+                });
         }
 
         // ===== LIVE PENDING TOTAL =====
@@ -2930,45 +2936,64 @@
         // ===== STOCK MAPPING NOT MATCHING TOTAL =====
         if (stockBadge) {
             fetch('/stock/mapping/inventory/data')
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                })
                 .then(json => {
                     const total = parseInt(json.totalNotMatching) || 0;
                     stockBadge.textContent = total.toLocaleString('en-US');
                     // keep visible even if zero to match other badges
                 })
-                .catch(err => console.error('Failed to load stock mapping total:', err));
+                .catch(err => {
+                    console.error('Failed to load stock mapping total:', err);
+                    stockBadge.textContent = '0';
+                });
         }
-        // ===== MISSING LISTING NOT LISTED TOTAL =====
+        // ===== MISSING LISTING NOT LISTED TOTAL ===== (DISABLED TO PREVENT CONNECTION ISSUES)
+        // if (missingBadge) {
+        //     fetch('/stock/missing/listing/data')
+        //         .then(res => {
+        //             if (!res.ok) throw new Error('HTTP ' + res.status);
+        //             return res.json();
+        //         })
+        //         .then(json => {
+        //             const data = json.data || [];
+        //             let total = 0;
+
+        //             // Calculate total "Not Listed" items (excluding zero inventory)
+        //             // Filter out rows where shopify inventory is zero (matching page behavior)
+        //             const filteredData = data.filter(row => {
+        //                 const zi = row.is_zero_inventory || {};
+        //                 return !(zi.shopify === true);
+        //             });
+
+        //             filteredData.forEach(row => {
+        //                 const ls = row.listing_status || {};
+        //                 const zi = row.is_zero_inventory || {};
+        //                 
+        //                 // Get all marketplace keys from listing_status
+        //                 Object.keys(ls).forEach(mp => {
+        //                     if (ls[mp] === "Not Listed" && !(zi[mp] === true)) {
+        //                         total++;
+        //                     }
+        //                 });
+        //             });
+
+        //             missingBadge.textContent = total.toLocaleString('en-US');
+        //             missingBadge.style.display = 'inline';
+        //         })
+        //         .catch(err => {
+        //             console.error('Failed to load missing listing total:', err);
+        //             missingBadge.textContent = '0';
+        //             missingBadge.style.display = 'inline';
+        //         });
+        // }
+        
+        // Set missing badge to 0 to avoid display issues
         if (missingBadge) {
-            fetch('/stock/missing/listing/data')
-                .then(res => res.json())
-                .then(json => {
-                    const data = json.data || [];
-                    let total = 0;
-
-                    // Calculate total "Not Listed" items (excluding zero inventory)
-                    // Filter out rows where shopify inventory is zero (matching page behavior)
-                    const filteredData = data.filter(row => {
-                        const zi = row.is_zero_inventory || {};
-                        return !(zi.shopify === true);
-                    });
-
-                    filteredData.forEach(row => {
-                        const ls = row.listing_status || {};
-                        const zi = row.is_zero_inventory || {};
-                        
-                        // Get all marketplace keys from listing_status
-                        Object.keys(ls).forEach(mp => {
-                            if (ls[mp] === "Not Listed" && !(zi[mp] === true)) {
-                                total++;
-                            }
-                        });
-                    });
-
-                    missingBadge.textContent = total.toLocaleString('en-US');
-                    missingBadge.style.display = 'inline';
-                })
-                .catch(err => console.error('Failed to load missing listing total:', err));
+            missingBadge.textContent = '0';
+            missingBadge.style.display = 'inline';
         }
     });
 </script>

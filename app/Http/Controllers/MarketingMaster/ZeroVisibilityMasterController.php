@@ -349,10 +349,11 @@ class ZeroVisibilityMasterController extends Controller
 
     public function getMergedChannelData(Request $request)
     {
-        // Get all channels from DB
-        $channels = MarketplacePercentage::pluck('marketplace')->toArray();
+        try {
+            // Get all channels from DB
+            $channels = MarketplacePercentage::pluck('marketplace')->toArray();
 
-        $data = [];
+            $data = [];
 
 
         // Mapping for special channel/controller names
@@ -464,6 +465,14 @@ class ZeroVisibilityMasterController extends Controller
         }
 
         return response()->json(['data' => $data]);
+        } catch (\Exception $e) {
+            \Log::error('Zero visibility data error: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'data' => [],
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
 
