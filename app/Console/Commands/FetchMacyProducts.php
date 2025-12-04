@@ -307,6 +307,9 @@ class FetchMacyProducts extends Command
 
     public function handle()
     {
+        // Increase memory limit for this command to handle large product datasets
+        ini_set('memory_limit', '256M');
+        
         $token = $this->getAccessToken();
         if (!$token) return;
 
@@ -338,6 +341,17 @@ class FetchMacyProducts extends Command
             }
 
             $response = Http::withoutVerifying()->withToken($token)->get($url);
+            
+            // Check if token expired and refresh if needed
+            if (!$response->successful()) {
+                $newToken = $this->refreshTokenIfNeeded($response);
+                if ($newToken) {
+                    $token = $newToken;
+                    // Retry the request with new token
+                    $response = Http::withoutVerifying()->withToken($token)->get($url);
+                }
+            }
+            
             if (!$response->successful()) {
                 $this->error("{$channelName} product fetch failed: " . $response->body());
                 return;
@@ -347,59 +361,68 @@ class FetchMacyProducts extends Command
             $products = $json['data'] ?? [];
             $pageToken = $json['next_page_token'] ?? null;
 
-            foreach ($products as $product) {
-                $sku = $product['id'] ?? null;
-                
-                if (!$sku) {
-                    Log::warning("{$channelName} product without SKU found");
-                    continue;
+            // Process products in smaller batches to reduce memory
+            $batchSize = 100;
+            $productBatches = array_chunk($products, $batchSize);
+            
+            foreach ($productBatches as $batch) {
+                foreach ($batch as $product) {
+                    $sku = $product['id'] ?? null;
+                    
+                    if (!$sku) continue;
+                    
+                    // Try multiple price sources in order of preference
+                    $price = $product['discount_prices'][0]['price']['amount'] ?? 
+                             $product['standard_prices'][0]['price']['amount'] ?? 
+                             $product['price']['amount'] ?? 
+                             $product['prices'][0]['amount'] ?? 
+                             $product['offer_price']['amount'] ?? null;
+                    
+                    if ($price === null) continue;
+
+                    $originalSku = $sku;
+                    $sku = strtolower($sku);
+
+                    // Get sales data for this SKU in this channel
+                    $l30 = $skuSales[$channelName][$sku]['l30'] ?? 0;
+                    $l60 = $skuSales[$channelName][$sku]['l60'] ?? 0;
+
+                    // Store in the appropriate table based on channel
+                    switch ($channelName) {
+                        case "Macy's, Inc.":
+                            MacyProduct::updateOrCreate(
+                                ['sku' => $originalSku],
+                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
+                            );
+                            break;
+
+                        case "Tiendamia":
+                            TiendamiaProduct::updateOrCreate(
+                                ['sku' => $originalSku],
+                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
+                            );
+                            break;
+
+                        case "Best Buy USA":
+                            BestbuyUsaProduct::updateOrCreate(
+                                ['sku' => $originalSku],
+                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
+                            );
+                            break;
+                    }
+                    
+                    // Unset product data to free memory
+                    unset($product);
                 }
                 
-                // Try multiple price sources in order of preference
-                $price = $product['discount_prices'][0]['price']['amount'] ?? 
-                         $product['standard_prices'][0]['price']['amount'] ?? 
-                         $product['price']['amount'] ?? 
-                         $product['prices'][0]['amount'] ?? 
-                         $product['offer_price']['amount'] ?? null;
-                
-                if ($price === null) {
-                    Log::warning("{$channelName} product without price: SKU {$sku}");
-                    continue;
-                }
-
-                $originalSku = $sku;
-                $sku = strtolower($sku);
-
-                // Get sales data for this SKU in this channel
-                $l30 = $skuSales[$channelName][$sku]['l30'] ?? 0;
-                $l60 = $skuSales[$channelName][$sku]['l60'] ?? 0;
-
-                // Store in the appropriate table based on channel
-                switch ($channelName) {
-                    case "Macy's, Inc.":
-                        MacyProduct::updateOrCreate(
-                            ['sku' => $originalSku],
-                            ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
-                        );
-                        break;
-
-                    case "Tiendamia":
-                        TiendamiaProduct::updateOrCreate(
-                            ['sku' => $originalSku],
-                            ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
-                        );
-                        break;
-
-                    case "Best Buy USA":
-                        BestbuyUsaProduct::updateOrCreate(
-                            ['sku' => $originalSku],
-                            ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
-                        );
-                        break;
-                }
-
-                Log::info("Stored {$channelName} | SKU: {$originalSku}, Price: {$price}, L30: {$l30}, L60: {$l60}");
+                // Free memory after each batch
+                unset($batch);
+                gc_collect_cycles();
             }
+            
+            // Free memory after processing all products from this page
+            unset($products, $productBatches, $json);
+            gc_collect_cycles();
 
             $page++;
         } while ($pageToken);
@@ -409,15 +432,40 @@ class FetchMacyProducts extends Command
 
     private function getAccessToken()
     {
-        return Cache::remember('macy_access_token', 3500, function () {
+        // Try to get cached token
+        $token = Cache::get('macy_access_token');
+        
+        // If no token or token might be expired, get a fresh one
+        if (!$token) {
             $response = Http::withoutVerifying()->asForm()->post('https://auth.mirakl.net/oauth/token', [
                 'grant_type' => 'client_credentials',
                 'client_id' => config('services.macy.client_id'),
                 'client_secret' => config('services.macy.client_secret'),
             ]);
 
-            return $response->successful() ? $response->json()['access_token'] : null;
-        });
+            if ($response->successful()) {
+                $token = $response->json()['access_token'];
+                // Cache for 50 minutes (3000 seconds) to be safe
+                Cache::put('macy_access_token', $token, 3000);
+                Log::info("New Macy access token obtained and cached");
+            } else {
+                Log::error("Failed to get Macy access token: " . $response->body());
+                return null;
+            }
+        }
+        
+        return $token;
+    }
+    
+    private function refreshTokenIfNeeded($response)
+    {
+        // If we get unauthorized, clear cache and retry
+        if (!$response->successful() && str_contains($response->body(), 'Unauthorized')) {
+            Log::warning("Macy token unauthorized, clearing cache and getting new token");
+            Cache::forget('macy_access_token');
+            return $this->getAccessToken();
+        }
+        return null;
     }
 
     private function getSalesTotals(string $token): array
@@ -446,6 +494,17 @@ class FetchMacyProducts extends Command
             }
 
             $response = Http::withoutVerifying()->withToken($token)->get($url);
+            
+            // Check if token expired and refresh if needed
+            if (!$response->successful()) {
+                $newToken = $this->refreshTokenIfNeeded($response);
+                if ($newToken) {
+                    $token = $newToken;
+                    // Retry the request with new token
+                    $response = Http::withoutVerifying()->withToken($token)->get($url);
+                }
+            }
+            
             if (!$response->successful()) {
                 $this->error("Order fetch failed: " . $response->body());
                 break;
