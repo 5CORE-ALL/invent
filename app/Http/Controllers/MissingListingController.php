@@ -831,24 +831,27 @@ protected function filterParentSKU(array $data): array
 
     public function shopifyMissingInventoryListings() {
         try {
+            // Limit the number of records to prevent connection exhaustion
             $productMasters = DB::table('product_master')
                 ->whereRaw('LOWER(sku) NOT LIKE ?', ['parent%'])
                 ->whereNull('deleted_at')
                 ->orderBy('id')
+                ->limit(10000) // Limit to prevent memory/connection issues
                 ->get();
 
-        $masterSKUs = $productMasters
-            ->pluck('sku')
-            ->filter()
-            ->unique()
-            ->map(fn($s) => strtolower($s))
-            ->values()
-            ->toArray();
+            $masterSKUs = $productMasters
+                ->pluck('sku')
+                ->filter()
+                ->unique()
+                ->map(fn($s) => strtolower($s))
+                ->values()
+                ->toArray();
 
-        $shopifyInventory = ShopifyInventory::select('*')
-            ->whereIn(DB::raw('LOWER(sku)'), $masterSKUs)
-            ->get()
-            ->keyBy(fn($item) => strtolower($item->sku));
+            // Get Shopify inventory in one query
+            $shopifyInventory = ShopifyInventory::select('sku', 'available_to_sell')
+                ->whereIn(DB::raw('LOWER(sku)'), $masterSKUs)
+                ->get()
+                ->keyBy(fn($item) => strtolower($item->sku));
 
         $marketplaces = [
             'amazon' => [
@@ -902,6 +905,27 @@ protected function filterParentSKU(array $data): array
         ];
 
         $result = [];
+        
+        // Pre-fetch all marketplace data to avoid N+1 queries
+        $marketplaceData = [];
+        foreach ($marketplaces as $marketplaceName => $config) {
+            $datasheetModel = $config['datasheet'];
+            $listingModels  = $config['listing'];
+            
+            // Fetch all datasheets for these SKUs
+            $marketplaceData[$marketplaceName]['datasheets'] = $datasheetModel::whereIn(DB::raw('LOWER(sku)'), $masterSKUs)
+                ->get()
+                ->keyBy(fn($item) => strtolower($item->sku));
+            
+            // Fetch all listings for these SKUs
+            $marketplaceData[$marketplaceName]['listings'] = collect();
+            foreach ($listingModels as $modelClass) {
+                $listings = $modelClass::whereIn(DB::raw('LOWER(sku)'), $masterSKUs)
+                    ->get()
+                    ->keyBy(fn($item) => strtolower($item->sku));
+                $marketplaceData[$marketplaceName]['listings'] = $marketplaceData[$marketplaceName]['listings']->merge($listings);
+            }
+        }
 
         foreach ($productMasters as $pm) {
 
@@ -929,10 +953,8 @@ protected function filterParentSKU(array $data): array
             }
 
             foreach ($marketplaces as $marketplaceName => $config) {
-                $datasheetModel = $config['datasheet'];
-                $listingModels  = $config['listing'];
-
-                $datasheetRow = $datasheetModel::whereRaw('LOWER(sku) = ?', [$sku])->first();
+                // Use pre-fetched data instead of querying
+                $datasheetRow = $marketplaceData[$marketplaceName]['datasheets'][$sku] ?? null;
 
                 if (!$datasheetRow) {
                     $row['listing_status'][$marketplaceName] = "Not Listed";
@@ -940,18 +962,10 @@ protected function filterParentSKU(array $data): array
                 }
 
                 $status = "Not Listed";
-                $foundListing = null;
-
-                foreach ($listingModels as $modelClass) {
-                    $listing = $modelClass::whereRaw('LOWER(sku) = ?', [$sku])->first();
-                    if ($listing) {
-                        $foundListing = $listing;
-                        $status = "Listed";
-                        break;
-                    }
-                }
+                $foundListing = $marketplaceData[$marketplaceName]['listings'][$sku] ?? null;
 
                 if ($foundListing) {
+                    $status = "Listed";
                     $value = $foundListing->value;
                     if (is_string($value)) {
                         $value = json_decode($value, true);
@@ -983,6 +997,9 @@ protected function filterParentSKU(array $data): array
                 'data'    => [],
                 'status'  => 500,
             ], 500);
+        } finally {
+            // Explicitly disconnect to free up connection
+            DB::disconnect();
         }
     }
 
