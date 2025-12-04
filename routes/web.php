@@ -2078,17 +2078,29 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/meta-all-ads-control/sync-google-sheets', 'syncMetaAdsFromGoogleSheets')->name('meta.ads.sync');
         Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
         
-        // AD Type specific routes
-        Route::get('/meta-ads/single-image', 'metaSingleImage')->name('meta.ads.single.image');
-        Route::get('/meta-ads/single-image/data', 'metaSingleImageData')->name('meta.ads.single.image.data');
-        Route::get('/meta-ads/single-video', 'metaSingleVideo')->name('meta.ads.single.video');
-        Route::get('/meta-ads/single-video/data', 'metaSingleVideoData')->name('meta.ads.single.video.data');
-        Route::get('/meta-ads/carousal', 'metaCarousal')->name('meta.ads.carousal');
-        Route::get('/meta-ads/carousal/data', 'metaCarousalData')->name('meta.ads.carousal.data');
-        Route::get('/meta-ads/existing-post', 'metaExistingPost')->name('meta.ads.existing.post');
-        Route::get('/meta-ads/existing-post/data', 'metaExistingPostData')->name('meta.ads.existing.post.data');
-        Route::get('/meta-ads/catalogue-ad', 'metaCatalogueAd')->name('meta.ads.catalogue');
-        Route::get('/meta-ads/catalogue-ad/data', 'metaCatalogueAdData')->name('meta.ads.catalogue.data');
+        // Facebook AD Type specific routes
+        Route::get('/meta-ads/facebook/single-image', 'metaFacebookSingleImage')->name('meta.ads.facebook.single.image');
+        Route::get('/meta-ads/facebook/single-image/data', 'metaFacebookSingleImageData')->name('meta.ads.facebook.single.image.data');
+        Route::get('/meta-ads/facebook/single-video', 'metaFacebookSingleVideo')->name('meta.ads.facebook.single.video');
+        Route::get('/meta-ads/facebook/single-video/data', 'metaFacebookSingleVideoData')->name('meta.ads.facebook.single.video.data');
+        Route::get('/meta-ads/facebook/carousal', 'metaFacebookCarousal')->name('meta.ads.facebook.carousal');
+        Route::get('/meta-ads/facebook/carousal/data', 'metaFacebookCarousalData')->name('meta.ads.facebook.carousal.data');
+        Route::get('/meta-ads/facebook/existing-post', 'metaFacebookExistingPost')->name('meta.ads.facebook.existing.post');
+        Route::get('/meta-ads/facebook/existing-post/data', 'metaFacebookExistingPostData')->name('meta.ads.facebook.existing.post.data');
+        Route::get('/meta-ads/facebook/catalogue-ad', 'metaFacebookCatalogueAd')->name('meta.ads.facebook.catalogue');
+        Route::get('/meta-ads/facebook/catalogue-ad/data', 'metaFacebookCatalogueAdData')->name('meta.ads.facebook.catalogue.data');
+        
+        // Instagram AD Type specific routes
+        Route::get('/meta-ads/instagram/single-image', 'metaInstagramSingleImage')->name('meta.ads.instagram.single.image');
+        Route::get('/meta-ads/instagram/single-image/data', 'metaInstagramSingleImageData')->name('meta.ads.instagram.single.image.data');
+        Route::get('/meta-ads/instagram/single-video', 'metaInstagramSingleVideo')->name('meta.ads.instagram.single.video');
+        Route::get('/meta-ads/instagram/single-video/data', 'metaInstagramSingleVideoData')->name('meta.ads.instagram.single.video.data');
+        Route::get('/meta-ads/instagram/carousal', 'metaInstagramCarousal')->name('meta.ads.instagram.carousal');
+        Route::get('/meta-ads/instagram/carousal/data', 'metaInstagramCarousalData')->name('meta.ads.instagram.carousal.data');
+        Route::get('/meta-ads/instagram/existing-post', 'metaInstagramExistingPost')->name('meta.ads.instagram.existing.post');
+        Route::get('/meta-ads/instagram/existing-post/data', 'metaInstagramExistingPostData')->name('meta.ads.instagram.existing.post.data');
+        Route::get('/meta-ads/instagram/catalogue-ad', 'metaInstagramCatalogueAd')->name('meta.ads.instagram.catalogue');
+        Route::get('/meta-ads/instagram/catalogue-ad/data', 'metaInstagramCatalogueAdData')->name('meta.ads.instagram.catalogue.data');
         
         Route::get('/facebook-ads-control/data', 'index')->name('facebook.ads.index');
         Route::get('/facebook-web-to-video', 'facebookWebToVideo')->name('facebook.web.to.video');
