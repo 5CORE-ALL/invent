@@ -830,11 +830,12 @@ protected function filterParentSKU(array $data): array
     }
 
     public function shopifyMissingInventoryListings() {
-        $productMasters = DB::table('product_master')
-            ->whereRaw('LOWER(sku) NOT LIKE ?', ['parent%'])
-            ->whereNull('deleted_at')
-            ->orderBy('id')
-            ->get();
+        try {
+            $productMasters = DB::table('product_master')
+                ->whereRaw('LOWER(sku) NOT LIKE ?', ['parent%'])
+                ->whereNull('deleted_at')
+                ->orderBy('id')
+                ->get();
 
         $masterSKUs = $productMasters
             ->pluck('sku')
@@ -973,6 +974,16 @@ protected function filterParentSKU(array $data): array
             'data'    => $result,
             'status'  => 200,
         ]);
+        } catch (\Exception $e) {
+            \Log::error('Missing listing data error: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'message' => 'Error fetching data',
+                'error' => $e->getMessage(),
+                'data'    => [],
+                'status'  => 500,
+            ], 500);
+        }
     }
 
 }
