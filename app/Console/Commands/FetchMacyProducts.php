@@ -307,6 +307,9 @@ class FetchMacyProducts extends Command
 
     public function handle()
     {
+        // Increase memory limit for this command to handle large product datasets
+        ini_set('memory_limit', '256M');
+        
         $token = $this->getAccessToken();
         if (!$token) return;
 
@@ -358,59 +361,68 @@ class FetchMacyProducts extends Command
             $products = $json['data'] ?? [];
             $pageToken = $json['next_page_token'] ?? null;
 
-            foreach ($products as $product) {
-                $sku = $product['id'] ?? null;
-                
-                if (!$sku) {
-                    Log::warning("{$channelName} product without SKU found");
-                    continue;
+            // Process products in smaller batches to reduce memory
+            $batchSize = 100;
+            $productBatches = array_chunk($products, $batchSize);
+            
+            foreach ($productBatches as $batch) {
+                foreach ($batch as $product) {
+                    $sku = $product['id'] ?? null;
+                    
+                    if (!$sku) continue;
+                    
+                    // Try multiple price sources in order of preference
+                    $price = $product['discount_prices'][0]['price']['amount'] ?? 
+                             $product['standard_prices'][0]['price']['amount'] ?? 
+                             $product['price']['amount'] ?? 
+                             $product['prices'][0]['amount'] ?? 
+                             $product['offer_price']['amount'] ?? null;
+                    
+                    if ($price === null) continue;
+
+                    $originalSku = $sku;
+                    $sku = strtolower($sku);
+
+                    // Get sales data for this SKU in this channel
+                    $l30 = $skuSales[$channelName][$sku]['l30'] ?? 0;
+                    $l60 = $skuSales[$channelName][$sku]['l60'] ?? 0;
+
+                    // Store in the appropriate table based on channel
+                    switch ($channelName) {
+                        case "Macy's, Inc.":
+                            MacyProduct::updateOrCreate(
+                                ['sku' => $originalSku],
+                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
+                            );
+                            break;
+
+                        case "Tiendamia":
+                            TiendamiaProduct::updateOrCreate(
+                                ['sku' => $originalSku],
+                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
+                            );
+                            break;
+
+                        case "Best Buy USA":
+                            BestbuyUsaProduct::updateOrCreate(
+                                ['sku' => $originalSku],
+                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
+                            );
+                            break;
+                    }
+                    
+                    // Unset product data to free memory
+                    unset($product);
                 }
                 
-                // Try multiple price sources in order of preference
-                $price = $product['discount_prices'][0]['price']['amount'] ?? 
-                         $product['standard_prices'][0]['price']['amount'] ?? 
-                         $product['price']['amount'] ?? 
-                         $product['prices'][0]['amount'] ?? 
-                         $product['offer_price']['amount'] ?? null;
-                
-                if ($price === null) {
-                    Log::warning("{$channelName} product without price: SKU {$sku}");
-                    continue;
-                }
-
-                $originalSku = $sku;
-                $sku = strtolower($sku);
-
-                // Get sales data for this SKU in this channel
-                $l30 = $skuSales[$channelName][$sku]['l30'] ?? 0;
-                $l60 = $skuSales[$channelName][$sku]['l60'] ?? 0;
-
-                // Store in the appropriate table based on channel
-                switch ($channelName) {
-                    case "Macy's, Inc.":
-                        MacyProduct::updateOrCreate(
-                            ['sku' => $originalSku],
-                            ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
-                        );
-                        break;
-
-                    case "Tiendamia":
-                        TiendamiaProduct::updateOrCreate(
-                            ['sku' => $originalSku],
-                            ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
-                        );
-                        break;
-
-                    case "Best Buy USA":
-                        BestbuyUsaProduct::updateOrCreate(
-                            ['sku' => $originalSku],
-                            ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
-                        );
-                        break;
-                }
-
-                Log::info("Stored {$channelName} | SKU: {$originalSku}, Price: {$price}, L30: {$l30}, L60: {$l60}");
+                // Free memory after each batch
+                unset($batch);
+                gc_collect_cycles();
             }
+            
+            // Free memory after processing all products from this page
+            unset($products, $productBatches, $json);
+            gc_collect_cycles();
 
             $page++;
         } while ($pageToken);
