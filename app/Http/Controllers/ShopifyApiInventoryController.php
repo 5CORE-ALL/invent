@@ -123,7 +123,14 @@ class ShopifyApiInventoryController extends Controller
 
             // Get ALL SKUs (including paginated products)
             $inventoryData = $this->getAllInventoryData();
-            Log::info('Fetched ' . count($inventoryData) . ' SKUs from products');
+            $inventoryCount = count($inventoryData);
+            Log::info('Fetched ' . $inventoryCount . ' SKUs from products');
+            
+            // Safety check: ensure we got a reasonable number of SKUs
+            if ($inventoryCount < 10) {
+                Log::critical('saveDailyInventory: Too few SKUs fetched, aborting to prevent data loss', ['count' => $inventoryCount]);
+                return false;
+            }
 
             // Fetch orders for the period
             $ordersData = $this->fetchAllPages($startDate, $endDate);
@@ -131,39 +138,62 @@ class ShopifyApiInventoryController extends Controller
 
             // Process and save data
             $simplifiedData = $this->processSimplifiedData($ordersData['orders'], $inventoryData);
+            
+            // Verify we didn't lose SKUs during processing
+            if (count($simplifiedData) < $inventoryCount * 0.9) {
+                Log::critical('saveDailyInventory: Lost too many SKUs during processing', [
+                    'original' => $inventoryCount,
+                    'processed' => count($simplifiedData)
+                ]);
+                return false;
+            }
+            
             $this->saveSkus($simplifiedData);
 
             // Update on_hand directly from products API data (inventoryData)
             if (!empty($inventoryData)) {
-                DB::transaction(function () use ($inventoryData) {
+                $updateCount = 0;
+                DB::transaction(function () use ($inventoryData, &$updateCount) {
                     foreach ($inventoryData as $rawSku => $data) {
-                            // Normalize key and update by normalized comparison to avoid mismatches
-                            $normSku = strtoupper(preg_replace('/\s+/u', ' ', trim($rawSku)));
+                            // Store SKU exactly as it comes from Shopify
+                            $sku = $rawSku;
+                            
+                            if (empty($sku)) {
+                                continue;
+                            }
 
                             // Debug specific SKU
-                            if ($normSku === 'SS HD 2PK ORG WOB') {
-                                Log::info('=== saveDailyInventory: Updating SS HD 2PK ORG WOB from products API ===', [
-                                    'raw_sku' => $rawSku,
-                                    'normalized_sku' => $normSku,
+                            if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
+                                Log::info('=== saveDailyInventory: Updating SKU from products API ===', [
+                                    'sku' => $sku,
                                     'on_hand_from_products' => $data['on_hand'] ?? 0,
                                     'available_to_sell' => $data['available_to_sell'] ?? 0,
                                     'image_src' => $data['image_src'] ?? null,
-                                    'image_url' => $data['image_url'] ?? null,
                                 ]);
                             }
 
-                            $affected = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normSku])->update([
+                            $affected = ShopifySku::where('sku', $sku)->update([
                                 'on_hand'          => $data['on_hand'] ?? 0,
                                 'available_to_sell' => $data['available_to_sell'] ?? 0,
                                 'image_src'        => $data['image_src'] ?? null,
                                 'updated_at'       => now(),
                             ]);
+                            
+                            if ($affected > 0) {
+                                $updateCount++;
+                            }
 
-                            if ($normSku === 'SS HD 2PK ORG WOB') {
+                            if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
                                 Log::info('=== saveDailyInventory: DB rows updated ===', ['affected_rows' => $affected]);
                             }
                         }
                 });
+                
+                Log::info('saveDailyInventory: on_hand updates completed', [
+                    'total_skus_from_api' => count($inventoryData),
+                    'db_rows_updated' => $updateCount
+                ]);
+                
                 Cache::forget('shopify_skus_list');
             } else {
                 Log::warning('No inventory data from products API to update.');
@@ -185,7 +215,8 @@ class ShopifyApiInventoryController extends Controller
         $pageCount = 0;
         $totalProducts = 0;
         $totalVariants = 0;
-
+        $consecutiveFailures = 0;
+        $maxConsecutiveFailures = 3;
 
         while ($hasMore) {
             $pageCount++;
@@ -198,9 +229,21 @@ class ShopifyApiInventoryController extends Controller
             $response = $this->shopifyGet($url, $queryParams);
 
             if (!$response->successful()) {
-                Log::error("Failed to fetch products (Page {$pageCount}): " . $response->body());
-                break;
+                $consecutiveFailures++;
+                Log::error("Failed to fetch products (Page {$pageCount}, Attempt {$consecutiveFailures}): " . $response->body());
+                
+                if ($consecutiveFailures >= $maxConsecutiveFailures) {
+                    Log::critical("Aborting getAllInventoryData after {$consecutiveFailures} consecutive failures at page {$pageCount}");
+                    break;
+                }
+                
+                // Wait and retry current page
+                sleep(5);
+                continue;
             }
+            
+            // Reset failure counter on success
+            $consecutiveFailures = 0;
 
             $products = $response->json()['products'] ?? [];
             $productCount = count($products);
@@ -316,23 +359,37 @@ class ShopifyApiInventoryController extends Controller
         $skuMap = [];
         $imageMap = [];
         $nextPageUrl = "$shopUrl/admin/api/2025-01/products.json?limit=250&fields=variants,image,title,id";
+        $pageCount = 0;
+        $maxPages = 500; // Safety limit
 
         do {
+            $pageCount++;
+            
+            if ($pageCount > $maxPages) {
+                Log::error('fetchInventoryWithCommitment: Exceeded max pages', ['pages' => $pageCount]);
+                break;
+            }
+            
             $response = $this->shopifyGet($nextPageUrl);
 
             if (!$response->successful()) {
-                Log::error('Failed to fetch products', ['url' => $nextPageUrl]);
+                Log::error('Failed to fetch products', ['url' => $nextPageUrl, 'page' => $pageCount]);
                 break;
             }
 
             $products = $response->json('products');
+            
+            if (empty($products)) {
+                Log::info('No more products to fetch', ['page' => $pageCount]);
+                break;
+            }
+            
             foreach ($products as $product) {
                 $mainImage = $product['image']['src'] ?? null;
 
                 foreach ($product['variants'] as $variant) {
-                    $rawSku = $variant['sku'] ?? '';
-                    // Normalize SKU: trim + replace any whitespace (including non-breaking) with normal space + uppercase
-                    $sku = strtoupper(preg_replace('/\s+/u', ' ', trim($rawSku)));
+                    // Store SKU exactly as it comes from Shopify - no normalization
+                    $sku = $variant['sku'] ?? '';
                     $iid = $variant['inventory_item_id'];
 
                     if (!empty($sku)) {
@@ -340,10 +397,9 @@ class ShopifyApiInventoryController extends Controller
                         $imageMap[$sku] = $mainImage;
 
                         // Log specific SKU for debugging
-                        if ($sku === 'SS HD 2PK ORG WOB') {
-                            Log::info('=== fetchInventoryWithCommitment: Found SS HD 2PK ORG WOB ===', [
-                                'raw_sku' => $rawSku,
-                                'normalized_sku' => $sku,
+                        if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
+                            Log::info('=== fetchInventoryWithCommitment: Found SKU ===', [
+                                'sku' => $sku,
                                 'inventory_item_id' => $iid,
                                 'product_id' => $product['id'],
                                 'product_title' => $product['title'] ?? null,
@@ -401,8 +457,8 @@ class ShopifyApiInventoryController extends Controller
         if ($orderResponse->successful()) {
             foreach ($orderResponse->json('orders') ?? [] as $order) {
                 foreach ($order['line_items'] as $item) {
-                    $rawSku = $item['sku'] ?? '';
-                    $sku = strtoupper(preg_replace('/\s+/u', ' ', trim($rawSku)));
+                    // Store SKU exactly as it comes from Shopify - no normalization
+                    $sku = $item['sku'] ?? '';
                     $qty = (int) $item['quantity'];
                     if (!empty($sku)) {
                         $committedBySku[$sku] = ($committedBySku[$sku] ?? 0) + $qty;
@@ -430,8 +486,8 @@ class ShopifyApiInventoryController extends Controller
                 'image_url' => $imageMap[$sku] ?? null,
             ];
 
-            if ($sku === 'SS HD 2PK ORG WOB') {
-                Log::info('=== fetchInventoryWithCommitment: Final inventory for SS HD 2PK ORG WOB ===', [
+            if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
+                Log::info('=== fetchInventoryWithCommitment: Final inventory for SKU ===', [
                     'sku' => $sku,
                     'inventory_item_id' => $iid,
                     'available_from_levels' => $available,
@@ -598,23 +654,39 @@ class ShopifyApiInventoryController extends Controller
     protected function saveSkus(array $simplifiedData)
     {
         DB::transaction(function () use ($simplifiedData) {
-            // Reset quantities only
-            ShopifySku::query()->update([
-                'inv' => 0,
-                'quantity' => 0,
-                'price' => null,
-            ]);
+            $skusToUpdate = [];
+            
+            // Collect all SKUs we're about to update
+            foreach ($simplifiedData as $item) {
+                $sku = $item['sku'] ?? '';
+                if (!empty($sku)) {
+                    $skusToUpdate[] = $sku;
+                }
+            }
+            
+            // Only reset SKUs that we're actively updating (not ALL SKUs in table)
+            if (!empty($skusToUpdate)) {
+                ShopifySku::whereIn('sku', $skusToUpdate)->update([
+                    'inv' => 0,
+                    'quantity' => 0,
+                    'price' => null,
+                ]);
+            }
 
             // Batch processing for better performance
+            $updateCount = 0;
             foreach (array_chunk($simplifiedData, 1000) as $chunk) {
                 foreach ($chunk as $item) {
-                    // Normalize SKU before saving to ensure consistency across updates
-                    $normSku = strtoupper(preg_replace('/\s+/u', ' ', trim($item['sku'] ?? '')));
+                    // Store SKU exactly as it comes from Shopify - no normalization
+                    $sku = $item['sku'] ?? '';
+                    
+                    if (empty($sku)) {
+                        continue;
+                    }
 
-                    if ($normSku === 'SS HD 2PK ORG WOB') {
-                        Log::info('=== saveSkus: Saving SS HD 2PK ORG WOB ===', [
-                            'raw_sku' => $item['sku'] ?? '',
-                            'normalized_sku' => $normSku,
+                    if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
+                        Log::info('=== saveSkus: Saving SKU ===', [
+                            'sku' => $sku,
                             'variant_id' => $item['variant_id'],
                             'quantity_L30' => $item['quantity'],
                             'inv' => $item['inventory'],
@@ -624,9 +696,9 @@ class ShopifyApiInventoryController extends Controller
                     }
 
                     ShopifySku::updateOrCreate(
-                        ['sku' => $normSku],
+                        ['sku' => $sku],
                         [
-                            'sku' => $normSku,
+                            'sku' => $sku,
                             'quantity' => $item['quantity'],
                             'variant_id' => $item['variant_id'],
                             'inv' => $item['inventory'],
@@ -635,8 +707,11 @@ class ShopifyApiInventoryController extends Controller
                             'updated_at' => now()
                         ]
                     );
+                    $updateCount++;
                 }
             }
+            
+            Log::info('saveSkus completed', ['updated_count' => $updateCount]);
         });
 
         Cache::forget('shopify_skus_list');
@@ -658,17 +733,29 @@ class ShopifyApiInventoryController extends Controller
                 Log::warning('No live inventory returned from Shopify (sync skipped).');
                 return false;
             }
+            
+            // Safety check: ensure we got a reasonable number of SKUs
+            $liveCount = count($live);
+            if ($liveCount < 10) {
+                Log::critical('syncLiveInventoryToDb: Too few SKUs returned, aborting', ['count' => $liveCount]);
+                return false;
+            }
+            
+            Log::info('syncLiveInventoryToDb: Starting sync', ['sku_count' => $liveCount]);
 
-            DB::transaction(function () use ($live) {
+            $updatedCount = 0;
+            DB::transaction(function () use ($live, &$updatedCount) {
                 // Process in chunks for memory safety
                 $chunks = array_chunk($live, 1000, true);
                 foreach ($chunks as $chunk) {
                     foreach ($chunk as $sku => $data) {
-                        // Normalize SKU to uppercase trimmed form (Shopify fetch already uppercases, but be safe)
-                        $normSku = strtoupper(preg_replace('/\s+/u', ' ', trim($sku)));
-
+                        if (empty($sku)) {
+                            continue;
+                        }
+                        
+                        // Store SKU exactly as it comes from Shopify - no normalization
                         ShopifySku::updateOrCreate(
-                            ['sku' => $normSku],
+                            ['sku' => $sku],
                             [
                                 'available_to_sell' => $data['available_to_sell'] ?? 0,
                                 'committed' => $data['committed'] ?? 0,
@@ -677,12 +764,16 @@ class ShopifyApiInventoryController extends Controller
                                 'updated_at' => now(),
                             ]
                         );
+                        $updatedCount++;
                     }
                 }
             });
 
             Cache::forget('shopify_skus_list');
-            Log::info('Synced live inventory to shopify_skus table', ['count' => count($live)]);
+            Log::info('Synced live inventory to shopify_skus table', [
+                'total_from_api' => count($live),
+                'db_updated' => $updatedCount
+            ]);
             return true;
         } catch (\Exception $e) {
             Log::error('Failed to sync live inventory to DB: ' . $e->getMessage());
