@@ -319,12 +319,23 @@ class FetchMacyProducts extends Command
         // Fetch and store Macy's products with channel-specific pricing
         $this->fetchChannelProducts($token, 'macys', "Macy's, Inc.", $skuSales);
         
+        // Close DB connection between channels to prevent buildup
+        DB::disconnect();
+        sleep(1);
+        
         // Fetch and store Tiendamia products with channel-specific pricing
         $this->fetchChannelProducts($token, 'tiendamia', "Tiendamia", $skuSales);
+        
+        // Close DB connection between channels
+        DB::disconnect();
+        sleep(1);
         
         // Fetch and store BestBuy products with channel-specific pricing
         $this->fetchChannelProducts($token, 'bestbuyusa', "Best Buy USA", $skuSales);
 
+        // Final cleanup
+        DB::disconnect();
+        
         $this->info("All Macy, Tiendamia, BestbuyUSA products stored successfully.");
     }
 
