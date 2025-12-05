@@ -5689,7 +5689,7 @@
                 }
 
                 $.ajax({
-                    url: '/ebay/save-sprice',
+                    url: '/ebay-one/save-sprice',
                     type: 'POST',
                     data: {
                         _token: $('meta[name="csrf-token"]').attr('content'),

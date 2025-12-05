@@ -10,6 +10,7 @@ use App\Models\AmazonDataView;
 use App\Models\MetaAllAd;
 use App\Models\ShopifyFacebookCampaign;
 use Illuminate\Support\Facades\Log;
+use App\Services\MetaApiService;
 
 class FacebookAddsManagerController extends Controller
 {
@@ -40,17 +41,17 @@ class FacebookAddsManagerController extends Controller
             // Get L30 values
             $spend_l30 = $ad->spent_l30 ?? 0;
             $clicks_l30 = $ad->clicks_l30 ?? 0;
-            $units_sold_l30 = 0; // TODO: Add units sold data when available
+            $units_sold_l30 = 0;
             
             // Get L7 values
             $spend_l7 = $ad->spent_l7 ?? 0;
             $clicks_l7 = $ad->clicks_l7 ?? 0;
-            $units_sold_l7 = 0; // TODO: Add units sold data when available
+            $units_sold_l7 = 0;
             
             // L60 data (currently using L30 values)
             $spend_l60 = $ad->spent_l30 ?? 0;
             $clicks_l60 = $ad->clicks_l30 ?? 0;
-            $units_sold_l60 = 0; // TODO: Add units sold data when available
+            $units_sold_l60 = 0;
             
             // Fetch sales data from Shopify Facebook campaigns by matching campaign_id
             $sales_l30 = 0;
@@ -63,10 +64,13 @@ class FacebookAddsManagerController extends Controller
                 foreach ($campaignSales as $sale) {
                     if ($sale->date_range === '30_days') {
                         $sales_l30 = $sale->sales ?? 0;
+                        $units_sold_l30 = $sale->orders ?? 0;
                     } elseif ($sale->date_range === '60_days') {
                         $sales_l60 = $sale->sales ?? 0;
+                        $units_sold_l60 = $sale->orders ?? 0;
                     } elseif ($sale->date_range === '7_days') {
                         $sales_l7 = $sale->sales ?? 0;
+                        $units_sold_l7 = $sale->orders ?? 0;
                     }
                 }
             }
@@ -116,6 +120,7 @@ class FacebookAddsManagerController extends Controller
             $data[] = [
                 'campaign_name' => $ad->campaign_name,
                 'campaign_id' => $ad->campaign_id,
+                'platform' => $ad->platform ?? 'Facebook/Instagram',
                 'ad_type' => $ad->ad_type ?? '',
                 'budget' => $ad->bgt ?? 0,
                 'impressions_l60' => $ad->imp_l30 ?? 0,
@@ -172,218 +177,133 @@ class FacebookAddsManagerController extends Controller
         ]);
     }
 
-    public function syncMetaAdsFromGoogleSheets()
+    public function syncMetaAdsFromApi()
     {
         try {
-            // Get Apps Script web app URLs from environment
-            $l30Url = env('META_ADS_L30_SCRIPT_URL');
-            $l7Url = env('META_ADS_L7_SCRIPT_URL');
+            $metaApi = new MetaApiService();
             
-            if (!$l30Url || !$l7Url) {
-                throw new \Exception('Apps Script URLs not configured. Please set META_ADS_L30_SCRIPT_URL and META_ADS_L7_SCRIPT_URL in .env');
-            }
+            // Sync L30 data from Meta API
+            $l30Count = $this->syncL30DataFromMetaApi($metaApi);
             
-            // Sync L30 data
-            $l30Count = $this->syncL30Data($l30Url);
-            
-            // Sync L7 data
-            $l7Count = $this->syncL7Data($l7Url);
+            // Sync L7 data from Meta API
+            $l7Count = $this->syncL7DataFromMetaApi($metaApi);
             
             return response()->json([
                 'success' => true,
-                'message' => 'Data synced successfully',
+                'message' => 'Data synced successfully from Meta API',
                 'l30_synced' => $l30Count,
                 'l7_synced' => $l7Count,
             ]);
         } catch (\Exception $e) {
-            Log::error('Google Sheets Sync Error', ['error' => $e->getMessage()]);
+            Log::error('Meta API Sync Error', ['error' => $e->getMessage()]);
             return response()->json([
-                'error' => 'Error syncing data: ' . $e->getMessage()
+                'error' => 'Error syncing data from Meta API: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    private function syncL30Data($csvUrl)
+    private function syncL30DataFromMetaApi(MetaApiService $metaApi)
     {
-        // Fetch CSV data from Google Sheets
-        $response = @file_get_contents($csvUrl);
-        
-        if ($response === false) {
-            throw new \Exception('Failed to fetch L30 data from Google Sheets. Make sure the sheet is shared as "Anyone with the link can view"');
-        }
-        
-        // Parse CSV
-        $lines = explode("\n", $response);
-        
-        if (empty($lines)) {
-            throw new \Exception('Empty CSV data from L30 sheet');
-        }
-        
-        // Find header row
-        $header = null;
-        $dataStartIndex = 0;
-        
-        foreach ($lines as $index => $line) {
-            if (trim($line) === '') continue;
+        try {
+            // Fetch L30 campaigns data from Meta API
+            $campaigns = $metaApi->fetchCampaignsWithBudget('last_30d');
             
-            $row = str_getcsv($line);
-            $rowStr = strtolower(implode(',', $row));
+            $processed = 0;
             
-            if (strpos($rowStr, 'campaign name') !== false && strpos($rowStr, 'campaign id') !== false) {
-                $header = $row;
-                $dataStartIndex = $index + 1;
-                break;
-            }
-        }
-        
-        if (!$header) {
-            throw new \Exception('Header row not found in L30 CSV. Expected columns: Campaign name, Campaign ID, etc.');
-        }
-        
-        $processed = 0;
-        
-        for ($i = $dataStartIndex; $i < count($lines); $i++) {
-            $line = trim($lines[$i]);
-            if ($line === '') continue;
-            
-            $row = str_getcsv($line);
-            
-            // Skip if row doesn't match header length
-            if (count($row) < count($header)) continue;
-            
-            $rowData = array_combine($header, $row);
-            if ($rowData === false) continue;
-            
-            $campaignName = trim($rowData['Campaign name'] ?? '');
-            $campaignId = trim($rowData['Campaign ID'] ?? '');
-            $campaignDelivery = strtolower(trim($rowData['Campaign delivery'] ?? 'inactive'));
-            
-            // Skip invalid rows
-            if (!$campaignName || !$campaignId || $campaignId === '-' || strlen($campaignId) < 5) {
-                continue;
-            }
-            
-            $bgt = $this->parseNumericValue($rowData['Ad set budget'] ?? '0');
-            $impL30 = $this->parseNumericValue($rowData['Impressions'] ?? '0');
-            $spentL30 = $this->parseNumericValue($rowData['Amount spent (USD)'] ?? '0');
-            $clicksL30 = $this->parseNumericValue($rowData['Link clicks'] ?? '0');
-            
-            MetaAllAd::updateOrCreate(
-                ['campaign_name' => $campaignName],
-                [
-                    'campaign_id' => $campaignId,
-                    'campaign_delivery' => $campaignDelivery,
-                    'bgt' => $bgt,
-                    'imp_l30' => $impL30,
-                    'spent_l30' => $spentL30,
-                    'clicks_l30' => $clicksL30,
-                ]
-            );
-            $processed++;
-        }
-        
-        return $processed;
-    }
-
-    private function syncL7Data($csvUrl)
-    {
-        // Fetch CSV data from Google Sheets
-        $response = @file_get_contents($csvUrl);
-        
-        if ($response === false) {
-            throw new \Exception('Failed to fetch L7 data from Google Sheets. Make sure the sheet is shared as "Anyone with the link can view"');
-        }
-        
-        // Parse CSV
-        $lines = explode("\n", $response);
-        
-        if (empty($lines)) {
-            throw new \Exception('Empty CSV data from L7 sheet');
-        }
-        
-        // Find header row
-        $header = null;
-        $dataStartIndex = 0;
-        
-        foreach ($lines as $index => $line) {
-            if (trim($line) === '') continue;
-            
-            $row = str_getcsv($line);
-            $rowStr = strtolower(implode(',', $row));
-            
-            if (strpos($rowStr, 'campaign name') !== false) {
-                $header = $row;
-                $dataStartIndex = $index + 1;
-                break;
-            }
-        }
-        
-        if (!$header) {
-            throw new \Exception('Header row not found in L7 CSV. Expected columns: Campaign name, Impressions, etc.');
-        }
-        
-        $processed = 0;
-        
-        for ($i = $dataStartIndex; $i < count($lines); $i++) {
-            $line = trim($lines[$i]);
-            if ($line === '') continue;
-            
-            $row = str_getcsv($line);
-            
-            // Skip if row doesn't match header length
-            if (count($row) < count($header)) continue;
-            
-            $rowData = array_combine($header, $row);
-            if ($rowData === false) continue;
-            
-            $campaignName = trim($rowData['Campaign name'] ?? '');
-            
-            // Skip invalid rows
-            if (!$campaignName) {
-                continue;
-            }
-            
-            $impL7 = $this->parseNumericValue($rowData['Impressions'] ?? '0');
-            $spentL7 = $this->parseNumericValue($rowData['Amount spent (USD)'] ?? '0');
-            $clicksL7 = $this->parseNumericValue($rowData['Link clicks'] ?? '0');
-            
-            // Only update if campaign exists
-            $metaAd = MetaAllAd::where('campaign_name', $campaignName)->first();
-            if ($metaAd) {
-                $metaAd->update([
-                    'imp_l7' => $impL7,
-                    'spent_l7' => $spentL7,
-                    'clicks_l7' => $clicksL7,
-                ]);
+            foreach ($campaigns as $campaign) {
+                $campaignName = trim($campaign['name'] ?? '');
+                $campaignId = trim($campaign['id'] ?? '');
+                
+                // Skip invalid campaigns
+                if (!$campaignName || !$campaignId) {
+                    continue;
+                }
+                
+                // Map Meta API status to campaign delivery
+                $status = strtolower($campaign['status'] ?? 'paused');
+                $campaignDelivery = match($status) {
+                    'active' => 'active',
+                    'paused' => 'paused',
+                    'archived' => 'inactive',
+                    default => 'inactive',
+                };
+                
+                // Get budget (daily or lifetime, converted from cents to dollars)
+                $dailyBudget = isset($campaign['daily_budget']) ? (float) $campaign['daily_budget'] / 100 : 0;
+                $lifetimeBudget = isset($campaign['lifetime_budget']) ? (float) $campaign['lifetime_budget'] / 100 : 0;
+                $adSetBudget = $campaign['ad_set_budget'] ?? 0;
+                $bgt = max($dailyBudget, $lifetimeBudget, $adSetBudget);
+                
+                // Extract insights data
+                $impL30 = (int) ($campaign['impressions'] ?? 0);
+                $spentL30 = (float) ($campaign['spend'] ?? 0);
+                $clicksL30 = (int) ($campaign['link_clicks'] ?? 0);
+                
+                // Get platform information
+                $platform = $campaign['platform'] ?? 'Facebook/Instagram';
+                
+                MetaAllAd::updateOrCreate(
+                    ['campaign_name' => $campaignName],
+                    [
+                        'campaign_id' => $campaignId,
+                        'platform' => $platform,
+                        'campaign_delivery' => $campaignDelivery,
+                        'bgt' => $bgt,
+                        'imp_l30' => $impL30,
+                        'spent_l30' => $spentL30,
+                        'clicks_l30' => $clicksL30,
+                    ]
+                );
                 $processed++;
             }
+            
+            Log::info('L30 Data Synced from Meta API', ['campaigns_processed' => $processed]);
+            return $processed;
+        } catch (\Exception $e) {
+            Log::error('Meta API L30 Sync Error', ['error' => $e->getMessage()]);
+            throw $e;
         }
-        
-        return $processed;
     }
 
-    private function parseNumericValue($value)
+    private function syncL7DataFromMetaApi(MetaApiService $metaApi)
     {
-        if ($value === '' || $value === null) {
-            return 0;
+        try {
+            // Fetch L7 campaigns data from Meta API
+            $campaigns = $metaApi->fetchCampaignsL7();
+            
+            $processed = 0;
+            
+            foreach ($campaigns as $campaign) {
+                $campaignName = trim($campaign['name'] ?? '');
+                
+                // Skip invalid campaigns
+                if (!$campaignName) {
+                    continue;
+                }
+                
+                // Extract insights data
+                $impL7 = (int) ($campaign['impressions'] ?? 0);
+                $spentL7 = (float) ($campaign['spend'] ?? 0);
+                $clicksL7 = (int) ($campaign['link_clicks'] ?? 0);
+                
+                // Only update if campaign exists (created during L30 sync)
+                $metaAd = MetaAllAd::where('campaign_name', $campaignName)->first();
+                if ($metaAd) {
+                    $metaAd->update([
+                        'imp_l7' => $impL7,
+                        'spent_l7' => $spentL7,
+                        'clicks_l7' => $clicksL7,
+                    ]);
+                    $processed++;
+                }
+            }
+            
+            Log::info('L7 Data Synced from Meta API', ['campaigns_processed' => $processed]);
+            return $processed;
+        } catch (\Exception $e) {
+            Log::error('Meta API L7 Sync Error', ['error' => $e->getMessage()]);
+            throw $e;
         }
-
-        // Remove currency symbols and other non-numeric characters except comma, dot, and minus
-        $numeric = preg_replace('/[^\d\.\-\,]/', '', $value);
-        
-        // Handle European format (comma as decimal separator)
-        if (strpos($numeric, ',') !== false && strpos($numeric, '.') === false) {
-            $numeric = str_replace(',', '.', str_replace('.', '', $numeric));
-        } else {
-            // Handle US format (comma as thousand separator)
-            $numeric = str_replace(',', '', $numeric);
-        }
-
-        if (is_numeric($numeric)) {
-            return $numeric + 0;
-        }
-
-        return 0;
     }
 
     public function index()
@@ -559,10 +479,13 @@ class FacebookAddsManagerController extends Controller
                 foreach ($campaignSales as $sale) {
                     if ($sale->date_range === '30_days') {
                         $sales_l30 = $sale->sales ?? 0;
+                        $units_sold_l30 = $sale->orders ?? 0;
                     } elseif ($sale->date_range === '60_days') {
                         $sales_l60 = $sale->sales ?? 0;
+                        $units_sold_l60 = $sale->orders ?? 0;
                     } elseif ($sale->date_range === '7_days') {
                         $sales_l7 = $sale->sales ?? 0;
+                        $units_sold_l7 = $sale->orders ?? 0;
                     }
                 }
             }

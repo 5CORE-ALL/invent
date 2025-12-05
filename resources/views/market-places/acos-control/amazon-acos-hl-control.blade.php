@@ -597,7 +597,46 @@
                                 </span>
                             `;
                         }
-                    }
+                    },
+                    {
+                        title: "CVR L30",
+                        field: "cvr_l30",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            
+                            var a_sold = parseFloat(aData.ad_sold_l30) || 0;
+                            var a_clicks = parseFloat(aData.clicks_L30) || 0;
+                            var a_cvr = (a_clicks > 0) ? (a_sold / a_clicks) * 100 : 0;
+                            
+                            var b_sold = parseFloat(bData.ad_sold_l30) || 0;
+                            var b_clicks = parseFloat(bData.clicks_L30) || 0;
+                            var b_cvr = (b_clicks > 0) ? (b_sold / b_clicks) * 100 : 0;
+                            
+                            return a_cvr - b_cvr;
+                        },
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var ad_sold_l30 = parseFloat(row.ad_sold_l30) || 0;
+                            var clicks_l30 = parseFloat(row.clicks_L30) || 0;
+                            
+                            var cvr_l30 = (clicks_l30 > 0) ? (ad_sold_l30 / clicks_l30) * 100 : 0;
+                            let color = "";
+                            if (cvr_l30 < 5) {
+                                color = "red";
+                            } else if (cvr_l30 >= 5 && cvr_l30 <= 10) {
+                                color = "green";
+                            } else if (cvr_l30 > 10){
+                                color = "#e83e8c";
+                            }
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${isNaN(cvr_l30) ? 0 : cvr_l30.toFixed(0)}%
+                                </span>
+                            `;
+                        }
+                    },
                 ],
                 ajaxResponse: function(url, params, response) {
                     return response.data;

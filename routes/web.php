@@ -1364,7 +1364,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     //ebay db save routes
     Route::post('/ebay/save-nr', [EbayController::class, 'saveNrToDatabase']);
     Route::post('/ebay/update-listed-live', [EbayController::class, 'updateListedLive']);
-    Route::post('/ebay/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
+    Route::post('/ebay-one/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
     Route::post('/ebay/save-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
 
     Route::post('/listing_ebay/save-status', [ListingEbayController::class, 'saveStatus']);
@@ -2086,7 +2086,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(FacebookAddsManagerController::class)->group(function () {
         Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
         Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
-        Route::post('/meta-all-ads-control/sync-google-sheets', 'syncMetaAdsFromGoogleSheets')->name('meta.ads.sync');
+        Route::post('/meta-all-ads-control/sync-meta-api', 'syncMetaAdsFromApi')->name('meta.ads.sync');
         Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
         
         // Facebook AD Type specific routes

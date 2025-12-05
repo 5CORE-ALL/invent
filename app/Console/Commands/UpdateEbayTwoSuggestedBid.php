@@ -142,9 +142,9 @@ class UpdateEbayTwoSuggestedBid extends Command
                             $newBid = $currentBid - 0.5;
                         }
                         
-                        // Apply 15% cap and 2% minimum
-                        if ($newBid > 15) {
-                            $newBid = 15;
+                        // Apply 10% cap and 2% minimum
+                        if ($newBid > 10) {
+                            $newBid = 10;
                         }
                         
                         // Ensure bid doesn't go below 2

@@ -117,6 +117,14 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:fetch-google-ads-campaigns')
             ->dailyAt('09:00')
             ->timezone('Asia/Kolkata');
+        
+        // Sync Meta (Facebook & Instagram) Ads data from Meta API
+        $schedule->command('meta:sync-all-ads')
+            ->dailyAt('10:00')
+            ->timezone('Asia/Kolkata')
+            ->name('meta-ads-sync-daily')
+            ->withoutOverlapping();
+        
         $schedule->command('app:ebay-campaign-reports')
             ->dailyAt('05:00')
             ->timezone('UTC');

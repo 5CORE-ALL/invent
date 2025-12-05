@@ -169,7 +169,7 @@
                             <div class="col-md-6">
                                 <div class="d-flex gap-2 justify-content-end">
                                     <button type="button" class="btn btn-sm btn-success" id="sync-btn">
-                                        <i class="fa fa-sync me-1"></i>Sync from Google Sheets
+                                        <i class="fa fa-sync me-1"></i>Sync from Meta API
                                     </button>
                                     <button class="btn btn-success btn-md">
                                         <i class="fa fa-bullhorn me-1"></i>
@@ -233,7 +233,7 @@
                     {
                         title: "AD Type",
                         field: "ad_type",
-                        minWidth: 200,
+                        minWidth: 250,
                         headerSort: true,
                         formatter: function(cell) {
                             const row = cell.getRow();
@@ -702,27 +702,27 @@
                 updateCampaignStats();
             });
 
-            // Sync from Google Sheets
+            // Sync from Meta API
             $('#sync-btn').on('click', function () {
-                if (!confirm('This will sync data from Google Sheets. Continue?')) {
+                if (!confirm('This will sync campaign data from Meta API (Facebook & Instagram). Continue?')) {
                     return;
                 }
 
                 // Show loading state
-                $('#sync-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Syncing...');
+                $('#sync-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Syncing from Meta API...');
 
                 $.ajax({
                     url: "{{ route('meta.ads.sync') }}",
                     type: "POST",
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                     success: function (response) {
-                        $('#sync-btn').prop('disabled', false).html('<i class="fa fa-sync me-1"></i>Sync from Google Sheets');
+                        $('#sync-btn').prop('disabled', false).html('<i class="fa fa-sync me-1"></i>Sync from Meta API');
                         
                         alert('Sync successful!\nL30 synced: ' + response.l30_synced + ' campaigns\nL7 synced: ' + response.l7_synced + ' campaigns');
                         table.replaceData();
                     },
                     error: function (xhr) {
-                        $('#sync-btn').prop('disabled', false).html('<i class="fa fa-sync me-1"></i>Sync from Google Sheets');
+                        $('#sync-btn').prop('disabled', false).html('<i class="fa fa-sync me-1"></i>Sync from Meta API');
                         
                         let message = 'Sync failed';
 

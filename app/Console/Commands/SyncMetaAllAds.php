@@ -19,18 +19,18 @@ class SyncMetaAllAds extends Command
      *
      * @var string
      */
-    protected $description = 'Sync Meta All Ads data from Google Sheets (L30 and L7 data)';
+    protected $description = 'Sync Meta All Ads data from Meta API (Facebook & Instagram - L30 and L7 data)';
 
     /**
      * Execute the console command.
      */
     public function handle()
     {
-        $this->info('Starting Meta All Ads sync from Google Sheets...');
+        $this->info('Starting Meta All Ads sync from Meta API...');
         
         try {
             $controller = new FacebookAddsManagerController();
-            $response = $controller->syncMetaAdsFromGoogleSheets();
+            $response = $controller->syncMetaAdsFromApi();
             
             $data = $response->getData();
             
