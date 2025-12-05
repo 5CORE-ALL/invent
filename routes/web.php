@@ -884,13 +884,24 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('walmartAnalysis', action: [WalmartControllerMarket::class, 'overallWalmart']);
     Route::get('/walmart/view-data', [WalmartControllerMarket::class, 'getViewWalmartData']);
-    Route::get('walmartPricingCVR', [WalmartControllerMarket::class, 'walmartPricingCVR'])->name('walmart.pricing.cvr');
+    Route::get('walmartPricingCVR', [WalmartControllerMarket::class, 'walmartPricingCVR']);
     Route::post('/update-all-walmart-skus', [WalmartControllerMarket::class, 'updateAllWalmartSkus']);
     Route::post('/walmart/save-nr', [WalmartControllerMarket::class, 'saveNrToDatabase']);
     Route::post('/walmart/update-listed-live', [WalmartControllerMarket::class, 'updateListedLive']);
     Route::post('/walmart-analytics/import', [WalmartControllerMarket::class, 'importWalmartAnalytics'])->name('walmart.analytics.import');
     Route::get('/walmart-analytics/export', [WalmartControllerMarket::class, 'exportWalmartAnalytics'])->name('walmart.analytics.export');
     Route::get('/walmart-analytics/sample', [WalmartControllerMarket::class, 'downloadSample'])->name('walmart.analytics.sample');
+    
+    // Walmart Tabulator View Routes
+    Route::get('walmart-tabulator-view', [WalmartControllerMarket::class, 'walmartTabulatorView'])->name('walmart.tabulator.view');
+    Route::get('/walmart-data-json', [WalmartControllerMarket::class, 'walmartDataJson']);
+    Route::get('/walmart-column-visibility', [WalmartControllerMarket::class, 'getWalmartColumnVisibility']);
+    Route::post('/walmart-column-visibility', [WalmartControllerMarket::class, 'setWalmartColumnVisibility']);
+    Route::get('/walmart-export', [WalmartControllerMarket::class, 'exportWalmartTabulatorData'])->name('walmart.export');
+    Route::post('/walmart-import', [WalmartControllerMarket::class, 'importWalmartAnalytics'])->name('walmart.import');
+    Route::post('/save-walmart-sprice', [WalmartControllerMarket::class, 'saveSpriceToDatabase']);
+    Route::post('/save-walmart-buybox-price', [WalmartControllerMarket::class, 'saveBuyboxPrice']);
+    Route::post('/save-walmart-manual-data', [WalmartControllerMarket::class, 'saveManualData']);
 
     //Listing Audit amazon
     Route::get('/listing-audit-amazon', action: [ListingAuditAmazonController::class, 'listingAuditAmazon'])->name('listing.audit.amazon');

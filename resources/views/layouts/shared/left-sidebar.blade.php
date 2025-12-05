@@ -2521,7 +2521,7 @@
                                         <a href="{{ route('listing.walmart') }}">Listing Walmart</a>
                                     </li>
                                     <li>
-                                        <a href="walmartPricingCVR">Walmart Pricing - CVR</a>
+                                        <a href="{{ url('walmart-tabulator-view') }}">Walmart Pricing - CVR</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('walmart.utilized.kw') }}">Walmart Kw Ads Report</a>
