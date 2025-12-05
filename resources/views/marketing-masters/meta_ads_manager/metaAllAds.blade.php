@@ -233,7 +233,7 @@
                     {
                         title: "AD Type",
                         field: "ad_type",
-                        minWidth: 200,
+                        minWidth: 250,
                         headerSort: true,
                         formatter: function(cell) {
                             const row = cell.getRow();
