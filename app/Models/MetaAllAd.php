@@ -15,6 +15,7 @@ class MetaAllAd extends Model
         'campaign_name',
         'campaign_id',
         'ad_type',
+        'platform',
         'campaign_delivery',
         'bgt',
         'imp_l30',

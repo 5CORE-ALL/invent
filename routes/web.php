@@ -2075,7 +2075,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(FacebookAddsManagerController::class)->group(function () {
         Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
         Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
-        Route::post('/meta-all-ads-control/sync-google-sheets', 'syncMetaAdsFromGoogleSheets')->name('meta.ads.sync');
+        Route::post('/meta-all-ads-control/sync-meta-api', 'syncMetaAdsFromApi')->name('meta.ads.sync');
         Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
         
         // Facebook AD Type specific routes
