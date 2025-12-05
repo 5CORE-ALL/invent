@@ -1739,14 +1739,6 @@
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="sprice"
-                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                SPRICE <span class="sort-arrow">↓</span>
-                                            </div>
-                                        </div>
-                                    </th>
                                     <th data-field="pft" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -2823,7 +2815,7 @@
 
                     // Add image cell
                     const imageSrc = item.image_src || item.raw_data?.image_path || '';
-                    const $imageCell = $('<td>').css({
+                    const $imageCell = $('<td>').attr('data-field', 'image').css({
                         'text-align': 'center',
                         'vertical-align': 'middle'
                     });
@@ -2835,10 +2827,10 @@
                     }
                     $row.append($imageCell);
                     
-                    $row.append($('<td>').text(item.Parent));
+                    $row.append($('<td>').attr('data-field', 'parent').text(item.Parent));
 
                     // SKU with hover content for links and copy button
-                    const $skuCell = $('<td>').addClass('skuColumn').css('position', 'relative');
+                    const $skuCell = $('<td>').attr('data-field', 'sku').addClass('skuColumn').css('position', 'relative');
                     const skuValue = item['(Child) sku'];
                     
                     if (item.is_parent) {
@@ -2888,11 +2880,11 @@
                     }
                     $row.append($skuCell);  
 
-                    $row.append($('<td>').text(item.INV));
-                    $row.append($('<td>').text(item.L30));
+                    $row.append($('<td>').attr('data-field', 'inv').text(item.INV));
+                    $row.append($('<td>').attr('data-field', 'ov_l30').text(item.L30));
 
                     // OV DIL with color coding and WMPNM tooltip
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'ov_dil').html(
                         `<span class="dil-percent-value ${getDilColor(item.ov_dil)}">${Math.round(item.ov_dil * 100)}%</span>
                          <span class="text-info tooltip-icon wmpnm-view-trigger" 
                                data-bs-toggle="tooltip" 
@@ -2901,15 +2893,15 @@
                                data-item='${JSON.stringify(item.raw_data)}'>W</span>`
                     ));
 
-                    $row.append($('<td>').text(item['eBay L30']));
+                    $row.append($('<td>').attr('data-field', 'el_30').text(item['eBay L30']));
 
                     // A DIL with color coding
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'e_dil').html(
                         `<span class="dil-percent-value ${getEDilColor(item['E Dil%'])}">${Math.round(item['E Dil%'] * 100)}%</span>`
                     ));
 
                     if (item.is_parent) {
-                        $row.append($('<td>')); // Empty cell for parent
+                        $row.append($('<td>').attr('data-field', 'NRA')); // Empty cell for parent
                     } else {
                         let currentNR = (item.NR === 'RA' || item.NR === 'NRA' || item.NR === 'LATER') ?
                             item.NR : 'RA';
@@ -2964,12 +2956,12 @@
                         }
 
                         $select.data('sku', item['(Child) sku']);
-                        $row.append($('<td>').append($select));
+                        $row.append($('<td>').attr('data-field', 'NRA').append($select));
                     }
 
                     // NRL/REQ dropdown - only for non-parent rows
                     if (item.is_parent) {
-                        $row.append($('<td>')); // Empty cell for parent
+                        $row.append($('<td>').attr('data-field', 'nr_req')); // Empty cell for parent
                     } else {
                         // Set default value for nr_req if missing
                         let currentNrReq = (item.nr_req === 'REQ' || item.nr_req === 'NR') ? item.nr_req : 'REQ';
@@ -2994,11 +2986,11 @@
                         }
 
                         $nrReqSelect.data('sku', item['(Child) sku']);
-                        $row.append($('<td>').append($nrReqSelect));
+                        $row.append($('<td>').attr('data-field', 'nr_req').append($nrReqSelect));
                     }
 
                     // views with tooltip icon (no color coding)
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'views').html(
                         `<span class="dil-percent-value ${getViewColor(item['views'])}">${Math.round(item['views'])}</span>
                          <span class="text-info tooltip-icon ad-view-trigger" 
                                data-bs-toggle="tooltip" 
@@ -3009,7 +3001,7 @@
 
                     //price with tooltip
                     // Replace the existing price section with this:
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'price').html(
                         `$${(parseFloat(item['eBay Price']) || 0).toFixed(2)}
                             <span class="tooltip-container" style="margin-left:8px">
                                 <i class="fas fa-tag text-warning price-view-trigger" 
@@ -3019,29 +3011,6 @@
                                 title="Pricing view"
                                 data-item='${JSON.stringify(item.raw_data)}'"></i>
                             </span>`
-                    ));
-
-                    $row.append($('<td>').html(
-                        `<div style="display:flex;align-items:center;justify-content:center;">
-                            <span class="sPriceText" data-sku="${item.raw_data['Item ID']}" style="display:inline-block;">
-                                ` + item['eBay Price'] + `
-                            </span>
-                            <input 
-                                value="` + item['eBay Price'] + `" 
-                                data-sku="` + item.raw_data['Item ID'] + `" 
-                                style="min-width:100px; display:none;" 
-                                type="number" 
-                                class="sPriceInput form-control"
-                            >
-                            <span class="tooltip-container" style="margin-left:8px">
-                                <i class="fas fa-tag text-warning price-view-trigger" 
-                                   style="transform:translateY(1px)"
-                                   data-bs-toggle="tooltip" 
-                                   data-bs-placement="top-end" 
-                                   title="Pricing view"
-                                   data-item='${JSON.stringify(item.raw_data)}'></i>
-                            </span>
-                        </div>`
                     ));
                     
                     const price = Number(item['eBay Price']) || 0;
@@ -3059,7 +3028,7 @@
                     let gPft = (netGpft / price) * 100;
 
                     // PFT with color coding
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'pft').html(
                         typeof item['PFT %'] === 'number' && !isNaN(item['PFT %']) ?
                         `<span class="dil-percent-value ${getPftColor(item['PFT %'])}">${Math.round(item['PFT %'] * 100)}%</span>` :
                         ''
@@ -3069,7 +3038,7 @@
                     if(isNaN(gPft) || !isFinite(gPft)) {
                         gPft = 0;
                     }
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'gpft').html(
                         `
                             <span class="dil-percent-value ${getPftColor(gPft)}">
                                 ${gPft.toFixed(0)}%
@@ -3104,7 +3073,7 @@
                         });
                     }
 
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'tprft').html(
                         `
                             <span class="dil-percent-value ${getPftColor(tpft)}">
                                 ${tpft.toFixed(0)}%
@@ -3112,24 +3081,24 @@
                         ` 
                     ));
 
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'ad-spend').html(
                         `${item.spend_l30.toFixed(2)}`
                     ));
                     // Cost per sale (CPS) calculation
                     let cps = item['eBay L30'] > 0 ? (item.spend_l30 / item['eBay L30']).toFixed(2) : 0;
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'cps').html(
                         `${cps}`
                     ));
 
                     // ROI with color coding
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'roi').html(
                         typeof item.Roi === 'number' && !isNaN(item.Roi) ?
                         `<span class="dil-percent-value ${getRoiColor(item.Roi)}">${Math.round(item.Roi * 100)}%</span>` :
                         ''
                     ));
 
                     // TACOS with color coding and tooltip
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'tacos').html(
                         `<span class="dil-percent-value ${getTacosColor(item.Tacos30)}">${(item.Tacos30 * 100).toFixed(0)}%</span>
                          <i class="fas fa-a text-info tooltip-icon advertisement-view-trigger" 
                             data-bs-toggle="tooltip" data-bs-placement="bottom" title="Advertisement view"
@@ -3149,7 +3118,7 @@
                         ebayCvrPercent = (ebayL30 / ebaySess30) * 1000 / 10; // 15 / 441 = 0.034 → 34%
                     }
 
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'cvr').html(
                         `<span class="dil-percent-value" style="color: ${getCvrColor(ebayCvrPercent)}">
                             ${ebayCvrPercent.toFixed(0)}%
                         </span>`
@@ -3158,7 +3127,7 @@
 
 
                     // SPRICE + Edit Button (no decimals)
-                    $row.append($('<td>').html(
+                    $row.append($('<td>').attr('data-field', 'sprice').html(
                         item.SPRICE !== null && !isNaN(parseFloat(item.SPRICE)) ?
                         `
                         <div class="d-flex align-items-center gap-2">
@@ -3183,7 +3152,7 @@
 
 
                     // ✅ SPFT (with coloring logic + inline style)
-                    $row.append($('<td>').attr('id', `spft-${item["(Child) sku"]}`).html(
+                    $row.append($('<td>').attr('data-field', 'sprofit').attr('id', `spft-${item["(Child) sku"]}`).html(
                         item.SPFT !== null && !isNaN(parseFloat(item.SPFT)) ?
                         `<span style="
                             font-size:14px; 
@@ -3207,7 +3176,7 @@
                     ));
 
                     // ✅ SROI (with coloring logic + inline style)
-                    $row.append($('<td>').attr('id', `sroi-${item["(Child) sku"]}`).html(
+                    $row.append($('<td>').attr('data-field', 'sroi').attr('id', `sroi-${item["(Child) sku"]}`).html(
                         item.SROI !== null && !isNaN(parseFloat(item.SROI)) ?
                         `<span style="
                             font-size:14px; 
@@ -3229,7 +3198,7 @@
                         </span>` : ''
                     ));
 
-                    $row.append($('<td>').attr('id', `total-sales`).html(
+                    $row.append($('<td>').attr('data-field', 'salesTotal').attr('id', `total-sales`).html(
                         ((item['eBay L30']) * (parseFloat(item['eBay Price']) || 0).toFixed(2))
                     ));
 
@@ -3241,6 +3210,9 @@
                 // Initialize tooltips
                 initTooltips();
                 updateSoldCounts();
+                
+                // Apply column visibility after rendering
+                applyColumnVisibility();
             }
 
             function initRAEditHandlers() {
@@ -5199,12 +5171,15 @@
                 const $table = $('#ebay-table');
                 const $headers = $table.find('th[data-field]');
 
-                $headers.each(function(index) {
+                $headers.each(function() {
                     const field = $(this).data('field');
                     const isHidden = hiddenColumns.has(field);
-                    $table.find('tr').each(function() {
-                        $(this).find('td, th').eq(index).toggle(!isHidden);
-                    });
+                    
+                    // Hide/show TH
+                    $(this).toggle(!isHidden);
+                    
+                    // Hide/show all TDs with matching data-field
+                    $table.find(`td[data-field="${field}"]`).toggle(!isHidden);
 
                     // Update checkbox state in menu
                     $(`#toggle-${field}`).prop('checked', !isHidden);
@@ -5254,10 +5229,11 @@
                     const field = $(this).data('field');
                     const isVisible = $(this).is(':checked');
 
-                    const colIndex = $headers.filter(`[data-field="${field}"]`).index();
-                    $table.find('tr').each(function() {
-                        $(this).find('td, th').eq(colIndex).toggle(isVisible);
-                    });
+                    // Toggle TH with matching data-field
+                    $table.find(`th[data-field="${field}"]`).toggle(isVisible);
+                    
+                    // Toggle all TDs with matching data-field
+                    $table.find(`td[data-field="${field}"]`).toggle(isVisible);
 
                     // Save hidden columns
                     if (!isVisible) hiddenColumns.add(field);
@@ -5267,16 +5243,15 @@
                 });
 
                 $('#showAllColumns').on('click', function() {
-                    $headers.each(function(index) {
-                        $(this).show(); // show TH
-                    });
-                    $('#ebay-table tr').each(function() {
-                        $(this).find('td').each(function() {
-                            $(this).show(); // show all TDs
-                        });
-                    });
+                    // Show all TH elements
+                    $table.find('th[data-field]').show();
+                    
+                    // Show all TD elements with data-field
+                    $table.find('td[data-field]').show();
+                    
                     // Update checkboxes
                     $menu.find('.column-toggle-checkbox').prop('checked', true);
+                    
                     // Clear hiddenColumns and save
                     hiddenColumns.clear();
                     localStorage.setItem('hiddenColumns', JSON.stringify([...hiddenColumns]));
@@ -6333,7 +6308,7 @@
                 }
 
                 $.ajax({
-                    url: '/ebay/save-sprice',
+                    url: '/ebay-one/save-sprice',
                     type: 'POST',
                     data: {
                         _token: $('meta[name="csrf-token"]').attr('content'),

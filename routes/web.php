@@ -1353,7 +1353,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     //ebay db save routes
     Route::post('/ebay/save-nr', [EbayController::class, 'saveNrToDatabase']);
     Route::post('/ebay/update-listed-live', [EbayController::class, 'updateListedLive']);
-    Route::post('/ebay/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
+    Route::post('/ebay-one/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
     Route::post('/ebay/save-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
 
     Route::post('/listing_ebay/save-status', [ListingEbayController::class, 'saveStatus']);
