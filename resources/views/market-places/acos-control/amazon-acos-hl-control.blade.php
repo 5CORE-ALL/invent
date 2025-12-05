@@ -597,7 +597,32 @@
                                 </span>
                             `;
                         }
-                    }
+                    },
+                    {
+                        title: "CVR L30",
+                        field: "cvr_l30",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var ad_sold_l30 = parseFloat(row.ad_sold_l30) || 0;
+                            var clicks_l30 = parseFloat(row.clicks_L30) || 0;
+                            
+                            var cvr_l30 = (clicks_l30 > 0) ? (ad_sold_l30 / clicks_l30) * 100 : 0;
+                            let color = "";
+                            if (cvr_l30 < 5) {
+                                color = "red";
+                            } else if (cvr_l30 >= 5 && cvr_l30 <= 10) {
+                                color = "green";
+                            } else if (cvr_l30 > 10){
+                                color = "#e83e8c";
+                            }
+                            return `
+                                <span style="color:${color}; font-weight:600;">
+                                    ${isNaN(cvr_l30) ? 0 : cvr_l30.toFixed(0)}%
+                                </span>
+                            `;
+                        }
+                    },
                 ],
                 ajaxResponse: function(url, params, response) {
                     return response.data;
