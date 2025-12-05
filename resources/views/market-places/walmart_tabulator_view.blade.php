@@ -232,83 +232,425 @@
                     }
                 },
                 columns: [{
-                        title: "SL No.",
-                        field: "sl_no",
-                        width: 60,
-                        headerSort: false,
-                        visible: true
-                    },
-                    {
                         title: "Parent",
-                        field: "parent",
-                        width: 120,
-                        headerSort: false,
-                        visible: true
+                        field: "Parent",
+                        headerFilter: "input",
+                        headerFilterPlaceholder: "Search Parent...",
+                        cssClass: "text-primary",
+                        tooltip: true,
+                        frozen: true,
+                        width: 150,
+                        visible: false
                     },
                     {
-                        title: "(Child) Sku",
-                        field: "sku",
-                        width: 150,
-                        headerSort: false,
-                        visible: true,
+                        title: "Image",
+                        field: "image_path",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const imagePath = cell.getValue();
+                            if (imagePath) {
+                                return `<img src="${imagePath}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;" />`;
+                            }
+                            return '';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "SKU",
+                        field: "(Child) sku",
+                        headerFilter: "input",
+                        headerFilterPlaceholder: "Search SKU...",
+                        frozen: true,
+                        width: 250,
                         formatter: function(cell) {
                             const sku = cell.getValue();
                             const rowData = cell.getRow().getData();
+
+                            // Don't show copy button for parent rows
                             if (rowData.is_parent_summary) {
-                                return `<strong>${sku}</strong>`;
+                                return `<span style="font-weight: bold;">${sku}</span>`;
                             }
-                            return `<span style="cursor: pointer; user-select: all;" title="Click to copy">${sku}</span>`;
-                        },
-                        cellClick: function(e, cell) {
-                            const sku = cell.getValue();
-                            const rowData = cell.getRow().getData();
-                            if (!rowData.is_parent_summary && sku) {
-                                navigator.clipboard.writeText(sku).then(function() {
-                                    showToast('success', `SKU copied: ${sku}`);
-                                }).catch(function(err) {
-                                    console.error('Copy failed:', err);
-                                });
-                            }
+
+                            return `<div style="display: flex; align-items: center; gap: 5px;">
+                                <span>${sku}</span>
+                                <button class="btn btn-sm btn-link copy-sku-btn p-0" data-sku="${sku}" title="Copy SKU">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>`;
                         }
                     },
                     {
-                        title: "NR",
-                        field: "nr",
-                        width: 90,
-                        headerSort: false,
-                        visible: true,
+                        title: "INV",
+                        field: "INV",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number"
+                    },
+                    {
+                        title: "OV L30",
+                        field: "L30",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number"
+                    },
+                    {
+                        title: "Dil",
+                        field: "E Dil%",
+                        hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
-                            const value = cell.getValue() || 'REQ'; // Default to REQ if empty
-                            const sku = cell.getRow().getData().sku;
-                            const isParent = cell.getRow().getData().is_parent_summary;
+                            const rowData = cell.getRow().getData();
+                            const INV = parseFloat(rowData.INV) || 0;
+                            const OVL30 = parseFloat(rowData['L30']) || 0;
 
-                            if (isParent) return '';
+                            if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
 
-                            // Determine background color based on value
-                            let bgColor = '#28a745'; // Default green for REQ
+                            const dil = (OVL30 / INV) * 100;
+                            let color = '';
+
+                            // Color logic from Amazon
+                            if (dil < 16.66) color = '#a00211'; // red
+                            else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
+                            else if (dil >= 25 && dil < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50 and above)
+
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                        },
+                        width: 50
+                    },
+                    {
+                        title: "W L30",
+                        field: "W_L30",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number"
+                    },
+                    {
+                        title: "CVR",
+                        field: "CVR_L30",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const wL30 = parseFloat(row['W_L30']) || 0;
+                            const sess30 = parseFloat(row['Sess30']) || 0;
+
+                            if (sess30 === 0) return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
+
+                            const cvr = (wL30 / sess30) * 100;
+                            let color = '';
+                            
+                            // getCvrColor logic from Amazon
+                            if (cvr <= 4) color = '#a00211'; // red
+                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcCVR = (row) => {
+                                const wL30 = parseFloat(row['W_L30']) || 0;
+                                const sess30 = parseFloat(row['Sess30']) || 0;
+                                return sess30 === 0 ? 0 : (wL30 / sess30) * 100;
+                            };
+                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "View",
+                        field: "Sess30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 50
+                    },
+                    {
+                        title: "Reviews",
+                        field: "total_review_count",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<span style="color: #6c757d;">0</span>';
+                            return `<span style="font-weight: 600;">${parseInt(value).toLocaleString()}</span>`;
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "NR/RL",
+                        field: "NR",
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (row.is_parent_summary) return '';
+
+                            const nrl = row['NR'] || '';
+                            const sku = row['(Child) sku'];
+
+                            // Determine current value (default to REQ if empty)
+                            let value = '';
+                            if (nrl === 'NR') {
+                                value = 'NR';
+                            } else if (nrl === 'REQ') {
+                                value = 'REQ';
+                            } else {
+                                value = 'REQ'; // Default to REQ
+                            }
+
+                            // Set background color based on value
+                            let bgColor = '#28a745'; // Green for RL
+                            let textColor = 'black';
                             if (value === 'NR') {
                                 bgColor = '#dc3545'; // Red for NR
+                                textColor = 'black';
                             }
 
-                            return `
-                                <select class="form-select form-select-sm nr-select nr-status" 
-                                        data-sku="${sku}" 
-                                        style="width: 70px; background-color: ${bgColor}; color: white; font-weight: bold;">
-                                    <option value="NR" ${value === 'NR' ? 'selected' : ''}>NR</option>
-                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
-                                </select>
-                            `;
-                        }
+                            return `<select class="form-select form-select-sm nr-select" data-sku="${sku}"
+                                style="background-color: ${bgColor}; color: ${textColor}; border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 4px;">
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>RL</option>
+                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>NRL</option>
+                            </select>`;
+                        },
+                        cellClick: function(e, cell) {
+                            e.stopPropagation();
+                        },
+                        width: 90
+                    },
+                    {
+                        title: "Prc",
+                        field: "price",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary || !value) return '';
+
+                            return '$' + parseFloat(value).toFixed(2);
+                        },
+                        sorter: "number",
+                        width: 70
+                    },
+                    {
+                        title: "GPFT %",
+                        field: "GPFT%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const percent = parseFloat(value) || 0;
+                            let color = '';
+
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 50
+                    },
+                    {
+                        title: "AD%",
+                        field: "AD%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const adSpend = parseFloat(rowData.AD_Spend_L30) || 0;
+                            const sales = parseFloat(rowData['W_L30']) || 0;
+                            
+                            // If there is ad spend but no sales, show 100%
+                            if (adSpend > 0 && sales === 0) {
+                                return `<span style="color: #a00211; font-weight: 600;">100%</span>`;
+                            }
+                            
+                            if (value === null || value === undefined) return '0.00%';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '0.00%';
+                            
+                            // If spend > 0 but AD% is 0, show red alert
+                            if (adSpend > 0 && percent === 0) {
+                                return `<span style="color: #dc3545; font-weight: 600;">100%</span>`;
+                            }
+                            
+                            return `${parseFloat(value).toFixed(0)}%`;
+                        },
+                        width: 55
+                    },
+                    {
+                        title: "PFT %",
+                        field: "PFT%",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '0.00%';
+                            const percent = parseFloat(value);
+                            let color = '';
+                            
+                            // getPftColor logic from Amazon
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        sorter: "number",
+                        width: 50
+                    },
+                    {
+                        title: "ROI%",
+                        field: "ROI_percentage",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '0.00%';
+                            const percent = parseFloat(value);
+                            let color = '';
+                            
+                            // getRoiColor logic from Amazon
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        sorter: "number",
+                        width: 65
+                    },
+                    {
+                        title: "BB Price",
+                        field: "buybox_price",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+
+                            const buyboxPrice = cell.getValue();
+                            const sku = rowData['(Child) sku'];
+
+                            if (!buyboxPrice || buyboxPrice === 0) {
+                                return '<span style="color: #999;">N/A</span>';
+                            }
+
+                            const priceFormatted = '$' + parseFloat(buyboxPrice).toFixed(2);
+                            return priceFormatted;
+                        },
+                        editor: "number",
+                        editorParams: {
+                            min: 0,
+                            step: 0.01
+                        },
+                        width: 100
+                    },
+                    {
+                        title: "S PRC",
+                        field: "SPRICE",
+                        hozAlign: "center",
+                        editor: "input",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const hasCustomSprice = rowData.has_custom_sprice;
+                            
+                            if (!value) return '';
+                            
+                            const formattedValue = `$${parseFloat(value).toFixed(2)}`;
+                            
+                            // If using default price (not custom), show in blue
+                            if (hasCustomSprice === false) {
+                                return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
+                            }
+                            
+                            return formattedValue;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "S GPFT",
+                        field: "SGPFT",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            // Same as GPFT% color logic
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "S PFT",
+                        field: "Spft%",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            // Same as PFT% color logic
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "SROI",
+                        field: "SROI",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            // Same as ROI% color logic
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 80
                     },
                     {
                         title: "Listed",
-                        field: "listed",
+                        field: "Listed",
                         width: 70,
                         headerSort: false,
                         visible: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
-                            const sku = cell.getRow().getData().sku;
+                            const sku = cell.getRow().getData()['(Child) sku'];
                             const isParent = cell.getRow().getData().is_parent_summary;
 
                             if (isParent) return '';
@@ -319,13 +661,13 @@
                     },
                     {
                         title: "Live",
-                        field: "live",
+                        field: "Live",
                         width: 70,
                         headerSort: false,
                         visible: true,
                         formatter: function(cell) {
                             const value = cell.getValue();
-                            const sku = cell.getRow().getData().sku;
+                            const sku = cell.getRow().getData()['(Child) sku'];
                             const isParent = cell.getRow().getData().is_parent_summary;
 
                             if (isParent) return '';
@@ -335,160 +677,57 @@
                         }
                     },
                     {
-                        title: "INV",
-                        field: "inv",
-                        width: 70,
-                        headerSort: false
-                    },
-                    {
-                        title: "OV L30",
-                        field: "l30",
-                        width: 70,
-                        headerSort: false
-                    },
-                    {
-                        title: "LP",
-                        field: "lp",
-                        width: 70,
-                        headerSort: false
-                    },
-                    {
-                        title: "Ship",
-                        field: "ship",
-                        width: 70,
-                        headerSort: false
-                    },
-                    {
-                        title: "COGS",
-                        field: "cogs",
-                        width: 70,
-                        headerSort: false
-                    },
-                    {
-                        title: "Price",
-                        field: "price",
-                        width: 90,
-                        headerSort: false
-                    },
-                    {
-                        title: "SPRICE",
-                        field: "sprice",
-                        width: 90,
-                        headerSort: false,
-                        editor: "number",
-                        editorParams: {
-                            min: 0,
-                            step: 0.01
-                        },
+                        title: "SPEND L30",
+                        field: "AD_Spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "PFT %",
-                        field: "pft_percent",
-                        width: 80,
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            let color = '';
+                            const value = parseFloat(cell.getValue() || 0);
                             
-                            // Same as Amazon PFT% color logic
-                            if (value < 10) color = '#a00211'; // red
-                            else if (value >= 10 && value < 15) color = '#ffc107'; // yellow
-                            else if (value >= 15 && value < 20) color = '#3591dc'; // blue
-                            else if (value >= 20 && value <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(0)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "ROI %",
-                        field: "roi",
-                        width: 80,
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            let color = '';
-                            
-                            // Same as Amazon ROI% color logic
-                            if (value < 50) color = '#a00211'; // red
-                            else if (value >= 50 && value < 75) color = '#ffc107'; // yellow
-                            else if (value >= 75 && value <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(0)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "SPFT %",
-                        field: "spft_percent",
-                        width: 80,
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            let color = '';
-                            
-                            // Same as Amazon SPFT% color logic
-                            if (value < 10) color = '#a00211'; // red
-                            else if (value >= 10 && value < 15) color = '#ffc107'; // yellow
-                            else if (value >= 15 && value < 20) color = '#3591dc'; // blue
-                            else if (value >= 20 && value <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(0)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "SROI %",
-                        field: "sroi",
-                        width: 80,
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            let color = '';
-                            
-                            // Same as Amazon SROI% color logic
-                            if (value < 50) color = '#a00211'; // red
-                            else if (value >= 50 && value < 75) color = '#ffc107'; // yellow
-                            else if (value >= 75 && value <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(0)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "L60",
-                        field: "l60",
-                        width: 70,
-                        headerSort: false
-                    },
-                    {
-                        title: "W L30",
-                        field: "w_l30",
-                        width: 80,
-                        headerSort: false,
-                        visible: true
-                    },
-                    {
-                        title: "BB Price",
-                        field: "buybox_price",
-                        width: 90,
-                        headerSort: false,
-                        editor: "number",
-                        editorParams: {
-                            min: 0,
-                            step: 0.01
-                        },
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue()) || 0;
                             if (value === 0) return '';
-                            return '$' + value.toFixed(2);
-                        }
+                            return `$${value.toFixed(2)}`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                        },
+                        width: 90
+                    },
+                    {
+                        title: "KW SPEND L30",
+                        field: "kw_spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `$${value.toFixed(2)}`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                        },
+                        width: 100
+                    },
+                    {
+                        title: "PMT SPEND L30",
+                        field: "pmt_spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `$${value.toFixed(2)}`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                        },
+                        width: 100
                     }
-
                 ]
             });
 
@@ -575,7 +814,7 @@
             // SKU Search functionality
             $('#sku-search').on('keyup', function() {
                 const value = $(this).val();
-                table.setFilter("sku", "like", value);
+                table.setFilter("(Child) sku", "like", value);
             });
 
             // Cell edited handler
@@ -584,8 +823,8 @@
                 const row = cell.getRow();
                 const data = row.getData();
 
-                if (field === 'sprice') {
-                    const sku = data.sku;
+                if (field === 'SPRICE') {
+                    const sku = data['(Child) sku'];
                     const sprice = parseFloat(cell.getValue()) || 0;
 
                     // Save to database
@@ -602,15 +841,20 @@
                         success: function(response) {
                             showToast('success', 'SPRICE updated successfully');
                             
-                            // Update SPFT% and SROI% from server response
+                            // Update SGPFT, SPFT% and SROI% from server response
+                            if (response.sgpft_percent !== undefined) {
+                                row.update({
+                                    'SGPFT': response.sgpft_percent
+                                });
+                            }
                             if (response.spft_percent !== undefined) {
                                 row.update({
-                                    'spft_percent': response.spft_percent
+                                    'Spft%': response.spft_percent
                                 });
                             }
                             if (response.sroi_percent !== undefined) {
                                 row.update({
-                                    'sroi': response.sroi_percent
+                                    'SROI': response.sroi_percent
                                 });
                             }
                         },
@@ -619,7 +863,7 @@
                         }
                     });
                 } else if (field === 'buybox_price') {
-                    const sku = data.sku;
+                    const sku = data['(Child) sku'];
                     const buyboxPrice = parseFloat(cell.getValue()) || 0;
 
                     // Save to database
@@ -655,31 +899,43 @@
                 table.clearFilter(true);
 
                 if (inventoryFilter === 'zero') {
-                    table.addFilter('inv', '=', 0);
+                    table.addFilter('INV', '=', 0);
                 } else if (inventoryFilter === 'more') {
-                    table.addFilter('inv', '>', 0);
+                    table.addFilter('INV', '>', 0);
                 }
 
                 if (nrlFilter !== 'all') {
-                    table.addFilter('nr', '=', parseInt(nrlFilter));
+                    if (nrlFilter === 'req') {
+                        // Show only REQ (exclude NR)
+                        table.addFilter(function(data) {
+                            return data.NR !== 'NR';
+                        });
+                    } else if (nrlFilter === 'nr') {
+                        // Show only NR
+                        table.addFilter(function(data) {
+                            return data.NR === 'NR';
+                        });
+                    }
                 }
 
                 if (parentFilter === 'hide') {
-                    table.addFilter('is_parent_summary', '=', false);
+                    table.addFilter(function(data) {
+                        return data.is_parent_summary !== true;
+                    });
                 }
 
                 if (statusFilter === 'listed') {
-                    table.addFilter('listed', '=', true);
+                    table.addFilter('Listed', '=', true);
                 } else if (statusFilter === 'live') {
-                    table.addFilter('live', '=', true);
+                    table.addFilter('Live', '=', true);
                 } else if (statusFilter === 'both') {
                     table.addFilter([{
-                            field: 'listed',
+                            field: 'Listed',
                             type: '=',
                             value: true
                         },
                         {
-                            field: 'live',
+                            field: 'Live',
                             type: '=',
                             value: true
                         }
@@ -702,12 +958,12 @@
                 let totalCogs = 0;
 
                 data.forEach(row => {
-                    if (row.is_parent_summary || parseFloat(row.inv) <= 0) return;
+                    if (row.is_parent_summary || parseFloat(row.INV) <= 0) return;
 
                     const price = parseFloat(row.price) || 0;
-                    const l30 = parseFloat(row.l30) || 0;
-                    const lp = parseFloat(row.lp) || 0;
-                    const ship = parseFloat(row.ship) || 0;
+                    const l30 = parseFloat(row.L30) || 0;
+                    const lp = parseFloat(row.LP_productmaster) || 0;
+                    const ship = parseFloat(row.Ship_productmaster) || 0;
 
                     const sales = price * l30;
                     const profit = (price * 0.80 - lp - ship) * l30;
@@ -740,14 +996,14 @@
                 let totalPftAmt = 0;
 
                 childData.forEach(row => {
-                    if (parseFloat(row.inv) > 0) invGt0++;
-                    if (row.listed) listedCount++;
-                    if (row.live) liveCount++;
+                    if (parseFloat(row.INV) > 0) invGt0++;
+                    if (row.Listed) listedCount++;
+                    if (row.Live) liveCount++;
 
                     const price = parseFloat(row.price) || 0;
-                    const l30 = parseFloat(row.l30) || 0;
-                    const lp = parseFloat(row.lp) || 0;
-                    const ship = parseFloat(row.ship) || 0;
+                    const l30 = parseFloat(row.L30) || 0;
+                    const lp = parseFloat(row.LP_productmaster) || 0;
+                    const ship = parseFloat(row.Ship_productmaster) || 0;
 
                     totalSalesAmt += price * l30;
                     totalPftAmt += (price * 0.80 - lp - ship) * l30;

@@ -682,29 +682,44 @@ class WalmartControllerMarket extends Controller
         foreach ($productMasters as $pm) {
             $sku = $pm->sku;
             $isParent = stripos($sku, 'PARENT') !== false;
+            
+            // Skip parent rows (they will be added as summaries)
+            if ($isParent) {
+                continue;
+            }
 
             $item = [
                 'sl_no' => $slNo++,
-                'parent' => $pm->parent ?? '',
-                'sku' => $sku,
+                'Parent' => $pm->parent ?? '',
+                '(Child) sku' => $sku,
                 'is_parent_summary' => $isParent,
-                'nr' => 0,
-                'listed' => false,
-                'live' => false,
-                'inv' => 0,
-                'lp' => 0,
-                'ship' => 0,
-                'cogs' => 0,
+                'NR' => '',
+                'Listed' => false,
+                'Live' => false,
+                'INV' => 0,
+                'L30' => 0,
+                'E Dil%' => 0,
+                'W_L30' => 0,
+                'CVR_L30' => 0,
+                'Sess30' => 0,
+                'total_review_count' => 0,
                 'price' => 0,
-                'sprice' => 0,
-                'pft_percent' => 0,
-                'roi' => 0,
-                'spft_percent' => 0,
-                'sroi' => 0,
-                'l30' => 0,
-                'l60' => 0,
-                'w_l30' => 0,
+                'LP_productmaster' => 0,
+                'Ship_productmaster' => 0,
+                'GPFT%' => 0,
+                'AD%' => 0,
+                'PFT%' => 0,
+                'ROI_percentage' => 0,
                 'buybox_price' => 0,
+                'SPRICE' => 0,
+                'SGPFT' => 0,
+                'Spft%' => 0,
+                'SROI' => 0,
+                'AD_Spend_L30' => 0,
+                'kw_spend_L30' => 0,
+                'pmt_spend_L30' => 0,
+                'image_path' => null,
+                'l60' => 0,
                 'pft_amt' => 0,
                 'sales_amt' => 0,
                 'percentage' => $percentage
@@ -712,74 +727,130 @@ class WalmartControllerMarket extends Controller
 
             // Get values from product master
             $values = $pm->Values ?: [];
-            $item['lp'] = $values['lp'] ?? 0;
-            $item['ship'] = $values['ship'] ?? 0;
-            $item['cogs'] = $values['cogs'] ?? 0;
+            $lp = $values['lp'] ?? 0;
+            if ($lp === 0 && isset($pm->lp)) {
+                $lp = floatval($pm->lp);
+            }
+            $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            $item['LP_productmaster'] = $lp;
+            $item['Ship_productmaster'] = $ship;
 
             // Get Walmart API data
             if (isset($walmartLookup[$sku])) {
                 $walmartData = $walmartLookup[$sku];
                 $item['price'] = $walmartData->price ?? 0;
-                $item['w_l30'] = $walmartData->l30 ?? 0; // Walmart L30
+                $item['W_L30'] = $walmartData->l30 ?? 0; // Walmart L30
                 $item['l60'] = $walmartData->l60 ?? 0;
             }
 
             // Get Shopify data
             if (isset($shopifyData[$sku])) {
                 $shopifyItem = $shopifyData[$sku];
-                $item['inv'] = $shopifyItem->inv ?? 0;
-                $item['l30'] = $shopifyItem->quantity ?? 0; // Overall L30 from Shopify
+                $item['INV'] = $shopifyItem->inv ?? 0;
+                $item['L30'] = $shopifyItem->quantity ?? 0; // Overall L30 from Shopify
+                $item['image_path'] = $shopifyItem->image_src ?? ($values['image_path'] ?? null);
             }
 
-            // Get Walmart data view values and apply listing page logic
+            // Get Walmart data view values
             if (isset($walmartDataViews[$sku])) {
                 $dataView = $walmartDataViews[$sku];
                 $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
                 // Use stored NR value if exists, otherwise calculate based on INV
-                $item['nr'] = $value['NR'] ?? (floatval($item['inv']) > 0 ? 'REQ' : 'NR');
-                $item['listed'] = isset($value['Listed']) ? (bool)$value['Listed'] : false;
-                $item['live'] = isset($value['Live']) ? (bool)$value['Live'] : false;
+                $nrValue = $value['NR'] ?? (floatval($item['INV']) > 0 ? 'REQ' : 'NR');
+                $item['NR'] = $nrValue === 'NR' ? 'NR' : 'REQ';
+                $item['Listed'] = isset($value['Listed']) ? (bool)$value['Listed'] : false;
+                $item['Live'] = isset($value['Live']) ? (bool)$value['Live'] : false;
                 // Load saved SPRICE data
-                $item['sprice'] = $value['SPRICE'] ?? 0;
-                $item['spft_percent'] = $value['SPFT'] ?? 0;
-                $item['sroi'] = $value['SROI'] ?? 0;
+                $item['SPRICE'] = $value['SPRICE'] ?? 0;
+                $item['SGPFT'] = $value['SGPFT'] ?? 0;
+                $item['Spft%'] = $value['SPFT'] ?? 0;
+                $item['SROI'] = $value['SROI'] ?? 0;
                 // Load saved buybox price
                 $item['buybox_price'] = $value['buybox_price'] ?? 0;
             } else {
                 // No saved data - calculate default based on INV
-                $item['nr'] = floatval($item['inv']) > 0 ? 'REQ' : 'NR';
+                $item['NR'] = floatval($item['INV']) > 0 ? 'REQ' : 'NR';
             }
 
             // Calculate formulas matching Amazon (using 0.80 hardcoded like Amazon)
             $price = floatval($item['price']);
-            $sprice = floatval($item['sprice']); // Will be set via frontend edits
-            $lp = floatval($item['lp']);
-            $ship = floatval($item['ship']);
-            $cogs = floatval($item['cogs']);
-            $l30 = floatval($item['l30']);
+            $sprice = floatval($item['SPRICE']);
+            $w_l30 = floatval($item['W_L30']);
+            $l30 = floatval($item['L30']);
+            $inv = floatval($item['INV']);
 
-            // PFT% = ((Price * 0.80 - LP - Ship) / Price) * 100
+            // AD% = 0 for now (as requested)
+            $item['AD%'] = 0;
+            $item['AD_Spend_L30'] = 0;
+            $item['kw_spend_L30'] = 0;
+            $item['pmt_spend_L30'] = 0;
+
+            // GPFT% Formula = ((price × 0.80 - ship - lp) / price) × 100
+            $item['GPFT%'] = 0;
             if ($price > 0) {
-                $pft_percentage = (($price * 0.80 - $lp - $ship) / $price) * 100;
-                $item['pft_percent'] = round($pft_percentage, 2);
+                $item['GPFT%'] = round((($price * 0.80 - $ship - $lp) / $price) * 100, 2);
             }
 
-            // ROI% = ((Price * 0.80 - LP - Ship) / LP) * 100
-            if ($lp > 0) {
-                $roi_percentage = (($price * 0.80 - $lp - $ship) / $lp) * 100;
-                $item['roi'] = round($roi_percentage, 2);
+            // PFT% = GPFT% - AD%
+            $item['PFT%'] = round(($item['GPFT%'] ?? 0) - $item['AD%'], 2);
+
+            // ROI% = ((price * (0.80 - AD%/100) - ship - lp) / lp) * 100
+            $item['ROI_percentage'] = 0;
+            $adDecimal = $item['AD%'] / 100;
+            if ($lp > 0 && $price > 0) {
+                $item['ROI_percentage'] = round((($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
             }
 
-            // SPFT% = ((SPRICE * 0.80 - LP - Ship) / SPRICE) * 100
+            // Dil% = (L30 / INV) * 100
+            $item['E Dil%'] = 0;
+            if ($inv > 0) {
+                $item['E Dil%'] = round(($l30 / $inv) * 100, 2);
+            }
+
+            // CVR = (W_L30 / Sess30) * 100 (Sess30 set to 0 for now, so CVR will be 0)
+            $sess30 = 0; // Walmart doesn't have views data yet
+            $item['Sess30'] = $sess30;
+            $item['CVR_L30'] = 0;
+            if ($sess30 > 0) {
+                $item['CVR_L30'] = round(($w_l30 / $sess30) * 100, 2);
+            }
+
+            // SGPFT% = ((SPRICE * 0.80 - ship - lp) / SPRICE) * 100
+            // Only calculate if we have a saved value from database, otherwise calculate it
             if ($sprice > 0) {
-                $spft_percentage = (($sprice * 0.80 - $lp - $ship) / $sprice) * 100;
-                $item['spft_percent'] = round($spft_percentage, 2);
+                // If SGPFT was loaded from database, use it; otherwise calculate
+                if (!isset($item['SGPFT']) || $item['SGPFT'] == 0) {
+                    $item['SGPFT'] = round((($sprice * 0.80 - $ship - $lp) / $sprice) * 100, 2);
+                }
             }
 
-            // SROI% = ((SPRICE * 0.80 - LP - Ship) / LP) * 100
-            if ($lp > 0 && $sprice > 0) {
-                $sroi_percentage = (($sprice * 0.80 - $lp - $ship) / $lp) * 100;
-                $item['sroi'] = round($sroi_percentage, 2);
+            // SPFT% = SGPFT% - AD%
+            $item['Spft%'] = round(($item['SGPFT'] ?? 0) - $item['AD%'], 2);
+
+            // SROI% = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
+            // Only calculate if we have a saved value from database, otherwise calculate it
+            if (!isset($item['SROI']) || $item['SROI'] == 0) {
+                if ($lp > 0 && $sprice > 0) {
+                    $item['SROI'] = round((($sprice * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
+                }
+            }
+
+            // If SPRICE is null or empty, use price as default
+            if (empty($item['SPRICE']) && $price > 0) {
+                $item['SPRICE'] = $price;
+                $item['has_custom_sprice'] = false;
+                
+                // Calculate SGPFT based on default price (only if price > 0)
+                if ($price > 0) {
+                    $item['SGPFT'] = round((($price * 0.80 - $ship - $lp) / $price) * 100, 2);
+                    $item['Spft%'] = round($item['SGPFT'] - $item['AD%'], 2);
+                }
+                // Calculate SROI only if lp > 0 and price > 0
+                if ($lp > 0 && $price > 0) {
+                    $item['SROI'] = round((($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
+                }
+            } else if (!empty($item['SPRICE'])) {
+                $item['has_custom_sprice'] = true;
             }
 
             // PFT AMT = (Price * 0.80 - LP - Ship) * L30
@@ -788,10 +859,52 @@ class WalmartControllerMarket extends Controller
             // SALES AMT = Price * L30
             $item['sales_amt'] = $price * $l30;
 
-            $result[] = $item;
+            $result[] = (object) $item;
         }
 
-        return response()->json($result);
+        // Parent-wise grouping (similar to Amazon)
+        $groupedByParent = collect($result)->groupBy('Parent');
+        $finalResult = [];
+
+        foreach ($groupedByParent as $parent => $rows) {
+            foreach ($rows as $row) {
+                $finalResult[] = $row;
+            }
+
+            if (empty($parent)) {
+                continue;
+            }
+
+            $sumRow = [
+                '(Child) sku' => 'PARENT ' . $parent,
+                'Parent' => $parent,
+                'INV' => $rows->sum('INV'),
+                'L30' => $rows->sum('L30'),
+                'W_L30' => $rows->sum('W_L30'),
+                'price' => '',
+                'SPRICE' => '',
+                'GPFT%' => $rows->count() > 0 ? round($rows->avg('GPFT%'), 2) : 0,
+                'AD%' => 0,
+                'PFT%' => $rows->count() > 0 ? round($rows->avg('PFT%'), 2) : 0,
+                'ROI_percentage' => '',
+                'SGPFT' => '',
+                'Spft%' => '',
+                'SROI' => '',
+                'AD_Spend_L30' => '',
+                'buybox_price' => '',
+                'Listed' => null,
+                'Live' => null,
+                'image_path' => '',
+                'pft_amt' => round($rows->sum('pft_amt'), 2),
+                'sales_amt' => round($rows->sum('sales_amt'), 2),
+                'is_parent_summary' => true,
+                'percentage' => $percentage
+            ];
+
+            $finalResult[] = (object) $sumRow;
+        }
+
+        return response()->json($finalResult);
     }
 
     public function getWalmartColumnVisibility(Request $request)
