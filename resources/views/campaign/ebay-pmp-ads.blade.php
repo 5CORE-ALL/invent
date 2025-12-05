@@ -1507,18 +1507,6 @@
                             <thead>
                                 <tr>
                                     {{-- <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th> --}}
-                                    <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center sortable-header">
-                                                Parent <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm parent-search"
-                                                    placeholder="Search parent..." id="parentSearch">
-                                                <div class="dropdown-search-results" id="parentSearchResults"></div>
-                                            </div>
-                                        </div>
-                                    </th>
                                     <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center sortable">
                                             <div class="d-flex align-items-center">
@@ -1583,13 +1571,6 @@
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 T VIEWS <span class="sort-arrow">↓</span>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="req_views" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                REQ VIEWS <span class="sort-arrow">↓</span>
                                             </div>
                                         </div>
                                     </th>
@@ -1685,7 +1666,7 @@
                                             <div class="metric-total" id="pft-total">0%</div>
                                         </div>
                                     </th>
-                                    <th data-field="NRL">NRL</th>
+                                    <th data-field="NRL">NRL/REQ</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2888,6 +2869,11 @@
                 }
 
                 filteredData.forEach(item => {
+                    // Hide rows where NRL is "NR"
+                    if (item.NRL === 'NR') {
+                        return; // Skip this row
+                    }
+
                     const $row = $('<tr>');
                     if (item.is_parent) {
                         $row.addClass('parent-row');
@@ -2968,7 +2954,6 @@
                     };
 
                     // $row.append($('<td>').text(item['Sl']));
-                    $row.append($('<td>').text(item.Parent));
 
                     // SKU with hover content for links and campaign chart button
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
@@ -3057,15 +3042,6 @@
                         adjustedCbid = 2;
                     }
 
-                    let reqViews = item.INV * 10;
-                    let reqViewsColor = "";
-
-                    if (reqViews > item.VIEWS) {
-                        reqViewsColor = "red";
-                    } else {
-                        reqViewsColor = "green";
-                    }
-
                     $row.append($('<td data-field="sbid">').html(
                         `<span class="dil-percent-value ${cbidColor}">
                            ${adjustedCbid.toFixed(1)}
@@ -3073,13 +3049,6 @@
                     ));
 
                     $row.append($('<td>').text(item.VIEWS));
-
-                    $row.append($('<td>').html(
-                        `<span class="dil-percent-value ${reqViewsColor}">
-                           ${reqViews}
-                        </span>`
-                    ));
-
 
                     // CVR with color coding and tooltip
                     
@@ -3271,9 +3240,8 @@
 
                         const $select = $(`
                             <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                                <option value="REQ" ${currentNR === 'REQ' ? 'selected' : ''}>RL</option>
+                                <option value="REQ" ${currentNR === 'REQ' ? 'selected' : ''}>REQ</option>
                                 <option value="NR" ${currentNR === 'NR' ? 'selected' : ''}>NRL</option>
-                                <option value="LATER" ${currentNR === 'LATER' ? 'selected' : ''}>LATER</option>
                             </select>
                         `);
 
