@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Meta - Catalogue Ad', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Meta - Instagram Catalogue Ad', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -7,15 +7,15 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Catalogue Ads',
-        'sub_title' => 'Catalogue Ad',
+        'page_title' => 'Instagram Catalogue Ad Ads',
+        'sub_title' => 'Instagram Catalogue Ad',
     ])
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body py-3">
                     @include('marketing-masters.meta_ads_manager.partials.filters', [
-                        'adType' => 'CATALOGUE AD',
+                        'adType' => 'INSTAGRAM CATALOGUE AD',
                         'latestUpdatedAt' => $latestUpdatedAt ?? null
                     ])
                     <div id="budget-under-table"></div>
@@ -29,8 +29,8 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
-        var dataUrl = "{{ route('meta.ads.catalogue.data') }}";
-        var adType = "Catalogue Ad";
+        var dataUrl = "{{ route('meta.ads.instagram.catalogue.data') }}";
+        var adType = "Instagram Catalogue Ad";
     </script>
     @include('marketing-masters.meta_ads_manager.partials.table-script-full')
 @endsection

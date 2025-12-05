@@ -23,5 +23,6 @@ class AmazonDatasheet extends Model
         'price',
         'organic_views',
         'sold',
+        'listing_status',
     ];
 }

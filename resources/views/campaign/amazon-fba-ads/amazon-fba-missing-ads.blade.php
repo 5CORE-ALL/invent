@@ -255,10 +255,6 @@
                                             <div class="stats-label">Total NRA</div>
                                             <div id="total-nra" class="stats-value danger">0</div>
                                         </div>
-                                        <div class="stats-box">
-                                            <div class="stats-label">Kw Missing <br/> PT Missing</div>
-                                            <div id="both-missing" class="stats-value danger">0</div>
-                                        </div>
 
                                         <div class="stats-box">
                                             <div class="stats-label">KW Missing</div> 
@@ -348,26 +344,17 @@
                     },
                     {
                         title: "SKU",
-                        field: "sku",
-                        formatter: function(cell) {
-                            let sku = cell.getValue();
-                            return `
-                                <span>${sku}</span>
-                                <i class="fa fa-info-circle text-primary toggle-cols-btn" 
-                                data-sku="${sku}" 
-                                style="cursor:pointer; margin-left:8px;"></i>
-                            `;
-                        }
+                        field: "sku"
                     },
                     {
                         title: "INV",
                         field: "INV",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "OV L30",
                         field: "L30",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "DIL %",
@@ -384,12 +371,12 @@
                             }
                             return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                         },
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "FL 30",
                         field: "A_L30",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "F DIL %",
@@ -406,7 +393,7 @@
                             }
                             return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                         },
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "NRL",
@@ -414,13 +401,13 @@
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
-                            const value = cell.getValue();
+                            const value = cell.getValue()?.trim() || 'RL';
 
                             let bgColor = "";
                             if (value === "NRL") {
-                                bgColor = "background-color:#dc3545;color:#fff;"; // red
+                                bgColor = "background-color:#dc3545;color:#000;"; // red
                             } else if (value === "RL") {
-                                bgColor = "background-color:#28a745;color:#fff;"; // green
+                                bgColor = "background-color:#28a745;color:#000;"; // green
                             }
 
                             return `
@@ -433,7 +420,7 @@
                                 </select>
                             `;
                         },
-                        visible: false,
+                        visible: true,
                         hozAlign: "center"
                     },
                     {
@@ -446,7 +433,7 @@
 
                             let bgColor = "background-color:#28a745;color:#000;"; // Default green for RA
                             if (value === "NRA") {
-                                bgColor = "background-color:#dc3545;color:#fff;"; // red
+                                bgColor = "background-color:#dc3545;color:#000;"; // red
                             } else if (value === "LATER") {
                                 bgColor = "background-color:#ffc107;color:#000;"; // yellow
                             }
@@ -463,7 +450,7 @@
                             `;
                         },
                         hozAlign: "center",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "FBA",
@@ -475,9 +462,9 @@
 
                             let bgColor = "";
                             if (value === "FBA") {
-                                bgColor = "background-color:#007bff;color:#fff;"; // blue
+                                bgColor = "background-color:#007bff;color:#000;"; // blue
                             } else if (value === "FBM") {
-                                bgColor = "background-color:#6f42c1;color:#fff;"; // purple
+                                bgColor = "background-color:#6f42c1;color:#000;"; // purple
                             } else if (value === "BOTH") {
                                 bgColor = "background-color:#90ee90;color:#000;"; // light green
                             }
@@ -494,124 +481,67 @@
                             `;
                         },
                         hozAlign: "center",
-                        visible: false
+                        visible: true
                     },
                     {
-                        title: "Missing Ads",
-                        field: "missing_ads",
+                        title: "KW Ads",
+                        field: "kw_ads_status",
                         formatter: function(cell){
                             var row = cell.getRow().getData();
                             var kwCampaign = row.kw_campaign_name || '';
+                            var nra = row.NRA || '';
+                            var sku = row.sku || '';
+                            var inv = row.INV || 0;
+                            const isParent = sku.toUpperCase().includes("PARENT");
+
+                            if(!isParent && inv > 0){
+                                if(nra !== 'NRA'){
+                                    if(kwCampaign){
+                                        return `<span style="color: green; font-weight: bold;">KW Running</span>`;
+                                    } else {
+                                        return `<span style="color: red; font-weight: bold;">KW Missing</span>`;
+                                    }
+                                } else {
+                                    return `<span style="color: #999;">NRA</span>`;
+                                }
+                            }
+                            return '';
+                        }
+                    },
+                    {
+                        title: "PT Ads",
+                        field: "pt_ads_status",
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
                             var ptCampaign = row.pt_campaign_name || '';
                             var nra = row.NRA || '';
                             var sku = row.sku || '';
                             var inv = row.INV || 0;
                             const isParent = sku.toUpperCase().includes("PARENT");
 
-                            if(!isParent){
-                                if(kwCampaign && ptCampaign){
-                                    if(inv > 0){
-                                        if(nra !== 'NRA'){
-                                            return `
-                                                <span style="color: green;">Both Running</span>
-                                                <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                                    style="cursor:pointer; margin-left:8px;">
-                                                </i>
-                                            `;
-                                        }else{
-                                            return `
-                                                <span style="color: red;">NRA</span>
-                                                <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                                    style="cursor:pointer; margin-left:8px;">
-                                                </i>
-                                            `;
-                                        }
-                                    }else{
-                                        return '';
-                                    }
-                                } else if(kwCampaign){
-                                    if(inv > 0){
-                                        if(nra !== 'NRA'){
-                                            return `
-                                                <span style="color: red;">PT Missing</span>
-                                                <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                                    style="cursor:pointer; margin-left:8px;">
-                                                </i>
-                                            `;
-                                        }else{
-                                            return `
-                                                <span style="color: red;">NRA</span>
-                                                <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                                    style="cursor:pointer; margin-left:8px;">
-                                                </i>
-                                            `;
-                                        }
-                                    }else{
-                                        return '';
-                                    }
-                                } else if(ptCampaign){
-                                    if(inv > 0){
-                                        if(nra !== 'NRA'){
-                                            return `
-                                                <span style="color: red;">KW Missing</span>
-                                                <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                                    style="cursor:pointer; margin-left:8px;">
-                                                </i>
-                                            `;
-                                        }else{
-                                            return `
-                                                <span style="color: red;">NRA</span>
-                                                <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                                    style="cursor:pointer; margin-left:8px;">
-                                                </i>
-                                            `;
-                                        }
-                                    }else{
-                                        return '';
+                            if(!isParent && inv > 0){
+                                if(nra !== 'NRA'){
+                                    if(ptCampaign){
+                                        return `<span style="color: green; font-weight: bold;">PT Running</span>`;
+                                    } else {
+                                        return `<span style="color: red; font-weight: bold;">PT Missing</span>`;
                                     }
                                 } else {
-                                    if(inv > 0){
-                                        if(nra !== 'NRA'){
-                                            return `
-                                                <span style="color: red;">KW Missing </br> PT Missing</span>
-                                                <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                                    style="cursor:pointer; margin-left:8px;">
-                                                </i>
-                                            `;
-                                        }else{
-                                            return `
-                                                <span style="color: red;">NRA</span>
-                                                <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                                    style="cursor:pointer; margin-left:8px;">
-                                                </i>
-                                            `;
-                                        }
-                                    }else{
-                                        return '';
-                                    }
-                                }
-                            }else{
-                                if(nra === 'NRA'){
-                                    return `
-                                        <span style="color: red;">NRA</span>
-                                        <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                            style="cursor:pointer; margin-left:8px;">
-                                        </i>
-                                    `;
+                                    return `<span style="color: #999;">NRA</span>`;
                                 }
                             }
-                            
+                            return '';
                         }
                     },
                     {
                         title: "KW Campaign",
                         field: "kw_campaign_name",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "PT Campaign",
                         field: "pt_campaign_name",
-                        visible: false
+                        visible: true
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
@@ -629,7 +559,7 @@
                     // Set background color if NRA
                     if(field === "NRA" && value === "NRA") {
                         e.target.style.backgroundColor = "#dc3545";
-                        e.target.style.color = "#fff";
+                        e.target.style.color = "#000";
                     }
                     else if(field === "NRA" && value === "RA") {
                         e.target.style.backgroundColor = "#28a745";
@@ -664,6 +594,10 @@
                     const isParent = sku.toUpperCase().includes("PARENT");
                     if (isParent) return false; // Exclude parent rows
 
+                    // 🔹 Filter out INV <= 0 or negative values
+                    let inv = parseFloat(data.INV) || 0;
+                    if (inv <= 0) return false;
+
                     // 🔹 Global Search
                     let searchVal = ($("#global-search").val() || "").toLowerCase().trim();
                     if (searchVal) {
@@ -685,14 +619,19 @@
 
                     // 🔹 INV Filter
                     let invFilterVal = $("#inv-filter").val();
-                    let inv = parseFloat(data.INV) || 0;
                     if (invFilterVal === "INV_0" && inv !== 0) return false;
                     if (invFilterVal === "OTHERS" && inv === 0) return false;
 
                     // 🔹 NRA Filter
                     let nraFilterVal = $("#nra-filter").val();
                     let nra = (data.NRA || "").trim();
-                    if (nraFilterVal) {
+                    
+                    // Hide NRA by default - only show when filter is selected
+                    if (!nraFilterVal) {
+                        // No filter selected - hide NRA SKUs
+                        if (nra === "NRA") return false;
+                    } else {
+                        // Filter is selected - apply specific filter logic
                         if (nraFilterVal === "ALL") {
                             // Show all records
                         } else if (nraFilterVal === "RA") {
@@ -711,11 +650,17 @@
                     const invVal = parseFloat(data.INV) || 0;
                     const nraVal = (data.NRA || "").toString().trim();
 
-                    // Only include rows where INV > 0 and not marked NRA for missing-ads checks
-                    if (missingVal === "Both Running" && !(hasKW && hasPT && invVal > 0 && nraVal !== 'NRA')) return false;
-                    if (missingVal === "KW Missing" && !( !hasKW && hasPT && invVal > 0 && nraVal !== 'NRA')) return false;
-                    if (missingVal === "PT Missing" && !( hasKW && !hasPT && invVal > 0 && nraVal !== 'NRA')) return false;
-                    if (missingVal === "Both Missing" && !( !hasKW && !hasPT && invVal > 0 && nraVal !== 'NRA')) return false;
+                    // Hide "Both Running" by default - only show when filter is selected
+                    if (!missingVal) {
+                        // No filter selected - hide both running SKUs
+                        if (hasKW && hasPT && invVal > 0 && nraVal !== 'NRA') return false;
+                    } else {
+                        // Filter is selected - apply specific filter logic
+                        if (missingVal === "Both Running" && !(hasKW && hasPT && invVal > 0 && nraVal !== 'NRA')) return false;
+                        if (missingVal === "KW Missing" && !( !hasKW && hasPT && invVal > 0 && nraVal !== 'NRA')) return false;
+                        if (missingVal === "PT Missing" && !( hasKW && !hasPT && invVal > 0 && nraVal !== 'NRA')) return false;
+                        if (missingVal === "Both Missing" && !( !hasKW && !hasPT && invVal > 0 && nraVal !== 'NRA')) return false;
+                    }
 
                     return true;
                 }
@@ -723,9 +668,10 @@
                 // ✅ Apply Filter
                 table.setFilter(combinedFilter);
 
-                // ✅ Update Stats Based on *Visible (Filtered)* Data
+                // ✅ Update Stats Based on *ALL* Data (not just filtered)
                 function updateCampaignStats() {
-                    let visibleData = table.getData("active");
+                    // Get ALL data from the table
+                    let allData = table.getData();
 
                     let bothMissing = 0;
                     let kwMissing = 0;
@@ -737,49 +683,95 @@
                     let totalNRA = 0;
                     let totalRA = 0;
                     let totalMissingAds2 = 0;
+                    let totalValidSKU = 0;
+                    
+                    // Separate counters for unique missing SKU counts
+                    let onlyKWMissing = 0;  // Only KW missing, PT running
+                    let onlyPTMissing = 0;  // Only PT missing, KW running
+                    let bothAdsMissing = 0; // Both KW and PT missing
 
-                    visibleData.forEach(row => {
-                        let kw = row.kw_campaign_name || "";
-                        let pt = row.pt_campaign_name || "";
-                        let nra = (row.NRA || "").trim();
+                    console.log("Total rows from getData():", allData.length);
+
+                    allData.forEach(row => {
+                        let sku = row.sku || '';
+                        let isParent = sku.toUpperCase().includes("PARENT");
                         let inv = parseFloat(row.INV) || 0;
 
-                        // Existing counts
-                        if(nra !== "NRA" && inv > 0) {
-                            if (kw && pt) {
+                        // Skip parent rows and zero/negative inventory
+                        if (isParent) {
+                            console.log("Skipping parent:", sku);
+                            return;
+                        }
+                        if (inv <= 0) {
+                            console.log("Skipping INV <= 0:", sku, "INV:", inv);
+                            return;
+                        }
+
+                        // Properly handle campaign names - check for null, undefined, empty string, or just spaces
+                        let kwRaw = row.kw_campaign_name;
+                        let ptRaw = row.pt_campaign_name;
+                        let kw = (kwRaw && typeof kwRaw === 'string') ? kwRaw.trim() : '';
+                        let pt = (ptRaw && typeof ptRaw === 'string') ? ptRaw.trim() : '';
+                        let nra = (row.NRA || "").trim();
+
+                        let hasKW = kw !== '' && kw !== null && kw !== undefined;
+                        let hasPT = pt !== '' && pt !== null && pt !== undefined;
+
+                        console.log("Checking SKU:", sku, "KW:", `'${kw}'`, "PT:", `'${pt}'`, "hasKW:", hasKW, "hasPT:", hasPT, "NRA:", nra);
+
+                        // Count total valid SKUs
+                        totalValidSKU++;
+
+                        // Existing counts (exclude NRA)
+                        if(nra !== "NRA") {
+                            if (hasKW && hasPT) {
                                 bothRunning++;
-                            } else if (kw && !pt) {
+                            } else if (hasKW && !hasPT) {
                                 ptMissing++;
-                            } else if (!kw && pt) {
+                                onlyPTMissing++;  // Count unique SKU with only PT missing
+                                console.log("✗ PT Missing:", sku, "KW:", kw, "PT:", pt);
+                            } else if (!hasKW && hasPT) {
                                 kwMissing++;
-                            } else {
+                                onlyKWMissing++;  // Count unique SKU with only KW missing
+                                console.log("✗ KW Missing:", sku, "KW:", kw, "PT:", pt);
+                            } else if (!hasKW && !hasPT) {
+                                // Both missing - count in all three categories
                                 bothMissing++;
+                                bothAdsMissing++;  // Count unique SKU with both missing
+                                kwMissing++;
+                                ptMissing++;
+                                console.log("✗ Both Missing:", sku, "KW:", kw, "PT:", pt);
                             }
                         }
 
-                        // New running counts
-                        if(nra !== "NRA" && inv > 0) {
-                            if (kw) kwRunning++;
-                            if (pt) ptRunning++;
+                        // New running counts (exclude NRA)
+                        if(nra !== "NRA") {
+                            if (hasKW) kwRunning++;
+                            if (hasPT) ptRunning++;
                         }
 
-                        // Total NRA Count (any NRA regardless of inventory)
-                        if(row.NRA && row.NRA.trim() === "NRA"){
+                        // Total NRA Count
+                        if(nra === "NRA"){
                             totalNRA++;
-                        }
-
-                        // Total RA Count (all non-NRA SKUs)
-                        if(!row.NRA || row.NRA.trim() !== "NRA"){
+                        } else {
+                            // Total RA Count
                             totalRA++;
                         }
                     });
 
-                    // Total Missing Ads Count (SKUs with at least one missing ad)
-                    totalMissingAds2 = ptMissing + kwMissing + bothMissing;
+                    console.log("=== FINAL STATS ===");
+                    console.log("Total Valid SKU:", totalValidSKU, "KW Missing:", kwMissing, "PT Missing:", ptMissing, "Both Missing:", bothMissing);
+
+                    // Total Missing Ads Count = KW Missing + PT Missing (already includes overlap)
+                    // Since both missing SKUs are already counted in both kwMissing and ptMissing
+                    totalMissingAds2 = kwMissing + ptMissing;
                     totalMissingAds = `( ${totalMissingAds2} ) `;
+                    
+                    console.log("Unique counts - Only KW Missing:", onlyKWMissing, "Only PT Missing:", onlyPTMissing, "Both Ads Missing:", bothAdsMissing);
+                    console.log("Total Missing Ads (KW + PT):", totalMissingAds2);
 
                     // Update HTML
-                    $("#total-campaigns").text(visibleData.length);
+                    $("#total-campaigns").text(totalValidSKU);
                     $("#both-missing").text(bothMissing);
                     $("#kw-missing").text(kwMissing);
                     $("#pt-missing").text(ptMissing);
@@ -809,8 +801,9 @@
                             let kw = data.kw_campaign_name || "";
                             let pt = data.pt_campaign_name || "";
                             let nra = (data.NRA || "").trim();
+                            let inv = parseFloat(data.INV) || 0;
                             
-                            return !isParent && nra !== "NRA" && (!kw || !pt);
+                            return !isParent && inv > 0 && nra !== "NRA" && (!kw || !pt);
                         });
                         
                         // Update stats

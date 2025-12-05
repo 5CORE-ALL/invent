@@ -30,6 +30,11 @@
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
+
+        /* Custom pagination label */
+        .tabulator-paginator label {
+            margin-right: 5px;
+        }
     </style>
 @endsection
 
@@ -1451,8 +1456,16 @@
                 layout: "fitDataStretch",
                 pagination: true,
                 paginationSize: 100,
+                paginationSizeSelector: [10, 25, 50, 100, 200],
                 paginationCounter: "rows",
                 columnCalcs: "both",
+                langs: {
+                    "default": {
+                        "pagination": {
+                            "page_size": "SKU Count"
+                        }
+                    }
+                },
                 initialSort: [{
                     column: "SCVR",
                     dir: "asc"
@@ -1640,9 +1653,7 @@
                         hozAlign: "center",
                         headerSort: false,
                         formatter: function(cell) {
-                            let value = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const inv = parseFloat(rowData['INV']) || 0;
                             const isParent = rowData['Parent'] && rowData['Parent'].startsWith('PARENT');
                             
                             // Don't show dropdown for parent rows
@@ -1650,8 +1661,9 @@
                                 return '';
                             }
                             
-                            // Default to REQ if not set
-                            if (!value || value === '') {
+                            // Get value and handle null/undefined/empty cases
+                            let value = cell.getValue();
+                            if (value === null || value === undefined || value === '' || value.trim() === '') {
                                 value = 'REQ';
                             }
                             
