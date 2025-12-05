@@ -3049,8 +3049,8 @@
                     }
 
                     // Apply 15% cap and 2% minimum to adjusted CBID
-                    if (adjustedCbid > 15) {
-                        adjustedCbid = 15;
+                    if (adjustedCbid > 10) {
+                        adjustedCbid = 10;
                     }
                     
                     if (adjustedCbid < 2) {
