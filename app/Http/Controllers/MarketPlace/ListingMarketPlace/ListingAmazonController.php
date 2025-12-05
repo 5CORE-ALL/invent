@@ -33,29 +33,74 @@ class ListingAmazonController extends Controller
 
     public function getViewListingAmazonData(Request $request)
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $productMasters = ProductMaster::whereNull('deleted_at')
+            ->select('id', 'sku', 'parent')
+            ->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $statusData = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        // Load all data in one go with proper indexing
+        $shopifyData = ShopifySku::whereIn('sku', $skus)
+            ->select('sku', 'inv', 'quantity')
+            ->get()
+            ->keyBy('sku');
+        
+        $statusData = AmazonDataView::whereIn('sku', $skus)
+            ->select('sku', 'value')
+            ->get()
+            ->keyBy('sku');
+        
+        $listingStatusData = AmazonDatasheet::whereIn('sku', $skus)
+            ->select('sku', 'listing_status')
+            ->get()
+            ->keyBy('sku');
 
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData) {
+        $processedData = [];
+        foreach ($productMasters as $item) {
             $childSku = $item->sku;
-            $item->INV = $shopifyData[$childSku]->inv ?? 0;
-            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
-            $item->nr_req = null;
-            $item->listed = null;
-            $item->buyer_link = null;
-            $item->seller_link = null;
+            
+            // Default values
+            $nr_req = 'REQ'; // Default to REQ (shows as RL)
+            $listed = null;
+            $buyer_link = null;
+            $seller_link = null;
+            $listing_status = $listingStatusData[$childSku]->listing_status ?? null;
+            
             if (isset($statusData[$childSku])) {
                 $status = $statusData[$childSku]->value;
-                $item->nr_req = $status['nr_req'] ?? null;
-                $item->listed = $status['listed'] ?? null;
-                $item->buyer_link = $status['buyer_link'] ?? null;
-                $item->seller_link = $status['seller_link'] ?? null;
+                // Read NRL field - "REQ" means RL, "NRL" means NRL
+                $nrlValue = $status['NRL'] ?? null;
+                if ($nrlValue === 'NRL') {
+                    $nr_req = 'NR';
+                } else if ($nrlValue === 'REQ') {
+                    $nr_req = 'REQ';
+                }
+                // If NRL field is null or any other value, keep default 'REQ'
+                
+                $listedValue = $status['Listed'] ?? $status['listed'] ?? null;
+                if (is_bool($listedValue)) {
+                    $listed = $listedValue ? 'Listed' : 'Pending';
+                } else {
+                    $listed = $listedValue;
+                }
+                $buyer_link = $status['buyer_link'] ?? null;
+                $seller_link = $status['seller_link'] ?? null;
             }
-            return $item;
-        })->values();
+            
+            $row = [
+                'id' => $item->id,
+                'sku' => $childSku,
+                'parent' => $item->parent,
+                'INV' => $shopifyData[$childSku]->inv ?? 0,
+                'L30' => $shopifyData[$childSku]->quantity ?? 0,
+                'nr_req' => $nr_req,
+                'listed' => $listed,
+                'buyer_link' => $buyer_link,
+                'seller_link' => $seller_link,
+                'listing_status' => $listing_status
+            ];
+            
+            $processedData[] = $row;
+        }
 
         return response()->json([
             'status' => 200,
@@ -74,19 +119,32 @@ class ListingAmazonController extends Controller
         ]);
 
         $sku = $validated['sku'];
-        $status = AmazonListingStatus::where('sku', $sku)->first();
+        $status = AmazonDataView::where('sku', $sku)->first();
 
         $existing = $status ? $status->value : [];
 
-        // Only update the fields that are present in the request
-        $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
+        // Handle nr_req - save as NRL field in amazon_data_view
+        if ($request->has('nr_req')) {
+            // Map: 'NR' -> 'NRL', 'REQ' -> 'REQ'
+            $existing['NRL'] = ($validated['nr_req'] === 'NR') ? 'NRL' : 'REQ';
+        }
+
+        // Handle listed field - save as Listed (capitalized) to match the JSON structure
+        if ($request->has('listed')) {
+            // Save to both 'Listed' (for boolean conversion) and 'listed' (for string)
+            $existing['Listed'] = ($validated['listed'] === 'Listed') ? true : false;
+            $existing['listed'] = $validated['listed'];
+        }
+
+        // Only update other fields that are present in the request
+        $fields = ['buyer_link', 'seller_link'];
         foreach ($fields as $field) {
             if ($request->has($field)) {
                 $existing[$field] = $validated[$field];
             }
         }
 
-        AmazonListingStatus::updateOrCreate(
+        AmazonDataView::updateOrCreate(
             ['sku' => $validated['sku']],
             ['value' => $existing]
         );
@@ -100,7 +158,7 @@ class ListingAmazonController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $statusData = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
         $amazonListed = ProductStockMapping::pluck('inventory_amazon_product', 'sku');
 
         $reqCount = 0;
@@ -125,10 +183,19 @@ class ListingAmazonController extends Controller
                 $normalized = strtolower(trim($mappingValue));
                 $listed = $normalized !== '' && $normalized !== 'not listed' ? 'Listed' : 'Not Listed';
             } else {
-                $listed = $status['listed'] ?? null;
+                // Check both 'Listed' (boolean) and 'listed' (string) fields
+                $listedValue = $status['Listed'] ?? $status['listed'] ?? null;
+                if (is_bool($listedValue)) {
+                    $listed = $listedValue ? 'Listed' : 'Not Listed';
+                } else {
+                    $listed = $listedValue;
+                }
             }
 
-            $nrReq = $status['nr_req'] ?? (floatval($inv) > 0 ? 'REQ' : 'NR');
+            // Read NRL field from amazon_data_view - "REQ" means RL, "NRL" means NRL
+            $nrlValue = $status['NRL'] ?? 'REQ';
+            $nrReq = ($nrlValue === 'NRL') ? 'NR' : 'REQ';
+            
             if ($nrReq === 'REQ') {
                 $reqCount++;
             }
@@ -198,7 +265,7 @@ class ListingAmazonController extends Controller
                 continue;
             }
 
-            $status = AmazonListingStatus::where('sku', $sku)->first();
+            $status = AmazonDataView::where('sku', $sku)->first();
             $existing = $status ? $status->value : [];
 
             $fields = ['listed', 'buyer_link', 'seller_link'];
@@ -208,7 +275,7 @@ class ListingAmazonController extends Controller
                 }
             }
 
-            AmazonListingStatus::updateOrCreate(
+            AmazonDataView::updateOrCreate(
                 ['sku' => $sku],
                 ['value' => $existing]
             );
@@ -237,7 +304,7 @@ class ListingAmazonController extends Controller
             $productMasters = ProductMaster::pluck('sku');
 
             foreach ($productMasters as $sku) {
-                $status = AmazonListingStatus::where('sku', $sku)->first();
+                $status = AmazonDataView::where('sku', $sku)->first();
 
                 $row = [
                     'sku'         => $sku,

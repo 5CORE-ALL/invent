@@ -837,6 +837,8 @@
             }
 
             // Retry function for applying price with up to 5 attempts
+            // NOTE: Backend now includes automatic verification and retry (2 attempts with fresh token)
+            // This frontend retry is for network errors, timeouts, or persistent failures
             function applyPriceWithRetry(sku, price, cell, maxRetries = 5, delay = 5000) {
                 return new Promise((resolve, reject) => {
                     let attempt = 0;
@@ -1549,7 +1551,18 @@
                         width: 50
                     },
 
-
+                    {
+                        title: "Reviews",
+                        field: "total_review_count",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<span style="color: #6c757d;">0</span>';
+                            return `<span style="font-weight: 600;">${parseInt(value).toLocaleString()}</span>`;
+                        },
+                        width: 70
+                    },
 
                     {
                         title: "NR/RL",

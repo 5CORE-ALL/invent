@@ -1079,28 +1079,37 @@
                                 <label for="row-data-type" class="mr-2">Data Type:</label>
                                 <select id="row-data-type" class="form-control form-control-sm">
                                     <option value="all">All</option>
-                                    <option value="sku">SKU (Child)</option>
+                                    <option value="sku" selected>SKU (Child)</option>
                                     <option value="parent">Parent</option>
                                 </select>
                             </div>
-                            <div class="form-group col-md-6">
+                            <div class="form-group col-md-4">
+                                <label for="combined-filter" class="mr-2">Show:</label>
+                                <select id="combined-filter" class="form-control form-control-sm">
+                                    <option value="all">All SKUs</option>
+                                    <option value="inv">INV (All SKUs with Inventory)</option>
+                                    <option value="req-nrl">RL-NRL (RL without Links)</option>
+                                    <option value="pending" selected>Pending (Listed=Pending)</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-md-4">
                                 <label for="inv-filter" class="mr-2">INV:</label>
                                 <select id="inv-filter" class="form-control form-control-sm">
                                     <option value="all">All</option>
                                     <option value="inv-only">INV Only</option>
                                 </select>
                             </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group col-md-6">
-                                <label for="nr-req-filter" class="mr-2">NRL/REQ:</label>
+                            <div class="form-group col-md-4">
+                                <label for="nr-req-filter" class="mr-2">NRL/RL:</label>
                                 <select id="nr-req-filter" class="form-control form-control-sm">
                                     <option value="all">All</option>
-                                    <option value="REQ">REQ</option>
+                                    <option value="REQ">RL</option>
                                     <option value="NR">NRL</option>
                                 </select>
                             </div>
-                            <div class="form-group col-md-6">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-4">
                                 <label for="link-filter" class="mr-2">LINK:</label>
                                 <select id="link-filter" class="form-control form-control-sm">
                                     <option value="all">All</option>
@@ -1108,9 +1117,7 @@
                                     <option value="without-link">Without Link</option>
                                 </select>
                             </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group col-md-6">
+                            <div class="form-group col-md-4">
                                 <label for="listed-filter" class="mr-2">Listed:</label>
                                 <select id="listed-filter" class="form-control form-control-sm">
                                     <option value="all">All</option>
@@ -1164,11 +1171,15 @@
                         <table class="custom-resizable-table" id="listing-table">
                             <thead>
                                 <tr>
-                                    <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th>
                                     <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center sortable-header">
                                                 Parent <span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="batch-total" 
+                                                style="display:inline-block; background:#17a2b8; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
+                                                0
                                             </div>
                                             <div class="mt-1 dropdown-search-container">
                                                 <input type="text" class="form-control form-control-sm parent-search"
@@ -1182,6 +1193,11 @@
                                             <div class="d-flex align-items-center">
                                                 Sku <span class="sort-arrow">↓</span>
                                             </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="total-sku" 
+                                                style="display:inline-block; background:#007bff; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
+                                                0
+                                            </div>
                                             <div class="mt-1 dropdown-search-container">
                                                 <input type="text" class="form-control form-control-sm sku-search"
                                                     placeholder="Search SKU..." id="skuSearch">
@@ -1189,7 +1205,7 @@
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="inv" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="inv" style="vertical-align: middle; white-space: nowrap; text-align: center;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 INV <span class="sort-arrow">↓</span>
@@ -1201,12 +1217,17 @@
                                     <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
-                                                NRL/REQ
+                                                RL/NRL
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="req-total"
-                                                style="display:inline-block; background:#43dc35; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0</div>
+                                            <div style="display: flex; gap: 5px;">
+                                                <div class="metric-total" id="rl-total"
+                                                    style="display:inline-block; background:#28a745; color:white; border-radius:8px; padding:8px 12px; font-weight:600; font-size:15px;">
+                                                    0</div>
+                                                <div class="metric-total" id="nrl-total"
+                                                    style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:8px 12px; font-weight:600; font-size:15px;">
+                                                    0</div>
+                                            </div>
                                         </div>
                                     </th>
                                     <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
@@ -1236,6 +1257,25 @@
                                                     style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:4px 12px; font-weight:600; font-size:15px; margin-left:6px;">
                                                     0
                                                 </span>
+                                            </div>
+                                        </div>
+                                    </th>
+                                    <th data-field="listing_status" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                Listing Status
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div style="display: flex; gap: 5px;">
+                                                <div class="metric-total" id="active-status-total"
+                                                    style="display:inline-block; background:#28a745; color:white; border-radius:8px; padding:4px 8px; font-weight:600; font-size:13px;">
+                                                    0</div>
+                                                <div class="metric-total" id="inactive-status-total"
+                                                    style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:4px 8px; font-weight:600; font-size:13px;">
+                                                    0</div>
+                                                <div class="metric-total" id="missing-status-total"
+                                                    style="display:inline-block; background:#ffc107; color:#000; border-radius:8px; padding:4px 8px; font-weight:600; font-size:13px;">
+                                                    0</div>
                                             </div>
                                         </div>
                                     </th>
@@ -1350,6 +1390,8 @@
             let isLoading = false;
             let isEditMode = false;
             let currentEditingElement = null;
+            let currentDataTypeFilter = 'sku'; // Track data type filter (all, sku, parent)
+            let currentInvFilter = 'all'; // Track INV filter (all, inv-only)
 
             // --- Dropdown Click Handler ---
             $('.manual-dropdown-container .column-filter').on('click', function() {
@@ -1389,6 +1431,9 @@
             // Initialize everything
             function initTable() {
                 loadData().then(() => {
+                    // Apply default filters: SKU only with INACTIVE/MISSING status
+                    applyAllFilters();
+                    
                     renderTable();
                     initResizableColumns();
                     initSorting();
@@ -1396,11 +1441,8 @@
                     initSearch();
                     calculateTotals();
                     initEnhancedDropdowns();
-
-                    // Set default INV filter to "INV Only" on page load
-                    // $('#inv-filter').val('inv-only').trigger('change');
                 });
-            }
+            }   
 
             // Load data from server
             function loadData() {
@@ -1422,12 +1464,12 @@
                         // Set default value for nr_req if missing and INV > 0
                         tableData = tableData.map(item => ({
                             ...item,
-                            nr_req: item.nr_req || (parseFloat(item.INV) > 0 ? 'REQ' :
-                                'NR'),
-                            listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' :
-                                'Listed')
+                            nr_req: item.nr_req || (parseFloat(item.INV) > 0 ? 'REQ' : 'NR'),
+                            listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' : 'Listed'),
+                            is_parent: item.sku && item.sku.toUpperCase().includes('PARENT')
                         }));
 
+                        // Set default to show all data initially
                         filteredData = [...tableData];
                     },
                     error: function(xhr, status, error) {
@@ -1492,7 +1534,27 @@
                 }
 
                 updatePaginationInfo();
-                $('#visible-rows').text(`Showing all ${$tbody.children().length} rows`);
+                
+                // Show filter description with row count
+                const filterValue = $('#combined-filter').val();
+                let filterDesc = '';
+                switch(filterValue) {
+                    case 'all':
+                        filterDesc = 'All SKUs';
+                        break;
+                    case 'inv':
+                        filterDesc = 'INV (All SKUs with Inventory)';
+                        break;
+                    case 'req-nrl':
+                        filterDesc = 'REQ-NRL (REQ without Links)';
+                        break;
+                    case 'pending':
+                        filterDesc = 'Pending (Listed=Pending)';
+                        break;
+                    default:
+                        filterDesc = 'Filtered';
+                }
+                $('#visible-rows').text(`${filterDesc}: ${$tbody.children().length} rows`);
             }
 
              //open modal on click import button
@@ -1540,10 +1602,9 @@
                     $row.addClass('parent-row');
                 }
 
-                $row.append($('<td>').text(index)); // SL No.
                 $row.append($('<td>').text(item.parent)); // Parent
                 $row.append($('<td>').text(item.sku)); // SKU
-                $row.append($('<td>').text(item.INV)); // INV
+                $row.append($('<td>').css('text-align', 'center').text(item.INV)); // INV
 
                 // NR/REQ dropdown only for non-parent rows
                 if (!item.sku.includes('PARENT')) {
@@ -1604,21 +1665,42 @@
                     const $listedDropdown = $('<select>')
                         .addClass('listed-dropdown form-control form-control-sm')
                         .append('<option value="Listed" class="listed-option">Listed</option>')
-                        .append('<option value="Pending" class="pending-option">Pending</option>');
+                        .append('<option value="Pending" class="pending-option">Pending</option>')
+                        .append('<option value="NRL" class="nrl-option">NRL</option>');
 
-                    const listedValue = item.listed || 'Pending';
+                    // If nr_req is 'NR', automatically set listed to 'NRL'
+                    const listedValue = (item.nr_req === 'NR') ? 'NRL' : (item.listed || 'Pending');
                     $listedDropdown.val(listedValue);
 
                     if (listedValue === 'Listed') {
                         $listedDropdown.css('background-color', '#28a745').css('color', 'white');
                     } else if (listedValue === 'Pending') {
                         $listedDropdown.css('background-color', '#dc3545').css('color', 'white');
+                    } else if (listedValue === 'NRL') {
+                        $listedDropdown.css('background-color', '#6c757d').css('color', 'white');
                     }
 
                     $row.append($('<td>').append($listedDropdown));
                 } else {
                     $row.append($('<td>').text('')); // Empty cell for parent rows
                 }
+
+                // Listing Status column
+                const $statusCell = $('<td>').css('text-align', 'center');
+                if (item.listing_status) {
+                    let statusBadge = '';
+                    if (item.listing_status === 'ACTIVE') {
+                        statusBadge = '<span style="background:#28a745; color:white; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">ACTIVE</span>';
+                    } else if (item.listing_status === 'INACTIVE') {
+                        statusBadge = '<span style="background:#dc3545; color:white; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">INACTIVE</span>';
+                    } else {
+                        statusBadge = '<span style="background:#6c757d; color:white; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">' + item.listing_status + '</span>';
+                    }
+                    $statusCell.html(statusBadge);
+                } else {
+                    $statusCell.html('<span style="background:#ffc107; color:#000; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">MISSING</span>');
+                }
+                $row.append($statusCell);
 
                 return $row;
             }
@@ -1787,47 +1869,89 @@
             // Calculate and display totals
             function calculateTotals() {
                 try {
-                    if (isLoading || filteredData.length === 0) {
+                    if (isLoading || tableData.length === 0) {
                         resetMetricsToZero();
                         return;
                     }
 
                     const metrics = {
+                        totalSku: 0,
+                        batchTotal: 0,
                         invTotal: 0,
                         reqTotal: 0,
+                        rlTotal: 0,
+                        nrlTotal: 0,
                         withoutLinkTotal: 0,
-                        listedTotal: 0, // Green
-                        pendingTotal: 0, // Red
+                        listedTotal: 0,
+                        pendingTotal: 0,
+                        activeStatusTotal: 0,
+                        inactiveStatusTotal: 0,
+                        missingStatusTotal: 0,
                         rowCount: 0
                     };
 
-                    filteredData.forEach(item => {
-                        if (parseFloat(item.INV) > 0 && !item.sku.includes('PARENT')) {
-                            metrics.invTotal += parseFloat(item.INV) || 0;
-
-                            if (item.nr_req === 'REQ') {
-                                metrics.reqTotal++;
+                    // Use tableData instead of filteredData to show totals for all data
+                    tableData.forEach(item => {
+                        // Count only non-parent rows for SKU total
+                        if (!item.sku.includes('PARENT')) {
+                            metrics.totalSku++;
+                            
+                            // Count INV total only for rows with INV > 0
+                            if (parseFloat(item.INV) > 0) {
+                                metrics.invTotal += parseFloat(item.INV) || 0;
                             }
+                            
+                            // For RL/NRL: Count based on nr_req field
+                            // nr_req = 'REQ' means RL (green)
+                            // nr_req = 'NR' means NRL (red)
+                            if (item.nr_req === 'NR') {
+                                metrics.nrlTotal++;
+                            } else {
+                                // Default to RL if nr_req is 'REQ' or any other value
+                                metrics.rlTotal++;
+                            }
+                            
+                            // Count missing links for all non-parent rows
                             if (!item.buyer_link && !item.seller_link) {
                                 metrics.withoutLinkTotal++;
                             }
-                            // Count Listed and Pending rows
-                            if (item.nr_req !== 'NR') {
-                                if (item.listed === 'Listed') {
-                                    metrics.listedTotal++;
-                                }
-                                if (item.listed === 'Pending' || !item.listed) {
-                                    metrics.pendingTotal++;
-                                }
+                            
+                            // Count Listed and Pending for ALL non-parent SKUs
+                            const listedValue = item.listed || 'Pending';
+                            if (listedValue === 'Listed') {
+                                metrics.listedTotal++;
+                            } else if (listedValue === 'Pending') {
+                                metrics.pendingTotal++;
+                            } else if (listedValue === 'NRL') {
+                                // Don't count NRL in listed/pending totals
                             }
+                            
+                            // Count listing status
+                            if (item.listing_status === 'ACTIVE') {
+                                metrics.activeStatusTotal++;
+                            } else if (item.listing_status === 'INACTIVE') {
+                                metrics.inactiveStatusTotal++;
+                            } else if (!item.listing_status) {
+                                metrics.missingStatusTotal++;
+                            }
+                        } else {
+                            // Count parent rows for Batch total
+                            metrics.batchTotal++;
                         }
                     });
 
+                    $('#total-sku').text(metrics.totalSku);
+                    $('#batch-total').text(metrics.batchTotal);
                     $('#inv-total').text(metrics.invTotal.toLocaleString());
                     $('#req-total').text(metrics.reqTotal);
+                    $('#rl-total').text(metrics.rlTotal);
+                    $('#nrl-total').text(metrics.nrlTotal);
                     $('#without-link-total').text(metrics.withoutLinkTotal);
                     $('#listed-total').text(metrics.listedTotal); // Green
                     $('#pending-total').text(metrics.pendingTotal); // Red
+                    $('#active-status-total').text(metrics.activeStatusTotal); // Green
+                    $('#inactive-status-total').text(metrics.inactiveStatusTotal); // Red
+                    $('#missing-status-total').text(metrics.missingStatusTotal); // Yellow
                 } catch (error) {
                     console.error('Error in calculateTotals:', error);
                     resetMetricsToZero();
@@ -1835,11 +1959,18 @@
             }
 
             function resetMetricsToZero() {
+                $('#total-sku').text('0');
+                $('#batch-total').text('0');
                 $('#inv-total').text('0');
                 $('#req-total').text('0');
+                $('#rl-total').text('0');
+                $('#nrl-total').text('0');
                 $('#without-link-total').text('0');
                 $('#listed-total').text('0');
                 $('#pending-total').text('0');
+                $('#active-status-total').text('0');
+                $('#inactive-status-total').text('0');
+                $('#missing-status-total').text('0');
             }
 
             // Initialize enhanced dropdowns
@@ -1978,8 +2109,8 @@
                 }
 
                 $('#row-data-type').on('change', function() {
-                    const filterType = $(this).val();
-                    applyRowTypeFilter(filterType);
+                    currentDataTypeFilter = $(this).val();
+                    applyAllFilters();
                 });
             }
 
@@ -2113,17 +2244,27 @@
                 $results.show();
             }
 
-            function applyRowTypeFilter(filterType) {
-                // Reset to all data first
+            function applyAllFilters() {
+                // Start with all data
                 filteredData = [...tableData];
 
-                // Apply the row type filter
-                if (filterType === 'parent') {
+                // Apply Data Type filter (Parent/SKU/All)
+                if (currentDataTypeFilter === 'parent') {
                     filteredData = filteredData.filter(item => item.is_parent);
-                } else if (filterType === 'sku') {
-                    filteredData = filteredData.filter(item => !item.is_parent);
+                } else if (currentDataTypeFilter === 'sku') {
+                    // For SKU: show only non-parent rows with INACTIVE or MISSING status
+                    filteredData = filteredData.filter(item => 
+                        !item.is_parent && 
+                        (item.listing_status === 'INACTIVE' || !item.listing_status)
+                    );
                 }
-                // else 'all' - no filtering needed
+                // else 'all' - no data type filtering
+
+                // Apply INV filter on top of data type filter
+                if (currentInvFilter === 'inv-only') {
+                    filteredData = filteredData.filter(item => parseFloat(item.INV) > 0);
+                }
+                // else 'all' - no INV filtering
 
                 // Reset to first page and render
                 currentPage = 1;
@@ -2161,23 +2302,35 @@
             // Initialize everything
             initTable();
 
-            // Handle INV filter change
-            $('#inv-filter').on('change', function() {
+            // Handle combined filter change
+            $('#combined-filter').on('change', function() {
                 const selectedValue = $(this).val();
 
                 if (selectedValue === 'all') {
-                    // Show all rows, including rows with INV <= 0
+                    // Show all rows
                     filteredData = [...tableData];
-                } else if (selectedValue === 'inv-only') {
-                    // Show rows with INV > 0, but always include rows with "PARENT" in the SKU
-                    filteredData = tableData.filter(item => {
-                        return item.sku.includes('PARENT') || parseFloat(item.INV) > 0;
-                    });
+                } else if (selectedValue === 'inv') {
+                    // Show all rows with INV > 0
+                    filteredData = tableData.filter(item => parseFloat(item.INV) > 0);
+                } else if (selectedValue === 'req-nrl') {
+                    // Show all REQ rows without buyer_link AND seller_link
+                    filteredData = tableData.filter(item => 
+                        item.nr_req === 'REQ' && !item.buyer_link && !item.seller_link
+                    );
+                } else if (selectedValue === 'pending') {
+                    // Show all rows with Listed = Pending
+                    filteredData = tableData.filter(item => item.listed === 'Pending');
                 }
 
-                currentPage = 1; // Reset to the first page
-                renderTable(); // Re-render the table
-                calculateTotals(); // Recalculate totals
+                currentPage = 1;
+                renderTable();
+                calculateTotals();
+            });
+
+            // Handle INV filter change
+            $('#inv-filter').on('change', function() {
+                currentInvFilter = $(this).val();
+                applyAllFilters();
             });
 
             // Save NR/REQ or Listed/Pending when dropdown changes
@@ -2240,6 +2393,25 @@
                 const $row = $(this).closest('tr');
                 const sku = $row.find('td').eq(2).text().trim();
                 const nr_req = $(this).val();
+                
+                // Update color based on selection
+                if (nr_req === 'REQ') {
+                    $(this).css('background-color', '#28a745').css('color', 'white');
+                } else if (nr_req === 'NR') {
+                    $(this).css('background-color', '#dc3545').css('color', 'white');
+                    
+                    // When NR is selected, also change Listed dropdown to NRL
+                    const $listedDropdown = $row.find('.listed-dropdown');
+                    $listedDropdown.val('NRL');
+                    $listedDropdown.css('background-color', '#6c757d').css('color', 'white');
+                    
+                    // Update both nr_req and listed in the database
+                    saveStatusToDB(sku, {
+                        nr_req: nr_req,
+                        listed: 'NRL'
+                    });
+                    return; // Exit early since we're saving both values
+                }
 
                 saveStatusToDB(sku, {
                     nr_req
@@ -2250,6 +2422,15 @@
                 const $row = $(this).closest('tr');
                 const sku = $row.find('td').eq(2).text().trim();
                 const listed = $(this).val();
+                
+                // Update color based on selection
+                if (listed === 'Listed') {
+                    $(this).css('background-color', '#28a745').css('color', 'white');
+                } else if (listed === 'Pending') {
+                    $(this).css('background-color', '#dc3545').css('color', 'white');
+                } else if (listed === 'NRL') {
+                    $(this).css('background-color', '#6c757d').css('color', 'white');
+                }
 
                 saveStatusToDB(sku, {
                     listed

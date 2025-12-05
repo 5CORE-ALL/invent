@@ -33,27 +33,54 @@ class AmazonSpApiService
         $this->awsSecretKey = env('AWS_SECRET_ACCESS_KEY');
         $this->endpoint = 'https://sellingpartnerapi-na.amazon.com';
     }
-    public function getAccessToken()
+    
+    /**
+     * Force refresh access token by clearing cache and getting new one
+     */
+    public function forceRefreshAccessToken()
+    {
+        Cache::forget('amazon_spapi_access_token');
+        Cache::forget('amazon_spapi_access_token_data');
+        return $this->getAccessToken(true);
+    }
+    public function getAccessToken($forceRefresh = false)
     {
         // Use cache to prevent multiple simultaneous token requests
         $cacheKey = 'amazon_spapi_access_token';
         
-        try {
-            $cachedToken = Cache::get($cacheKey);
-            
-            // If we have a valid cached token, return it
-            if ($cachedToken) {
-                return $cachedToken;
+        // **IMPROVED: Check if token is about to expire (add metadata to cache)**
+        if (!$forceRefresh) {
+            try {
+                $cachedData = Cache::get($cacheKey . '_data');
+                
+                // Check if we have cached token with timestamp
+                if ($cachedData && is_array($cachedData)) {
+                    $token = $cachedData['token'] ?? null;
+                    $timestamp = $cachedData['timestamp'] ?? null;
+                    
+                    if ($token && $timestamp) {
+                        $age = now()->diffInMinutes($timestamp);
+                        
+                        // Only use cached token if less than 40 minutes old (20-min safety buffer before 60-min expiration)
+                        if ($age < 40) {
+                            Log::debug('Amazon SPAPI: Using cached token', ['age_minutes' => $age]);
+                            return $token;
+                        } else {
+                            Log::info('Amazon SPAPI: Cached token too old, refreshing', ['age_minutes' => $age]);
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                // If cache fails, log and continue without cache
+                Log::warning('Amazon SPAPI: Cache read failed, continuing without cache', [
+                    'error' => $e->getMessage()
+                ]);
             }
-        } catch (\Exception $e) {
-            // If cache fails, log and continue without cache
-            Log::warning('Amazon SPAPI: Cache read failed, continuing without cache', [
-                'error' => $e->getMessage()
-            ]);
+        } else {
+            Log::info('Amazon SPAPI: Force refresh requested, clearing cache');
         }
         
         // Use a lock to prevent multiple simultaneous token refresh requests
-        // Handle lock failures gracefully - if lock fails, just proceed without lock
         $lockKey = 'amazon_spapi_token_refresh_lock';
         $lock = null;
         
@@ -73,18 +100,27 @@ class AmazonSpApiService
         
         try {
             // Double-check cache after acquiring lock (another process might have refreshed it)
-            try {
-                $cachedToken = Cache::get($cacheKey);
-                if ($cachedToken) {
-                    if ($lock) {
-                        $lock->release();
+            if (!$forceRefresh) {
+                try {
+                    $cachedData = Cache::get($cacheKey . '_data');
+                    if ($cachedData && is_array($cachedData)) {
+                        $token = $cachedData['token'] ?? null;
+                        $timestamp = $cachedData['timestamp'] ?? null;
+                        
+                        if ($token && $timestamp && now()->diffInMinutes($timestamp) < 40) {
+                            if ($lock) {
+                                $lock->release();
+                            }
+                            Log::debug('Amazon SPAPI: Another process refreshed token, using it');
+                            return $token;
+                        }
                     }
-                    return $cachedToken;
+                } catch (\Exception $e) {
+                    // Cache read failed, continue
                 }
-            } catch (\Exception $e) {
-                // Cache read failed, continue
             }
             
+            Log::info('Amazon SPAPI: Requesting new access token from Amazon');
             $client = new Client();
             $response = $client->post('https://api.amazon.com/auth/o2/token', [
                 'form_params' => [
@@ -93,7 +129,7 @@ class AmazonSpApiService
                     'client_id' => $this->clientId,
                     'client_secret' => $this->clientSecret,
                 ],
-                'timeout' => 10, // Add timeout to prevent hanging
+                'timeout' => 15, // Increased timeout
                 'http_errors' => false // Don't throw exceptions on HTTP errors
             ]);
 
@@ -112,11 +148,16 @@ class AmazonSpApiService
             
             $accessToken = $data['access_token'];
             
-            // Cache the token for 50 minutes (tokens typically last 60 minutes)
-            // Handle cache write failures gracefully
+            // **IMPROVED: Cache token with timestamp for better expiry tracking**
             try {
-                Cache::put($cacheKey, $accessToken, now()->addMinutes(50));
-                Log::info('Amazon SPAPI: New access token obtained and cached');
+                $tokenData = [
+                    'token' => $accessToken,
+                    'timestamp' => now()
+                ];
+                Cache::put($cacheKey . '_data', $tokenData, now()->addMinutes(55));
+                // Also keep simple token cache for backward compatibility
+                Cache::put($cacheKey, $accessToken, now()->addMinutes(55));
+                Log::info('Amazon SPAPI: New access token obtained and cached with timestamp');
             } catch (\Exception $e) {
                 Log::warning('Amazon SPAPI: Failed to cache token, but token obtained', [
                     'error' => $e->getMessage()
@@ -152,7 +193,7 @@ class AmazonSpApiService
         return $res['access_token'] ?? null;
     }
 
-    public function updateAmazonPriceUS($sku, $price)
+    public function updateAmazonPriceUS($sku, $price, $maxRetries = 3)
     {
         // Validate inputs
         $sku = trim($sku);
@@ -193,133 +234,381 @@ class AmazonSpApiService
         }
 
         $amazonSku = null;
-        try {
-            $accessToken = $this->getAccessToken();
-            if (empty($accessToken)) {
-                Log::error("Amazon Price Update: Failed to get access token", ['sku' => $sku]);
-                return [
-                    'errors' => [[
-                        'code' => 'AuthenticationError',
-                        'message' => 'Failed to authenticate with Amazon API.'
-                    ]]
-                ];
-            }
+        $productType = null;
+        $lastError = null;
+        
+        // **CRITICAL FIX: Retry loop with fresh token strategy**
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                // **IMPORTANT: Check token age and force refresh if old**
+                $tokenData = Cache::get('amazon_spapi_access_token_data');
+                $forceRefresh = false;
+                
+                if ($attempt > 1) {
+                    // Always force refresh on retry attempts
+                    $forceRefresh = true;
+                    Log::info("Amazon Price Update: Forcing fresh token on retry (Attempt {$attempt})", ['sku' => $sku]);
+                } else if ($tokenData && is_array($tokenData) && isset($tokenData['timestamp'])) {
+                    // On first attempt, check if token is older than 40 minutes
+                    $tokenAge = now()->diffInMinutes($tokenData['timestamp']);
+                    if ($tokenAge > 40) {
+                        $forceRefresh = true;
+                        Log::info("Amazon Price Update: Token is old ({$tokenAge} min), forcing refresh", ['sku' => $sku]);
+                    }
+                } else {
+                    // No token metadata, force refresh to be safe
+                    $forceRefresh = true;
+                    Log::info("Amazon Price Update: No token metadata, forcing refresh", ['sku' => $sku]);
+                }
+                
+                $accessToken = $this->getAccessToken($forceRefresh);
+                
+                if (empty($accessToken)) {
+                    Log::error("Amazon Price Update: Failed to get access token", ['sku' => $sku, 'attempt' => $attempt]);
+                    $lastError = [
+                        'errors' => [[
+                            'code' => 'AuthenticationError',
+                            'message' => 'Failed to authenticate with Amazon API.'
+                        ]]
+                    ];
+                    
+                    if ($attempt < $maxRetries) {
+                        sleep(1); // Wait before retry
+                        continue;
+                    }
+                    return $lastError;
+                }
 
-            // Find the correct SKU format in Amazon (handles case sensitivity issues)
-            $amazonSku = $this->findAmazonSkuFormat($sku);
-            if (empty($amazonSku)) {
-                Log::error("Amazon Price Update: SKU not found in Amazon", ['sku' => $sku]);
-                return [
-                    'errors' => [[
-                        'code' => 'InvalidInput',
-                        'message' => 'SKU not found in Amazon. Please ensure the SKU exists in your Amazon listings.'
-                    ]]
-                ];
-            }
+                // Find the correct SKU format in Amazon (only on first attempt)
+                if ($amazonSku === null) {
+                    $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+                    if (empty($amazonSku)) {
+                        Log::error("Amazon Price Update: SKU not found in Amazon", ['sku' => $sku]);
+                        return [
+                            'errors' => [[
+                                'code' => 'InvalidInput',
+                                'message' => 'SKU not found in Amazon. Please ensure the SKU exists in your Amazon listings.'
+                            ]]
+                        ];
+                    }
+                }
+                
+                // Get product type (only on first attempt)
+                if ($productType === null) {
+                    $productType = $this->getAmazonProductType($sku, $amazonSku, $accessToken);
+                    if (empty($productType)) {
+                        Log::error("Amazon Price Update: Product type not found", [
+                            'sku' => $sku,
+                            'amazon_sku' => $amazonSku,
+                            'attempt' => $attempt
+                        ]);
+                        return [
+                            'errors' => [[
+                                'code' => 'InvalidInput',
+                                'message' => 'Product type not found for SKU. Please ensure the SKU exists in Amazon.'
+                            ]]
+                        ];
+                    }
+                }
 
-            // Get product type using the correct SKU format (pass Amazon SKU to avoid duplicate lookup)
-            $productType = $this->getAmazonProductType($sku, $amazonSku);
-            if (empty($productType)) {
-                Log::error("Amazon Price Update: Product type not found", [
-                    'sku' => $sku,
-                    'amazon_sku' => $amazonSku
-                ]);
-                return [
-                    'errors' => [[
-                        'code' => 'InvalidInput',
-                        'message' => 'Product type not found for SKU. Please ensure the SKU exists in Amazon.'
-                    ]]
-                ];
-            }
+                // Use the correct Amazon SKU format for the API call
+                $encodedSku = rawurlencode($amazonSku);
+                $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
 
-            // Use the correct Amazon SKU format for the API call
-            $encodedSku = rawurlencode($amazonSku);
-            $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
-
-            // Build request body with proper structure
-            $body = [
-                "productType" => $productType,
-                "patches" => [[
-                    "op" => "replace",
-                    "path" => "/attributes/purchasable_offer",
-                    "value" => [[
-                        "marketplaceId" => "ATVPDKIKX0DER",
-                        "currency" => "USD",
-                        "our_price" => [
-                            [
-                                "schedule" => [
-                                    [
-                                        "value_with_tax" => $price
+                // Build request body with proper structure
+                $body = [
+                    "productType" => $productType,
+                    "patches" => [[
+                        "op" => "replace",
+                        "path" => "/attributes/purchasable_offer",
+                        "value" => [[
+                            "marketplaceId" => "ATVPDKIKX0DER",
+                            "currency" => "USD",
+                            "our_price" => [
+                                [
+                                    "schedule" => [
+                                        [
+                                            "value_with_tax" => $price
+                                        ]
                                     ]
                                 ]
                             ]
-                        ]
-                    ]]
-                ]]
-            ];
-
-            // Log request for debugging (can be commented out in production)
-            Log::info("Amazon Price Update Request", [
-                "original_sku" => $sku,
-                "amazon_sku" => $amazonSku,
-                "price" => $price,
-                "productType" => $productType,
-                "endpoint" => $endpoint,
-                "body" => $body
-            ]);
-
-            $response = Http::withToken($accessToken)
-                ->withHeaders([
-                    'x-amz-access-token' => $accessToken,
-                    'content-type' => 'application/json',
-                    'accept' => 'application/json',
-                ])
-                ->timeout(30)
-                ->patch($endpoint, $body);
-
-            $responseData = $response->json();
-
-            if ($response->failed()) {
-                Log::error("Amazon Price Update Failed", [
-                    "original_sku" => $sku,
-                    "amazon_sku" => $amazonSku,
-                    "price" => $price,
-                    "status" => $response->status(),
-                    "response" => $responseData
-                ]);
-
-                // Return the error response from Amazon
-                return $responseData ?: [
-                    'errors' => [[
-                        'code' => 'RequestFailed',
-                        'message' => 'Failed to update price on Amazon. HTTP Status: ' . $response->status()
+                        ]]
                     ]]
                 ];
-            } else {
-                Log::info("Amazon Price Update Success", [
+
+                // Log request for debugging
+                Log::info("Amazon Price Update Request (Attempt {$attempt}/{$maxRetries})", [
+                    "original_sku" => $sku,
+                    "amazon_sku" => $amazonSku,
+                    "price" => $price,
+                    "productType" => $productType,
+                    "token_fresh" => true
+                ]);
+
+                $response = Http::withToken($accessToken)
+                    ->withHeaders([
+                        'x-amz-access-token' => $accessToken,
+                        'content-type' => 'application/json',
+                        'accept' => 'application/json',
+                    ])
+                    ->timeout(30)
+                    ->patch($endpoint, $body);
+
+                $responseData = $response->json();
+
+                // Check for errors in response
+                if ($response->failed()) {
+                    Log::error("Amazon Price Update Failed (Attempt {$attempt}/{$maxRetries})", [
+                        "original_sku" => $sku,
+                        "amazon_sku" => $amazonSku,
+                        "price" => $price,
+                        "status" => $response->status(),
+                        "response" => $responseData
+                    ]);
+
+                    $lastError = $responseData ?: [
+                        'errors' => [[
+                            'code' => 'RequestFailed',
+                            'message' => 'Failed to update price on Amazon. HTTP Status: ' . $response->status()
+                        ]]
+                    ];
+                    
+                    // Retry on auth errors (401, 403) or server errors (5xx)
+                    if ($response->status() === 401 || $response->status() === 403 || $response->status() >= 500) {
+                        if ($attempt < $maxRetries) {
+                            Log::info("Retrying due to status {$response->status()}...");
+                            sleep(1);
+                            continue;
+                        }
+                    }
+                    
+                    // For other errors (4xx), return immediately
+                    return $lastError;
+                }
+
+                // Response successful - check if it contains errors in data
+                if (isset($responseData['errors']) && !empty($responseData['errors'])) {
+                    Log::error("Amazon Price Update: API returned errors (Attempt {$attempt}/{$maxRetries})", [
+                        "sku" => $sku,
+                        "errors" => $responseData['errors']
+                    ]);
+                    
+                    $lastError = $responseData;
+                    
+                    // Check if it's an auth-related error
+                    $hasAuthError = false;
+                    foreach ($responseData['errors'] as $error) {
+                        $errorMsg = $error['message'] ?? '';
+                        if (stripos($errorMsg, 'authentication') !== false || 
+                            stripos($errorMsg, 'unauthorized') !== false ||
+                            stripos($errorMsg, 'invalid_client') !== false) {
+                            $hasAuthError = true;
+                            break;
+                        }
+                    }
+                    
+                    if ($hasAuthError && $attempt < $maxRetries) {
+                        Log::info("Auth error detected in response, retrying...");
+                        sleep(1);
+                        continue;
+                    }
+                    
+                    // Return error
+                    return $responseData;
+                }
+
+                // Success - log and return
+                Log::info("Amazon Price Update: SUCCESS (Attempt {$attempt}/{$maxRetries})", [
                     "original_sku" => $sku,
                     "amazon_sku" => $amazonSku,
                     "price" => $price,
                     "response" => $responseData
                 ]);
+                
+                return $responseData ?: ['success' => true];
+                
+            } catch (\Exception $e) {
+                Log::error("Amazon Price Update Exception (Attempt {$attempt}/{$maxRetries})", [
+                    "original_sku" => $sku,
+                    "amazon_sku" => $amazonSku ?: 'not_found',
+                    "price" => $price,
+                    "error" => $e->getMessage(),
+                    "trace" => $e->getTraceAsString()
+                ]);
+
+                $lastError = [
+                    'errors' => [[
+                        'code' => 'Exception',
+                        'message' => 'An error occurred while updating price: ' . $e->getMessage()
+                    ]]
+                ];
+                
+                // Retry on exceptions
+                if ($attempt < $maxRetries) {
+                    sleep(1);
+                    continue;
+                }
             }
-
-            return $responseData ?: ['success' => true];
-        } catch (\Exception $e) {
-            Log::error("Amazon Price Update Exception", [
-                "original_sku" => $sku,
-                "amazon_sku" => $amazonSku ?: 'not_found',
-                "price" => $price,
-                "error" => $e->getMessage(),
-                "trace" => $e->getTraceAsString()
+        }
+        
+        // All retries failed - return last error
+        return $lastError ?: [
+            'errors' => [[
+                'code' => 'UpdateFailed',
+                'message' => 'Failed to update price after ' . $maxRetries . ' attempts.'
+            ]]
+        ];
+    }
+    
+    /**
+     * Verify that the price was actually updated on Amazon
+     * Returns: true if verified, false if price doesn't match, null if unable to verify
+     */
+    private function verifyPriceUpdate($amazonSku, $expectedPrice, $accessToken = null)
+    {
+        try {
+            $sellerId = env('AMAZON_SELLER_ID');
+            if (empty($sellerId)) {
+                Log::warning("Price verification: Seller ID not configured");
+                return null;
+            }
+            
+            // Get fresh token if not provided
+            if (empty($accessToken)) {
+                $accessToken = $this->getAccessToken();
+                if (empty($accessToken)) {
+                    Log::warning("Price verification: Could not get access token");
+                    return null;
+                }
+            }
+            
+            $encodedSku = rawurlencode($amazonSku);
+            $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+            
+            $response = Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->get($url);
+            
+            if ($response->failed()) {
+                Log::warning("Price verification: Failed to fetch data", [
+                    'sku' => $amazonSku,
+                    'status' => $response->status(),
+                    'response' => $response->json()
+                ]);
+                return null;
+            }
+            
+            $data = $response->json();
+            
+            // Extract current price from response - try multiple paths
+            $currentPrice = null;
+            
+            // Path 1: summaries > offers > ourPrice
+            if (isset($data['summaries'][0]['offers'])) {
+                foreach ($data['summaries'][0]['offers'] as $offer) {
+                    if (isset($offer['ourPrice'][0]['schedule'][0]['value_with_tax'])) {
+                        $currentPrice = (float) $offer['ourPrice'][0]['schedule'][0]['value_with_tax'];
+                        break;
+                    }
+                }
+            }
+            
+            // Path 2: attributes > purchasable_offer
+            if ($currentPrice === null && isset($data['attributes']['purchasable_offer'][0]['our_price'][0]['schedule'][0]['value_with_tax'])) {
+                $currentPrice = (float) $data['attributes']['purchasable_offer'][0]['our_price'][0]['schedule'][0]['value_with_tax'];
+            }
+            
+            if ($currentPrice === null) {
+                Log::warning("Could not extract price from verification response", [
+                    'sku' => $amazonSku,
+                    'has_summaries' => isset($data['summaries']),
+                    'has_attributes' => isset($data['attributes']),
+                    'response_keys' => array_keys($data)
+                ]);
+                return null;
+            }
+            
+            // Compare prices (allow 0.02 difference for rounding)
+            $priceDiff = abs($currentPrice - $expectedPrice);
+            $verified = $priceDiff < 0.02;
+            
+            Log::info("Price verification result", [
+                'sku' => $amazonSku,
+                'expected_price' => $expectedPrice,
+                'current_price' => $currentPrice,
+                'difference' => $priceDiff,
+                'verified' => $verified ? 'YES' : 'NO'
             ]);
-
-            return [
-                'errors' => [[
-                    'code' => 'Exception',
-                    'message' => 'An error occurred while updating price: ' . $e->getMessage()
-                ]]
-            ];
+            
+            return $verified;
+            
+        } catch (\Exception $e) {
+            Log::warning("Price verification exception", [
+                'sku' => $amazonSku,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+    
+    /**
+     * Get current price from Amazon for a SKU
+     * Returns: price as float, or null if not found
+     */
+    public function getCurrentAmazonPrice($sku)
+    {
+        try {
+            $sellerId = env('AMAZON_SELLER_ID');
+            if (empty($sellerId)) {
+                return null;
+            }
+            
+            $accessToken = $this->getAccessToken();
+            if (empty($accessToken)) {
+                return null;
+            }
+            
+            $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+            if (empty($amazonSku)) {
+                return null;
+            }
+            
+            $encodedSku = rawurlencode($amazonSku);
+            $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
+            
+            $response = Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->get($url);
+            
+            if ($response->failed()) {
+                return null;
+            }
+            
+            $data = $response->json();
+            
+            // Extract current price
+            if (isset($data['summaries'][0]['offers'])) {
+                foreach ($data['summaries'][0]['offers'] as $offer) {
+                    if (isset($offer['ourPrice'][0]['schedule'][0]['value_with_tax'])) {
+                        return (float) $offer['ourPrice'][0]['schedule'][0]['value_with_tax'];
+                    }
+                }
+            }
+            
+            if (isset($data['attributes']['purchasable_offer'][0]['our_price'][0]['schedule'][0]['value_with_tax'])) {
+                return (float) $data['attributes']['purchasable_offer'][0]['our_price'][0]['schedule'][0]['value_with_tax'];
+            }
+            
+            return null;
+        } catch (\Exception $e) {
+            Log::error("Error getting current Amazon price", [
+                'sku' => $sku,
+                'error' => $e->getMessage()
+            ]);
+            return null;
         }
     }
 
@@ -327,7 +616,7 @@ class AmazonSpApiService
      * Find the correct SKU format in Amazon by trying different case variations
      * Returns the SKU format that works with Amazon API, or null if not found
      */
-    private function findAmazonSkuFormat($sku)
+    private function findAmazonSkuFormat($sku, $accessToken = null)
     {
         $sku = trim($sku);
         if (empty($sku)) {
@@ -339,9 +628,12 @@ class AmazonSpApiService
             return null;
         }
 
-        $accessToken = $this->getAccessToken();
+        // Use provided token or get new one
         if (empty($accessToken)) {
-            return null;
+            $accessToken = $this->getAccessToken();
+            if (empty($accessToken)) {
+                return null;
+            }
         }
 
         // Generate case variations to try
@@ -411,7 +703,7 @@ class AmazonSpApiService
         return null;
     }
 
-    public function getAmazonProductType($sku, $amazonSku = null)
+    public function getAmazonProductType($sku, $amazonSku = null, $accessToken = null)
     {
         try {
             $sku = trim($sku);
@@ -426,15 +718,18 @@ class AmazonSpApiService
                 return null;
             }
 
-            $accessToken = $this->getAccessToken();
+            // Use provided token or get new one
             if (empty($accessToken)) {
-                Log::warning("getAmazonProductType: Failed to get access token", ['sku' => $sku]);
-                return null;
+                $accessToken = $this->getAccessToken();
+                if (empty($accessToken)) {
+                    Log::warning("getAmazonProductType: Failed to get access token", ['sku' => $sku]);
+                    return null;
+                }
             }
 
             // Use provided Amazon SKU or find it
             if (empty($amazonSku)) {
-                $amazonSku = $this->findAmazonSkuFormat($sku);
+                $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
                 if (empty($amazonSku)) {
                     Log::warning("getAmazonProductType: Could not find SKU in Amazon", ['sku' => $sku]);
                     return null;

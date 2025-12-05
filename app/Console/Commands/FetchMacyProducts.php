@@ -6,6 +6,7 @@ use App\Models\BestbuyUsaProduct;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use App\Models\MacyProduct;
 use App\Models\TiendamiaProduct;
 use Carbon\Carbon;
@@ -307,180 +308,200 @@ class FetchMacyProducts extends Command
 
     public function handle()
     {
+        // Increase memory limit for this command to handle large product datasets
+        ini_set('memory_limit', '256M');
+        
         $token = $this->getAccessToken();
         if (!$token) return;
 
-        $skuSales = $this->getSalesTotals($token); // ['sku' => ['m_l30'=>x,'m_l60'=>y]]
+        $skuSales = $this->getSalesTotals($token); // ['channel' => ['sku' => ['l30'=>x,'l60'=>y]]]
 
+        // Fetch and store Macy's products with channel-specific pricing
+        $this->fetchChannelProducts($token, 'macys', "Macy's, Inc.", $skuSales);
+        
+        // Close DB connection between channels to prevent buildup
+        DB::disconnect();
+        sleep(1);
+        
+        // Fetch and store Tiendamia products with channel-specific pricing
+        $this->fetchChannelProducts($token, 'tiendamia', "Tiendamia", $skuSales);
+        
+        // Close DB connection between channels
+        DB::disconnect();
+        sleep(1);
+        
+        // Fetch and store BestBuy products with channel-specific pricing
+        $this->fetchChannelProducts($token, 'bestbuyusa', "Best Buy USA", $skuSales);
+
+        // Final cleanup
+        DB::disconnect();
+        
+        $this->info("All Macy, Tiendamia, BestbuyUSA products stored successfully.");
+    }
+
+    private function fetchChannelProducts($token, $channelCode, $channelName, $skuSales)
+    {
         $pageToken = null;
         $page = 1;
-        $allProducts = [];
+        $totalProcessed = 0;
 
-         do {
-            $this->info("Fetching product page $page...");
+        do {
+            $this->info("Fetching {$channelName} products - page $page...");
 
-            $url = 'https://miraklconnect.com/api/products?limit=1000';
+            $url = "https://miraklconnect.com/api/products?limit=1000&channel_code={$channelCode}";
             if ($pageToken) {
                 $url .= '&page_token=' . urlencode($pageToken);
             }
 
-            $response = Http::withToken($token)->get($url);
+            $response = Http::withoutVerifying()->withToken($token)->get($url);
+            
+            // Check if token expired and refresh if needed
             if (!$response->successful()) {
-                $this->error('Product fetch failed: ' . $response->body());
+                $newToken = $this->refreshTokenIfNeeded($response);
+                if ($newToken) {
+                    $token = $newToken;
+                    $response = Http::withoutVerifying()->withToken($token)->get($url);
+                }
+            }
+            
+            if (!$response->successful()) {
+                $this->error("{$channelName} product fetch failed: " . $response->body());
                 return;
             }
 
             $json = $response->json();
             $products = $json['data'] ?? [];
             $pageToken = $json['next_page_token'] ?? null;
-            $allProducts = array_merge($allProducts, $products);
+
+            // Determine table name based on channel
+            $tableName = match($channelName) {
+                "Macy's, Inc." => 'macy_products',
+                "Tiendamia" => 'tiendamia_products',
+                "Best Buy USA" => 'bestbuy_usa_products',
+                default => null,
+            };
+
+            if (!$tableName) {
+                $this->error("Unknown channel: {$channelName}");
+                return;
+            }
+
+            // Process in smaller batches
+            $batchSize = 25;
+            $productBatches = array_chunk($products, $batchSize);
             
-            // Debug: Log first product structure on first page
-            if ($page === 1 && count($products) > 0) {
-                Log::info("Sample product structure", ['product' => json_encode($products[0], JSON_PRETTY_PRINT)]);
+            foreach ($productBatches as $batch) {
+                $updates = [];
                 
-                // Log a product without discount_prices if found
-                foreach ($products as $p) {
-                    if (!isset($p['discount_prices']) || empty($p['discount_prices'])) {
-                        Log::info("Product without discount_prices", ['sku' => $p['id'] ?? 'unknown', 'full_product' => json_encode($p, JSON_PRETTY_PRINT)]);
-                        break;
+                foreach ($batch as $product) {
+                    $sku = $product['id'] ?? null;
+                    if (!$sku) continue;
+                    
+                    $price = $product['discount_prices'][0]['price']['amount'] ?? 
+                             $product['standard_prices'][0]['price']['amount'] ?? 
+                             $product['price']['amount'] ?? 
+                             $product['prices'][0]['amount'] ?? 
+                             $product['offer_price']['amount'] ?? null;
+                    
+                    if ($price === null) continue;
+
+                    $originalSku = $sku;
+                    $sku = strtolower($sku);
+                    $l30 = $skuSales[$channelName][$sku]['l30'] ?? 0;
+
+                    $updates[] = [
+                        'sku' => DB::connection()->getPdo()->quote($originalSku),
+                        'price' => $price,
+                        'm_l30' => $l30,
+                        'updated_at' => "'" . now()->toDateTimeString() . "'"
+                    ];
+                }
+
+                // Execute batch update using INSERT ON DUPLICATE KEY UPDATE
+                if (!empty($updates)) {
+                    try {
+                        $values = [];
+                        foreach ($updates as $update) {
+                            $values[] = "({$update['sku']}, {$update['price']}, {$update['m_l30']}, {$update['updated_at']}, {$update['updated_at']})";
+                        }
+                        
+                        $sql = "INSERT INTO {$tableName} (sku, price, m_l30, created_at, updated_at) VALUES " 
+                             . implode(', ', $values)
+                             . " ON DUPLICATE KEY UPDATE price = VALUES(price), m_l30 = VALUES(m_l30), updated_at = VALUES(updated_at)";
+                        
+                        DB::connection()->getPdo()->exec($sql);
+                        $totalProcessed += count($updates);
+                        
+                    } catch (\Exception $e) {
+                        Log::error("Failed to update {$channelName} batch: " . $e->getMessage());
                     }
                 }
+                
+                unset($batch, $updates);
+                usleep(50000); // 50ms delay between batches to reduce server load
             }
+            
+            unset($products, $productBatches, $json);
+            gc_collect_cycles();
 
-            foreach ($products as $product) {
-                $sku = $product['id'] ?? null;
-                
-                // Debug: log products without SKU
-                if (!$sku) {
-                    Log::warning("Product without SKU found", ['product' => $product]);
-                    continue;
-                }
-                
-                // Try multiple price sources in order of preference
-                $price = $product['discount_prices'][0]['price']['amount'] ?? 
-                         $product['standard_prices'][0]['price']['amount'] ?? 
-                         $product['price']['amount'] ?? 
-                         $product['prices'][0]['amount'] ?? 
-                         $product['offer_price']['amount'] ?? null;
-                
-                if ($price === null) {
-                    Log::warning("Product without price: SKU {$sku}", [
-                        'has_discount_prices' => isset($product['discount_prices']),
-                        'has_standard_prices' => isset($product['standard_prices']),
-                        'has_price' => isset($product['price']),
-                        'has_prices' => isset($product['prices'])
-                    ]);
-                    continue;
-                }
-
-                $originalSku = $sku;
-                $sku = strtolower($sku);
-
-                // Loop through all channels that reported this SKU
-                foreach ($skuSales as $channel => $skuMap) {
-                    if (!isset($skuMap[$sku])) continue;
-
-                    $l30 = $skuMap[$sku]['l30'];
-                    $l60 = $skuMap[$sku]['l60'];
-
-                    switch ($channel) {
-                        case "Macy's, Inc.":
-                            MacyProduct::updateOrCreate(
-                                ['sku' => $originalSku],
-                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
-                            );
-                            break;
-
-                        case "Tiendamia":
-                            TiendamiaProduct::updateOrCreate(
-                                ['sku' => $originalSku],
-                                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
-                            );
-                            break;
-
-                        case "Best Buy USA":
-                            // Removed to store all products separately
-                            break;
-
-                        default:
-                            Log::warning("Unknown channel: {$channel} for SKU {$originalSku}");
-                            break;
-                    }
-
-                    Log::info("Stored {$channel} | SKU: {$originalSku}, Price: {$price}, L30: {$l30}, L60: {$l60}");
-                }
-            }
-
+            $this->info("Page {$page}: Processed {$totalProcessed} {$channelName} products");
             $page++;
+            
         } while ($pageToken);
 
-        // Store all products in Best Buy table
-        foreach ($allProducts as $product) {
-            $sku = $product['id'] ?? null;
-            
-            if (!$sku) continue;
-            
-            // Try multiple price sources in order of preference
-            $price = $product['discount_prices'][0]['price']['amount'] ?? 
-                     $product['standard_prices'][0]['price']['amount'] ?? 
-                     $product['price']['amount'] ?? 
-                     $product['prices'][0]['amount'] ?? 
-                     $product['offer_price']['amount'] ?? null;
-            
-            if ($price === null) {
-                Log::warning("BestBuy product without price: SKU {$sku}");
-                continue;
-            }
-
-            $originalSku = $sku;
-            $sku = strtolower($sku);
-
-            if ($originalSku === 'CDKC13 1pc') {
-                Log::info("Storing CDKC13 1pc in Best Buy");
-            }
-
-            $l30 = $skuSales['Best Buy USA'][$sku]['l30'] ?? 0;
-            $l60 = $skuSales['Best Buy USA'][$sku]['l60'] ?? 0;
-
-            BestbuyUsaProduct::updateOrCreate(
-                ['sku' => $originalSku],
-                ['price' => $price, 'm_l30' => $l30, 'm_l60' => $l60]
-            );
-
-            Log::info("Stored Best Buy | SKU: {$originalSku}, Price: {$price}, L30: {$l30}, L60: {$l60}");
-        }
-
-        $this->info("All Macy, Tiendamia, BestbuyUSA products stored successfully.");
+        $this->info("{$channelName} products stored successfully. Total: {$totalProcessed}");
     }
 
     private function getAccessToken()
     {
-        return Cache::remember('macy_access_token', 3500, function () {
-            $response = Http::asForm()->post('https://auth.mirakl.net/oauth/token', [
+        // Try to get cached token
+        $token = Cache::get('macy_access_token');
+        
+        // If no token or token might be expired, get a fresh one
+        if (!$token) {
+            $response = Http::withoutVerifying()->asForm()->post('https://auth.mirakl.net/oauth/token', [
                 'grant_type' => 'client_credentials',
                 'client_id' => config('services.macy.client_id'),
                 'client_secret' => config('services.macy.client_secret'),
             ]);
 
-            return $response->successful() ? $response->json()['access_token'] : null;
-        });
+            if ($response->successful()) {
+                $token = $response->json()['access_token'];
+                // Cache for 50 minutes (3000 seconds) to be safe
+                Cache::put('macy_access_token', $token, 3000);
+                Log::info("New Macy access token obtained and cached");
+            } else {
+                Log::error("Failed to get Macy access token: " . $response->body());
+                return null;
+            }
+        }
+        
+        return $token;
+    }
+    
+    private function refreshTokenIfNeeded($response)
+    {
+        // If we get unauthorized, clear cache and retry
+        if (!$response->successful() && str_contains($response->body(), 'Unauthorized')) {
+            Log::warning("Macy token unauthorized, clearing cache and getting new token");
+            Cache::forget('macy_access_token');
+            return $this->getAccessToken();
+        }
+        return null;
     }
 
     private function getSalesTotals(string $token): array
     {
-        $this->info("Fetching Macy, Tiendamia, BestbuyUSA orders in last 60 days...");
+        $this->info("Fetching Macy, Tiendamia, BestbuyUSA orders in last 30 days...");
 
         $pageToken = null;
         $sales = [];
 
         $now = now('America/New_York');
-        $startDate = $now->copy()->subDays(60)->startOfDay()->toIso8601String();
+        $startDate = $now->copy()->subDays(29)->startOfDay()->toIso8601String();
 
         $startL30 = $now->copy()->subDays(29)->startOfDay();
         $endL30   = $now->copy()->endOfDay();
-        $startL60 = $now->copy()->subDays(59)->startOfDay();
-        $endL60   = $now->copy()->subDays(30)->endOfDay();
 
         do {
             $url = 'https://miraklconnect.com/api/v2/orders'
@@ -492,7 +513,18 @@ class FetchMacyProducts extends Command
                 $url .= '&page_token=' . urlencode($pageToken);
             }
 
-            $response = Http::withToken($token)->get($url);
+            $response = Http::withoutVerifying()->withToken($token)->get($url);
+            
+            // Check if token expired and refresh if needed
+            if (!$response->successful()) {
+                $newToken = $this->refreshTokenIfNeeded($response);
+                if ($newToken) {
+                    $token = $newToken;
+                    // Retry the request with new token
+                    $response = Http::withoutVerifying()->withToken($token)->get($url);
+                }
+            }
+            
             if (!$response->successful()) {
                 $this->error("Order fetch failed: " . $response->body());
                 break;
@@ -518,13 +550,11 @@ class FetchMacyProducts extends Command
                     }
 
                     if (!isset($sales[$channel][$sku])) {
-                        $sales[$channel][$sku] = ['l30' => 0, 'l60' => 0];
+                        $sales[$channel][$sku] = ['l30' => 0];
                     }
 
                     if ($created->between($startL30, $endL30)) {
                         $sales[$channel][$sku]['l30'] += $qty;
-                    } elseif ($created->between($startL60, $endL60)) {
-                        $sales[$channel][$sku]['l60'] += $qty;
                     }
                 }
             }
@@ -536,11 +566,7 @@ class FetchMacyProducts extends Command
         //     $this->info("Channel {$channel} has " . count($skuMap) . " SKUs with orders.");
         // }
 
-        if (isset($sales['Best Buy USA'])) {
-            foreach ($sales['Best Buy USA'] as $sku => $data) {
-                Log::info("Best Buy SKU: {$sku}, L30: {$data['l30']}, L60: {$data['l60']}");
-            }
-        }
+        // Debug logging removed to save memory
 
         return $sales;
     }
