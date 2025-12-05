@@ -600,6 +600,20 @@
                         title: "CVR L30",
                         field: "cvr_l30",
                         hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            
+                            var a_sold = parseFloat(aData.ad_sold_l30) || 0;
+                            var a_clicks = parseFloat(aData.clicks_L30) || 0;
+                            var a_cvr = (a_clicks > 0) ? (a_sold / a_clicks) * 100 : 0;
+                            
+                            var b_sold = parseFloat(bData.ad_sold_l30) || 0;
+                            var b_clicks = parseFloat(bData.clicks_L30) || 0;
+                            var b_cvr = (b_clicks > 0) ? (b_sold / b_clicks) * 100 : 0;
+                            
+                            return a_cvr - b_cvr;
+                        },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var ad_sold_l30 = parseFloat(row.ad_sold_l30) || 0;
