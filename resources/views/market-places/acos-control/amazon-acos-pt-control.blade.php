@@ -522,16 +522,16 @@
                             var tpftInt = Math.floor(tpft);
                             var sbgt;
 
-                            sbgt = Math.round(price * 0.10, 0);
+                            sbgt = Math.round(price * 0.07, 0);
 
-                            if(sbgt > 10){
-                                sbgt = 10;
+                            if(sbgt > 5){
+                                sbgt = 5;
                             } else if(sbgt < 1){
                                 sbgt = 1;
                             }
 
                             return `
-                                <input type="number" class="form-control form-control-sm text-center sbgt-input"  value="${sbgt}" min="1" max="10"  data-campaign-id="${row.campaign_id}">
+                                <input type="number" class="form-control form-control-sm text-center sbgt-input"  value="${sbgt}" min="1" max="5"  data-campaign-id="${row.campaign_id}">
                             `;
                         },
                     },

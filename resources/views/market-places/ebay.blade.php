@@ -996,6 +996,48 @@
             font-weight: bold;
         }
 
+        /* Product Image Hover Effect */
+        .product-image-thumbnail {
+            cursor: pointer;
+            display: block;
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+            border-radius: 4px;
+            transition: none !important;
+        }
+        
+        .product-image-enlarged {
+            position: fixed !important;
+            z-index: 99999 !important;
+            width: 400px !important;
+            height: 400px !important;
+            left: 50% !important;
+            top: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+            border: 3px solid #fff !important;
+            object-fit: contain !important;
+            background: white !important;
+            padding: 5px !important;
+            border-radius: 8px !important;
+        }
+        
+        .image-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 99998;
+            display: none;
+        }
+        
+        .image-overlay.active {
+            display: block;
+        }
+
         /*popup modal style end */
     </style>
 @endsection
@@ -1586,7 +1628,7 @@
                         <table class="custom-resizable-table" id="ebay-table">
                             <thead>
                                 <tr>
-                                    <th data-field="sl_no" style="min-width: 70px; width: 70px;">SL No. <span class="sort-arrow">↓</span></th>
+                                    <th data-field="image" style="min-width: 80px; width: 80px; text-align: center;">IMG</th>
                                     <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center sortable-header">
@@ -1679,28 +1721,6 @@
                                                 0</div>
                                         </div>
                                     </th>
-
-                                    <th data-field="listed" class="hide-column" style="vertical-align: middle; white-space: nowrap; min-width: 90px; width: 90px;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                LISTED <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="listed-total">0</div>
-                                        </div>
-                                    </th>
-
-                                    <th data-field="live" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                LIVE <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="live-total">0</div>
-                                        </div>
-                                    </th>
-
-                                    <th style="min-width: 60px; width: 60px; text-align: center;">Hide</th>
 
                                     <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
@@ -2594,8 +2614,7 @@
                                         'views']);
                                 }
                                 return {
-                                    sl_no: index + 1,
-                                    'Sl': item['Sl'] || index + 1,
+                                    'image_src': item['image_path'] || '',
                                     Parent: item.Parent || item.parent || item.parent_asin ||
                                         item.Parent_ASIN || '(No Parent)',
                                     '(Child) sku': item['(Child) sku'] || '',
@@ -2802,7 +2821,20 @@
                         return 'pink';
                     };
 
-                    $row.append($('<td>').text(item['Sl']));
+                    // Add image cell
+                    const imageSrc = item.image_src || item.raw_data?.image_path || '';
+                    const $imageCell = $('<td>').css({
+                        'text-align': 'center',
+                        'vertical-align': 'middle'
+                    });
+                    
+                    if (imageSrc) {
+                        $imageCell.html(`<img src="${imageSrc}" alt="Product Image" class="product-image-thumbnail" data-image-src="${imageSrc}">`);
+                    } else {
+                        $imageCell.html('<span class="text-muted">N/A</span>');
+                    }
+                    $row.append($imageCell);
+                    
                     $row.append($('<td>').text(item.Parent));
 
                     // SKU with hover content for links and copy button
@@ -2854,38 +2886,7 @@
                             `);
                         }
                     }
-                    $row.append($skuCell);
-
-                    // Only create the checkbox cell if navigation is active
-                    // if (isNavigationActive) {
-                    //     const $raCell = $('<td>').addClass('ra-cell');
-
-                    //     if (item['R&A'] !== undefined && item['R&A'] !== null && item['R&A'] !== '') {
-                    //         const $container = $('<div>').addClass(
-                    //             'ra-edit-container d-flex align-items-center');
-
-                    //         // Checkbox with proper boolean value
-                    //         const $checkbox = $('<input>', {
-                    //             type: 'checkbox',
-                    //             checked: item['R&A'] === true || item['R&A'] === 'true' || item[
-                    //                 'R&A'] === '1',
-                    //             class: 'ra-checkbox',
-                    //             disabled: true
-                    //         }).data('original-value', item['R&A']); // Store original value
-
-                    //         // Edit/Save icon
-                    //         const $editIcon = $('<i>').addClass('fas fa-pen edit-icon ml-2 text-primary')
-                    //             .css('cursor', 'pointer')
-                    //             .attr('title', 'Edit R&A');
-
-                    //         $container.append($checkbox, $editIcon);
-                    //         $raCell.append($container);
-                    //     } else {
-                    //         $raCell.html('&nbsp;');
-                    //     }
-
-                    //     $row.append($raCell);
-                    // }
+                    $row.append($skuCell);  
 
                     $row.append($('<td>').text(item.INV));
                     $row.append($('<td>').text(item.L30));
@@ -2994,46 +2995,6 @@
 
                         $nrReqSelect.data('sku', item['(Child) sku']);
                         $row.append($('<td>').append($nrReqSelect));
-                    }
-
-                    //Listed checkbox
-                    // const listedVal = rawData.Listed === true || rawData.Listed === 'true' || rawData
-                    //     .Listed === 1 || rawData.Listed === '1';
-                    // const $listedCb = $('<input>', {
-                    //     type: 'checkbox',
-                    //     class: 'listed-checkbox',
-                    //     checked: listedVal
-                    // }).data('sku', item['(Child) sku']);
-
-                    // $row.append($('<td class="hide-column">').append($listedCb));
-
-                    // Live checkbox
-                    const liveVal = rawData.Live === true || rawData.Live === 'true' || rawData.Live ===
-                        1 || rawData.Live === '1';
-                    const $liveCb = $('<input>', {
-                        type: 'checkbox',
-                        class: 'live-checkbox',
-                        checked: liveVal
-                    }).data('sku', item['(Child) sku']);
-
-                    $row.append($('<td>').append($liveCb));
-
-
-                    if (item.is_parent) {
-                        $row.append($('<td>')); // Empty cell for parent
-                    } else {
-                        // Hide
-                        const $hideContainer = $(
-                            '<div class="hide-edit-container d-flex align-items-center"></div>');
-                        const $hideCheckbox = $('<input type="checkbox" class="hide-checkbox" disabled />')
-                            .prop('checked', item['Hide'] === true || item['Hide'] === 'true' || item[
-                                'Hide'] === '1')
-                            .data('original-value', item['Hide']);
-                        const $hideEditIcon = $(
-                            '<i class="fas fa-pen hide-edit-icon ml-2 text-primary" style="cursor:pointer" title="Edit Hide"></i>'
-                        );
-                        $hideContainer.append($hideCheckbox, $hideEditIcon);
-                        $row.append($('<td>').append($hideContainer));
                     }
 
                     // views with tooltip icon (no color coding)
@@ -6508,8 +6469,82 @@
                 }, 1500);
             });
 
+            // Initialize image hover functionality
+            function initImageHover() {
+                let $currentEnlargedImage = null;
+                let $overlay = null;
+                
+                // Create and append overlay
+                if (!$('#imageOverlay').length) {
+                    $overlay = $('<div id="imageOverlay" class="image-overlay"></div>');
+                    $('body').append($overlay);
+                } else {
+                    $overlay = $('#imageOverlay');
+                }
+                
+                // Function to remove enlarged image
+                function removeEnlargedImage() {
+                    if ($currentEnlargedImage) {
+                        $currentEnlargedImage.remove();
+                        $currentEnlargedImage = null;
+                    }
+                    $overlay.removeClass('active');
+                }
+                
+                // Remove any existing event handlers to prevent duplicates
+                $(document).off('mouseenter.imageHover mouseleave.imageHover click.imageHover');
+                $overlay.off('click');
+                
+                // Mouse enter - show enlarged image
+                $(document).on('mouseenter.imageHover', '.product-image-thumbnail', function() {
+                    const imageSrc = $(this).attr('data-image-src') || $(this).attr('src');
+                    if (!imageSrc) return;
+                    
+                    // Remove any existing enlarged image
+                    removeEnlargedImage();
+                    
+                    // Create new enlarged image
+                    $currentEnlargedImage = $('<img>', {
+                        src: imageSrc,
+                        class: 'product-image-enlarged',
+                        alt: 'Product'
+                    });
+                    
+                    // Append to body and show overlay
+                    $('body').append($currentEnlargedImage);
+                    $overlay.addClass('active');
+                });
+                
+                // Mouse leave - hide enlarged image after delay
+                $(document).on('mouseleave.imageHover', '.product-image-thumbnail', function() {
+                    setTimeout(() => {
+                        // Check if mouse is over enlarged image
+                        if (!$('.product-image-enlarged:hover').length && !$('.product-image-thumbnail:hover').length) {
+                            removeEnlargedImage();
+                        }
+                    }, 100);
+                });
+                
+                // When mouse leaves enlarged image, remove it
+                $(document).on('mouseleave.imageHover', '.product-image-enlarged', function() {
+                    removeEnlargedImage();
+                });
+                
+                // Click overlay to close
+                $overlay.on('click', function() {
+                    removeEnlargedImage();
+                });
+                
+                // Also allow clicking the enlarged image itself to close
+                $(document).on('click.imageHover', '.product-image-enlarged', function(e) {
+                    e.stopPropagation();
+                    removeEnlargedImage();
+                });
+            }
+
             // Initialize everything
             initTable();
+            initImageHover();
             // Make the static Hide SKU modal draggable using the existing logic
             ModalSystem.makeDraggable(document.getElementById('customHideSkuModal'));
         });

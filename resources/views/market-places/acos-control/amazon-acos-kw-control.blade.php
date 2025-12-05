@@ -535,7 +535,7 @@
                             }
 
                             return `
-                                <input type="number" class="form-control form-control-sm text-center sbgt-input"  value="${sbgt}" min="1" max="10"  data-campaign-id="${row.campaign_id}">
+                                <input type="number" class="form-control form-control-sm text-center sbgt-input"  value="${sbgt}" min="1" max="5"  data-campaign-id="${row.campaign_id}">
                             `;
                         },
                     },
