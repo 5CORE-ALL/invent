@@ -570,7 +570,7 @@
                         width: 65
                     },
                     {
-                        title: "BB Base",
+                        title: "BB Price",
                         field: "buybox_base_price",
                         hozAlign: "center",
                         formatter: function(cell) {
