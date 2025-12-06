@@ -117,6 +117,34 @@ class ProductMasterController extends Controller
                 'id' => $product->id,
                 'Parent' => $product->parent,
                 'SKU' => $product->sku,
+                'title150' => $product->title150,
+                'title100' => $product->title100,
+                'title80' => $product->title80,
+                'title60' => $product->title60,
+                'bullet1' => $product->bullet1,
+                'bullet2' => $product->bullet2,
+                'bullet3' => $product->bullet3,
+                'bullet4' => $product->bullet4,
+                'bullet5' => $product->bullet5,
+                'product_description' => $product->product_description,
+                'feature1' => $product->feature1,
+                'feature2' => $product->feature2,
+                'feature3' => $product->feature3,
+                'feature4' => $product->feature4,
+                'main_image' => $product->main_image,
+                'main_image_brand' => $product->main_image_brand,
+                'image1' => $product->image1,
+                'image2' => $product->image2,
+                'image3' => $product->image3,
+                'image4' => $product->image4,
+                'image5' => $product->image5,
+                'image6' => $product->image6,
+                'image7' => $product->image7,
+                'image8' => $product->image8,
+                'image9' => $product->image9,
+                'image10' => $product->image10,
+                'image11' => $product->image11,
+                'image12' => $product->image12,
             ];
 
             // Merge the Values array (if not null)
@@ -741,6 +769,217 @@ class ProductMasterController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to restore products.'
+            ], 500);
+        }
+    }
+
+    public function saveTitleData(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'title150' => 'nullable|string',
+                'title100' => 'nullable|string',
+                'title80' => 'nullable|string',
+                'title60' => 'nullable|string',
+            ]);
+
+            $product = ProductMaster::where('sku', $validated['sku'])->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found.'
+                ], 404);
+            }
+
+            $product->title150 = $validated['title150'];
+            $product->title100 = $validated['title100'];
+            $product->title80 = $validated['title80'];
+            $product->title60 = $validated['title60'];
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Title data saved successfully.'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving title data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save title data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function saveBulletData(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'bullet1' => 'nullable|string|max:200',
+                'bullet2' => 'nullable|string|max:200',
+                'bullet3' => 'nullable|string|max:200',
+                'bullet4' => 'nullable|string|max:200',
+                'bullet5' => 'nullable|string|max:200',
+            ]);
+
+            $product = ProductMaster::where('sku', $validated['sku'])->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found.'
+                ], 404);
+            }
+
+            $product->bullet1 = $validated['bullet1'];
+            $product->bullet2 = $validated['bullet2'];
+            $product->bullet3 = $validated['bullet3'];
+            $product->bullet4 = $validated['bullet4'];
+            $product->bullet5 = $validated['bullet5'];
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Bullet points saved successfully.'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving bullet data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save bullet data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function saveDescriptionData(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'product_description' => 'nullable|string|max:1500',
+            ]);
+
+            $product = ProductMaster::where('sku', $validated['sku'])->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found.'
+                ], 404);
+            }
+
+            $product->product_description = $validated['product_description'];
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Product description saved successfully.'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving description data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save description data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function saveFeaturesData(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'feature1' => 'nullable|string|max:100',
+                'feature2' => 'nullable|string|max:100',
+                'feature3' => 'nullable|string|max:100',
+                'feature4' => 'nullable|string|max:100',
+            ]);
+
+            $product = ProductMaster::where('sku', $validated['sku'])->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found.'
+                ], 404);
+            }
+
+            $product->feature1 = $validated['feature1'];
+            $product->feature2 = $validated['feature2'];
+            $product->feature3 = $validated['feature3'];
+            $product->feature4 = $validated['feature4'];
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Features saved successfully.'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving features data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save features data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function saveImagesData(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'main_image' => 'nullable|string',
+                'main_image_brand' => 'nullable|string',
+                'image1' => 'nullable|string',
+                'image2' => 'nullable|string',
+                'image3' => 'nullable|string',
+                'image4' => 'nullable|string',
+                'image5' => 'nullable|string',
+                'image6' => 'nullable|string',
+                'image7' => 'nullable|string',
+                'image8' => 'nullable|string',
+                'image9' => 'nullable|string',
+                'image10' => 'nullable|string',
+                'image11' => 'nullable|string',
+                'image12' => 'nullable|string',
+            ]);
+
+            $product = ProductMaster::where('sku', $validated['sku'])->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found.'
+                ], 404);
+            }
+
+            $product->main_image = $validated['main_image'];
+            $product->main_image_brand = $validated['main_image_brand'];
+            $product->image1 = $validated['image1'];
+            $product->image2 = $validated['image2'];
+            $product->image3 = $validated['image3'];
+            $product->image4 = $validated['image4'];
+            $product->image5 = $validated['image5'];
+            $product->image6 = $validated['image6'];
+            $product->image7 = $validated['image7'];
+            $product->image8 = $validated['image8'];
+            $product->image9 = $validated['image9'];
+            $product->image10 = $validated['image10'];
+            $product->image11 = $validated['image11'];
+            $product->image12 = $validated['image12'];
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Images saved successfully.'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving images data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save images data: ' . $e->getMessage()
             ], 500);
         }
     }

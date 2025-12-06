@@ -298,6 +298,21 @@
                                 Masters</a>
                         </li>
                         <li>
+                            <a href="{{ route('title.master') }}">Title Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('bullet.points') }}">Bullet Points</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('product.description') }}">Product Description</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('features') }}">Features</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('images') }}">Images</a>
+                        </li>
+                        <li>
                             <a href="{{ url('/parent.pricing-masters') }}">ROI dashboard</a>
                         </li>
                         <li>
