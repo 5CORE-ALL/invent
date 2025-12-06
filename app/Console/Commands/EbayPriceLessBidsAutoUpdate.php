@@ -36,12 +36,24 @@ class EbayPriceLessBidsAutoUpdate extends Command
             return 0;
         }
 
+        $this->info("Found " . count($campaigns) . " campaigns to update.");
+
         $campaignIds = collect($campaigns)->pluck('campaign_id')->toArray();
         $newBids = collect($campaigns)->pluck('sbid')->toArray();
 
-        $result = $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($campaignIds, $newBids);
-        $this->info("Update Result: " . json_encode($result));
+        $this->info("Processing campaigns in batches of 10...");
+        
+        // Process in smaller batches to avoid timeout
+        $chunks = array_chunk($campaignIds, 10);
+        $bidChunks = array_chunk($newBids, 10);
+        
+        foreach ($chunks as $index => $chunk) {
+            $this->info("Processing batch " . ($index + 1) . " of " . count($chunks));
+            $result = $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($chunk, $bidChunks[$index]);
+            $this->info("Batch Result: " . json_encode($result));
+        }
 
+        $this->info("All batches completed.");
     }
 
     public function getEbayPriceLessBidsCampaign(){
@@ -103,6 +115,25 @@ class EbayPriceLessBidsAutoUpdate extends Command
             $row['L30']    = $shopify->quantity ?? 0;
             $row['price']  = $ebay->ebay_price ?? 0;
             $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
+            $row['campaignName'] = $matchedCampaignL7->campaign_name ?? ($matchedCampaignL1->campaign_name ?? '');
+            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaign_budget_amount ?? ($matchedCampaignL1->campaign_budget_amount ?? 0);
+            $row['l7_spend'] = $matchedCampaignL7->ad_fees ?? 0;
+            $row['l1_spend'] = $matchedCampaignL1->ad_fees ?? 0;
+            $row['l7_cpc'] = 0;
+            $row['l1_cpc'] = 0;
+            
+            // Calculate L7 CPC
+            $l7_clicks = $matchedCampaignL7->clicks ?? 0;
+            if ($l7_clicks > 0) {
+                $row['l7_cpc'] = floatval($row['l7_spend']) / $l7_clicks;
+            }
+            
+            // Calculate L1 CPC
+            $l1_clicks = $matchedCampaignL1->clicks ?? 0;
+            if ($l1_clicks > 0) {
+                $row['l1_cpc'] = floatval($row['l1_spend']) / $l1_clicks;
+            }
+            
             $row['sbid'] = 0;
 
             $budget = floatval($row['campaignBudgetAmount']);

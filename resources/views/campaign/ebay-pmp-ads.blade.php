@@ -1467,6 +1467,20 @@
                                         <option value="LATER">LATER</option>
                                     </select>
                                 </div>
+                                <div class="form-group mb-2">
+                                    <label for="cvr-filter" class="mr-2">SCVR:</label>
+                                    <select id="cvr-filter" class="form-control form-control-sm">
+                                        <option value="all">All</option>
+                                        <option value="0">0.00%</option>
+                                        <option value="0.01-1">0.01% to 1%</option>
+                                        <option value="1.01-2">1.01% to 2%</option>
+                                        <option value="2.01-3">2.01% to 3%</option>
+                                        <option value="3.01-5">3.01% to 5%</option>
+                                        <option value="5.01-7">5.01% to 7%</option>
+                                        <option value="7.01-13">7.01% to 13%</option>
+                                        <option value="13+">Greater than 13%</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <div>
@@ -1629,43 +1643,6 @@
                                     </th>
                                     <th data-field="tpft" class="tpft_col">TPFT %</th>
                                     <th data-field="troi" class="troi_col">TROI %</th>
-                                    <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                TACOS <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="tacos-total">0%</div>
-                                        </div>
-                                    </th>
-
-                                    <th data-field="sprice" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                SPRICE <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="sprofit" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                SPROFIT <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="sroi" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                SROI <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
                                     <th data-field="NRL">NRL/REQ</th>
                                 </tr>
                             </thead>
@@ -2879,11 +2856,6 @@
                         $row.addClass('parent-row');
                     }
 
-                    // Debug: Log campaign_id for first 5 items
-                    if (filteredData.indexOf(item) < 5) {
-                        console.log('SKU:', item['(Child) sku'], 'Campaign ID:', item.campaign_id);
-                    }
-
                     let rawData = {};
                     if (typeof item.raw_data === 'string') {
                         try {
@@ -3017,49 +2989,45 @@
                     $row.append($('<td data-field="cbid">').text(item.CBID));
 
                     $row.append($('<td data-field="esbid">').text(item.ESBID));
-                    
-                    // Calculate adjusted CBID based on PmtClkL7
-                    let adjustedCbid = parseFloat(item.CBID) || 0;
-                    let cbidColor = "";
-                    const pmtClkL7 = parseFloat(item.raw_data.PmtClkL7) || 0;
 
-                    if (pmtClkL7 < 70) {
-                        adjustedCbid = adjustedCbid + 0.5;
-                        cbidColor = "green"; // Increase bid
-                    } else if (pmtClkL7 > 140) {
-                        adjustedCbid = adjustedCbid - 0.5;
-                        cbidColor = "red"; // Decrease bid
-                    } else {
-                        cbidColor = "yellow"; // Keep current bid
-                    }
+                    // Calculate CVR first
+                    let ebayL30 = Number(item['eBay L30']) || 0;
+                    let views = Number(item.VIEWS) || 0;
+                    let scvr = (ebayL30 / views) * 100;
 
-                    // Apply 15% cap and 2% minimum to adjusted CBID
-                    if (adjustedCbid > 10) {
-                        adjustedCbid = 10;
-                    }
-                    
-                    if (adjustedCbid < 2) {
-                        adjustedCbid = 2;
+                    // Calculate SBID based on CVR ranges
+                    let sbidValue;
+                    if (scvr < 0.01) {
+                        sbidValue = item.ESBID || 0; // Use ESBID for CVR < 0.01%
+                    } else if (scvr >= 0.01 && scvr <= 1) {
+                        sbidValue = 10; // Flat 10
+                    } else if (scvr >= 1.01 && scvr <= 2) {
+                        sbidValue = 8; // Flat 8
+                    } else if (scvr >= 2.01 && scvr <= 3) {
+                        sbidValue = 6; // Flat 6
+                    } else if (scvr >= 3.01 && scvr <= 5) {
+                        sbidValue = 5; // Flat 5
+                    } else if (scvr >= 5.01 && scvr <= 7) {
+                        sbidValue = 4; // Flat 4
+                    } else if (scvr >= 7.01 && scvr <= 13) {
+                        sbidValue = 3; // Flat 3
+                    } else { // scvr > 13
+                        sbidValue = 2; // Flat 2
                     }
 
                     $row.append($('<td data-field="sbid">').html(
-                        `<span class="dil-percent-value ${cbidColor}">
-                           ${adjustedCbid.toFixed(1)}
+                        `<span class="dil-percent-value">
+                           ${sbidValue.toFixed(1)}
                         </span>`
                     ));
 
                     $row.append($('<td>').text(item.VIEWS));
 
                     // CVR with color coding and tooltip
-                    
-                    let ebayL30 = Number(item['eBay L30']) || 0;
-                    let views = Number(item.VIEWS) || 0;
-
-                    let scvr = (ebayL30 / views ) * 100 ;
 
                     $row.append($('<td>').html(
                         `<span class="dil-percent-value" style="color: ${getCvrColor(scvr)}">
-                           ${scvr.toFixed(0)}%
+                           ${scvr.toFixed(1)}%
                         </span>`
                     ));
 
@@ -3130,108 +3098,6 @@
 
                     $row.append($('<td class="tpft_col">').text(item.TPFT.toFixed(2)));
                     $row.append($('<td class="troi_col">').text(""));
-                        
-                    // TACOS with color coding and tooltip
-                    $row.append($('<td>').html(
-                        `<span class="dil-percent-value ${getTacosColor(item.Tacos30)}">${(item.Tacos30 * 100).toFixed(0)}%</span>
-                         <i class="fas fa-a text-info tooltip-icon advertisement-view-trigger" 
-                            data-bs-toggle="tooltip" data-bs-placement="bottom" title="Advertisement view"
-                            data-item='${JSON.stringify(item.raw_data)}'></i>`
-                    ));
-
-
-
-                    // SPRICE + Edit Button (no decimals)
-                    $row.append($('<td>').html(
-                        item.SPRICE !== null && !isNaN(parseFloat(item.SPRICE)) ?
-                        `
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="badge bg-primary s_price" 
-                                style="font-size:16px; padding:8px 14px; border-radius:8px;">
-                                $${Math.round(parseFloat(item.SPRICE))}
-                            </span>
-                            <div class="btn-group" role="group">
-                                <!-- Edit Button -->
-                                <button class="btn btn-outline-primary openPricingBtn"
-                                    style="font-size:15px; padding:6px 12px; border-radius:8px;"
-                                    title="Edit SPRICE"
-                                    data-lp="${item.LP}"
-                                    data-ship="${item.SHIP}"
-                                    data-sku="${item["(Child) sku"]}">
-                                    <i class="fa fa-edit"></i>
-                                </button>
-                            </div>
-                        </div>
-                        ` : ''
-                    ));
-
-
-                    // ✅ SPFT (with coloring logic + inline style)
-                    $row.append($('<td>').attr('id', `spft-${item["(Child) sku"]}`).html(
-                        item.SPFT !== null && !isNaN(parseFloat(item.SPFT)) ?
-                        `<span style="
-                        font-size:16px; 
-                        font-weight:bold;
-                        padding:6px 12px; 
-                        border-radius:8px; 
-                        color:${
-                            parseFloat(item.SPFT) <= 10 
-                                ? '#dc3545'   // 🔴 red
-                                : parseFloat(item.SPFT) <= 15 
-                                    ? '#ffc107'   // 🟡 yellow
-                                    : parseFloat(item.SPFT) <= 20 
-                                        ? '#0d6efd'   // 🔵 blue
-                                        : '#28a745'   // 🟢 green
-                        };
-                        background-color:${
-                            parseFloat(item.SPFT) <= 10 
-                                ? '#fff'   // 🔴 red
-                                : parseFloat(item.SPFT) <= 15 
-                                    ? '#fff'   // 🟡 yellow
-                                    : parseFloat(item.SPFT) <= 20 
-                                        ? '#fff'   // 🔵 blue
-                                        : '#fff'   // 🟢 green
-                        };">
-                        ${(parseFloat(item.SPFT) - Math.floor(parseFloat(item.SPFT)) >= 0.5 
-                            ? Math.ceil(parseFloat(item.SPFT)) 
-                            : Math.floor(parseFloat(item.SPFT)))}%
-                    </span>` :
-                                        ''
-                                    ));
-
-                                    // ✅ SROI (with coloring logic + inline style)
-                                    $row.append($('<td>').attr('id', `sroi-${item["(Child) sku"]}`).html(
-                                        item.SROI !== null && !isNaN(parseFloat(item.SROI)) ?
-                                        `<span style="
-                        font-size:16px; 
-                        font-weight:bold;
-                        padding:6px 12px; 
-                        border-radius:8px; 
-                        color:${
-                            parseFloat(item.SROI) <= 10 
-                                ? '#dc3545'   // 🔴 red
-                                : parseFloat(item.SROI) <= 15 
-                                    ? '#ffc107'   // 🟡 yellow
-                                    : parseFloat(item.SROI) <= 20 
-                                        ? '#0d6efd'   // 🔵 blue
-                                        : '#28a745'   // 🟢 green
-                        };
-                        background-color:${
-                            parseFloat(item.SROI) <= 10 
-                                ? '#fff'   // 🔴 red
-                                : parseFloat(item.SROI) <= 15 
-                                    ? '#fff'   // 🟡 yellow
-                                    : parseFloat(item.SROI) <= 20 
-                                        ? '#fff'   // 🔵 blue
-                                        : '#fff'   // 🟢 green
-                        };">
-                        ${(parseFloat(item.SROI) - Math.floor(parseFloat(item.SROI)) >= 0.5 
-                            ? Math.ceil(parseFloat(item.SROI)) 
-                            : Math.floor(parseFloat(item.SROI)))}%
-                    </span>` :
-                                        ''
-                                    ));
-
 
                     if (item.is_parent) {
                         $row.append($('<td>')); // Empty cell for parent
@@ -5159,7 +5025,7 @@
             }
 
             // Add this script after your other filter initializations:
-            $('#ovl30-filter, #el30-filter, #nra-filter').on('change', function() {
+            $('#ovl30-filter, #el30-filter, #nra-filter, #cvr-filter').on('change', function() {
                 applyColumnFilters();
             });
 
@@ -5211,6 +5077,33 @@
                         if (nraFilter === 'REQ') return nra === 'REQ';
                         if (nraFilter === 'NR') return nra === 'NR';
                         if (nraFilter === 'LATER') return nra === 'LATER';
+                        return true;
+                    });
+                }
+
+                // Apply CVR filter
+                const cvrFilter = $('#cvr-filter').val();
+                if (cvrFilter && cvrFilter !== 'all') {
+                    filteredData = filteredData.filter(item => {
+                        const cvr = parseFloat(item['SCVR']) * 100 || 0;
+                        
+                        if (cvrFilter === '0') {
+                            return cvr === 0;
+                        } else if (cvrFilter === '0.01-1') {
+                            return cvr >= 0.01 && cvr <= 1;
+                        } else if (cvrFilter === '1.01-2') {
+                            return cvr >= 1.01 && cvr <= 2;
+                        } else if (cvrFilter === '2.01-3') {
+                            return cvr >= 2.01 && cvr <= 3;
+                        } else if (cvrFilter === '3.01-5') {
+                            return cvr >= 3.01 && cvr <= 5;
+                        } else if (cvrFilter === '5.01-7') {
+                            return cvr >= 5.01 && cvr <= 7;
+                        } else if (cvrFilter === '7.01-13') {
+                            return cvr >= 7.01 && cvr <= 13;
+                        } else if (cvrFilter === '13+') {
+                            return cvr > 13;
+                        }
                         return true;
                     });
                 }

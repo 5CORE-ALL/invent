@@ -214,10 +214,6 @@ class EbayPMPAdsController extends Controller
             ->whereIn('report_range', ['L60', 'L30', 'L7'])
             ->get();
 
-        $priorityReports = EbayPriorityReport::whereIn('campaign_id', array_keys($campaignIdToSku))
-            ->whereIn('report_range', ['L60', 'L30', 'L7'])
-            ->get();
-
         // Get campaign listings with bid_percentage. Prioritize COST_PER_SALE rows
         // since they have bid_percentage, but fallback to latest row if no COST_PER_SALE exists.
         $campaignListings = DB::connection('apicentral')
@@ -257,16 +253,6 @@ class EbayPMPAdsController extends Controller
 
             $adMetricsBySku[$sku][$range]['Sls'] =
                 ($adMetricsBySku[$sku][$range]['Sls'] ?? 0) + (int) $report->sales;
-        }
-
-        foreach ($priorityReports as $report) {
-            $sku = $campaignIdToSku[$report->campaign_id] ?? null;
-            if (!$sku) continue;
-
-            $range = strtoupper($report->report_range);
-
-            $adMetricsBySku[$sku][$range]['PRIORITY_SPENT'] =
-                ($adMetricsBySku[$sku][$range]['PRIORITY_SPENT'] ?? 0) + $this->extractNumber($report->cpc_ad_fees_payout_currency);
         }
 
         $marketplaceData = MarketplacePercentage::where("marketplace", "Ebay" )->first();
@@ -334,7 +320,7 @@ class EbayPMPAdsController extends Controller
             $pmtData = $adMetricsBySku[$sku] ?? [];
             foreach (['L60', 'L30', 'L7'] as $range) {
                 $metrics = $pmtData[$range] ?? [];
-                foreach (['Imp', 'Clk', 'Ctr', 'Sls', 'GENERAL_SPENT', 'PRIORITY_SPENT'] as $suffix) {
+                foreach (['Imp', 'Clk', 'Ctr', 'Sls', 'GENERAL_SPENT'] as $suffix) {
                     $key = "Pmt{$suffix}{$range}";
                     $row[$key] = $metrics[$suffix] ?? 0;
                 }
@@ -363,9 +349,8 @@ class EbayPMPAdsController extends Controller
             $units_ordered_l30 = floatval($row["eBay L30"] ?? 0);
 
             $generalSpent = $adMetricsBySku[$sku]['L30']['GENERAL_SPENT'] ?? 0;
-            $prioritySpent = $adMetricsBySku[$sku]['L30']['PRIORITY_SPENT'] ?? 0;
             $denominator = ($price * $units_ordered_l30);
-            $row["TacosL30"] = $denominator > 0 ? round((($generalSpent + $prioritySpent) / $denominator), 4) : 0;
+            $row["TacosL30"] = $denominator > 0 ? round(($generalSpent / $denominator), 4) : 0;
 
             $row["Total_pft"] = round(($price * $percentage - $lp - $ship) * $units_ordered_l30, 2);
             $row["T_Sale_l30"] = round($price * $units_ordered_l30, 2);

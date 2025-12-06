@@ -86,7 +86,7 @@ class UpdateEbayTwoSuggestedBid extends Command
             $this->info('Loading campaign listings...');
             $campaignListings = DB::connection('apicentral')
                 ->table('ebay2_campaign_ads_listings')
-                ->select('listing_id', 'campaign_id', 'bid_percentage')
+                ->select('listing_id', 'campaign_id', 'bid_percentage', 'suggested_bid')
                 ->where('funding_strategy', 'COST_PER_SALE')
                 ->get()
                 ->keyBy('listing_id')
@@ -95,9 +95,12 @@ class UpdateEbayTwoSuggestedBid extends Command
                         'listing_id' => $item->listing_id,
                         'campaign_id' => $item->campaign_id,
                         'bid_percentage' => $item->bid_percentage,
+                        'suggested_bid' => $item->suggested_bid,
                         'new_bid' => null
                     ];
-                });            if ($campaignListings->isEmpty()) {
+                });
+
+            if ($campaignListings->isEmpty()) {
                 $this->info('No campaign listings found.');
                 return 0;
             }
@@ -130,26 +133,36 @@ class UpdateEbayTwoSuggestedBid extends Command
 
                     if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
                         $listing = $campaignListings[$ebayMetric->item_id];
-                        $currentBid = (float) ($listing->bid_percentage ?? 0);
-                        $l7ClicksData = $ebayGeneralL7->get($ebayMetric->item_id);
-                        $l7Clicks = $l7ClicksData ? (int) ($l7ClicksData->clicks ?? 0) : 0;
                         
-                        $newBid = $currentBid;
+                        // Calculate CVR (Conversion Rate) = (eBay L30 Sales / Views) * 100
+                        // This matches the frontend calculation: scvr = (ebayL30 / views) * 100
+                        $ebay_l30 = (int) ($ebayMetric->ebay_l30 ?? 0);
+                        $views = (int) ($ebayMetric->views ?? 0);
+                        $cvr = $views > 0 ? ($ebay_l30 / $views) * 100 : 0;
                         
-                        if ($l7Clicks < 70) {
-                            $newBid = $currentBid + 0.5;
-                        } elseif ($l7Clicks > 140) {
-                            $newBid = $currentBid - 0.5;
-                        }
+                        // Get ESBID (suggested bid from bid_percentage in campaign listing)
+                        $esbid = (float) ($listing->suggested_bid ?? 0);
                         
-                        // Apply 10% cap and 2% minimum
-                        if ($newBid > 10) {
-                            $newBid = 10;
-                        }
+                        // Determine new bid based on CVR ranges - flat values
+                        $newBid = 2; // Default minimum
                         
-                        // Ensure bid doesn't go below 2
-                        if ($newBid < 2) {
-                            $newBid = 2;
+                        if ($cvr < 0.01) {
+                            // For very low CVR, keep current ESBID (matches frontend logic)
+                            $newBid = $esbid;
+                        } elseif ($cvr >= 0.01 && $cvr <= 1) {
+                            $newBid = 10; // Flat 10%
+                        } elseif ($cvr >= 1.01 && $cvr <= 2) {
+                            $newBid = 8; // Flat 8%
+                        } elseif ($cvr >= 2.01 && $cvr <= 3) {
+                            $newBid = 6; // Flat 6%
+                        } elseif ($cvr >= 3.01 && $cvr <= 5) {
+                            $newBid = 5; // Flat 5%
+                        } elseif ($cvr >= 5.01 && $cvr <= 7) {
+                            $newBid = 4; // Flat 4%
+                        } elseif ($cvr >= 7.01 && $cvr <= 13) {
+                            $newBid = 3; // Flat 3%
+                        } elseif ($cvr > 13) {
+                            $newBid = 2; // Flat 2%
                         }
                         
                         $listing->new_bid = $newBid;

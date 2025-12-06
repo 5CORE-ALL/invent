@@ -1447,9 +1447,16 @@
                                     <label for="nra-filter" class="mr-2">NRL:</label>
                                     <select id="nra-filter" class="form-control form-control-sm">
                                         <option value="all">All</option>
-                                        <option value="RL">RL</option>
-                                        <option value="NRL">NRL</option>
+                                        <option value="REQ">REQ</option>
+                                        <option value="NR">NR</option>
                                         <option value="LATER">LATER</option>
+                                    </select>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label for="parent-filter" class="mr-2">View:</label>
+                                    <select id="parent-filter" class="form-control form-control-sm">
+                                        <option value="parent">Parent Only</option>
+                                        <option value="all">All Data</option>
                                     </select>
                                 </div>
                             </div>
@@ -1571,13 +1578,6 @@
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="req_views" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                REQ VIEWS <span class="sort-arrow">↓</span>
-                                            </div>
-                                        </div>
-                                    </th>
                                     <th data-field="cvr" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -1624,44 +1624,7 @@
                                     </th>
                                     <th data-field="tpft" class="tpft_col">TPFT %</th>
                                     <th data-field="troi" class="troi_col">TROI %</th>
-                                    <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                TACOS <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="tacos-total">0%</div>
-                                        </div>
-                                    </th>
-
-                                    <th data-field="sprice" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                SPRICE <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="sprofit" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                SPROFIT <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="sroi" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                SROI <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="NRL">NRL</th>
+                                    <th data-field="NRL">NRL/REQ</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2234,6 +2197,7 @@
             };
 
             // Filter state
+            let showParentOnly = true; // Default to parent only
             const state = {
                 filters: {
                     'ov_dil': 'all',
@@ -2986,64 +2950,58 @@
 
                     $row.append($('<td data-field="esbid">').text(item.ESBID));
                     
-                    // Calculate adjusted CBID based on PmtClkL7
-                    let adjustedCbid = parseFloat(item.CBID) || 0;
-                    let cbidColor = "";
-                    const pmtClkL7 = parseFloat(item.raw_data.PmtClkL7) || 0;
+                    // Calculate CVR first (needed for SBID)
+                    let ebayL30 = Number(item['eBay L30']) || 0;
+                    let views = Number(item.VIEWS) || 0;
 
-                    if (pmtClkL7 < 70) {
-                        adjustedCbid = adjustedCbid + 0.5;
-                        cbidColor = "green"; // Increase bid
-                    } else if (pmtClkL7 > 140) {
-                        adjustedCbid = adjustedCbid - 0.5;
-                        cbidColor = "red"; // Decrease bid
-                    } else {
-                        cbidColor = "yellow"; // Keep current bid
+                    let scvr = (ebayL30 / views ) * 100 ;
+
+                    if(isNaN(scvr)){
+                        scvr = 0;
                     }
 
-                    // Apply 15% cap and 2% minimum to adjusted CBID
-                    if (adjustedCbid > 10) {
-                        adjustedCbid = 10;
-                    }
-                    
-                    if (adjustedCbid < 2) {
-                        adjustedCbid = 2;
-                    }
+                    // Calculate SBID based on CVR ranges - flat values
+                    let sbidValue = 2; // Default minimum
+                    let sbidColor = "";
 
-                    let reqViews = item.INV * 10;
-                    let reqViewsColor = "";
-
-                    if (reqViews > item.VIEWS) {
-                        reqViewsColor = "red";
-                    } else {
-                        reqViewsColor = "green";
+                    if (scvr < 0.01) {
+                        // For very low CVR, keep current ESBID
+                        sbidValue = item.ESBID || 0;
+                        sbidColor = "gray";
+                    } else if (scvr >= 0.01 && scvr <= 1) {
+                        sbidValue = 10; // Flat 10%
+                        sbidColor = "red";
+                    } else if (scvr >= 1.01 && scvr <= 2) {
+                        sbidValue = 8; // Flat 8%
+                        sbidColor = "red";
+                    } else if (scvr >= 2.01 && scvr <= 3) {
+                        sbidValue = 6; // Flat 6%
+                        sbidColor = "yellow";
+                    } else if (scvr >= 3.01 && scvr <= 5) {
+                        sbidValue = 5; // Flat 5%
+                        sbidColor = "yellow";
+                    } else if (scvr >= 5.01 && scvr <= 7) {
+                        sbidValue = 4; // Flat 4%
+                        sbidColor = "blue";
+                    } else if (scvr >= 7.01 && scvr <= 13) {
+                        sbidValue = 3; // Flat 3%
+                        sbidColor = "green";
+                    } else if (scvr > 13) {
+                        sbidValue = 2; // Flat 2%
+                        sbidColor = "green";
                     }
 
                     $row.append($('<td data-field="sbid">').html(
-                        `<span class="dil-percent-value ${cbidColor}">
-                           ${adjustedCbid.toFixed(1)}
+                        `<span class="dil-percent-value ${sbidColor}">
+                           ${sbidValue}
                         </span>`
                     ));
 
                     $row.append($('<td>').text(item.VIEWS));
 
                     $row.append($('<td>').html(
-                        `<span class="dil-percent-value ${reqViewsColor}">
-                           ${reqViews}
-                        </span>`
-                    ));
-
-
-                    // CVR with color coding and tooltip
-                    
-                    let ebayL30 = Number(item['eBay L30']) || 0;
-                    let views = Number(item.VIEWS) || 0;
-
-                    let scvr = (ebayL30 / views ) * 100 ;
-
-                    $row.append($('<td>').html(
                         `<span class="dil-percent-value" style="color: ${getCvrColor(scvr)}">
-                           ${scvr.toFixed(0)}%
+                           ${scvr.toFixed(1)}%
                         </span>`
                     ));
 
@@ -3109,134 +3067,35 @@
 
                     $row.append($('<td class="tpft_col">').text(item.TPFT.toFixed(2)));
                     $row.append($('<td class="troi_col">').text(""));
-                        
-                    // TACOS with color coding and tooltip
-                    $row.append($('<td>').html(
-                        `<span class="dil-percent-value ${getTacosColor(item.Tacos30)}">${(item.Tacos30 * 100).toFixed(0)}%</span>
-                         <i class="fas fa-a text-info tooltip-icon advertisement-view-trigger" 
-                            data-bs-toggle="tooltip" data-bs-placement="bottom" title="Advertisement view"
-                            data-item='${JSON.stringify(item.raw_data)}'></i>`
-                    ));
 
-
-
-                    // SPRICE + Edit Button (no decimals)
-                    $row.append($('<td>').html(
-                        item.SPRICE !== null && !isNaN(parseFloat(item.SPRICE)) ?
-                        `
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="badge bg-primary s_price" 
-                                style="font-size:16px; padding:8px 14px; border-radius:8px;">
-                                $${Math.round(parseFloat(item.SPRICE))}
-                            </span>
-                            <div class="btn-group" role="group">
-                                <!-- Edit Button -->
-                                <button class="btn btn-outline-primary openPricingBtn"
-                                    style="font-size:15px; padding:6px 12px; border-radius:8px;"
-                                    title="Edit SPRICE"
-                                    data-lp="${item.LP}"
-                                    data-ship="${item.SHIP}"
-                                    data-sku="${item["(Child) sku"]}">
-                                    <i class="fa fa-edit"></i>
-                                </button>
-                            </div>
-                        </div>
-                        ` : ''
-                    ));
-
-
-                    // ✅ SPFT (with coloring logic + inline style)
-                    $row.append($('<td>').attr('id', `spft-${item["(Child) sku"]}`).html(
-                        item.SPFT !== null && !isNaN(parseFloat(item.SPFT)) ?
-                        `<span style="
-                        font-size:16px; 
-                        font-weight:bold;
-                        padding:6px 12px; 
-                        border-radius:8px; 
-                        color:${
-                            parseFloat(item.SPFT) <= 10 
-                                ? '#dc3545'   // 🔴 red
-                                : parseFloat(item.SPFT) <= 15 
-                                    ? '#ffc107'   // 🟡 yellow
-                                    : parseFloat(item.SPFT) <= 20 
-                                        ? '#0d6efd'   // 🔵 blue
-                                        : '#28a745'   // 🟢 green
-                        };
-                        background-color:${
-                            parseFloat(item.SPFT) <= 10 
-                                ? '#fff'   // 🔴 red
-                                : parseFloat(item.SPFT) <= 15 
-                                    ? '#fff'   // 🟡 yellow
-                                    : parseFloat(item.SPFT) <= 20 
-                                        ? '#fff'   // 🔵 blue
-                                        : '#fff'   // 🟢 green
-                        };">
-                        ${(parseFloat(item.SPFT) - Math.floor(parseFloat(item.SPFT)) >= 0.5 
-                            ? Math.ceil(parseFloat(item.SPFT)) 
-                            : Math.floor(parseFloat(item.SPFT)))}%
-                    </span>` :
-                                        ''
-                                    ));
-
-                                    // ✅ SROI (with coloring logic + inline style)
-                                    $row.append($('<td>').attr('id', `sroi-${item["(Child) sku"]}`).html(
-                                        item.SROI !== null && !isNaN(parseFloat(item.SROI)) ?
-                                        `<span style="
-                        font-size:16px; 
-                        font-weight:bold;
-                        padding:6px 12px; 
-                        border-radius:8px; 
-                        color:${
-                            parseFloat(item.SROI) <= 10 
-                                ? '#dc3545'   // 🔴 red
-                                : parseFloat(item.SROI) <= 15 
-                                    ? '#ffc107'   // 🟡 yellow
-                                    : parseFloat(item.SROI) <= 20 
-                                        ? '#0d6efd'   // 🔵 blue
-                                        : '#28a745'   // 🟢 green
-                        };
-                        background-color:${
-                            parseFloat(item.SROI) <= 10 
-                                ? '#fff'   // 🔴 red
-                                : parseFloat(item.SROI) <= 15 
-                                    ? '#fff'   // 🟡 yellow
-                                    : parseFloat(item.SROI) <= 20 
-                                        ? '#fff'   // 🔵 blue
-                                        : '#fff'   // 🟢 green
-                        };">
-                        ${(parseFloat(item.SROI) - Math.floor(parseFloat(item.SROI)) >= 0.5 
-                            ? Math.ceil(parseFloat(item.SROI)) 
-                            : Math.floor(parseFloat(item.SROI)))}%
-                    </span>` :
-                                        ''
-                                    ));
-
-
-                    if (item.is_parent) {
-                        $row.append($('<td>')); // Empty cell for parent
-                    } else {
-                        let currentNR = (item.NRL === 'RL' || item.NRL === 'NRL' || item.NRL === 'LATER') ? item.NRL : 'RL';
-
-                        const $select = $(`
-                            <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                                <option value="RL" ${currentNR === 'RL' ? 'selected' : ''}>RL</option>
-                                <option value="NRL" ${currentNR === 'NRL' ? 'selected' : ''}>NRL</option>
-                                <option value="LATER" ${currentNR === 'LATER' ? 'selected' : ''}>LATER</option>
-                            </select>
-                        `);
-
-                        // Set background color based on value
-                        if (currentNR === 'NRL') {
-                            $select.css('background-color', '#dc3545');
-                            $select.css('color', '#ffffff');
-                        } else if (currentNR === 'RL') {
-                            $select.css('background-color', '#28a745');
-                            $select.css('color', '#ffffff');
-                        }
-
-                        $select.data('sku', item['(Child) sku']);
-                        $row.append($('<td>').append($select));
+                    // Show NRL for both parent and child rows
+                    // Map old values to new ones for backward compatibility
+                    let currentNR = item.NRL;
+                    if (currentNR === 'RL') currentNR = 'REQ';  // Map old RL to REQ
+                    if (currentNR === 'NRL') currentNR = 'NR';   // Map old NRL to NR
+                    if (!currentNR || (currentNR !== 'REQ' && currentNR !== 'NR' && currentNR !== 'LATER')) {
+                        currentNR = 'REQ';
                     }
+
+                    const $select = $(`
+                        <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
+                            <option value="REQ" ${currentNR === 'REQ' ? 'selected' : ''}>REQ</option>
+                            <option value="NR" ${currentNR === 'NR' ? 'selected' : ''}>NRL</option>
+                            <option value="LATER" ${currentNR === 'LATER' ? 'selected' : ''}>LATER</option>
+                        </select>
+                    `);
+
+                    // Set background color based on value
+                    if (currentNR === 'NR') {
+                        $select.css('background-color', '#dc3545');
+                        $select.css('color', '#ffffff');
+                    } else if (currentNR === 'REQ') {
+                        $select.css('background-color', '#28a745');
+                        $select.css('color', '#ffffff');
+                    }
+
+                    $select.data('sku', item['(Child) sku']);
+                    $row.append($('<td>').append($select));
 
 
 
@@ -3408,19 +3267,21 @@
                     const sku = $select.data('sku');
 
                     // Change background color based on selected value
-                    if (newValue === 'NRL') {
+                    if (newValue === 'NR') {
                         $select.css('background-color', '#dc3545').css('color', '#ffffff');
-                    } else {
+                    } else if (newValue === 'REQ') {
                         $select.css('background-color', '#28a745').css('color', '#ffffff');
+                    } else {
+                        $select.css('background-color', '').css('color', '');
                     }
 
                     // Send AJAX
                     $.ajax({
-                        url: '/ebay/save-nr',
+                        url: '/listing_ebaythree/save-status',
                         type: 'POST',
                         data: {
                             sku: sku,
-                            nrl: newValue,
+                            nr_req: newValue,
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
@@ -4371,7 +4232,7 @@
 
                 let content = field.content === null || field.content === undefined || field.content === '' ? ' ' :
                     field.content;
-                const showStatusIndicator = statusIndicatorFields[type]?.includes(field.title) || false;
+                const showStatusIndicator = (statusIndicatorFields[type] && statusIndicatorFields[type].includes(field.title)) || false;
                 const indicatorColor = showStatusIndicator ? getIndicatorColor(field.title, content) : '';
                 const isHyperlink = hyperlinkFields.includes(field.title) || field.isHyperlink;
                 const isCheckbox = field.isCheckbox || false;
@@ -5144,7 +5005,10 @@
             }
 
             // Add this script after your other filter initializations:
-            $('#ovl30-filter, #el30-filter, #nra-filter').on('change', function() {
+            $('#ovl30-filter, #el30-filter, #nra-filter, #parent-filter').on('change', function() {
+                if ($(this).attr('id') === 'parent-filter') {
+                    showParentOnly = $(this).val() === 'parent';
+                }
                 applyColumnFilters();
             });
 
@@ -5153,11 +5017,12 @@
                 // Default: show all rows
                 filteredData = [...tableData];
 
-                // Hide items with INV = 0 by default
-                filteredData = filteredData.filter(item => {
-                    const inv = Number(item.INV) || 0;
-                    return inv > 0;
-                });
+                // Filter by parent/all based on dropdown selection
+                if (showParentOnly) {
+                    filteredData = filteredData.filter(item => {
+                        return item.is_parent === true;
+                    });
+                }
 
 
                 // Apply OV L30 filter
@@ -5185,8 +5050,8 @@
                 if (nraFilter && nraFilter !== 'all') {
                     filteredData = filteredData.filter(item => {
                         const nra = (item.NRL || '').toUpperCase();
-                        if (nraFilter === 'RL') return nra === 'RL';
-                        if (nraFilter === 'NRL') return nra === 'NRL';
+                        if (nraFilter === 'REQ') return nra === 'REQ' || nra === 'RL';
+                        if (nraFilter === 'NR') return nra === 'NR' || nra === 'NRL';
                         if (nraFilter === 'LATER') return nra === 'LATER';
                         return true;
                     });
@@ -5896,7 +5761,8 @@
                 $('#hideSkuTable .hide-sku-checkbox').each(function() {
                     const sku = $(this).data('sku');
                     const checked = $(this).prop('checked');
-                    const original = tableData.find(item => item['(Child) sku'] === sku)?.Hide;
+                    const foundItem = tableData.find(item => item['(Child) sku'] === sku);
+                    const original = foundItem ? foundItem.Hide : undefined;
                     if ((checked && !original) || (!checked && original)) {
                         changed = true;
                         return false;
@@ -6003,10 +5869,13 @@
             });
 
             $(document).on('click', '#savePricingBtn', function() {
-                const sku = $('#skuInput').val()?.trim();
+                const skuVal = $('#skuInput').val();
+                const sku = skuVal ? skuVal.trim() : '';
                 const spriceVal = $('#sprPriceInput').val();
-                const spft = parseFloat($('#spftPercentInput').val()?.replace('%', '')) || 0;
-                const sroi = parseFloat($('#sroiPercentInput').val()?.replace('%', '')) || 0;
+                const spftVal = $('#spftPercentInput').val();
+                const spft = parseFloat(spftVal ? spftVal.replace('%', '') : '0') || 0;
+                const sroiVal = $('#sroiPercentInput').val();
+                const sroi = parseFloat(sroiVal ? sroiVal.replace('%', '') : '0') || 0;
 
                 const sprice = spriceVal !== '' ? parseFloat(spriceVal) : null;
 
