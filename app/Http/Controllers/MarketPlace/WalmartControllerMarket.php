@@ -670,6 +670,22 @@ class WalmartControllerMarket extends Controller
             ->get()
             ->keyBy('sku');
 
+        // Fetch buybox price and views from walmart_insights
+        $walmartInsights = DB::connection('apicentral')
+            ->table('walmart_insights')
+            ->select('sku', 'buy_box_base_price', 'buy_box_total_price', 'views')
+            ->whereIn('sku', $nonParentSkus)
+            ->get()
+            ->keyBy('sku');
+
+        // Fetch page views from walmart_listing_qualities
+        $walmartListingQualities = DB::connection('apicentral')
+            ->table('walmart_listing_qualities')
+            ->select('sku', 'page_views')
+            ->whereIn('sku', $nonParentSkus)
+            ->get()
+            ->keyBy('sku');
+
         // Fetch shopify data
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -710,6 +726,10 @@ class WalmartControllerMarket extends Controller
                 'AD%' => 0,
                 'PFT%' => 0,
                 'ROI_percentage' => 0,
+                'buybox_base_price' => 0,
+                'buybox_total_price' => 0,
+                'insights_views' => 0,
+                'page_views' => 0,
                 'buybox_price' => 0,
                 'SPRICE' => 0,
                 'SGPFT' => 0,
@@ -741,6 +761,20 @@ class WalmartControllerMarket extends Controller
                 $item['price'] = $walmartData->price ?? 0;
                 $item['W_L30'] = $walmartData->l30 ?? 0; // Walmart L30
                 $item['l60'] = $walmartData->l60 ?? 0;
+            }
+
+            // Get buybox price and views from walmart_insights
+            if (isset($walmartInsights[$sku])) {
+                $insights = $walmartInsights[$sku];
+                $item['buybox_base_price'] = $insights->buy_box_base_price ?? 0;
+                $item['buybox_total_price'] = $insights->buy_box_total_price ?? 0;
+                $item['insights_views'] = $insights->views ?? 0;
+            }
+
+            // Get page views from walmart_listing_qualities
+            if (isset($walmartListingQualities[$sku])) {
+                $qualities = $walmartListingQualities[$sku];
+                $item['page_views'] = $qualities->page_views ?? 0;
             }
 
             // Get Shopify data
