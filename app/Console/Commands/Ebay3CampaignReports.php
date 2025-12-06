@@ -53,8 +53,8 @@ class Ebay3CampaignReports extends Command
             ->exists();
             
         if (!$yesterdayExists) {
-            $this->info("📊 Yesterday's data (L1) not found. Fetching for charts: {$yesterday}");
-            $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay(), $yesterday, true);
+            $this->info("📊 Yesterday's data not found. Fetching for charts: {$yesterday}");
+            $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay(), $yesterday);
             $this->info("✅ Yesterday's data fetched: {$yesterday}");
         } else {
             $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
@@ -71,13 +71,13 @@ class Ebay3CampaignReports extends Command
 
         // Loop through summary ranges
         foreach ($summaryRanges as $rangeKey => [$from, $to]) {
-            $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey, false);
+            $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey);
         }
 
         $this->info("✅ All campaign data processed.");
     }
 
-    private function fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey, $isDailyChart = false)
+    private function fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey)
     {
         $this->info("Processing ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
 
@@ -395,7 +395,7 @@ class Ebay3CampaignReports extends Command
                 ]);
 
             if ($response->successful()) {
-                Log::error('eBay3 token', ['response' => 'Token generated!']);
+                Log::info('eBay3 token', ['response' => 'Token generated!']);
                 return $response->json()['access_token'];
             }
 
@@ -412,7 +412,6 @@ class Ebay3CampaignReports extends Command
         $campaigns = [];
         $limit = 200;
         $offset = 0;
-        $maxRetries = 3;
 
         while (true) {
             $res = Http::withToken($token)
