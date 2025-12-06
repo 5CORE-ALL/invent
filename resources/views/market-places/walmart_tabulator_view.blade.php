@@ -30,7 +30,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: 14px;
             font-weight: 600;
         }
 
@@ -79,7 +79,7 @@
                         style="width: 120px; display: inline-block;">
                         <option value="all">All INV</option>
                         <option value="zero">INV = 0</option>
-                        <option value="more">INV &gt; 0</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm" style="width: 120px; display: inline-block;">
@@ -88,10 +88,23 @@
                         <option value="0">NR = 0</option>
                     </select>
 
+                    <select id="cvr-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                        <option value="all">CVR</option>
+                        <option value="0-0">0 to 0.00%</option>
+                        <option value="0.01-1">0.01 - 1%</option>
+                        <option value="1-2">1-2%</option>
+                        <option value="2-3">2-3%</option>
+                        <option value="3-4">3-4%</option>
+                        <option value="0-4">0-4%</option>
+                        <option value="4-7">4-7%</option>
+                        <option value="7-10">7-10%</option>
+                        <option value="10plus">10%+</option>
+                    </select>
+
                     <select id="parent-filter" class="form-select form-select-sm"
                         style="width: 130px; display: inline-block;">
                         <option value="all">Show All</option>
-                        <option value="hide">Hide Parents</option>
+                        <option value="hide" selected>Hide Parents</option>
                     </select>
 
                     <select id="status-filter" class="form-select form-select-sm"
@@ -332,11 +345,11 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const wL30 = parseFloat(row['W_L30']) || 0;
-                            const sess30 = parseFloat(row['Sess30']) || 0;
+                            const insightsViews = parseFloat(row['insights_views']) || 0;
 
-                            if (sess30 === 0) return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
+                            if (insightsViews === 0) return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
 
-                            const cvr = (wL30 / sess30) * 100;
+                            const cvr = (wL30 / insightsViews) * 100;
                             let color = '';
                             
                             // getCvrColor logic from Amazon
@@ -350,44 +363,66 @@
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
                                 const wL30 = parseFloat(row['W_L30']) || 0;
-                                const sess30 = parseFloat(row['Sess30']) || 0;
-                                return sess30 === 0 ? 0 : (wL30 / sess30) * 100;
+                                const insightsViews = parseFloat(row['insights_views']) || 0;
+                                return insightsViews === 0 ? 0 : (wL30 / insightsViews) * 100;
                             };
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                         },
                         width: 60
                     },
-                    {
-                        title: "View",
-                        field: "Sess30",
+
+                     {
+                        title: "Views",
+                        field: "insights_views",
                         hozAlign: "center",
-                        sorter: "number",
-                        width: 50
-                    },
-                    {
-                        title: "API Views",
-                        field: "api_views",
-                        hozAlign: "center",
-                        sorter: "number",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (!value || value === 0) return '<span style="color: #6c757d;">0</span>';
-                            return `<span style="font-weight: 600;">${parseInt(value).toLocaleString()}</span>`;
+                            const rowData = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+
+                            const views = cell.getValue();
+
+                            if (!views || views === 0) {
+                                return '<span style="color: #999;">0</span>';
+                            }
+
+                            return parseInt(views).toLocaleString();
                         },
-                        width: 70
-                    },
-                    {
-                        title: "Reviews",
-                        field: "total_review_count",
-                        hozAlign: "center",
                         sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (!value || value === 0) return '<span style="color: #6c757d;">0</span>';
-                            return `<span style="font-weight: 600;">${parseInt(value).toLocaleString()}</span>`;
-                        },
-                        width: 70
+                        width: 100
                     },
+                    // {
+                    //     title: "View",
+                    //     field: "Sess30",
+                    //     hozAlign: "center",
+                    //     sorter: "number",
+                    //     width: 50
+                    // },
+                    // {
+                    //     title: "API Views",
+                    //     field: "api_views",
+                    //     hozAlign: "center",
+                    //     sorter: "number",
+                    //     formatter: function(cell) {
+                    //         const value = cell.getValue();
+                    //         if (!value || value === 0) return '<span style="color: #6c757d;">0</span>';
+                    //         return `<span style="font-weight: 600;">${parseInt(value).toLocaleString()}</span>`;
+                    //     },
+                    //     width: 70
+                    // },
+                    // {
+                    //     title: "Reviews",
+                    //     field: "total_review_count",
+                    //     hozAlign: "center",
+                    //     sorter: "number",
+                    //     formatter: function(cell) {
+                    //         const value = cell.getValue();
+                    //         if (!value || value === 0) return '<span style="color: #6c757d;">0</span>';
+                    //         return `<span style="font-weight: 600;">${parseInt(value).toLocaleString()}</span>`;
+                    //     },
+                    //     width: 70
+                    // },
                     {
                         title: "NR/RL",
                         field: "NR",
@@ -540,7 +575,7 @@
                         width: 65
                     },
                     {
-                        title: "BB Base",
+                        title: "BB Price",
                         field: "buybox_base_price",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -560,69 +595,49 @@
                         sorter: "number",
                         width: 90
                     },
-                    {
-                        title: "BB Total",
-                        field: "buybox_total_price",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
+                    // {
+                    //     title: "BB Total",
+                    //     field: "buybox_total_price",
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         const rowData = cell.getRow().getData();
 
-                            // Empty for parent rows
-                            if (rowData.is_parent_summary) return '';
+                    //         // Empty for parent rows
+                    //         if (rowData.is_parent_summary) return '';
 
-                            const buyboxTotal = cell.getValue();
+                    //         const buyboxTotal = cell.getValue();
 
-                            if (!buyboxTotal || buyboxTotal === 0) {
-                                return '<span style="color: #999;">N/A</span>';
-                            }
+                    //         if (!buyboxTotal || buyboxTotal === 0) {
+                    //             return '<span style="color: #999;">N/A</span>';
+                    //         }
 
-                            return '$' + parseFloat(buyboxTotal).toFixed(2);
-                        },
-                        sorter: "number",
-                        width: 90
-                    },
-                    {
-                        title: "Insights Views",
-                        field: "insights_views",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
+                    //         return '$' + parseFloat(buyboxTotal).toFixed(2);
+                    //     },
+                    //     sorter: "number",
+                    //     width: 90
+                    // },
+                   
+                    // {
+                    //     title: "Page Views",
+                    //     field: "page_views",
+                    //     hozAlign: "center",
+                    //     formatter: function(cell) {
+                    //         const rowData = cell.getRow().getData();
 
-                            // Empty for parent rows
-                            if (rowData.is_parent_summary) return '';
+                    //         // Empty for parent rows
+                    //         if (rowData.is_parent_summary) return '';
 
-                            const views = cell.getValue();
+                    //         const pageViews = cell.getValue();
 
-                            if (!views || views === 0) {
-                                return '<span style="color: #999;">0</span>';
-                            }
+                    //         if (!pageViews || pageViews === 0) {
+                    //             return '<span style="color: #999;">0</span>';
+                    //         }
 
-                            return parseInt(views).toLocaleString();
-                        },
-                        sorter: "number",
-                        width: 100
-                    },
-                    {
-                        title: "Page Views",
-                        field: "page_views",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-
-                            // Empty for parent rows
-                            if (rowData.is_parent_summary) return '';
-
-                            const pageViews = cell.getValue();
-
-                            if (!pageViews || pageViews === 0) {
-                                return '<span style="color: #999;">0</span>';
-                            }
-
-                            return parseInt(pageViews).toLocaleString();
-                        },
-                        sorter: "number",
-                        width: 100
-                    },
+                    //         return parseInt(pageViews).toLocaleString();
+                    //     },
+                    //     sorter: "number",
+                    //     width: 100
+                    // },
                     {
                         title: "S PRC",
                         field: "SPRICE",
@@ -962,6 +977,7 @@
             function applyFilters() {
                 const inventoryFilter = $('#inventory-filter').val();
                 const nrlFilter = $('#nrl-filter').val();
+                const cvrFilter = $('#cvr-filter').val();
                 const parentFilter = $('#parent-filter').val();
                 const statusFilter = $('#status-filter').val();
 
@@ -985,6 +1001,28 @@
                             return data.NR === 'NR';
                         });
                     }
+                }
+
+                if (cvrFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        // Always show parent rows
+                        if (data.is_parent_summary) return true;
+                        
+                        const wL30 = parseFloat(data['W_L30']) || 0;
+                        const insightsViews = parseFloat(data['insights_views']) || 0;
+                        const cvr = insightsViews > 0 ? (wL30 / insightsViews) * 100 : 0;
+                        
+                        if (cvrFilter === '0-0') return cvr === 0;
+                        if (cvrFilter === '0.01-1') return cvr > 0 && cvr <= 1;
+                        if (cvrFilter === '1-2') return cvr > 1 && cvr <= 2;
+                        if (cvrFilter === '2-3') return cvr > 2 && cvr <= 3;
+                        if (cvrFilter === '3-4') return cvr > 3 && cvr <= 4;
+                        if (cvrFilter === '0-4') return cvr >= 0 && cvr <= 4;
+                        if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
+                        if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
+                        if (cvrFilter === '10plus') return cvr > 10;
+                        return true;
+                    });
                 }
 
                 if (parentFilter === 'hide') {
@@ -1015,7 +1053,7 @@
                 updateSummary();
             }
 
-            $('#inventory-filter, #nrl-filter, #parent-filter, #status-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #cvr-filter, #parent-filter, #status-filter').on('change', function() {
                 applyFilters();
             });
 

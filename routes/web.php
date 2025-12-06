@@ -768,6 +768,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/home', fn() => view('index'))->name('home');
     Route::get('/product-master', [ProductMasterController::class, 'product_master_index'])
         ->name('product.master');
+    Route::get('/title-master', fn() => view('title-master'))->name('title.master');
+    Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');
+    Route::get('/bullet-points', fn() => view('bullet-points'))->name('bullet.points');
+    Route::post('/bullet-points/save', [ProductMasterController::class, 'saveBulletData'])->name('bullet.points.save');
+    Route::get('/product-description', fn() => view('product-description'))->name('product.description');
+    Route::post('/product-description/save', [ProductMasterController::class, 'saveDescriptionData'])->name('product.description.save');
+    Route::get('/features', fn() => view('features'))->name('features');
+    Route::post('/features/save', [ProductMasterController::class, 'saveFeaturesData'])->name('features.save');
+    Route::get('/product-images', fn() => view('images'))->name('images');
+    Route::post('/product-images/save', [ProductMasterController::class, 'saveImagesData'])->name('images.save');
     Route::get('/catalogue/{first?}/{second?}', [CatalougeManagerController::class, 'catalouge_manager_index'])
         ->name('catalogue.manager');
     //channel index
