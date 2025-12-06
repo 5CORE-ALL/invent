@@ -76,4 +76,12 @@ return [
         'refresh_token' => env('GOOGLE_ADS_REFRESH_TOKEN'),
         'login_customer_id' => env('GOOGLE_ADS_LOGIN_CUSTOMER_ID'),
     ],
+
+    'meta' => [
+        'app_id' => env('META_APP_ID'),
+        'app_secret' => env('META_APP_SECRET'),
+        'access_token' => env('META_ACCESS_TOKEN'),
+        'ad_account_id' => env('META_AD_ACCOUNT_ID'),
+        'api_version' => env('META_API_VERSION', 'v21.0'),
+    ],
 ];

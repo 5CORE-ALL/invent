@@ -1205,19 +1205,56 @@
                                         <a href="{{ route('meta.all.ads') }}">ALL ADS</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('meta.ads.single.image') }}">Single Image</a>
+                                        <a data-bs-toggle="collapse" href="#facebook-ads-submenu" aria-expanded="false"
+                                            aria-controls="facebook-ads-submenu">
+                                            Facebook Ads
+                                            <span class="menu-arrow"></span>
+                                        </a>
+                                        <div class="collapse" id="facebook-ads-submenu">
+                                            <ul class="side-nav-third-level">
+                                                <li>
+                                                    <a href="{{ route('meta.ads.facebook.single.image') }}">Single Image</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('meta.ads.facebook.single.video') }}">Single Video</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('meta.ads.facebook.carousal') }}">Carousal</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('meta.ads.facebook.existing.post') }}">Existing Post</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('meta.ads.facebook.catalogue') }}">Catalogue Ad</a>
+                                                </li>
+                                            </ul>
+                                        </div>
                                     </li>
                                     <li>
-                                        <a href="{{ route('meta.ads.single.video') }}">Single Video</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('meta.ads.carousal') }}">Carousal</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('meta.ads.existing.post') }}">Existing Post</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('meta.ads.catalogue') }}">Catalogue Ad</a>
+                                        <a data-bs-toggle="collapse" href="#instagram-ads-submenu" aria-expanded="false"
+                                            aria-controls="instagram-ads-submenu">
+                                            Instagram Ads
+                                            <span class="menu-arrow"></span>
+                                        </a>
+                                        <div class="collapse" id="instagram-ads-submenu">
+                                            <ul class="side-nav-third-level">
+                                                <li>
+                                                    <a href="{{ route('meta.ads.instagram.single.image') }}">Single Image</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('meta.ads.instagram.single.video') }}">Single Video</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('meta.ads.instagram.carousal') }}">Carousal</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('meta.ads.instagram.existing.post') }}">Existing Post</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('meta.ads.instagram.catalogue') }}">Catalogue Ad</a>
+                                                </li>
+                                            </ul>
+                                        </div>
                                     </li>
                                     <li>
                                         <a href="{{ route('facebook.ads.index') }}">Image Carousel Ad Running</a>
@@ -2499,7 +2536,7 @@
                                         <a href="{{ route('listing.walmart') }}">Listing Walmart</a>
                                     </li>
                                     <li>
-                                        <a href="walmartPricingCVR">Walmart Pricing - CVR</a>
+                                        <a href="{{ url('walmart-tabulator-view') }}">Walmart Pricing - CVR</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('walmart.utilized.kw') }}">Walmart Kw Ads Report</a>

@@ -35,7 +35,22 @@ class Ebay2CampaignReports extends Command
             return;
         }
 
-        // Step 1
+        // Fetch only yesterday's data for charts
+        $yesterday = Carbon::yesterday()->toDateString();
+        
+        // Check if yesterday's data already exists
+        $yesterdayExists = Ebay2GeneralReport::where('report_range', $yesterday)
+            ->exists();
+            
+        if (!$yesterdayExists) {
+            $this->info("📊 Yesterday's data not found. Fetching for charts: {$yesterday}");
+            $this->fetchAndStoreListingReport($accessToken, Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay(), $yesterday);
+            $this->info("✅ Yesterday's data fetched: {$yesterday}");
+        } else {
+            $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
+        }
+
+        // Always fetch summary ranges for backward compatibility with table data
         $ranges = [
             'L60' => [Carbon::today()->subDays(60), Carbon::today()->subDays(31)->endOfDay()],
             'L30' => [Carbon::today()->subDays(30), Carbon::today()->subDays(1)->endOfDay()],
@@ -45,58 +60,63 @@ class Ebay2CampaignReports extends Command
         ];
         
         foreach ($ranges as $rangeKey => [$from, $to]) {
-            $this->info("Processing CAMPAIGN_PERFORMANCE_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
-
-            $body = ["reportType" => "CAMPAIGN_PERFORMANCE_REPORT",
-                "dateFrom" => $from,
-                "dateTo" => $to,
-                "marketplaceId" => "EBAY_US",
-                "reportFormat" => "TSV_GZIP",
-                "fundingModels" => ["COST_PER_SALE"],
-                "dimensions" => [
-                    ["dimensionKey" => "campaign_id"],
-                    ["dimensionKey" => "listing_id"],
-                ],
-                "metricKeys" => [
-                    "impressions",
-                    "clicks",
-                    "ad_fees",
-                    "sales", 
-                    "sale_amount",
-                    "avg_cost_per_sale",
-                    "ctr",
-                ]
-            ];
-
-            $taskId = $this->submitReportTask($accessToken, $body);
-            if (!$taskId) continue;
-
-            $reportId = $this->pollReportStatus($accessToken, $taskId);
-            if (!$reportId) continue;
-    
-            $items = $this->downloadParseAndStoreReport($accessToken, $reportId, $rangeKey);
-
-            foreach($items as $item){
-                if (!$item || empty($item['listing_id'])) continue;
-                
-                Ebay2GeneralReport::updateOrCreate(
-                    ['listing_id' => $item['listing_id'], 'report_range' => $rangeKey],
-                    [
-                        'campaign_id' => $item['campaign_id'] ?? null,
-                        'impressions' => $item['impressions'] ?? 0,
-                        'clicks' => $item['clicks'] ?? 0,
-                        'sales' => $item['sales'] ?? 0,
-                        'ad_fees' => $item['ad_fees'] ?? null,
-                        'sale_amount' => $item['sale_amount'] ?? null,
-                        'avg_cost_per_sale' => $item['avg_cost_per_sale'] ?? null,
-                        'ctr' => is_numeric($item['ctr'] ?? null) ? (float)$item['ctr'] : 0,
-                        'channels' => $item['channels'] ?? null,
-                    ]
-                );
-            }
-            $this->info("CAMPAIGN_PERFORMANCE_REPORT Data stored for range: {$rangeKey}");
+            $this->fetchAndStoreListingReport($accessToken, $from, $to, $rangeKey);
         }
         $this->info("✅ All campaign data processed.");
+    }
+
+    private function fetchAndStoreListingReport($accessToken, $from, $to, $rangeKey)
+    {
+        $this->info("Processing CAMPAIGN_PERFORMANCE_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
+
+        $body = ["reportType" => "CAMPAIGN_PERFORMANCE_REPORT",
+            "dateFrom" => $from,
+            "dateTo" => $to,
+            "marketplaceId" => "EBAY_US",
+            "reportFormat" => "TSV_GZIP",
+            "fundingModels" => ["COST_PER_SALE"],
+            "dimensions" => [
+                ["dimensionKey" => "campaign_id"],
+                ["dimensionKey" => "listing_id"],
+            ],
+            "metricKeys" => [
+                "impressions",
+                "clicks",
+                "ad_fees",
+                "sales", 
+                "sale_amount",
+                "avg_cost_per_sale",
+                "ctr",
+            ]
+        ];
+
+        $taskId = $this->submitReportTask($accessToken, $body);
+        if (!$taskId) return;
+
+        $reportId = $this->pollReportStatus($accessToken, $taskId);
+        if (!$reportId) return;
+
+        $items = $this->downloadParseAndStoreReport($accessToken, $reportId, $rangeKey);
+
+        foreach($items as $item){
+            if (!$item || empty($item['listing_id'])) continue;
+            
+            Ebay2GeneralReport::updateOrCreate(
+                ['listing_id' => $item['listing_id'], 'report_range' => $rangeKey],
+                [
+                    'campaign_id' => $item['campaign_id'] ?? null,
+                    'impressions' => $item['impressions'] ?? 0,
+                    'clicks' => $item['clicks'] ?? 0,
+                    'sales' => $item['sales'] ?? 0,
+                    'ad_fees' => $item['ad_fees'] ?? null,
+                    'sale_amount' => $item['sale_amount'] ?? null,
+                    'avg_cost_per_sale' => $item['avg_cost_per_sale'] ?? null,
+                    'ctr' => is_numeric($item['ctr'] ?? null) ? (float)$item['ctr'] : 0,
+                    'channels' => $item['channels'] ?? null,
+                ]
+            );
+        }
+        $this->info("✅ CAMPAIGN_PERFORMANCE_REPORT Data stored for range: {$rangeKey}");
     }
 
     private function submitReportTask($token, $body)
@@ -228,7 +248,7 @@ class Ebay2CampaignReports extends Command
                 ]);
 
             if ($response->successful()) {
-                Log::error('eBay2 token', ['response' => 'Token generated!']);
+                Log::info('eBay2 token', ['response' => 'Token generated!']);
                 return $response->json()['access_token'];
             }
 

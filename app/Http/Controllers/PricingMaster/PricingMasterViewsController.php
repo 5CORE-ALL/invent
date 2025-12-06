@@ -170,13 +170,19 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
-
-        return view('pricing-master.pricing_masters_view', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'records' => $processedData,
-        ]);
+        try {
+            // Don't load data here - let AJAX handle it via getViewPricingAnalysisData
+            // This prevents memory exhaustion on initial page load
+            return view('pricing-master.pricing_masters_view', [
+                'mode' => $mode,
+                'demo' => $demo,
+                'records' => [], // Empty - data loaded via AJAX
+            ]);
+        } finally {
+            // Clean up database connections to prevent pool exhaustion
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
 
@@ -185,13 +191,19 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
-
-        return view('pricing-master.pricing_masters_l90_views', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'records' => $processedData,
-        ]);
+        try {
+            // Don't load data here - let AJAX handle it
+            // This prevents memory exhaustion on initial page load
+            return view('pricing-master.pricing_masters_l90_views', [
+                'mode' => $mode,
+                'demo' => $demo,
+                'records' => [], // Empty - data loaded via AJAX
+            ]);
+        } finally {
+            // Clean up database connections
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
     public function inventoryBySalesValue(Request $request)
@@ -199,13 +211,18 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
-
-        return view('pricing-master.inventory_by_sales_value', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'records' => $processedData,
-        ]);
+        try {
+            // Don't load data here - let AJAX handle it
+            return view('pricing-master.inventory_by_sales_value', [
+                'mode' => $mode,
+                'demo' => $demo,
+                'records' => [], // Empty - data loaded via AJAX
+            ]);
+        } finally {
+            // Clean up database connections
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
 
@@ -214,14 +231,17 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
-
-        return view('pricing-master.cvr_master', [
-            'mode' => $mode,
-            'demo' => $demo,
-
-            'records' => $processedData,
-        ]);
+        try {
+            // Don't load data here - let AJAX handle it
+            return view('pricing-master.cvr_master', [
+                'mode' => $mode,
+                'demo' => $demo,
+                'records' => [], // Empty - data loaded via AJAX
+            ]);
+        } finally {
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
     public function calculateWMPMasters(Request $request)
@@ -229,14 +249,17 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
-
-        return view('pricing-master.wmp_master', [
-            'mode' => $mode,
-            'demo' => $demo,
-
-            'records' => $processedData,
-        ]);
+        try {
+            // Don't load data here - let AJAX handle it
+            return view('pricing-master.wmp_master', [
+                'mode' => $mode,
+                'demo' => $demo,
+                'records' => [], // Empty - data loaded via AJAX
+            ]);
+        } finally {
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
 
@@ -245,13 +268,17 @@ class PricingMasterViewsController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $processedData = $this->processPricingData();
-
-        return view('pricing-master.pricing_master_incr', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'records' => $processedData,
-        ]);
+        try {
+            // Don't load data here - let AJAX handle it
+            return view('pricing-master.pricing_master_incr', [
+                'mode' => $mode,
+                'demo' => $demo,
+                'records' => [], // Empty - data loaded via AJAX
+            ]);
+        } finally {
+            DB::disconnect();
+            DB::disconnect('apicentral');
+        }
     }
 
 
@@ -299,12 +326,52 @@ class PricingMasterViewsController extends Controller
     }
 
 
-    protected function processPricingData($searchTerm = '')
+    /**
+     * Process pricing data with memory optimization
+     * 
+     * @param string $searchTerm Search filter for SKU or Parent
+     * @param int|null $limit Number of records to fetch (null = all)
+     * @param int $offset Offset for pagination
+     * @param bool $liteMode If true, skip heavy L30 detail queries (load on demand)
+     * @return array Processed pricing data
+     */
+    protected function processPricingData($searchTerm = '', $limit = null, $offset = 0, $liteMode = true)
     {
-        // Fetch all product data
-        $productData = ProductMaster::whereNull('deleted_at')
-            ->orderBy('id', 'asc')
-            ->get();
+        // Memory optimization: Increase memory limit for this operation if needed
+        $currentMemoryLimit = ini_get('memory_limit');
+        if (preg_match('/^(\d+)(.)$/', $currentMemoryLimit, $matches)) {
+            $memoryInBytes = $matches[1];
+            if ($matches[2] == 'M') {
+                $memoryInBytes *= 1024 * 1024;
+            } elseif ($matches[2] == 'K') {
+                $memoryInBytes *= 1024;
+            }
+            // If current limit is less than 256M, increase it
+            if ($memoryInBytes < 256 * 1024 * 1024) {
+                @ini_set('memory_limit', '256M');
+            }
+        }
+        
+        // Memory optimization: Add limit support for pagination
+        // Build the query with optional limit and offset
+        $query = ProductMaster::whereNull('deleted_at')
+            ->orderBy('id', 'asc');
+        
+        // Apply search filter early to reduce data
+        if (!empty($searchTerm)) {
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('sku', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('parent', 'LIKE', "%{$searchTerm}%");
+            });
+        }
+        
+        // Apply pagination if limit is set
+        if ($limit !== null && $limit > 0) {
+            $query->limit($limit)->offset($offset);
+        }
+        
+        // Fetch product data
+        $productData = $query->get();
 
         // Get all SKUs (including those with "PARENT" for WmpMarkAsDone)
         $allSkus = $productData
@@ -476,120 +543,126 @@ class PricingMasterViewsController extends Controller
             ->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $plsStatuses = DB::table('pls_listing_statuses')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
 
-        // Fetch ads campaign data for ADVT% calculation (optimized for memory efficiency)
-        // Strategy: Fetch only campaigns that match our SKU list to minimize memory usage
-        $ebayPriorityCampaigns = collect();
+        // LITE MODE OPTIMIZATION: Skip heavy campaign and LMP queries for initial load
+        // These will be loaded on-demand when user clicks the OVL30 eye icon
         $ebayMetrics = collect();
+        $ebayPriorityCampaigns = collect();
         $amazonSpCampaigns = collect();
+        $walmartCampaigns = collect();
+        $shopifyFbCampaigns = collect();
+        $lmpLookup = collect();
+        $lmpaLookup = collect();
         
-        try {
-            // First, fetch ebay metrics for item_id mapping (only needed columns)
-            if (count($nonParentSkus) > 0) {
-                $ebayMetrics = EbayMetric::whereIn('sku', $nonParentSkus)
-                    ->select('sku', 'item_id')
+        if (!$liteMode) {
+            // FULL MODE: Load campaign data and LMP data (expensive queries)
+        
+            try {
+                // First, fetch ebay metrics for item_id mapping (only needed columns)
+                if (count($nonParentSkus) > 0) {
+                    $ebayMetrics = EbayMetric::whereIn('sku', $nonParentSkus)
+                        ->select('sku', 'item_id')
+                        ->get()
+                        ->keyBy('sku');
+                }
+            } catch (Exception $e) {
+                Log::warning('Could not fetch eBay metrics: ' . $e->getMessage());
+            }
+            
+            try {
+                // Fetch eBay Priority campaigns - only for SKUs in our list
+                // Use LIKE queries with OR conditions (same as EbayController)
+                if (count($nonParentSkus) > 0) {
+                    // Load campaigns for all SKUs to match EbayController behavior
+                    $ebayPriorityCampaigns = EbayPriorityReport::where('report_range', 'L30')
+                        ->whereIn('channels', ['ebay1', 'ebay2', 'ebay3'])
+                        ->where(function($query) use ($nonParentSkus) {
+                            foreach ($nonParentSkus as $sku) {
+                                $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
+                            }
+                        })
+                        ->select('campaign_name', 'channels', 'cpc_ad_fees_payout_currency', 'cpc_sale_amount_payout_currency')
+                        ->get();
+                }
+            } catch (Exception $e) {
+                Log::warning('Could not fetch eBay Priority campaigns: ' . $e->getMessage());
+            }
+            
+            try {
+                // Fetch Amazon campaigns - only for SKUs in our list
+                if (count($nonParentSkus) > 0) {
+                    $amazonSpCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                        ->where('report_date_range', 'L30')
+                        ->where(function($query) use ($nonParentSkus) {
+                            foreach ($nonParentSkus as $sku) {
+                                $query->orWhere('campaignName', 'LIKE', "%{$sku}%");
+                            }
+                        })
+                        ->select('campaignName', 'cost', 'sales30d')
+                        ->get();
+                }
+            } catch (Exception $e) {
+                Log::warning('Could not fetch Amazon SP campaigns: ' . $e->getMessage());
+            }
+
+            try {
+                // Fetch Walmart campaigns
+                if (count($nonParentSkus) > 0) {
+                    $walmartCampaigns = WalmartCampaignReport::where('report_range', 'L30')
+                        ->where(function($query) use ($nonParentSkus) {
+                            foreach ($nonParentSkus as $sku) {
+                                $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
+                            }
+                        })
+                        ->select('campaign_name', 'spend', 'sales')
+                        ->get();
+                }
+            } catch (Exception $e) {
+                Log::warning('Could not fetch Walmart campaigns: ' . $e->getMessage());
+            }
+
+            try {
+                // Fetch Shopify Facebook campaigns
+                if (count($nonParentSkus) > 0) {
+                    $shopifyFbCampaigns = ShopifyFacebookCampaign::where('date_range', 'L30')
+                        ->where(function($query) use ($nonParentSkus) {
+                            foreach ($nonParentSkus as $sku) {
+                                $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
+                            }
+                        })
+                        ->select('campaign_name', 'spend', 'revenue')
+                        ->get();
+                }
+            } catch (Exception $e) {
+                Log::warning('Could not fetch Shopify FB campaigns: ' . $e->getMessage());
+            }
+
+            // Fetch LMPA and LMP data
+            try {
+                $lmpLookup = DB::connection('repricer')
+                    ->table('lmp_data as l1')
+                    ->select('l1.sku', 'l1.price as lowest_price', 'l1.link')
+                    ->where('l1.price', '>', 0)
+                    ->whereIn('l1.sku', $nonParentSkus)
+                    ->whereRaw('l1.price = (SELECT MIN(l2.price) FROM lmp_data l2 WHERE l2.sku = l1.sku AND l2.price > 0)')
                     ->get()
                     ->keyBy('sku');
+            } catch (Exception $e) {
+                Log::warning('Could not fetch LMP data: ' . $e->getMessage());
             }
-        } catch (Exception $e) {
-            Log::warning('Could not fetch eBay metrics: ' . $e->getMessage());
-        }
-        
-        try {
-            // Fetch eBay Priority campaigns - only for SKUs in our list
-            // Use LIKE queries with OR conditions (same as EbayController)
-            if (count($nonParentSkus) > 0) {
-                // Load campaigns for all SKUs to match EbayController behavior
-                $ebayPriorityCampaigns = EbayPriorityReport::where('report_range', 'L30')
-                    ->whereIn('channels', ['ebay1', 'ebay2', 'ebay3'])
-                    ->where(function($query) use ($nonParentSkus) {
-                        foreach ($nonParentSkus as $sku) {
-                            $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
-                        }
-                    })
-                    ->select('campaign_name', 'channels', 'cpc_ad_fees_payout_currency', 'cpc_sale_amount_payout_currency')
-                    ->get();
-            }
-        } catch (Exception $e) {
-            Log::warning('Could not fetch eBay Priority campaigns: ' . $e->getMessage());
-        }
-        
-        try {
-            // Fetch Amazon campaigns - only for SKUs in our list
-            if (count($nonParentSkus) > 0) {
-                $amazonSpCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-                    ->where('report_date_range', 'L30')
-                    ->where(function($query) use ($nonParentSkus) {
-                        foreach ($nonParentSkus as $sku) {
-                            $query->orWhere('campaignName', 'LIKE', "%{$sku}%");
-                        }
-                    })
-                    ->select('campaignName', 'cost', 'sales30d')
-                    ->get();
-            }
-        } catch (Exception $e) {
-            Log::warning('Could not fetch Amazon SP campaigns: ' . $e->getMessage());
-        }
 
-        try {
-            // Fetch Walmart campaigns
-            if (count($nonParentSkus) > 0) {
-                $walmartCampaigns = WalmartCampaignReport::where('report_range', 'L30')
-                    ->where(function($query) use ($nonParentSkus) {
-                        foreach ($nonParentSkus as $sku) {
-                            $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
-                        }
-                    })
-                    ->select('campaign_name', 'spend', 'sales')
-                    ->get();
+            try {
+                $lmpaLookup = DB::connection('repricer')
+                    ->table('lmpa_data as l1')
+                    ->select('l1.sku', 'l1.price as lowest_price', 'l1.link')
+                    ->where('l1.price', '>', 0)
+                    ->whereIn('l1.sku', $nonParentSkus)
+                    ->whereRaw('l1.price = (SELECT MIN(l2.price) FROM lmpa_data l2 WHERE l2.sku = l1.sku AND l2.price > 0)')
+                    ->get()
+                    ->keyBy('sku');
+            } catch (Exception $e) {
+                Log::warning('Could not fetch LMPA data: ' . $e->getMessage());
             }
-        } catch (Exception $e) {
-            Log::warning('Could not fetch Walmart campaigns: ' . $e->getMessage());
-        }
-
-        try {
-            // Fetch Shopify Facebook campaigns
-            if (count($nonParentSkus) > 0) {
-                $shopifyFbCampaigns = ShopifyFacebookCampaign::where('date_range', 'L30')
-                    ->where(function($query) use ($nonParentSkus) {
-                        foreach ($nonParentSkus as $sku) {
-                            $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
-                        }
-                    })
-                    ->select('campaign_name', 'spend', 'revenue')
-                    ->get();
-            }
-        } catch (Exception $e) {
-            Log::warning('Could not fetch Shopify FB campaigns: ' . $e->getMessage());
-        }
-
-        // Fetch LMPA and LMP data
-        $lmpLookup = collect();
-        try {
-            $lmpLookup = DB::connection('repricer')
-                ->table('lmp_data as l1')
-                ->select('l1.sku', 'l1.price as lowest_price', 'l1.link')
-                ->where('l1.price', '>', 0)
-                ->whereIn('l1.sku', $nonParentSkus)
-                ->whereRaw('l1.price = (SELECT MIN(l2.price) FROM lmp_data l2 WHERE l2.sku = l1.sku AND l2.price > 0)')
-                ->get()
-                ->keyBy('sku');
-        } catch (Exception $e) {
-            Log::warning('Could not fetch LMP data: ' . $e->getMessage());
-        }
-
-        $lmpaLookup = collect();
-        try {
-            $lmpaLookup = DB::connection('repricer')
-                ->table('lmpa_data as l1')
-                ->select('l1.sku', 'l1.price as lowest_price', 'l1.link')
-                ->where('l1.price', '>', 0)
-                ->whereIn('l1.sku', $nonParentSkus)
-                ->whereRaw('l1.price = (SELECT MIN(l2.price) FROM lmpa_data l2 WHERE l2.sku = l1.sku AND l2.price > 0)')
-                ->get()
-                ->keyBy('sku');
-        } catch (Exception $e) {
-            Log::warning('Could not fetch LMPA data: ' . $e->getMessage());
-        }
+        } // End of !$liteMode block
 
 
 
@@ -1399,8 +1472,6 @@ class PricingMasterViewsController extends Controller
 
     public function getViewPricingAnalysisData(Request $request)
     {
-        $page = $request->input('page', 1);
-        $perPage = $request->input('per_page', 'all');
         $dilFilter = $request->input('dil_filter', 'all');
         $dataType = $request->input('data_type', 'all');
         $searchTerm = $request->input('search', '');
@@ -1408,39 +1479,43 @@ class PricingMasterViewsController extends Controller
         $skuFilter = $request->input('sku', '');
         $distinctOnly = $request->input('distinct_only', false);
 
-        if ($perPage === 'all') {
-            $perPage = 1000000;
-        } else {
-            $perPage = (int) $perPage;
-        }
+        try {
+            // Load ALL SKUs at once with LITE MODE (skip heavy channel details)
+            // Channel-wise L30 details will be loaded on-demand when user clicks eye icon
+            $processedData = $this->processPricingData($searchTerm, null, 0, true); // true = liteMode
+            
+            $total = count($processedData);
 
-        $processedData = $this->processPricingData($searchTerm);
+            // Apply additional filters
+            $filteredData = $this->applyFilters($processedData, $dilFilter, $dataType, $parentFilter, $skuFilter);
 
-        $filteredData = $this->applyFilters($processedData, $dilFilter, $dataType, $parentFilter, $skuFilter);
+            if ($distinctOnly) {
+                return response()->json([
+                    'distinct_values' => $this->getDistinctValues($filteredData),
+                    'status' => 200,
+                ]);
+            }
 
-        if ($distinctOnly) {
+            // Return all data at once (client-side pagination)
             return response()->json([
-                'distinct_values' => $this->getDistinctValues($processedData),
+                'message' => 'Data fetched successfully',
+                'data' => array_values($filteredData), // Re-index array
+                'distinct_values' => $this->getDistinctValues($filteredData),
+                'total' => $total,
                 'status' => 200,
             ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in getViewPricingAnalysisData: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Error fetching data: ' . $e->getMessage(),
+                'data' => [],
+                'status' => 500,
+            ], 500);
+        } finally {
+            // Clean up connections
+            DB::disconnect();
+            DB::disconnect('apicentral');
         }
-
-        $total = count($filteredData);
-        $totalPages = ceil($total / $perPage);
-        $offset = ($page - 1) * $perPage;
-        $paginatedData = array_slice($filteredData, $offset, $perPage);
-
-
-        return response()->json([
-            'message' => 'Data fetched successfully',
-            'data' => $paginatedData,
-            'distinct_values' => $this->getDistinctValues($processedData),
-            'current_page' => (int) $page,
-            'per_page' => $perPage,
-            'total' => $total,
-            'last_page' => $totalPages,
-            'status' => 200,
-        ]);
     }
 
 

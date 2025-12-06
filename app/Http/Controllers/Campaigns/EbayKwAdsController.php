@@ -429,7 +429,7 @@ class EbayKwAdsController extends Controller
 
         // Get SKUs with price < 20 and not PARENT SKUs
         $ebayMetricData = EbayMetric::whereIn('sku', $skus)
-            ->where('ebay_price', '<', 20)
+            ->where('ebay_price', '<', 30)
             ->get()
             ->keyBy(fn($item) => $normalizeSku($item->sku));
 

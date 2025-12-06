@@ -169,7 +169,7 @@
                             <div class="col-md-6">
                                 <div class="d-flex gap-2 justify-content-end">
                                     <button type="button" class="btn btn-sm btn-success" id="sync-btn">
-                                        <i class="fa fa-sync me-1"></i>Sync from Google Sheets
+                                        <i class="fa fa-sync me-1"></i>Sync from Meta API
                                     </button>
                                     <button class="btn btn-success btn-md">
                                         <i class="fa fa-bullhorn me-1"></i>
@@ -233,7 +233,7 @@
                     {
                         title: "AD Type",
                         field: "ad_type",
-                        minWidth: 180,
+                        minWidth: 250,
                         headerSort: true,
                         formatter: function(cell) {
                             const row = cell.getRow();
@@ -241,28 +241,50 @@
                             const value = cell.getValue() || '';
 
                             let bgColor = "";
-                            if (value === "Single Image") {
-                                bgColor = "background-color:#17a2b8;color:#fff;";
-                            } else if (value === "Single Video") {
-                                bgColor = "background-color:#6610f2;color:#fff;";
-                            } else if (value === "Carousal") {
-                                bgColor = "background-color:#fd7e14;color:#fff;";
-                            } else if (value === "Existing Post") {
-                                bgColor = "background-color:#20c997;color:#fff;";
-                            } else if (value === "Catalogue Ad") {
-                                bgColor = "background-color:#e83e8c;color:#fff;";
+                            // Facebook ad types
+                            if (value === "Facebook Single Image") {
+                                bgColor = "background-color:#1877f2;color:#fff;";
+                            } else if (value === "Facebook Single Video") {
+                                bgColor = "background-color:#0a4fb5;color:#fff;";
+                            } else if (value === "Facebook Carousal") {
+                                bgColor = "background-color:#2d5a9e;color:#fff;";
+                            } else if (value === "Facebook Existing Post") {
+                                bgColor = "background-color:#3b7dd9;color:#fff;";
+                            } else if (value === "Facebook Catalogue Ad") {
+                                bgColor = "background-color:#1565c0;color:#fff;";
+                            }
+                            // Instagram ad types
+                            else if (value === "Instagram Single Image") {
+                                bgColor = "background-color:#e1306c;color:#fff;";
+                            } else if (value === "Instagram Single Video") {
+                                bgColor = "background-color:#c13584;color:#fff;";
+                            } else if (value === "Instagram Carousal") {
+                                bgColor = "background-color:#fd1d1d;color:#fff;";
+                            } else if (value === "Instagram Existing Post") {
+                                bgColor = "background-color:#f56040;color:#fff;";
+                            } else if (value === "Instagram Catalogue Ad") {
+                                bgColor = "background-color:#833ab4;color:#fff;";
                             }
 
                             return `
                                 <select class="form-select form-select-sm editable-ad-type" 
                                         data-campaign-name="${campaignName}" 
-                                        style="width: 160px; ${bgColor} cursor:pointer;">
+                                        style="width: 200px; ${bgColor} cursor:pointer;">
                                     <option value="">Select Type</option>
-                                    <option value="Single Image" ${value === 'Single Image' ? 'selected' : ''}>Single Image</option>
-                                    <option value="Single Video" ${value === 'Single Video' ? 'selected' : ''}>Single Video</option>
-                                    <option value="Carousal" ${value === 'Carousal' ? 'selected' : ''}>Carousal</option>
-                                    <option value="Existing Post" ${value === 'Existing Post' ? 'selected' : ''}>Existing Post</option>
-                                    <option value="Catalogue Ad" ${value === 'Catalogue Ad' ? 'selected' : ''}>Catalogue Ad</option>
+                                    <optgroup label="Facebook Ads">
+                                        <option value="Facebook Single Image" ${value === 'Facebook Single Image' ? 'selected' : ''}>Single Image</option>
+                                        <option value="Facebook Single Video" ${value === 'Facebook Single Video' ? 'selected' : ''}>Single Video</option>
+                                        <option value="Facebook Carousal" ${value === 'Facebook Carousal' ? 'selected' : ''}>Carousal</option>
+                                        <option value="Facebook Existing Post" ${value === 'Facebook Existing Post' ? 'selected' : ''}>Existing Post</option>
+                                        <option value="Facebook Catalogue Ad" ${value === 'Facebook Catalogue Ad' ? 'selected' : ''}>Catalogue Ad</option>
+                                    </optgroup>
+                                    <optgroup label="Instagram Ads">
+                                        <option value="Instagram Single Image" ${value === 'Instagram Single Image' ? 'selected' : ''}>Single Image</option>
+                                        <option value="Instagram Single Video" ${value === 'Instagram Single Video' ? 'selected' : ''}>Single Video</option>
+                                        <option value="Instagram Carousal" ${value === 'Instagram Carousal' ? 'selected' : ''}>Carousal</option>
+                                        <option value="Instagram Existing Post" ${value === 'Instagram Existing Post' ? 'selected' : ''}>Existing Post</option>
+                                        <option value="Instagram Catalogue Ad" ${value === 'Instagram Catalogue Ad' ? 'selected' : ''}>Catalogue Ad</option>
+                                    </optgroup>
                                 </select>
                             `;
                         },
@@ -680,27 +702,27 @@
                 updateCampaignStats();
             });
 
-            // Sync from Google Sheets
+            // Sync from Meta API
             $('#sync-btn').on('click', function () {
-                if (!confirm('This will sync data from Google Sheets. Continue?')) {
+                if (!confirm('This will sync campaign data from Meta API (Facebook & Instagram). Continue?')) {
                     return;
                 }
 
                 // Show loading state
-                $('#sync-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Syncing...');
+                $('#sync-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Syncing from Meta API...');
 
                 $.ajax({
                     url: "{{ route('meta.ads.sync') }}",
                     type: "POST",
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                     success: function (response) {
-                        $('#sync-btn').prop('disabled', false).html('<i class="fa fa-sync me-1"></i>Sync from Google Sheets');
+                        $('#sync-btn').prop('disabled', false).html('<i class="fa fa-sync me-1"></i>Sync from Meta API');
                         
                         alert('Sync successful!\nL30 synced: ' + response.l30_synced + ' campaigns\nL7 synced: ' + response.l7_synced + ' campaigns');
                         table.replaceData();
                     },
                     error: function (xhr) {
-                        $('#sync-btn').prop('disabled', false).html('<i class="fa fa-sync me-1"></i>Sync from Google Sheets');
+                        $('#sync-btn').prop('disabled', false).html('<i class="fa fa-sync me-1"></i>Sync from Meta API');
                         
                         let message = 'Sync failed';
 
@@ -817,19 +839,32 @@
                         
                         // Update background color based on selection
                         let bgColor = "";
-                        if (newAdType === "Single Image") {
-                            bgColor = "background-color:#17a2b8;color:#fff;";
-                        } else if (newAdType === "Single Video") {
-                            bgColor = "background-color:#6610f2;color:#fff;";
-                        } else if (newAdType === "Carousal") {
-                            bgColor = "background-color:#fd7e14;color:#fff;";
-                        } else if (newAdType === "Existing Post") {
-                            bgColor = "background-color:#20c997;color:#fff;";
-                        } else if (newAdType === "Catalogue Ad") {
-                            bgColor = "background-color:#e83e8c;color:#fff;";
+                        // Facebook ad types
+                        if (newAdType === "Facebook Single Image") {
+                            bgColor = "background-color:#1877f2;color:#fff;";
+                        } else if (newAdType === "Facebook Single Video") {
+                            bgColor = "background-color:#0a4fb5;color:#fff;";
+                        } else if (newAdType === "Facebook Carousal") {
+                            bgColor = "background-color:#2d5a9e;color:#fff;";
+                        } else if (newAdType === "Facebook Existing Post") {
+                            bgColor = "background-color:#3b7dd9;color:#fff;";
+                        } else if (newAdType === "Facebook Catalogue Ad") {
+                            bgColor = "background-color:#1565c0;color:#fff;";
+                        }
+                        // Instagram ad types
+                        else if (newAdType === "Instagram Single Image") {
+                            bgColor = "background-color:#e1306c;color:#fff;";
+                        } else if (newAdType === "Instagram Single Video") {
+                            bgColor = "background-color:#c13584;color:#fff;";
+                        } else if (newAdType === "Instagram Carousal") {
+                            bgColor = "background-color:#fd1d1d;color:#fff;";
+                        } else if (newAdType === "Instagram Existing Post") {
+                            bgColor = "background-color:#f56040;color:#fff;";
+                        } else if (newAdType === "Instagram Catalogue Ad") {
+                            bgColor = "background-color:#833ab4;color:#fff;";
                         }
                         
-                        selectElement.attr('style', `width: 160px; ${bgColor} cursor:pointer;`);
+                        selectElement.attr('style', `width: 200px; ${bgColor} cursor:pointer;`);
                     },
                     error: function(xhr) {
                         console.error('Failed to update Ad Type');

@@ -549,6 +549,7 @@ class AmazonACOSController extends Controller
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['spend_l30'] = $matchedCampaignL30->spend ?? 0;
             $row['ad_sales_l30'] = $matchedCampaignL30->sales30d ?? 0;
+            $row['ad_sold_l30'] = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
 
             $sales = $matchedCampaignL30->sales30d ?? 0;
             $spend = $matchedCampaignL30->spend ?? 0;
@@ -692,6 +693,7 @@ class AmazonACOSController extends Controller
             $row['clicks_L30'] = $matchedCampaignL30->clicks ?? 0;
             $row['spend_l30']       = $matchedCampaignL30->cost ?? 0;
             $row['ad_sales_l30']    = $matchedCampaignL30->sales ?? 0;
+            $row['ad_sold_l30'] = $matchedCampaignL30->unitsSold ?? 0;
 
             $row['NRL']  = '';
             $row['NRA'] = '';
@@ -800,6 +802,7 @@ class AmazonACOSController extends Controller
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['spend_l30'] = $matchedCampaignL30->spend ?? 0;
             $row['ad_sales_l30'] = $matchedCampaignL30->sales30d ?? 0;
+            $row['ad_sold_l30'] = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
             
             $sales = $matchedCampaignL30->sales30d ?? 0;
             $spend = $matchedCampaignL30->spend ?? 0;

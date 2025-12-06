@@ -8,6 +8,7 @@ use App\Models\Ebay3Metric;
 use App\Models\Ebay3PriorityReport;
 use App\Models\EbayGeneralReport;
 use App\Models\EbayThreeDataView;
+use App\Models\EbayThreeListingStatus;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -106,7 +107,7 @@ class Ebay3PmtAdsController extends Controller
         $matchedSkus = $ebayMetricsNormalized->keys()->all();
         $productMasters = $productMasters->whereIn('sku', $matchedSkus)->values();
 
-        $nrValues = EbayThreeDataView::whereIn("sku", $matchedSkus)->pluck("value", "sku");
+        $nrValues = EbayThreeListingStatus::whereIn("sku", $matchedSkus)->pluck("value", "sku");
 
         $itemIdToSku = $ebayMetrics->pluck('sku', 'item_id')->toArray();
         $campaignIdToSku = $ebayMetrics->pluck('sku', 'campaign_id')->toArray();
@@ -284,7 +285,7 @@ class Ebay3PmtAdsController extends Controller
                     $raw = json_decode($raw, true);
                 }
                 if (is_array($raw)) {
-                    $row['NRL'] = $raw['NRL'] ?? null;
+                    $row['NRL'] = $raw['nr_req'] ?? null;
                     $row['SPRICE'] = $raw['SPRICE'] ?? null;
                     $row['SPFT'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;

@@ -1491,18 +1491,6 @@
                             <thead>
                                 <tr>
                                     {{-- <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th> --}}
-                                    <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center sortable-header">
-                                                Parent <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm parent-search"
-                                                    placeholder="Search parent..." id="parentSearch">
-                                                <div class="dropdown-search-results" id="parentSearchResults"></div>
-                                            </div>
-                                        </div>
-                                    </th>
                                     <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center sortable">
                                             <div class="d-flex align-items-center">
@@ -1570,13 +1558,6 @@
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="req_views" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                REQ VIEWS <span class="sort-arrow">↓</span>
-                                            </div>
-                                        </div>
-                                    </th>
                                     <th data-field="cvr" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -1623,43 +1604,6 @@
                                     </th>
                                     <th data-field="tpft" class="tpft_col">TPFT %</th>
                                     <th data-field="troi" class="troi_col">TROI %</th>
-                                    <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                TACOS <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="tacos-total">0%</div>
-                                        </div>
-                                    </th>
-
-                                    <th data-field="sprice" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                SPRICE <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="sprofit" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                SPROFIT <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="sroi" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                SROI <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
                                     <th data-field="NRL">NRL</th>
                                 </tr>
                             </thead>
@@ -2673,7 +2617,6 @@
                     };
 
                     // $row.append($('<td>').text(item['Sl']));
-                    $row.append($('<td>').text(item.Parent));
 
                     // SKU with hover content for links
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
@@ -2727,56 +2670,7 @@
 
                     $row.append($('<td data-field="esbid">').text(item.ESBID));
                     
-                    // Calculate adjusted CBID based on PmtClkL7
-                    let adjustedCbid = parseFloat(item.CBID) || 0;
-                    let cbidColor = "";
-                    const pmtClkL7 = parseFloat(item.raw_data.PmtClkL7) || 0;
-
-                    if (pmtClkL7 < 70) {
-                        adjustedCbid = adjustedCbid + 0.5;
-                        cbidColor = "green"; // Increase bid
-                    } else if (pmtClkL7 > 140) {
-                        adjustedCbid = adjustedCbid - 0.5;
-                        cbidColor = "red"; // Decrease bid
-                    } else {
-                        cbidColor = "yellow"; // Keep current bid
-                    }
-
-                    // Apply 15% cap and 2% minimum to adjusted CBID
-                    if (adjustedCbid > 15) {
-                        adjustedCbid = 15;
-                    }
-                    
-                    if (adjustedCbid < 2) {
-                        adjustedCbid = 2;
-                    }
-
-                    let reqViews = item.INV * 10;
-                    let reqViewsColor = "";
-
-                    if (reqViews > item.VIEWS) {
-                        reqViewsColor = "red";
-                    } else {
-                        reqViewsColor = "green";
-                    }
-
-                    $row.append($('<td data-field="sbid">').html(
-                        `<span class="dil-percent-value ${cbidColor}">
-                           ${adjustedCbid.toFixed(1)}
-                        </span>`
-                    ));
-
-                    $row.append($('<td>').text(item.VIEWS));
-
-                    $row.append($('<td>').html(
-                        `<span class="dil-percent-value ${reqViewsColor}">
-                           ${reqViews}
-                        </span>`
-                    ));
-
-
-                    // CVR with color coding and tooltip
-                    
+                    // Calculate CVR first (needed for SBID)
                     let ebayL30 = Number(item['eBay L30']) || 0;
                     let views = Number(item.VIEWS) || 0;
 
@@ -2786,9 +2680,48 @@
                         scvr = 0;
                     }
 
+                    // Calculate SBID based on CVR ranges - flat values
+                    let sbidValue = 2; // Default minimum
+                    let sbidColor = "";
+
+                    if (scvr < 0.01) {
+                        // For very low CVR, keep current ESBID
+                        sbidValue = item.ESBID || 0;
+                        sbidColor = "gray";
+                    } else if (scvr >= 0.01 && scvr <= 1) {
+                        sbidValue = 10; // Flat 10%
+                        sbidColor = "red";
+                    } else if (scvr >= 1.01 && scvr <= 2) {
+                        sbidValue = 8; // Flat 8%
+                        sbidColor = "red";
+                    } else if (scvr >= 2.01 && scvr <= 3) {
+                        sbidValue = 6; // Flat 6%
+                        sbidColor = "yellow";
+                    } else if (scvr >= 3.01 && scvr <= 5) {
+                        sbidValue = 5; // Flat 5%
+                        sbidColor = "yellow";
+                    } else if (scvr >= 5.01 && scvr <= 7) {
+                        sbidValue = 4; // Flat 4%
+                        sbidColor = "blue";
+                    } else if (scvr >= 7.01 && scvr <= 13) {
+                        sbidValue = 3; // Flat 3%
+                        sbidColor = "green";
+                    } else if (scvr > 13) {
+                        sbidValue = 2; // Flat 2%
+                        sbidColor = "green";
+                    }
+
+                    $row.append($('<td data-field="sbid">').html(
+                        `<span class="dil-percent-value ${sbidColor}">
+                           ${sbidValue}
+                        </span>`
+                    ));
+
+                    $row.append($('<td>').text(item.VIEWS));
+
                     $row.append($('<td>').html(
                         `<span class="dil-percent-value" style="color: ${getCvrColor(scvr)}">
-                           ${scvr.toFixed(0)}%
+                           ${scvr.toFixed(1)}%
                         </span>`
                     ));
 
@@ -2854,108 +2787,6 @@
 
                     $row.append($('<td class="tpft_col">').text(item.TPFT.toFixed(2)));
                     $row.append($('<td class="troi_col">').text(""));
-                        
-                    // TACOS with color coding and tooltip
-                    $row.append($('<td>').html(
-                        `<span class="dil-percent-value ${getTacosColor(item.Tacos30)}">${(item.Tacos30 * 100).toFixed(0)}%</span>
-                         <i class="fas fa-a text-info tooltip-icon advertisement-view-trigger" 
-                            data-bs-toggle="tooltip" data-bs-placement="bottom" title="Advertisement view"
-                            data-item='${JSON.stringify(item.raw_data)}'></i>`
-                    ));
-
-
-
-                    // SPRICE + Edit Button (no decimals)
-                    $row.append($('<td>').html(
-                        item.SPRICE !== null && !isNaN(parseFloat(item.SPRICE)) ?
-                        `
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="badge bg-primary s_price" 
-                                style="font-size:16px; padding:8px 14px; border-radius:8px;">
-                                $${Math.round(parseFloat(item.SPRICE))}
-                            </span>
-                            <div class="btn-group" role="group">
-                                <!-- Edit Button -->
-                                <button class="btn btn-outline-primary openPricingBtn"
-                                    style="font-size:15px; padding:6px 12px; border-radius:8px;"
-                                    title="Edit SPRICE"
-                                    data-lp="${item.LP}"
-                                    data-ship="${item.SHIP}"
-                                    data-sku="${item["(Child) sku"]}">
-                                    <i class="fa fa-edit"></i>
-                                </button>
-                            </div>
-                        </div>
-                        ` : ''
-                    ));
-
-
-                    // ✅ SPFT (with coloring logic + inline style)
-                    $row.append($('<td>').attr('id', `spft-${item["(Child) sku"]}`).html(
-                        item.SPFT !== null && !isNaN(parseFloat(item.SPFT)) ?
-                        `<span style="
-                        font-size:16px; 
-                        font-weight:bold;
-                        padding:6px 12px; 
-                        border-radius:8px; 
-                        color:${
-                            parseFloat(item.SPFT) <= 10 
-                                ? '#dc3545'   // 🔴 red
-                                : parseFloat(item.SPFT) <= 15 
-                                    ? '#ffc107'   // 🟡 yellow
-                                    : parseFloat(item.SPFT) <= 20 
-                                        ? '#0d6efd'   // 🔵 blue
-                                        : '#28a745'   // 🟢 green
-                        };
-                        background-color:${
-                            parseFloat(item.SPFT) <= 10 
-                                ? '#fff'   // 🔴 red
-                                : parseFloat(item.SPFT) <= 15 
-                                    ? '#fff'   // 🟡 yellow
-                                    : parseFloat(item.SPFT) <= 20 
-                                        ? '#fff'   // 🔵 blue
-                                        : '#fff'   // 🟢 green
-                        };">
-                        ${(parseFloat(item.SPFT) - Math.floor(parseFloat(item.SPFT)) >= 0.5 
-                            ? Math.ceil(parseFloat(item.SPFT)) 
-                            : Math.floor(parseFloat(item.SPFT)))}%
-                    </span>` :
-                                        ''
-                                    ));
-
-                                    // ✅ SROI (with coloring logic + inline style)
-                                    $row.append($('<td>').attr('id', `sroi-${item["(Child) sku"]}`).html(
-                                        item.SROI !== null && !isNaN(parseFloat(item.SROI)) ?
-                                        `<span style="
-                        font-size:16px; 
-                        font-weight:bold;
-                        padding:6px 12px; 
-                        border-radius:8px; 
-                        color:${
-                            parseFloat(item.SROI) <= 10 
-                                ? '#dc3545'   // 🔴 red
-                                : parseFloat(item.SROI) <= 15 
-                                    ? '#ffc107'   // 🟡 yellow
-                                    : parseFloat(item.SROI) <= 20 
-                                        ? '#0d6efd'   // 🔵 blue
-                                        : '#28a745'   // 🟢 green
-                        };
-                        background-color:${
-                            parseFloat(item.SROI) <= 10 
-                                ? '#fff'   // 🔴 red
-                                : parseFloat(item.SROI) <= 15 
-                                    ? '#fff'   // 🟡 yellow
-                                    : parseFloat(item.SROI) <= 20 
-                                        ? '#fff'   // 🔵 blue
-                                        : '#fff'   // 🟢 green
-                        };">
-                        ${(parseFloat(item.SROI) - Math.floor(parseFloat(item.SROI)) >= 0.5 
-                            ? Math.ceil(parseFloat(item.SROI)) 
-                            : Math.floor(parseFloat(item.SROI)))}%
-                    </span>` :
-                                        ''
-                                    ));
-
 
                     if (item.is_parent) {
                         $row.append($('<td>')); // Empty cell for parent

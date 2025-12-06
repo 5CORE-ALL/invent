@@ -46,177 +46,201 @@ class EbayCampaignReports extends Command
         }
         $this->info("✅ Successfully fetched " . count($campaignsMap) . " campaigns. Will use for all date ranges.");
         
-        // Step 2        
-        $ranges = [
+        // Fetch only yesterday's data for charts
+        $yesterday = Carbon::yesterday()->toDateString();
+        
+        // Check if yesterday's data already exists
+        $yesterdayExists = EbayPriorityReport::where('report_range', $yesterday)
+            ->exists();
+            
+        if (!$yesterdayExists) {
+            $this->info("📊 Yesterday's data not found. Fetching for charts: {$yesterday}");
+            $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay(), $yesterday);
+            $this->info("✅ Yesterday's data fetched: {$yesterday}");
+        } else {
+            $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
+        }
+
+        // Always fetch summary ranges for backward compatibility with table data
+        $summaryRanges = [
             'L90' => [Carbon::today()->subDays(90), Carbon::today()->subDays(31)->endOfDay()],
             'L60' => [Carbon::today()->subDays(60), Carbon::today()->subDays(31)->endOfDay()],
             'L30' => [Carbon::today()->subDays(30), Carbon::today()->subDay()->endOfDay()],
             'L15' => [Carbon::today()->subDays(15), Carbon::today()->subDay()->endOfDay()],
             'L7' => [Carbon::today()->subDays(7), Carbon::today()->subDay()->endOfDay()],
-            'L1' => [Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay()],
+            'L1' => [Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay()]
         ];
 
-        // Loop through date ranges first: L30 then L60
-        foreach ($ranges as $rangeKey => [$from, $to]) {
-            $this->info("Processing ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
-
-            $body = ["reportType" => "ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT",
-                "dateFrom" => $from,
-                "dateTo" => $to,
-                "marketplaceId" => "EBAY_US",
-                "reportFormat" => "TSV_GZIP",
-                "fundingModels" => ["COST_PER_CLICK"],
-                "dimensions" => [
-                    ["dimensionKey" => "campaign_id"],
-                ],
-                "metricKeys" => [
-                    "cpc_impressions",
-                    "cpc_clicks",
-                    "cpc_attributed_sales",
-                    "cpc_ctr",
-                    "cpc_ad_fees_listingsite_currency",
-                    "cpc_sale_amount_listingsite_currency",
-                    "cpc_avg_cost_per_sale",
-                    "cpc_return_on_ad_spend",
-                    "cpc_conversion_rate",
-                    "cpc_sale_amount_payout_currency",
-                    "cost_per_click",
-                    "cpc_ad_fees_payout_currency",
-                ]
-            ];
-
-            $taskId = $this->submitReportTask($accessToken, $body);
-            if (!$taskId) continue;
-
-            $reportId = $this->pollReportStatus($accessToken, $taskId);
-            if (!$reportId) continue;
-    
-            $items = $this->downloadParseAndStoreReport($accessToken, $reportId, $rangeKey);
-            
-            if (!is_array($items)) {
-                $this->warn("Report data is not an array for range {$rangeKey}. Skipping.");
-                $items = [];
-            }
-            
-            // Create a map of report items by campaign_id for quick lookup
-            $reportDataMap = [];
-            foreach($items as $item){
-                if (!$item || empty($item['campaign_id'])) continue;
-                $reportDataMap[$item['campaign_id']] = $item;
-            }
-            
-            $this->info("Report contains " . count($reportDataMap) . " campaigns with performance data");
-            $this->info("Storing all " . count($campaignsMap) . " campaigns for range: {$rangeKey}");
-            
-            $storedCount = 0;
-            $skippedCount = 0;
-            
-            // Store ALL campaigns from campaignsMap, not just those in report
-            foreach($campaignsMap as $campaignId => $campaignData){
-                $campaignName = $campaignData['name'];
-                $campaignStatus = $campaignData['status'];
-                $campaignBudget = $campaignData['daily_budget'];
-
-                if (!$campaignName) {
-                    Log::warning("Missing campaignName for ID: {$campaignId}");
-                    $skippedCount++;
-                    continue;
-                }
-                
-                // Get report data if available, otherwise use zero values
-                $reportItem = $reportDataMap[$campaignId] ?? null;
-            
-                // Safely extract report data - if reportItem exists, use its values, otherwise use defaults
-                $hasReportData = !empty($reportItem);
-            
-                EbayPriorityReport::updateOrCreate(
-                    ['campaign_id' => $campaignId, 'report_range' => $rangeKey],
-                    [
-                        'campaign_name' => $campaignName,
-                        'campaignBudgetAmount' => $campaignBudget,
-                        'campaignStatus' => $campaignStatus,
-                        'cpc_impressions' => $hasReportData ? ($reportItem['cpc_impressions'] ?? 0) : 0,
-                        'cpc_clicks' => $hasReportData ? ($reportItem['cpc_clicks'] ?? 0) : 0,
-                        'cpc_attributed_sales' => $hasReportData ? ($reportItem['cpc_attributed_sales'] ?? 0) : 0,
-                        'cpc_ctr' => $hasReportData && is_numeric($reportItem['cpc_ctr'] ?? null) ? (float)$reportItem['cpc_ctr'] : 0,
-                        'cpc_ad_fees_listingsite_currency' => $hasReportData ? ($reportItem['cpc_ad_fees_listingsite_currency'] ?? null) : null,
-                        'cpc_sale_amount_listingsite_currency' => $hasReportData ? ($reportItem['cpc_sale_amount_listingsite_currency'] ?? null) : null,
-                        'cpc_avg_cost_per_sale' => $hasReportData ? ($reportItem['cpc_avg_cost_per_sale'] ?? null) : null,
-                        'cpc_return_on_ad_spend' => $hasReportData && is_numeric($reportItem['cpc_return_on_ad_spend'] ?? null) 
-                            ? (float)$reportItem['cpc_return_on_ad_spend'] 
-                            : 0,
-                        'cpc_conversion_rate' => $hasReportData && is_numeric($reportItem['cpc_conversion_rate'] ?? null) 
-                            ? (float)$reportItem['cpc_conversion_rate'] 
-                            : 0,
-                        'cpc_sale_amount_payout_currency' => $hasReportData ? ($reportItem['cpc_sale_amount_payout_currency'] ?? null) : null,
-                        'cost_per_click' => $hasReportData ? ($reportItem['cost_per_click'] ?? null) : null,
-                        'cpc_ad_fees_payout_currency' => $hasReportData ? ($reportItem['cpc_ad_fees_payout_currency'] ?? null) : null,
-                        'channels' => $hasReportData ? ($reportItem['channels'] ?? null) : null,
-                    ]
-                );
-                $storedCount++;
-            }
-            
-            $this->info("✅ ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT Data stored for range: {$rangeKey}");
-            $this->info("   - Total campaigns stored: {$storedCount}");
-            $this->info("   - Campaigns with performance data: " . count($reportDataMap));
-            $this->info("   - Campaigns skipped (no name): {$skippedCount}");
-        }
-        
-        foreach ($ranges as $rangeKey => [$from, $to]) {
-            $this->info("Processing CAMPAIGN_PERFORMANCE_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
-
-            $body = ["reportType" => "CAMPAIGN_PERFORMANCE_REPORT",
-                "dateFrom" => $from,
-                "dateTo" => $to,
-                "marketplaceId" => "EBAY_US",
-                "reportFormat" => "TSV_GZIP",
-                "fundingModels" => ["COST_PER_SALE"],
-                "dimensions" => [
-                    ["dimensionKey" => "campaign_id"],
-                    ["dimensionKey" => "listing_id"],
-                ],
-                "metricKeys" => [
-                    "impressions",
-                    "clicks",
-                    "ad_fees",
-                    "sales", 
-                    "sale_amount",
-                    "avg_cost_per_sale",
-                    "ctr",
-                ]
-            ];
-
-            $taskId = $this->submitReportTask($accessToken, $body);
-            if (!$taskId) continue;
-
-            $reportId = $this->pollReportStatus($accessToken, $taskId);
-            if (!$reportId) continue;
-    
-            $items = $this->downloadParseAndStoreReport($accessToken, $reportId, $rangeKey);
-
-            foreach($items as $item){
-                if (!$item || empty($item['listing_id'])) continue;
-                
-                EbayGeneralReport::updateOrCreate(
-                    ['listing_id' => $item['listing_id'], 'report_range' => $rangeKey],
-                    [
-                        'campaign_id' => $item['campaign_id'] ?? null,
-                        'impressions' => $item['impressions'] ?? 0,
-                        'clicks' => $item['clicks'] ?? 0,
-                        'sales' => $item['sales'] ?? 0,
-                        'ad_fees' => $item['ad_fees'] ?? null,
-                        'sale_amount' => $item['sale_amount'] ?? null,
-                        'avg_cost_per_sale' => $item['avg_cost_per_sale'] ?? null,
-                        'ctr' => is_numeric($item['ctr'] ?? null) ? (float)$item['ctr'] : 0,
-                        'channels' => $item['channels'] ?? null,
-                    ]
-                );
-            }
-            $this->info("CAMPAIGN_PERFORMANCE_REPORT Data stored for range: {$rangeKey}");
+        // Loop through summary ranges
+        foreach ($summaryRanges as $rangeKey => [$from, $to]) {
+            $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey);
         }
 
         $this->info("✅ All campaign data processed.");
+    }
+
+    private function fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey)
+    {
+        $this->info("Processing ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
+
+        $body = ["reportType" => "ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT",
+            "dateFrom" => $from,
+            "dateTo" => $to,
+            "marketplaceId" => "EBAY_US",
+            "reportFormat" => "TSV_GZIP",
+            "fundingModels" => ["COST_PER_CLICK"],
+            "dimensions" => [
+                ["dimensionKey" => "campaign_id"],
+            ],
+            "metricKeys" => [
+                "cpc_impressions",
+                "cpc_clicks",
+                "cpc_attributed_sales",
+                "cpc_ctr",
+                "cpc_ad_fees_listingsite_currency",
+                "cpc_sale_amount_listingsite_currency",
+                "cpc_avg_cost_per_sale",
+                "cpc_return_on_ad_spend",
+                "cpc_conversion_rate",
+                "cpc_sale_amount_payout_currency",
+                "cost_per_click",
+                "cpc_ad_fees_payout_currency",
+            ]
+        ];
+
+        $taskId = $this->submitReportTask($accessToken, $body);
+        if (!$taskId) return;
+
+        $reportId = $this->pollReportStatus($accessToken, $taskId);
+        if (!$reportId) return;
+
+        $items = $this->downloadParseAndStoreReport($accessToken, $reportId, $rangeKey);
+        
+        if (!is_array($items)) {
+            $this->warn("Report data is not an array for range {$rangeKey}. Skipping.");
+            $items = [];
+        }
+        
+        // Create a map of report items by campaign_id for quick lookup
+        $reportDataMap = [];
+        foreach($items as $item){
+            if (!$item || empty($item['campaign_id'])) continue;
+            $reportDataMap[$item['campaign_id']] = $item;
+        }
+        
+        $this->info("Report contains " . count($reportDataMap) . " campaigns with performance data");
+        $this->info("Storing all " . count($campaignsMap) . " campaigns for range: {$rangeKey}");
+        
+        $storedCount = 0;
+        $skippedCount = 0;
+        
+        // Store ALL campaigns from campaignsMap, not just those in report
+        foreach($campaignsMap as $campaignId => $campaignData){
+            $campaignName = $campaignData['name'];
+            $campaignStatus = $campaignData['status'];
+            $campaignBudget = $campaignData['daily_budget'];
+
+            if (!$campaignName) {
+                Log::warning("Missing campaignName for ID: {$campaignId}");
+                $skippedCount++;
+                continue;
+            }
+            
+            // Get report data if available, otherwise use zero values
+            $reportItem = $reportDataMap[$campaignId] ?? null;
+        
+            // Safely extract report data - if reportItem exists, use its values, otherwise use defaults
+            $hasReportData = !empty($reportItem);
+        
+            EbayPriorityReport::updateOrCreate(
+                ['campaign_id' => $campaignId, 'report_range' => $rangeKey],
+                [
+                    'campaign_name' => $campaignName,
+                    'campaignBudgetAmount' => $campaignBudget,
+                    'campaignStatus' => $campaignStatus,
+                    'cpc_impressions' => $hasReportData ? ($reportItem['cpc_impressions'] ?? 0) : 0,
+                    'cpc_clicks' => $hasReportData ? ($reportItem['cpc_clicks'] ?? 0) : 0,
+                    'cpc_attributed_sales' => $hasReportData ? ($reportItem['cpc_attributed_sales'] ?? 0) : 0,
+                    'cpc_ctr' => $hasReportData && is_numeric($reportItem['cpc_ctr'] ?? null) ? (float)$reportItem['cpc_ctr'] : 0,
+                    'cpc_ad_fees_listingsite_currency' => $hasReportData ? ($reportItem['cpc_ad_fees_listingsite_currency'] ?? null) : null,
+                    'cpc_sale_amount_listingsite_currency' => $hasReportData ? ($reportItem['cpc_sale_amount_listingsite_currency'] ?? null) : null,
+                    'cpc_avg_cost_per_sale' => $hasReportData ? ($reportItem['cpc_avg_cost_per_sale'] ?? null) : null,
+                    'cpc_return_on_ad_spend' => $hasReportData && is_numeric($reportItem['cpc_return_on_ad_spend'] ?? null) 
+                        ? (float)$reportItem['cpc_return_on_ad_spend'] 
+                        : 0,
+                    'cpc_conversion_rate' => $hasReportData && is_numeric($reportItem['cpc_conversion_rate'] ?? null) 
+                        ? (float)$reportItem['cpc_conversion_rate'] 
+                        : 0,
+                    'cpc_sale_amount_payout_currency' => $hasReportData ? ($reportItem['cpc_sale_amount_payout_currency'] ?? null) : null,
+                    'cost_per_click' => $hasReportData ? ($reportItem['cost_per_click'] ?? null) : null,
+                    'cpc_ad_fees_payout_currency' => $hasReportData ? ($reportItem['cpc_ad_fees_payout_currency'] ?? null) : null,
+                    'channels' => $hasReportData ? ($reportItem['channels'] ?? null) : null,
+                ]
+            );
+            $storedCount++;
+        }
+        
+        $this->info("✅ ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT Data stored for range: {$rangeKey}");
+        $this->info("   - Total campaigns stored: {$storedCount}");
+        $this->info("   - Campaigns with performance data: " . count($reportDataMap));
+        $this->info("   - Campaigns skipped (no name): {$skippedCount}");
+        
+        // Also fetch CAMPAIGN_PERFORMANCE_REPORT for listing-level data
+        $this->fetchAndStoreListingReport($accessToken, $from, $to, $rangeKey);
+    }
+
+    private function fetchAndStoreListingReport($accessToken, $from, $to, $rangeKey)
+    {
+        $this->info("Processing CAMPAIGN_PERFORMANCE_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
+
+        $body = ["reportType" => "CAMPAIGN_PERFORMANCE_REPORT",
+            "dateFrom" => $from,
+            "dateTo" => $to,
+            "marketplaceId" => "EBAY_US",
+            "reportFormat" => "TSV_GZIP",
+            "fundingModels" => ["COST_PER_SALE"],
+            "dimensions" => [
+                ["dimensionKey" => "campaign_id"],
+                ["dimensionKey" => "listing_id"],
+            ],
+            "metricKeys" => [
+                "impressions",
+                "clicks",
+                "ad_fees",
+                "sales", 
+                "sale_amount",
+                "avg_cost_per_sale",
+                "ctr",
+            ]
+        ];
+
+        $taskId = $this->submitReportTask($accessToken, $body);
+        if (!$taskId) return;
+
+        $reportId = $this->pollReportStatus($accessToken, $taskId);
+        if (!$reportId) return;
+
+        $items = $this->downloadParseAndStoreReport($accessToken, $reportId, $rangeKey);
+
+        foreach($items as $item){
+            if (!$item || empty($item['listing_id'])) continue;
+            
+            EbayGeneralReport::updateOrCreate(
+                ['listing_id' => $item['listing_id'], 'report_range' => $rangeKey],
+                [
+                    'campaign_id' => $item['campaign_id'] ?? null,
+                    'impressions' => $item['impressions'] ?? 0,
+                    'clicks' => $item['clicks'] ?? 0,
+                    'sales' => $item['sales'] ?? 0,
+                    'ad_fees' => $item['ad_fees'] ?? null,
+                    'sale_amount' => $item['sale_amount'] ?? null,
+                    'avg_cost_per_sale' => $item['avg_cost_per_sale'] ?? null,
+                    'ctr' => is_numeric($item['ctr'] ?? null) ? (float)$item['ctr'] : 0,
+                    'channels' => $item['channels'] ?? null,
+                ]
+            );
+        }
+        $this->info("✅ CAMPAIGN_PERFORMANCE_REPORT Data stored for range: {$rangeKey}");
     }
 
     private function submitReportTask($token, $body)
@@ -371,7 +395,7 @@ class EbayCampaignReports extends Command
                 ]);
 
             if ($response->successful()) {
-                Log::error('eBay token', ['response' => 'Token generated!']);
+                Log::info('eBay token', ['response' => 'Token generated!']);
                 return $response->json()['access_token'];
             }
 
@@ -388,7 +412,6 @@ class EbayCampaignReports extends Command
         $campaigns = [];
         $limit = 200; // eBay allows up to 200 per page
         $offset = 0;
-        $maxRetries = 3;
 
         while (true) {
             $res = Http::withToken($token)

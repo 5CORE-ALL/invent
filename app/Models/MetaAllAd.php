@@ -15,6 +15,7 @@ class MetaAllAd extends Model
         'campaign_name',
         'campaign_id',
         'ad_type',
+        'platform',
         'campaign_delivery',
         'bgt',
         'imp_l30',
@@ -33,5 +34,19 @@ class MetaAllAd extends Model
         'spent_l7' => 'decimal:2',
         'imp_l7' => 'integer',
         'clicks_l7' => 'integer',
+    ];
+
+    // Define the allowed ad types
+    public static $adTypes = [
+        'Facebook Single Image',
+        'Facebook Single Video',
+        'Facebook Carousal',
+        'Facebook Existing Post',
+        'Facebook Catalogue Ad',
+        'Instagram Single Image',
+        'Instagram Single Video',
+        'Instagram Carousal',
+        'Instagram Existing Post',
+        'Instagram Catalogue Ad',
     ];
 }
