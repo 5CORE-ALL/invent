@@ -262,4 +262,12 @@ return [
     ['value' => 'dhgate_zero_view', 'text' => 'DHGate 0 View', 'group' => 'Marketplace'],
     ['value' => 'bestbuyusa_zero_view', 'text' => 'Bestbuy USA 0 View', 'group' => 'Marketplace'],
     ['value' => 'swgearexchange_zero_view', 'text' => 'SW Gear Exchange 0 View', 'group' => 'Marketplace'],
+
+    // CP Master
+    ['value' => 'cp_master', 'text' => 'CP Master', 'group' => 'CP Master'],
+    ['value' => 'title_master', 'text' => 'Title Master', 'group' => 'CP Master'],
+    ['value' => 'bullet_points', 'text' => 'Bullet Points', 'group' => 'CP Master'],
+    ['value' => 'product_description', 'text' => 'Product Description', 'group' => 'CP Master'],
+    ['value' => 'features', 'text' => 'Features', 'group' => 'CP Master'],
+    ['value' => 'images', 'text' => 'Images', 'group' => 'CP Master'],
 ];
