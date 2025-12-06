@@ -99,9 +99,66 @@ class EbayApiService
     }
 
 
+    /**
+     * Get item details from eBay
+     */
+    public function getItem($itemId)
+    {
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            
+            $authToken = $this->generateBearerToken();
+            $credentials->addChild('eBayAuthToken', $authToken ?? '');
+            
+            $xml->addChild('ItemID', $itemId);
+            $xml->addChild('DetailLevel', 'ReturnAll');
+            
+            $xmlBody = $xml->asXML();
+            
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME'            => $this->devId,
+                'X-EBAY-API-APP-NAME'            => $this->appId,
+                'X-EBAY-API-CERT-NAME'           => $this->certId,
+                'X-EBAY-API-CALL-NAME'           => 'GetItem',
+                'X-EBAY-API-SITEID'              => $this->siteId,
+                'Content-Type'                   => 'text/xml',
+            ];
+            
+            $response = Http::withHeaders($headers)
+                ->withBody($xmlBody, 'text/xml')
+                ->post($this->endpoint);
+            
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            
+            if ($xmlResp === false) {
+                Log::warning('Failed to parse GetItem response', ['body' => $body]);
+                return null;
+            }
+            
+            $responseArray = json_decode(json_encode($xmlResp), true);
+            $ack = $responseArray['Ack'] ?? 'Failure';
+            
+            if ($ack === 'Success' || $ack === 'Warning') {
+                return $responseArray;
+            }
+            
+            return null;
+        } catch (\Exception $e) {
+            Log::warning('Error fetching item details', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
     public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null)
     {
-                // Build XML body
+        // First, try to get item details to ensure we have all required fields
+        $itemDetails = $this->getItem($itemId);
+        
+        // Build XML body
         $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
         $credentials = $xml->addChild('RequesterCredentials');
         
@@ -109,6 +166,10 @@ class EbayApiService
 
         $credentials->addChild('eBayAuthToken', $authToken ?? '');
 
+        // Add ErrorLanguage and WarningLevel to help with validation
+        $xml->addChild('ErrorLanguage', 'en_US');
+        $xml->addChild('WarningLevel', 'High');
+        $xml->addChild('DetailLevel', 'ReturnAll');
 
         $item = $xml->addChild('Item');
         $item->addChild('ItemID', $itemId);
@@ -119,6 +180,21 @@ class EbayApiService
         // Optionally update quantity
         if ($quantity !== null) {
             $item->addChild('Quantity', $quantity);
+        }
+        
+        // If we have item details, include required fields to pass validation
+        if ($itemDetails && isset($itemDetails['Item'])) {
+            $existingItem = $itemDetails['Item'];
+            
+            // Include SKU if available (helps with validation)
+            if (isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
+                $item->addChild('SKU', $existingItem['SKU']);
+            }
+            
+            // Include ListingType if available
+            if (isset($existingItem['ListingType'])) {
+                $item->addChild('ListingType', $existingItem['ListingType']);
+            }
         }
 
         // If variation exists, use variation structure
@@ -196,10 +272,128 @@ class EbayApiService
                 'data' => $responseArray,
             ];
         } else {
+            // Check for Lvis error (ErrorCode 21916293)
+            $errors = $responseArray['Errors'] ?? [];
+            $hasLvisError = false;
+            
+            // Handle both single error and array of errors
+            if (!is_array($errors)) {
+                $errors = [$errors];
+            }
+            
+            foreach ($errors as $error) {
+                $errorCode = is_array($error) ? ($error['ErrorCode'] ?? '') : '';
+                if ($errorCode == '21916293' || (is_array($error) && strpos($error['LongMessage'] ?? '', 'Lvis') !== false)) {
+                    $hasLvisError = true;
+                    break;
+                }
+            }
+            
+            // If Lvis error and we have item details, try alternative approach with ReviseItem
+            if ($hasLvisError && $itemDetails && isset($itemDetails['Item'])) {
+                Log::info('Lvis error detected, trying alternative revision method', ['itemId' => $itemId]);
+                return $this->reviseItemWithFullDetails($itemId, $price, $quantity, $itemDetails['Item']);
+            }
+            
             return [
                 'success' => false,
-                'errors' => $responseArray['Errors'] ?? 'Unknown error',
+                'errors' => $errors,
                 'data' => $responseArray,
+            ];
+        }
+    }
+    
+    /**
+     * Alternative revision method with full item details to bypass Lvis validation
+     */
+    private function reviseItemWithFullDetails($itemId, $price, $quantity, $existingItem)
+    {
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            
+            $authToken = $this->generateBearerToken();
+            $credentials->addChild('eBayAuthToken', $authToken ?? '');
+            
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+            $xml->addChild('DetailLevel', 'ReturnAll');
+            
+            $item = $xml->addChild('Item');
+            $item->addChild('ItemID', $itemId);
+            $item->addChild('StartPrice', $price);
+            
+            // Include SKU if available
+            if (isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
+                $item->addChild('SKU', $existingItem['SKU']);
+            }
+            
+            // Include ListingType
+            if (isset($existingItem['ListingType'])) {
+                $item->addChild('ListingType', $existingItem['ListingType']);
+            }
+            
+            if ($quantity !== null) {
+                $item->addChild('Quantity', $quantity);
+            }
+            
+            $xmlBody = $xml->asXML();
+            
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME'            => $this->devId,
+                'X-EBAY-API-APP-NAME'            => $this->appId,
+                'X-EBAY-API-CERT-NAME'           => $this->certId,
+                'X-EBAY-API-CALL-NAME'           => 'ReviseItem',
+                'X-EBAY-API-SITEID'              => $this->siteId,
+                'Content-Type'                   => 'text/xml',
+            ];
+            
+            $response = Http::withHeaders($headers)
+                ->withBody($xmlBody, 'text/xml')
+                ->post($this->endpoint);
+            
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            
+            if ($xmlResp === false) {
+                return [
+                    'success' => false,
+                    'message' => 'Invalid XML response',
+                    'raw' => $body,
+                ];
+            }
+            
+            $responseArray = json_decode(json_encode($xmlResp), true);
+            $ack = $responseArray['Ack'] ?? 'Failure';
+            
+            if ($ack === 'Success' || $ack === 'Warning') {
+                Log::info('Alternative revision method succeeded', ['itemId' => $itemId]);
+                return [
+                    'success' => true,
+                    'message' => 'Item updated successfully (alternative method).',
+                    'data' => $responseArray,
+                ];
+            } else {
+                Log::warning('Alternative revision method also failed', [
+                    'itemId' => $itemId,
+                    'errors' => $responseArray['Errors'] ?? 'Unknown error'
+                ]);
+                return [
+                    'success' => false,
+                    'errors' => $responseArray['Errors'] ?? 'Unknown error',
+                    'data' => $responseArray,
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception in reviseItemWithFullDetails', [
+                'itemId' => $itemId,
+                'error' => $e->getMessage()
+            ]);
+            return [
+                'success' => false,
+                'errors' => [['code' => 'Exception', 'message' => $e->getMessage()]],
             ];
         }
     }
@@ -565,7 +759,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
                 
                 try {
                     $item = array_combine($headers, $row);
-                    // $itemId = $item['itemId'] ?? $item['item_id'] ?? null;
+                    $itemId = $item['itemId'] ?? $item['item_id'] ?? null;
                     
                     if (!$itemId) {
                         Log::warning("Skipping row $index - no item ID found");
@@ -878,7 +1072,7 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
 
     public function getEbayInventory1(){
          $token = $this->generateEbayToken();
-        if (!$token) { $this->error('Failed to generate token.'); return; }
+        if (!$token) { Log::error('Failed to generate token.'); return; }
         $reportType='LMS_ACTIVE_INVENTORY_REPORT';
 
         // $listingData = $this->fetchAndParseReport('LMS_ACTIVE_INVENTORY_REPORT', null, $token);

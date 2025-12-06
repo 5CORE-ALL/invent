@@ -1539,8 +1539,43 @@ class EbayController extends Controller
             } else {
                 $this->saveSpriceStatus($sku, 'error');
                 $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => 'Failed to update price']];
-                Log::error('eBay price update failed', ['sku' => $sku, 'price' => $priceFloat, 'item_id' => $ebayMetric->item_id, 'errors' => $errors]);
-                return response()->json(['errors' => is_array($errors) ? $errors : [['code' => 'APIError', 'message' => $errors]]], 400);
+                
+                // Check for Lvis error and provide user-friendly message
+                $errorMessages = [];
+                $hasLvisError = false;
+                
+                // Normalize errors to array format
+                if (!is_array($errors)) {
+                    $errors = [$errors];
+                }
+                
+                foreach ($errors as $error) {
+                    $errorCode = is_array($error) ? ($error['ErrorCode'] ?? '') : '';
+                    $errorMsg = is_array($error) ? ($error['LongMessage'] ?? $error['ShortMessage'] ?? 'Unknown error') : (string)$error;
+                    
+                    if ($errorCode == '21916293' || strpos($errorMsg, 'Lvis') !== false) {
+                        $hasLvisError = true;
+                        $errorMessages[] = [
+                            'code' => $errorCode ?: 'LvisBlocked',
+                            'message' => 'Listing validation blocked: This listing may have policy violations or restrictions. Please check the listing status in eBay Seller Hub and resolve any issues before updating the price.'
+                        ];
+                    } else {
+                        $errorMessages[] = [
+                            'code' => $errorCode ?: 'APIError',
+                            'message' => $errorMsg
+                        ];
+                    }
+                }
+                
+                Log::error('eBay price update failed', [
+                    'sku' => $sku,
+                    'price' => $priceFloat,
+                    'item_id' => $ebayMetric->item_id,
+                    'errors' => $errors,
+                    'hasLvisError' => $hasLvisError
+                ]);
+                
+                return response()->json(['errors' => $errorMessages], 400);
             }
         } catch (\Exception $e) {
             $this->saveSpriceStatus($sku, 'error');
