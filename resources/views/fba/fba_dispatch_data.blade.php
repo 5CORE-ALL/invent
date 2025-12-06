@@ -514,6 +514,14 @@
                             }
                         },
 
+                        //   {
+                        //     title: "Shopify INV",
+                        //     field: "Shopify_INV",
+                        //     hozAlign: "center"
+                        // },
+
+                        
+
                         {
                             title: "Ov L30",
                             field: "Shopify_OV_L30",
@@ -543,35 +551,6 @@
                         },
 
                         {
-                            title: "Shipment Status",
-                            field: "FBA_Shipment_Status",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const status = cell.getValue() || '';
-                                if (!status) return '';
-                                
-                                const statusColors = {
-                                    'WORKING': '#FF8C00',
-                                    'SHIPPED': '#1E90FF',
-                                    'IN_TRANSIT': '#0066CC',
-                                    'DELIVERED': '#228B22',
-                                    'RECEIVING': '#DAA520',
-                                    'CLOSED': '#696969',
-                                    'CANCELLED': '#B22222',
-                                    'ERROR': '#CC0000'
-                                };
-                                const color = statusColors[status] || '#000';
-                                return `<span style="color: ${color}; font-weight: 700; font-size: 12px;">${status}</span>`;
-                            }
-                        },
-
-                        {
-                            title: "Shopify INV",
-                            field: "Shopify_INV",
-                            hozAlign: "center"
-                        },
-
-                        {
                             title: "L30 FBA",
                             field: "l30_units",
                             hozAlign: "center"
@@ -597,296 +576,57 @@
                             },
                         },
 
-
-                        {
-                            title: "Dispatch Date",
-                            field: "Dispatch_Date",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-
-
-                        {
-                            title: "Q in E box",
-                            field: "Quantity_in_each_box",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-
-                        {
-                            title: "Sent Quantity",
-                            field: "Total_quantity_sent",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-                        {
-                            title: "Warehouse INV Reduction",
-                            field: "Warehouse_INV_Reduction",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-
-
-
-                        {
-                            title: "Inbound Quantity",
-                            field: "Inbound_Quantity",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-
-                        {
-                            title: "ASIN",
-                            field: "ASIN"
-                        },
-
-
-                        {
-                            title: "MSL",
-                            field: "MSL",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue());
-                                if (isNaN(value) || value === 0) return value || '';
-                                
-                                const bgColor = value < 0 ? '#ffeb3b' : '#f44336'; // yellow for negative, red for positive
-                                const textColor = value < 0 ? '#000' : '#fff';
-                                return `<span style="background-color:${bgColor}; color:${textColor}; padding:4px 8px; border-radius:3px; font-weight:600;">${value}</span>`;
-                            }
-                        },
-                        {
-                            title: "Correct Cost",
-                            field: "Correct_Cost",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-                        {
-                            title: "FBA Send",
-                            field: "FBA_Send",
-                            hozAlign: "center",
-                            formatter: "tickCross",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-                        {
-                            title: "Approval",
-                            field: "Approval",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-                        {
-                            title: "Profit is ok",
-                            field: "Profit_is_ok",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-                        {
-                            title: "FBA Price",
-                            field: "FBA_Price",
-                            hozAlign: "center",
-                            // formatter: "dollar"
-                        },
-
-                        {
-                            title: "TPFT",
-                            field: "TPFT",
-                            hozAlign: "center",
-                            // formatter: "dollar"
-                        },
-
-                        {
-                            title: "Inv age",
-                            field: "Inv_age",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = cell.getValue();
-                                return `<span>${value || ''}</span> <i class="fa fa-eye" style="cursor:pointer; color:#3b7ddd; margin-left:5px;" onclick="openInvageModal('${value || ''}', '${cell.getRow().getData().SKU}')"></i>`;
-                            }
-                        },
-
-
-
-
-
-                        {
-                            title: "TPFT",
-                            field: "TPFT",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-                        {
-                            title: "S Price",
-                            field: "S_Price",
-                            hozAlign: "center",
-                            editor: "input",
-                            cellEdited: function(cell) {
-                                var data = cell.getRow().getData();
-                                var value = cell.getValue();
-
-                                $.ajax({
-                                    url: '/update-fba-manual-data',
-                                    method: 'POST',
-                                    data: {
-                                        sku: data.FBA_SKU,
-                                        field: 's_price',
-                                        value: value,
-                                        _token: '{{ csrf_token() }}'
-                                    },
-                                    success: function() {
-                                        table
-                                            .replaceData();
-                                    }
-                                });
-                            }
-                        },
-                        {
-                            title: "SPft%",
-                            field: "SPft%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-                        {
-                            title: "SROI%",
-                            field: "SROI%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-                        {
-                            title: "LMP ",
-                            field: "lmp_1",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = cell.getValue();
-                                const rowData = cell.getRow().getData();
-                                if (value > 0) {
-                                    return `<a href="#" class="lmp-link" data-sku="${rowData.SKU}" data-lmp-data='${JSON.stringify(rowData.lmp_data)}' style="color: blue; text-decoration: underline;">${value}</a>`;
-                                } else {
-                                    return value || '';
-                                }
-                            }
-                        },
-
-
-                        {
-                            title: "FBA_CVR",
-                            field: "FBA_CVR",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-                        {
+                         {
                             title: "Views",
                             field: "Current_Month_Views",
                             hozAlign: "center"
                         },
 
 
-
                         {
-                            title: "Listed",
-                            field: "Listed",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-                        {
-                            title: "Live",
-                            field: "Live",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
-
-
-                        {
-                            title: "Pft%",
-                            field: "Pft%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const data = cell.getRow().getData();
-                                return data['Pft%_HTML'] ||
-                                    `${parseFloat(cell.getValue() || 0).toFixed(1)}%`;
-                            },
-                        },
-
-                        {
-                            title: "ROI%",
-                            field: "ROI%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            },
-                        },
-
-
-
-                        {
-                            title: "FBA Ship",
-                            field: "FBA_Ship_Calculation",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue());
-                                if (isNaN(value)) return '';
-                                return value.toFixed(2);
-                            }
-                        },
-
-                        {
-                            title: "WH ACT",
-                            field: "WH_ACT",
+                            title: "UPC Codes",
+                            field: "UPC_Codes",
                             hozAlign: "center",
                             editor: "input",
                             tooltip: true
                         },
 
+
                         {
+                            title: "M/A Barcode",
+                            field: "Barcode",
+                            editor: "list",
+                            editorParams: {
+                                values: ["", "M", "A"],
+                                autocomplete: true,
+                                allowEmpty: true,
+                                listOnEmpty: true
+                            },
+                            hozAlign: "center"
+                        },
+
+
+                        {
+                            title: "Done",
+                            field: "Done",
+                            formatter: "tickCross",
+                            hozAlign: "center",
+                            editor: true,
+                            cellClick: function(e, cell) {
+                                var currentValue = cell.getValue();
+                                cell.setValue(!currentValue);
+                            }
+                        },
+
+
+                        {
+                            title: "D Date",
+                            field: "Dispatch_Date",
+                            hozAlign: "center",
+                            editor: "input"
+                        },
+
+  {
                             title: "Length",
                             field: "Length",
                             hozAlign: "center",
@@ -961,9 +701,126 @@
                             }
                         },
 
+
                         {
-                            title: "Shipment Track Status",
-                            field: "Shipment_Track_Status",
+                            title: "Q in E box",
+                            field: "Quantity_in_each_box",
+                            hozAlign: "center",
+                            editor: "input"
+                        },
+
+
+                        {
+                            title: "Sent Quantity",
+                            field: "Total_quantity_sent",
+                            hozAlign: "center",
+                            editor: "input"
+                        },
+
+                           {
+                            title: "T Sent C",
+                            field: "Shipping_Amount",
+                            hozAlign: "center",
+                            editor: "input"
+                        },
+
+                            {
+                            title: "W H INV RED",
+                            field: "Warehouse_INV_Reduction",
+                            formatter: "tickCross",
+                            hozAlign: "center",
+                            editor: true,
+                            cellClick: function(e, cell) {
+                                var currentValue = cell.getValue();
+                                cell.setValue(!currentValue);
+                            }
+                        },
+
+                        {
+                            title: "Shipment Status",
+                            field: "FBA_Shipment_Status",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const status = cell.getValue() || '';
+                                if (!status) return '';
+                                
+                                const statusColors = {
+                                    'WORKING': '#FF8C00',
+                                    'SHIPPED': '#1E90FF',
+                                    'IN_TRANSIT': '#0066CC',
+                                    'DELIVERED': '#228B22',
+                                    'RECEIVING': '#DAA520',
+                                    'CLOSED': '#696969',
+                                    'CANCELLED': '#B22222',
+                                    'ERROR': '#CC0000'
+                                };
+                                const color = statusColors[status] || '#000';
+                                return `<span style="color: ${color}; font-weight: 700; font-size: 12px;">${status}</span>`;
+                            }
+                        },
+
+                      
+
+                        {
+                            title: "Inbound Quantity",
+                            field: "Inbound_Quantity",
+                            hozAlign: "center",
+                            editor: "input"
+                        },
+
+
+                        {
+                            title: "ASIN",
+                            field: "ASIN"
+                        },
+
+
+                        {
+                            title: "MSL",
+                            field: "MSL",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue());
+                                if (isNaN(value) || value === 0) return value || '';
+                                
+                                const bgColor = value < 0 ? '#ffeb3b' : '#f44336'; // yellow for negative, red for positive
+                                const textColor = value < 0 ? '#000' : '#fff';
+                                return `<span style="background-color:${bgColor}; color:${textColor}; padding:4px 8px; border-radius:3px; font-weight:600;">${value}</span>`;
+                            }
+                        },
+    {
+                            title: "FBA Price",
+                            field: "FBA_Price",
+                            hozAlign: "center",
+                            // formatter: "dollar"
+                        },
+
+
+                        {
+                            title: "Pft%",
+                            field: "Pft%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const data = cell.getRow().getData();
+                                return data['Pft%_HTML'] ||
+                                    `${parseFloat(cell.getValue() || 0).toFixed(1)}%`;
+                            },
+                        },
+
+                        {
+                            title: "ROI%",
+                            field: "ROI%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            },
+                        },
+
+
+
+                        {
+                            title: "S Price",
+                            field: "S_Price",
                             hozAlign: "center",
                             editor: "input",
                             cellEdited: function(cell) {
@@ -975,18 +832,64 @@
                                     method: 'POST',
                                     data: {
                                         sku: data.FBA_SKU,
-                                        field: 'shipment_track_status',
+                                        field: 's_price',
                                         value: value,
                                         _token: '{{ csrf_token() }}'
                                     },
                                     success: function() {
-                                        table.replaceData();
+                                        table
+                                            .replaceData();
                                     }
                                 });
                             }
                         },
+                        {
+                            title: "SPft%",
+                            field: "SPft%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            },
+                        },
+                        {
+                            title: "SROI%",
+                            field: "SROI%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            },
+                        },
+
+
+                         {
+                            title: "LMP ",
+                            field: "lmp_1",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = cell.getValue();
+                                const rowData = cell.getRow().getData();
+                                if (value > 0) {
+                                    return `<a href="#" class="lmp-link" data-sku="${rowData.SKU}" data-lmp-data='${JSON.stringify(rowData.lmp_data)}' style="color: blue; text-decoration: underline;">${value}</a>`;
+                                } else {
+                                    return value || '';
+                                }
+                            }
+                        },
+
+
 
                         {
+                            title: "FBA Ship",
+                            field: "FBA_Ship_Calculation",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue());
+                                if (isNaN(value)) return '';
+                                return value.toFixed(2);
+                            }
+                        },
+
+                         {
                             title: "Send Cost",
                             field: "Send_Cost",
                             hozAlign: "center",
@@ -994,13 +897,6 @@
                         },
 
 
-                        {
-                            title: "UPC Codes",
-                            field: "UPC_Codes",
-                            hozAlign: "center",
-                            editor: "input",
-                            tooltip: true
-                        },
 
                         {
                             title: "FBA Fee",
@@ -1008,53 +904,176 @@
                             hozAlign: "center"
                         },
 
-                        {
-                            title: "FBA Fee Manual",
-                            field: "FBA_Fee_Manual",
-                            hozAlign: "center",
-                            editor: "input",
-                            formatter: function(cell) {
-                                cell.getElement().style.color = "#a80f8b"; // dark text
-                                return cell.getValue();
-                            }
-                        },
 
-                        ,
+                        // {
+                        //     title: "Correct Cost",
+                        //     field: "Correct_Cost",
+                        //     formatter: "tickCross",
+                        //     hozAlign: "center",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
+                        // {
+                        //     title: "FBA Send",
+                        //     field: "FBA_Send",
+                        //     hozAlign: "center",
+                        //     formatter: "tickCross",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
+                        // {
+                        //     title: "Approval",
+                        //     field: "Approval",
+                        //     formatter: "tickCross",
+                        //     hozAlign: "center",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
+                        // {
+                        //     title: "Profit is ok",
+                        //     field: "Profit_is_ok",
+                        //     formatter: "tickCross",
+                        //     hozAlign: "center",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
+                    
+                        // {
+                        //     title: "TPFT",
+                        //     field: "TPFT",
+                        //     hozAlign: "center",
+                        //     // formatter: "dollar"
+                        // },
 
-                        {
-                            title: "M/A Barcode",
-                            field: "Barcode",
-                            editor: "list",
-                            editorParams: {
-                                values: ["", "M", "A"],
-                                autocomplete: true,
-                                allowEmpty: true,
-                                listOnEmpty: true
-                            },
-                            hozAlign: "center"
-                        },
-                        {
-                            title: "Done",
-                            field: "Done",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
+                        // {
+                        //     title: "Inv age",
+                        //     field: "Inv_age",
+                        //     hozAlign: "center",
+                        //     formatter: function(cell) {
+                        //         const value = cell.getValue();
+                        //         return `<span>${value || ''}</span> <i class="fa fa-eye" style="cursor:pointer; color:#3b7ddd; margin-left:5px;" onclick="openInvageModal('${value || ''}', '${cell.getRow().getData().SKU}')"></i>`;
+                        //     }
+                        // },
 
 
 
 
-                        {
-                            title: "T Sent C",
-                            field: "Shipping_Amount",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
 
+                        // {
+                        //     title: "TPFT",
+                        //     field: "TPFT",
+                        //     hozAlign: "center",
+                        //     formatter: function(cell) {
+                        //         return cell.getValue();
+                        //     },
+                        // },
+
+
+                       
+
+
+                        // {
+                        //     title: "FBA_CVR",
+                        //     field: "FBA_CVR",
+                        //     hozAlign: "center",
+                        //     formatter: function(cell) {
+                        //         return cell.getValue();
+                        //     },
+                        // },
+
+                       
+
+
+                        // {
+                        //     title: "Listed",
+                        //     field: "Listed",
+                        //     formatter: "tickCross",
+                        //     hozAlign: "center",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
+                        // {
+                        //     title: "Live",
+                        //     field: "Live",
+                        //     formatter: "tickCross",
+                        //     hozAlign: "center",
+                        //     editor: true,
+                        //     cellClick: function(e, cell) {
+                        //         var currentValue = cell.getValue();
+                        //         cell.setValue(!currentValue);
+                        //     }
+                        // },
+
+
+
+                        // {
+                        //     title: "WH ACT",
+                        //     field: "WH_ACT",
+                        //     hozAlign: "center",
+                        //     editor: "input",
+                        //     tooltip: true
+                        // },
+
+                      
+
+                        // {
+                        //     title: "Shipment Track Status",
+                        //     field: "Shipment_Track_Status",
+                        //     hozAlign: "center",
+                        //     editor: "input",
+                        //     cellEdited: function(cell) {
+                        //         var data = cell.getRow().getData();
+                        //         var value = cell.getValue();
+
+                        //         $.ajax({
+                        //             url: '/update-fba-manual-data',
+                        //             method: 'POST',
+                        //             data: {
+                        //                 sku: data.FBA_SKU,
+                        //                 field: 'shipment_track_status',
+                        //                 value: value,
+                        //                 _token: '{{ csrf_token() }}'
+                        //             },
+                        //             success: function() {
+                        //                 table.replaceData();
+                        //             }
+                        //         });
+                        //     }
+                        // },
+
+                       
+
+                        // {
+                        //     title: "FBA Fee Manual",
+                        //     field: "FBA_Fee_Manual",
+                        //     hozAlign: "center",
+                        //     editor: "input",
+                        //     formatter: function(cell) {
+                        //         cell.getElement().style.color = "#a80f8b"; // dark text
+                        //         return cell.getValue();
+                        //     }
+                        // },
+
+                        // ,
+
+
+
+                     
 
 
 
