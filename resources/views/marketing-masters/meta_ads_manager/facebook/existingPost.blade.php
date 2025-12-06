@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Meta - Facebook Existing Post', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Meta - FB Existing Post', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -7,15 +7,15 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Facebook Existing Post Ads',
-        'sub_title' => 'Facebook Existing Post',
+        'page_title' => 'FB Existing Post Ads',
+        'sub_title' => 'FB Existing Post',
     ])
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body py-3">
                     @include('marketing-masters.meta_ads_manager.partials.filters', [
-                        'adType' => 'FACEBOOK EXISTING POST',
+                        'adType' => 'FB EXISTING POST',
                         'latestUpdatedAt' => $latestUpdatedAt ?? null
                     ])
                     <div id="budget-under-table"></div>
@@ -30,7 +30,6 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         var dataUrl = "{{ route('meta.ads.facebook.existing.post.data') }}";
-        var adType = "Facebook Existing Post";
     </script>
     @include('marketing-masters.meta_ads_manager.partials.table-script-full')
 @endsection

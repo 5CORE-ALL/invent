@@ -9,6 +9,17 @@
             placeholder: "No Data Available",
             columns: [
                 {
+                    title: "Group",
+                    field: "group_name",
+                    minWidth: 150,
+                    headerSort: true,
+                    editor: "input",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return value || '<span class="text-muted">No Group</span>';
+                    }
+                },
+                {
                     title: "Campaign Name",
                     field: "campaign_name",
                     minWidth: 320,
@@ -551,5 +562,123 @@
         });
 
         document.body.style.zoom = "70%";
+
+        // Add New Group Modal Handler
+        $('#add-group-btn').on('click', function() {
+            $('#addGroupModal').modal('show');
+        });
+
+        // Submit Group Form
+        $('#submitGroupBtn').on('click', function() {
+            const groupName = $('#groupName').val().trim();
+            
+            if (!groupName) {
+                alert('Please enter a group name');
+                return;
+            }
+
+            // Here you can add AJAX call to save the group
+            $.ajax({
+                url: "{{ route('meta.ads.group.store') }}",
+                type: "POST",
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                data: { group_name: groupName },
+                success: function(response) {
+                    alert('Group created successfully!');
+                    $('#addGroupModal').modal('hide');
+                    $('#groupName').val('');
+                    // Optionally refresh the table or update group dropdown
+                },
+                error: function(xhr) {
+                    let message = 'Failed to create group';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        message = xhr.responseJSON.error;
+                    }
+                    alert(message);
+                }
+            });
+        });
+
+        // Import Button Handler
+        $('#import-btn').on('click', function() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.csv,.xlsx,.xls';
+            
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                // Show loading state
+                $('#import-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Importing...');
+                
+                $.ajax({
+                    url: "{{ route('meta.ads.import') }}",
+                    type: "POST",
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        $('#import-btn').prop('disabled', false).html('<i class="fa fa-upload me-1"></i>Import');
+                        alert('Import successful!');
+                        table.replaceData();
+                    },
+                    error: function(xhr) {
+                        $('#import-btn').prop('disabled', false).html('<i class="fa fa-upload me-1"></i>Import');
+                        let message = 'Import failed';
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            message = xhr.responseJSON.error;
+                        }
+                        alert(message);
+                    }
+                });
+            };
+            
+            input.click();
+        });
+
+        // Export Button Handler
+        $('#export-btn').on('click', function() {
+            const data = table.getData();
+            
+            if (data.length === 0) {
+                alert('No data to export');
+                return;
+            }
+            
+            // Show loading state
+            $('#export-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Exporting...');
+            
+            $.ajax({
+                url: "{{ route('meta.ads.export') }}",
+                type: "POST",
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                data: {},
+                xhrFields: {
+                    responseType: 'blob'
+                },
+                success: function(response) {
+                    $('#export-btn').prop('disabled', false).html('<i class="fa fa-download me-1"></i>Export');
+                    
+                    // Create download link
+                    const url = window.URL.createObjectURL(response);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'meta_ads_export_' + new Date().toISOString().split('T')[0] + '.xlsx';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                },
+                error: function(xhr) {
+                    $('#export-btn').prop('disabled', false).html('<i class="fa fa-download me-1"></i>Export');
+                    alert('Export failed');
+                }
+            });
+        });
     });
 </script>

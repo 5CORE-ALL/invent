@@ -14,7 +14,7 @@ class MetaAllAd extends Model
     protected $fillable = [
         'campaign_name',
         'campaign_id',
-        'ad_type',
+        'group_id',
         'platform',
         'campaign_delivery',
         'bgt',
@@ -36,17 +36,28 @@ class MetaAllAd extends Model
         'clicks_l7' => 'integer',
     ];
 
-    // Define the allowed ad types
-    public static $adTypes = [
-        'Facebook Single Image',
-        'Facebook Single Video',
-        'Facebook Carousal',
-        'Facebook Existing Post',
-        'Facebook Catalogue Ad',
-        'Instagram Single Image',
-        'Instagram Single Video',
-        'Instagram Carousal',
-        'Instagram Existing Post',
-        'Instagram Catalogue Ad',
-    ];
+    /**
+     * Get the group that the ad belongs to
+     */
+    public function group()
+    {
+        return $this->belongsTo(MetaAdGroup::class, 'group_id');
+    }
+
+    /**
+     * Assign group based on campaign name prefix
+     */
+    public static function assignGroupByCampaignName($campaignName)
+    {
+        $groups = MetaAdGroup::all();
+        
+        foreach ($groups as $group) {
+            // Check if campaign name starts with group name (case-insensitive)
+            if (stripos($campaignName, $group->group_name) === 0) {
+                return $group->id;
+            }
+        }
+        
+        return null;
+    }
 }

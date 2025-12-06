@@ -30,7 +30,6 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         var dataUrl = "{{ route('meta.ads.instagram.existing.post.data') }}";
-        var adType = "Instagram Existing Post";
     </script>
     @include('marketing-masters.meta_ads_manager.partials.table-script-full')
 @endsection
