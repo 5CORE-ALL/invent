@@ -191,8 +191,8 @@
                             <input type="file" class="form-control" id="excelFile" accept=".xlsx,.xls,.csv" required>
                         </div>
                         <div class="alert alert-info">
-                            <small><strong>File should contain:</strong> SKU, Buybox Price (or buybox_price, bb_price), SPRICE (optional)</small>
-                            <br><small>Example: SKU, Buybox Price<br>ABC123, 29.99</small>
+                            <small><strong>File should contain:</strong> SKU, Listed, Live</small>
+                            <br><small>Example: SKU, Listed, Live<br>ABC123, TRUE, FALSE</small>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -365,6 +365,18 @@
                         width: 50
                     },
                     {
+                        title: "API Views",
+                        field: "api_views",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<span style="color: #6c757d;">0</span>';
+                            return `<span style="font-weight: 600;">${parseInt(value).toLocaleString()}</span>`;
+                        },
+                        width: 70
+                    },
+                    {
                         title: "Reviews",
                         field: "total_review_count",
                         hozAlign: "center",
@@ -528,8 +540,8 @@
                         width: 65
                     },
                     {
-                        title: "BB Price",
-                        field: "buybox_price",
+                        title: "BB Base",
+                        field: "buybox_base_price",
                         hozAlign: "center",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -538,20 +550,77 @@
                             if (rowData.is_parent_summary) return '';
 
                             const buyboxPrice = cell.getValue();
-                            const sku = rowData['(Child) sku'];
 
                             if (!buyboxPrice || buyboxPrice === 0) {
                                 return '<span style="color: #999;">N/A</span>';
                             }
 
-                            const priceFormatted = '$' + parseFloat(buyboxPrice).toFixed(2);
-                            return priceFormatted;
+                            return '$' + parseFloat(buyboxPrice).toFixed(2);
                         },
-                        editor: "number",
-                        editorParams: {
-                            min: 0,
-                            step: 0.01
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "BB Total",
+                        field: "buybox_total_price",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+
+                            const buyboxTotal = cell.getValue();
+
+                            if (!buyboxTotal || buyboxTotal === 0) {
+                                return '<span style="color: #999;">N/A</span>';
+                            }
+
+                            return '$' + parseFloat(buyboxTotal).toFixed(2);
                         },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "Insights Views",
+                        field: "insights_views",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+
+                            const views = cell.getValue();
+
+                            if (!views || views === 0) {
+                                return '<span style="color: #999;">0</span>';
+                            }
+
+                            return parseInt(views).toLocaleString();
+                        },
+                        sorter: "number",
+                        width: 100
+                    },
+                    {
+                        title: "Page Views",
+                        field: "page_views",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+
+                            const pageViews = cell.getValue();
+
+                            if (!pageViews || pageViews === 0) {
+                                return '<span style="color: #999;">0</span>';
+                            }
+
+                            return parseInt(pageViews).toLocaleString();
+                        },
+                        sorter: "number",
                         width: 100
                     },
                     {
