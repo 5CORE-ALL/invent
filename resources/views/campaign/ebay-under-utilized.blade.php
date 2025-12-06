@@ -1063,15 +1063,20 @@
 
                     if (!(ub7 < 70)) return false;
 
-                    // price < 20
+                    // price < 30
                     let price = parseFloat(data.price || 0);
                     if (price < 30) {
                         return false;
                     }
 
+                    // Show only INV > 0 rows
+                    let inv = parseFloat(data.INV || 0);
+                    if (inv <= 0) {
+                        return false;
+                    }
+
                     // Pink DIL filter (exclude pink rows)
                     let l30 = parseFloat(data.L30);
-                    let inv = parseFloat(data.INV);
                     let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
                     let dilColor = getDilColor(dilDecimal);
                     if (dilColor === "pink") return false;
