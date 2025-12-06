@@ -872,6 +872,31 @@
                             continue;
                         }
                         
+                        // Skip if account is restricted (check status in table if available)
+                        let isAccountRestricted = false;
+                        if (table) {
+                            try {
+                                const rows = table.getRows();
+                                for (let i = 0; i < rows.length; i++) {
+                                    const rowData = rows[i].getData();
+                                    if (rowData['(Child) sku'] === sku) {
+                                        if (rowData.SPRICE_STATUS === 'account_restricted') {
+                                            isAccountRestricted = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            } catch (e) {
+                                // Continue if table check fails
+                            }
+                        }
+                        
+                        if (isAccountRestricted) {
+                            console.log(`SKU ${sku} is account restricted, skipping background retry`);
+                            removeFailedSkuFromRetry(sku);
+                            continue;
+                        }
+                        
                         // Try to find the cell in the table for UI update
                         let cell = null;
                         if (table) {
@@ -1063,7 +1088,32 @@
                     return true;
                 } catch (xhr) {
                     const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseJSON?.message || 'Failed to apply price';
+                    const errorCode = xhr.responseJSON?.errors?.[0]?.code || '';
                     console.error(`Attempt ${retries + 1} for SKU ${sku} failed:`, errorMsg);
+
+                    // Check if this is an account restriction error (don't retry)
+                    const isAccountRestricted = errorCode === 'AccountRestricted' || 
+                                                errorMsg.includes('ACCOUNT RESTRICTION') ||
+                                                errorMsg.includes('account is restricted') ||
+                                                errorMsg.includes('embargoed country');
+                    
+                    if (isAccountRestricted) {
+                        // Account restriction - don't retry, mark as account_restricted
+                        if (rowData) {
+                            rowData.SPRICE_STATUS = 'account_restricted';
+                            row.update(rowData);
+                        }
+                        
+                        if ($btn && cell) {
+                            $btn.prop('disabled', false);
+                            $btn.html('<i class="fa-solid fa-ban"></i>');
+                            $btn.attr('style', 'border: none; background: none; color: #ff6b00; padding: 0;'); // Orange text for restriction
+                            $btn.attr('title', 'Account restricted - cannot update price');
+                        }
+                        
+                        showToast(`Account restriction detected for SKU: ${sku}. Please resolve account restrictions in eBay before updating prices.`, 'error');
+                        return false;
+                    }
 
                     if (retries < 5) {
                         console.log(`Retrying SKU ${sku} in 5 seconds...`);
@@ -2020,6 +2070,10 @@
                                 icon = '<i class="fa-solid fa-x"></i>';
                                 iconColor = '#dc3545'; // Red text
                                 titleText = 'Error applying price to eBay';
+                            } else if (status === 'account_restricted') {
+                                icon = '<i class="fa-solid fa-ban"></i>';
+                                iconColor = '#ff6b00'; // Orange text
+                                titleText = 'Account restricted - Cannot update price. Please resolve account restrictions in eBay.';
                             }
 
                             // Show only icon with color, no background

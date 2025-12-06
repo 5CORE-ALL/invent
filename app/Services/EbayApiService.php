@@ -281,12 +281,49 @@ class EbayApiService
                 $errors = [$errors];
             }
             
+            $isAccountRestricted = false;
+            
             foreach ($errors as $error) {
                 $errorCode = is_array($error) ? ($error['ErrorCode'] ?? '') : '';
-                if ($errorCode == '21916293' || (is_array($error) && strpos($error['LongMessage'] ?? '', 'Lvis') !== false)) {
-                    $hasLvisError = true;
-                    break;
+                $errorMsg = is_array($error) ? ($error['LongMessage'] ?? $error['ShortMessage'] ?? '') : '';
+                $errorParams = is_array($error) ? ($error['ErrorParameters'] ?? []) : [];
+                
+                // Extract error parameter messages
+                $paramMessages = [];
+                if (is_array($errorParams)) {
+                    foreach ($errorParams as $param) {
+                        if (is_array($param) && isset($param['Value'])) {
+                            $paramMessages[] = strip_tags($param['Value']);
+                        }
+                    }
                 }
+                $fullErrorText = $errorMsg . ' ' . implode(' ', $paramMessages);
+                
+                // Check for account restriction (cannot be bypassed)
+                if (stripos($fullErrorText, 'account is restricted') !== false || 
+                    stripos($fullErrorText, 'restrictions on your account') !== false ||
+                    stripos($fullErrorText, 'embargoed country') !== false) {
+                    $isAccountRestricted = true;
+                    Log::warning('Account restriction detected - skipping alternative methods', [
+                        'itemId' => $itemId,
+                        'errorText' => substr($fullErrorText, 0, 200)
+                    ]);
+                    break; // Don't try alternative methods for account restrictions
+                }
+                
+                if ($errorCode == '21916293' || strpos($errorMsg, 'Lvis') !== false) {
+                    $hasLvisError = true;
+                }
+            }
+            
+            // If account is restricted, return error immediately (no point trying alternatives)
+            if ($isAccountRestricted) {
+                return [
+                    'success' => false,
+                    'errors' => $errors,
+                    'data' => $responseArray,
+                    'accountRestricted' => true, // Flag for controller to provide specific message
+                ];
             }
             
             // If Lvis error and we have item details, try alternative approach with ReviseItem
@@ -309,6 +346,12 @@ class EbayApiService
     private function reviseItemWithFullDetails($itemId, $price, $quantity, $existingItem)
     {
         try {
+            Log::info('Attempting alternative revision with ReviseItem', [
+                'itemId' => $itemId,
+                'price' => $price,
+                'hasExistingItem' => !empty($existingItem)
+            ]);
+            
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
             $credentials = $xml->addChild('RequesterCredentials');
             
@@ -323,14 +366,33 @@ class EbayApiService
             $item->addChild('ItemID', $itemId);
             $item->addChild('StartPrice', $price);
             
-            // Include SKU if available
+            // Include SKU if available (critical for validation)
             if (isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
                 $item->addChild('SKU', $existingItem['SKU']);
+                Log::debug('Including SKU in revision', ['sku' => $existingItem['SKU']]);
             }
             
             // Include ListingType
             if (isset($existingItem['ListingType'])) {
                 $item->addChild('ListingType', $existingItem['ListingType']);
+            }
+            
+            // Include Condition if available (sometimes required)
+            if (isset($existingItem['ConditionID'])) {
+                $condition = $item->addChild('ConditionID', $existingItem['ConditionID']);
+                if (isset($existingItem['ConditionDescription'])) {
+                    $item->addChild('ConditionDescription', $existingItem['ConditionDescription']);
+                }
+            }
+            
+            // Include Country if available
+            if (isset($existingItem['Country'])) {
+                $item->addChild('Country', $existingItem['Country']);
+            }
+            
+            // Include Currency if available
+            if (isset($existingItem['Currency'])) {
+                $item->addChild('Currency', $existingItem['Currency']);
             }
             
             if ($quantity !== null) {
@@ -369,27 +431,131 @@ class EbayApiService
             $ack = $responseArray['Ack'] ?? 'Failure';
             
             if ($ack === 'Success' || $ack === 'Warning') {
-                Log::info('Alternative revision method succeeded', ['itemId' => $itemId]);
+                Log::info('Alternative revision method succeeded', [
+                    'itemId' => $itemId,
+                    'price' => $price,
+                    'ack' => $ack
+                ]);
                 return [
                     'success' => true,
                     'message' => 'Item updated successfully (alternative method).',
                     'data' => $responseArray,
                 ];
             } else {
+                $errors = $responseArray['Errors'] ?? [];
+                if (!is_array($errors)) {
+                    $errors = [$errors];
+                }
+                
                 Log::warning('Alternative revision method also failed', [
                     'itemId' => $itemId,
-                    'errors' => $responseArray['Errors'] ?? 'Unknown error'
+                    'price' => $price,
+                    'ack' => $ack,
+                    'errors' => $errors,
+                    'responseBody' => substr($body, 0, 500) // Log first 500 chars for debugging
                 ]);
-                return [
-                    'success' => false,
-                    'errors' => $responseArray['Errors'] ?? 'Unknown error',
-                    'data' => $responseArray,
-                ];
+                
+                // Try one more time with minimal ReviseItem (just ItemID and StartPrice)
+                Log::info('Attempting minimal ReviseItem as final fallback', ['itemId' => $itemId]);
+                return $this->reviseItemMinimal($itemId, $price);
             }
         } catch (\Exception $e) {
             Log::error('Exception in reviseItemWithFullDetails', [
                 'itemId' => $itemId,
                 'error' => $e->getMessage()
+            ]);
+            // Try minimal approach as last resort
+            return $this->reviseItemMinimal($itemId, $price);
+        }
+    }
+    
+    /**
+     * Minimal ReviseItem - absolute last resort with only ItemID and StartPrice
+     */
+    private function reviseItemMinimal($itemId, $price)
+    {
+        try {
+            Log::info('Attempting minimal ReviseItem (final fallback)', [
+                'itemId' => $itemId,
+                'price' => $price
+            ]);
+            
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            
+            $authToken = $this->generateBearerToken();
+            $credentials->addChild('eBayAuthToken', $authToken ?? '');
+            
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+            
+            $item = $xml->addChild('Item');
+            $item->addChild('ItemID', $itemId);
+            $item->addChild('StartPrice', $price);
+            
+            $xmlBody = $xml->asXML();
+            
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME'            => $this->devId,
+                'X-EBAY-API-APP-NAME'            => $this->appId,
+                'X-EBAY-API-CERT-NAME'           => $this->certId,
+                'X-EBAY-API-CALL-NAME'           => 'ReviseItem',
+                'X-EBAY-API-SITEID'              => $this->siteId,
+                'Content-Type'                   => 'text/xml',
+            ];
+            
+            $response = Http::withHeaders($headers)
+                ->withBody($xmlBody, 'text/xml')
+                ->post($this->endpoint);
+            
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            
+            if ($xmlResp === false) {
+                Log::error('Minimal ReviseItem: Invalid XML response', ['body' => substr($body, 0, 500)]);
+                return [
+                    'success' => false,
+                    'message' => 'Invalid XML response',
+                    'raw' => $body,
+                ];
+            }
+            
+            $responseArray = json_decode(json_encode($xmlResp), true);
+            $ack = $responseArray['Ack'] ?? 'Failure';
+            
+            if ($ack === 'Success' || $ack === 'Warning') {
+                Log::info('Minimal ReviseItem succeeded', ['itemId' => $itemId, 'price' => $price]);
+                return [
+                    'success' => true,
+                    'message' => 'Item updated successfully (minimal method).',
+                    'data' => $responseArray,
+                ];
+            } else {
+                $errors = $responseArray['Errors'] ?? [];
+                if (!is_array($errors)) {
+                    $errors = [$errors];
+                }
+                
+                Log::error('Minimal ReviseItem also failed - all methods exhausted', [
+                    'itemId' => $itemId,
+                    'price' => $price,
+                    'ack' => $ack,
+                    'errors' => $errors
+                ]);
+                
+                return [
+                    'success' => false,
+                    'errors' => $errors,
+                    'data' => $responseArray,
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception in reviseItemMinimal', [
+                'itemId' => $itemId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             return [
                 'success' => false,
