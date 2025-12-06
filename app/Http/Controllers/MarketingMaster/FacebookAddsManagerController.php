@@ -220,11 +220,14 @@ class FacebookAddsManagerController extends Controller
                 }
                 
                 // Map Meta API status to campaign delivery
+                // Meta API statuses: ACTIVE, PAUSED, ARCHIVED, DELETED
+                // Database accepts: active, inactive, not_delivering
                 $status = strtolower($campaign['status'] ?? 'paused');
                 $campaignDelivery = match($status) {
                     'active' => 'active',
-                    'paused' => 'paused',
+                    'paused' => 'not_delivering',
                     'archived' => 'inactive',
+                    'deleted' => 'inactive',
                     default => 'inactive',
                 };
                 
