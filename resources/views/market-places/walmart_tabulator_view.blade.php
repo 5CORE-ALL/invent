@@ -88,12 +88,17 @@
                         <option value="0">NR = 0</option>
                     </select>
 
-                    <select id="cvr-filter" class="form-select form-select-sm" style="width: 120px; display: inline-block;">
-                        <option value="all">All CVR</option>
-                        <option value="0-4">CVR ≤ 4%</option>
-                        <option value="4-7">CVR 4-7%</option>
-                        <option value="7-10">CVR 7-10%</option>
-                        <option value="10+">CVR &gt; 10%</option>
+                    <select id="cvr-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                        <option value="all">CVR</option>
+                        <option value="0-0">0 to 0.00%</option>
+                        <option value="0.01-1">0.01 - 1%</option>
+                        <option value="1-2">1-2%</option>
+                        <option value="2-3">2-3%</option>
+                        <option value="3-4">3-4%</option>
+                        <option value="0-4">0-4%</option>
+                        <option value="4-7">4-7%</option>
+                        <option value="7-10">7-10%</option>
+                        <option value="10plus">10%+</option>
                     </select>
 
                     <select id="parent-filter" class="form-select form-select-sm"
@@ -1000,14 +1005,22 @@
 
                 if (cvrFilter !== 'all') {
                     table.addFilter(function(data) {
+                        // Always show parent rows
+                        if (data.is_parent_summary) return true;
+                        
                         const wL30 = parseFloat(data['W_L30']) || 0;
                         const insightsViews = parseFloat(data['insights_views']) || 0;
-                        const cvr = insightsViews === 0 ? 0 : (wL30 / insightsViews) * 100;
+                        const cvr = insightsViews > 0 ? (wL30 / insightsViews) * 100 : 0;
                         
-                        if (cvrFilter === '0-4') return cvr <= 4;
+                        if (cvrFilter === '0-0') return cvr === 0;
+                        if (cvrFilter === '0.01-1') return cvr > 0 && cvr <= 1;
+                        if (cvrFilter === '1-2') return cvr > 1 && cvr <= 2;
+                        if (cvrFilter === '2-3') return cvr > 2 && cvr <= 3;
+                        if (cvrFilter === '3-4') return cvr > 3 && cvr <= 4;
+                        if (cvrFilter === '0-4') return cvr >= 0 && cvr <= 4;
                         if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
                         if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
-                        if (cvrFilter === '10+') return cvr > 10;
+                        if (cvrFilter === '10plus') return cvr > 10;
                         return true;
                     });
                 }
