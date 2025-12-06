@@ -133,10 +133,7 @@ class Kernel extends ConsoleKernel
             ->timezone('UTC');
         
         // Collect FBA metrics for historical tracking
-        $schedule->command('fba:collect-metrics')
-            ->dailyAt('23:30')
-            ->timezone('UTC');
-
+     
         // Collect eBay metrics for historical tracking
         $schedule->command('ebay:collect-metrics')
             ->dailyAt('23:35')
@@ -322,10 +319,10 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:fetch-fba-monthly-sales')
             ->dailyAt('02:00')
             ->timezone('America/Los_Angeles');
+        $schedule->command('fba:collect-metrics')
+            ->dailyAt('23:30')
+            ->timezone('UTC');
 
-        $schedule->command('fba:sync-ship-calculations')
-            ->dailyAt('03:00')
-            ->timezone('America/Los_Angeles');
 
         // Sync FBA Shipment Status - Daily at 4 AM PST
         $schedule->command('fba:sync-shipment-status')
