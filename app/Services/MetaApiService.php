@@ -86,12 +86,17 @@ class MetaApiService
                 $params = []; // Next URL already has all params
             } while ($url);
 
-            // Fetch insights and platform for each campaign
+            // Fetch all insights in one call for better performance
+            $allInsights = $this->fetchAllCampaignsInsights($datePreset);
+            
+            // Merge campaigns with their insights
             $campaignsWithInsights = [];
             foreach ($campaigns as $campaign) {
-                $insights = $this->fetchCampaignInsights($campaign['id'], $datePreset);
-                $platform = $this->getCampaignPlatform($campaign['id']);
-                $campaignsWithInsights[] = array_merge($campaign, $insights, ['platform' => $platform]);
+                $campaignId = $campaign['id'];
+                $insights = $allInsights[$campaignId] ?? $this->getEmptyInsights();
+                
+                // Set default platform to avoid timeout on large accounts
+                $campaignsWithInsights[] = array_merge($campaign, $insights, ['platform' => 'Facebook/Instagram']);
             }
 
             return $campaignsWithInsights;
@@ -101,6 +106,89 @@ class MetaApiService
                 'date_preset' => $datePreset,
             ]);
             throw $e;
+        }
+    }
+
+    /**
+     * Fetch insights for all campaigns in one API call (much faster than per-campaign)
+     * 
+     * @param string $datePreset
+     * @return array Associative array [campaign_id => insights]
+     */
+    private function fetchAllCampaignsInsights($datePreset = 'last_30d')
+    {
+        try {
+            $url = "{$this->baseUrl}/act_{$this->adAccountId}/insights";
+
+            $params = [
+                'access_token' => $this->accessToken,
+                'date_preset' => $datePreset,
+                'fields' => implode(',', [
+                    'campaign_id',
+                    'campaign_name',
+                    'impressions',
+                    'spend',
+                    'clicks',
+                    'inline_link_clicks',
+                    'cpc',
+                    'cpm',
+                    'ctr',
+                    'frequency',
+                    'reach',
+                    'actions',
+                    'action_values',
+                ]),
+                'level' => 'campaign',
+                'limit' => 500,
+            ];
+
+            $insights = [];
+            
+            do {
+                $response = Http::timeout(120)->get($url, $params);
+
+                if (!$response->successful()) {
+                    Log::warning('Meta API Warning - All Campaign Insights', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+                    break;
+                }
+
+                $data = $response->json();
+                
+                foreach ($data['data'] ?? [] as $row) {
+                    $campaignId = $row['campaign_id'] ?? null;
+                    if (!$campaignId) continue;
+                    
+                    $insights[$campaignId] = [
+                        'impressions' => (int) ($row['impressions'] ?? 0),
+                        'spend' => (float) ($row['spend'] ?? 0),
+                        'clicks' => (int) ($row['clicks'] ?? 0),
+                        'link_clicks' => (int) ($row['inline_link_clicks'] ?? 0),
+                        'cpc' => (float) ($row['cpc'] ?? 0),
+                        'cpm' => (float) ($row['cpm'] ?? 0),
+                        'ctr' => (float) ($row['ctr'] ?? 0),
+                        'frequency' => (float) ($row['frequency'] ?? 0),
+                        'reach' => (int) ($row['reach'] ?? 0),
+                        'actions' => $row['actions'] ?? [],
+                        'action_values' => $row['action_values'] ?? [],
+                    ];
+                }
+
+                // Handle pagination
+                $url = $data['paging']['next'] ?? null;
+                $params = [];
+            } while ($url);
+
+            return $insights;
+            
+        } catch (\Exception $e) {
+            Log::error('Meta API Error - fetchAllCampaignsInsights', [
+                'error' => $e->getMessage(),
+                'date_preset' => $datePreset,
+            ]);
+            return [];
         }
     }
 
@@ -320,18 +408,28 @@ class MetaApiService
      * Fetch campaigns with ad set budget information
      * 
      * @param string $datePreset
+     * @param bool $includeAdSetBudget Whether to fetch detailed ad set budgets (slower)
      * @return array
      */
-    public function fetchCampaignsWithBudget($datePreset = 'last_30d')
+    public function fetchCampaignsWithBudget($datePreset = 'last_30d', $includeAdSetBudget = false)
     {
         $campaigns = $this->fetchCampaignsData($datePreset);
 
-        // Enrich with ad set budget info
-        foreach ($campaigns as &$campaign) {
-            $campaign['ad_set_budget'] = $this->getAdSetBudget($campaign['id']);
-            
-            // Determine platform
-            $campaign['platform'] = $this->getCampaignPlatform($campaign['id']);
+        // Optionally enrich with ad set budget info (makes additional API calls)
+        if ($includeAdSetBudget) {
+            foreach ($campaigns as &$campaign) {
+                $campaign['ad_set_budget'] = $this->getAdSetBudget($campaign['id']);
+                
+                // Set default platform to avoid timeout on large accounts
+                // Platform detection can be done separately if needed
+                $campaign['platform'] = 'Facebook/Instagram';
+            }
+        } else {
+            // Just add default values without extra API calls
+            foreach ($campaigns as &$campaign) {
+                $campaign['ad_set_budget'] = 0; // Campaign budget fields are already included
+                $campaign['platform'] = 'Facebook/Instagram';
+            }
         }
 
         return $campaigns;

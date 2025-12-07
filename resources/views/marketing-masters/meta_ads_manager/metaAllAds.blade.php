@@ -219,6 +219,17 @@
                 resizableColumns: true,
                 columns: [
                     {
+                        title: "Group",
+                        field: "group_name",
+                        minWidth: 150,
+                        headerSort: true,
+                        editor: "input",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return value || '<span class="text-muted">No Group</span>';
+                        }
+                    },
+                    {
                         title: "Campaign Name",
                         field: "campaign_name",
                         minWidth: 320,
@@ -229,66 +240,6 @@
                         field: "campaign_id",
                         minWidth: 200,
                         headerSort: true
-                    },
-                    {
-                        title: "AD Type",
-                        field: "ad_type",
-                        minWidth: 250,
-                        headerSort: true,
-                        formatter: function(cell) {
-                            const row = cell.getRow();
-                            const campaignName = row.getData().campaign_name;
-                            const value = cell.getValue() || '';
-
-                            let bgColor = "";
-                            // Facebook ad types
-                            if (value === "Facebook Single Image") {
-                                bgColor = "background-color:#1877f2;color:#fff;";
-                            } else if (value === "Facebook Single Video") {
-                                bgColor = "background-color:#0a4fb5;color:#fff;";
-                            } else if (value === "Facebook Carousal") {
-                                bgColor = "background-color:#2d5a9e;color:#fff;";
-                            } else if (value === "Facebook Existing Post") {
-                                bgColor = "background-color:#3b7dd9;color:#fff;";
-                            } else if (value === "Facebook Catalogue Ad") {
-                                bgColor = "background-color:#1565c0;color:#fff;";
-                            }
-                            // Instagram ad types
-                            else if (value === "Instagram Single Image") {
-                                bgColor = "background-color:#e1306c;color:#fff;";
-                            } else if (value === "Instagram Single Video") {
-                                bgColor = "background-color:#c13584;color:#fff;";
-                            } else if (value === "Instagram Carousal") {
-                                bgColor = "background-color:#fd1d1d;color:#fff;";
-                            } else if (value === "Instagram Existing Post") {
-                                bgColor = "background-color:#f56040;color:#fff;";
-                            } else if (value === "Instagram Catalogue Ad") {
-                                bgColor = "background-color:#833ab4;color:#fff;";
-                            }
-
-                            return `
-                                <select class="form-select form-select-sm editable-ad-type" 
-                                        data-campaign-name="${campaignName}" 
-                                        style="width: 200px; ${bgColor} cursor:pointer;">
-                                    <option value="">Select Type</option>
-                                    <optgroup label="Facebook Ads">
-                                        <option value="Facebook Single Image" ${value === 'Facebook Single Image' ? 'selected' : ''}>Single Image</option>
-                                        <option value="Facebook Single Video" ${value === 'Facebook Single Video' ? 'selected' : ''}>Single Video</option>
-                                        <option value="Facebook Carousal" ${value === 'Facebook Carousal' ? 'selected' : ''}>Carousal</option>
-                                        <option value="Facebook Existing Post" ${value === 'Facebook Existing Post' ? 'selected' : ''}>Existing Post</option>
-                                        <option value="Facebook Catalogue Ad" ${value === 'Facebook Catalogue Ad' ? 'selected' : ''}>Catalogue Ad</option>
-                                    </optgroup>
-                                    <optgroup label="Instagram Ads">
-                                        <option value="Instagram Single Image" ${value === 'Instagram Single Image' ? 'selected' : ''}>Single Image</option>
-                                        <option value="Instagram Single Video" ${value === 'Instagram Single Video' ? 'selected' : ''}>Single Video</option>
-                                        <option value="Instagram Carousal" ${value === 'Instagram Carousal' ? 'selected' : ''}>Carousal</option>
-                                        <option value="Instagram Existing Post" ${value === 'Instagram Existing Post' ? 'selected' : ''}>Existing Post</option>
-                                        <option value="Instagram Catalogue Ad" ${value === 'Instagram Catalogue Ad' ? 'selected' : ''}>Catalogue Ad</option>
-                                    </optgroup>
-                                </select>
-                            `;
-                        },
-                        hozAlign: "center"
                     },
                     {
                         title: "BGT",
@@ -818,59 +769,6 @@
                         }
                     });
                 }
-            });
-
-            // Handle AD Type dropdown changes
-            $(document).on('change', '.editable-ad-type', function() {
-                const campaignName = $(this).data('campaign-name');
-                const newAdType = $(this).val();
-                const selectElement = $(this);
-
-                $.ajax({
-                    url: "/meta-all-ads-control/update-ad-type",
-                    type: "POST",
-                    data: {
-                        campaign_name: campaignName,
-                        ad_type: newAdType
-                    },
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                    success: function(response) {
-                        console.log('Ad Type updated successfully');
-                        
-                        // Update background color based on selection
-                        let bgColor = "";
-                        // Facebook ad types
-                        if (newAdType === "Facebook Single Image") {
-                            bgColor = "background-color:#1877f2;color:#fff;";
-                        } else if (newAdType === "Facebook Single Video") {
-                            bgColor = "background-color:#0a4fb5;color:#fff;";
-                        } else if (newAdType === "Facebook Carousal") {
-                            bgColor = "background-color:#2d5a9e;color:#fff;";
-                        } else if (newAdType === "Facebook Existing Post") {
-                            bgColor = "background-color:#3b7dd9;color:#fff;";
-                        } else if (newAdType === "Facebook Catalogue Ad") {
-                            bgColor = "background-color:#1565c0;color:#fff;";
-                        }
-                        // Instagram ad types
-                        else if (newAdType === "Instagram Single Image") {
-                            bgColor = "background-color:#e1306c;color:#fff;";
-                        } else if (newAdType === "Instagram Single Video") {
-                            bgColor = "background-color:#c13584;color:#fff;";
-                        } else if (newAdType === "Instagram Carousal") {
-                            bgColor = "background-color:#fd1d1d;color:#fff;";
-                        } else if (newAdType === "Instagram Existing Post") {
-                            bgColor = "background-color:#f56040;color:#fff;";
-                        } else if (newAdType === "Instagram Catalogue Ad") {
-                            bgColor = "background-color:#833ab4;color:#fff;";
-                        }
-                        
-                        selectElement.attr('style', `width: 200px; ${bgColor} cursor:pointer;`);
-                    },
-                    error: function(xhr) {
-                        console.error('Failed to update Ad Type');
-                        alert('Failed to update Ad Type');
-                    }
-                });
             });
 
             document.body.style.zoom = "70%";

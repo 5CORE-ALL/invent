@@ -52,5 +52,43 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-6">
+            <div class="d-flex gap-2 justify-content-end">
+                <button type="button" class="btn btn-primary" id="add-group-btn">
+                    <i class="fa fa-plus me-1"></i>Add New Group
+                </button>
+                <button type="button" class="btn btn-info" id="import-btn">
+                    <i class="fa fa-upload me-1"></i>Import
+                </button>
+                <button type="button" class="btn btn-secondary" id="export-btn">
+                    <i class="fa fa-download me-1"></i>Export
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add New Group Modal -->
+<div class="modal fade" id="addGroupModal" tabindex="-1" aria-labelledby="addGroupModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addGroupModalLabel">Add New Group</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addGroupForm">
+                    @csrf
+                    <div class="mb-3">
+                        <label for="groupName" class="form-label">Group Name</label>
+                        <input type="text" class="form-control" id="groupName" name="group_name" required placeholder="Enter group name">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="submitGroupBtn">Submit</button>
+            </div>
+        </div>
     </div>
 </div>

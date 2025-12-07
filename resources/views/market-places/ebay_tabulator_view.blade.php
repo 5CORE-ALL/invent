@@ -163,6 +163,7 @@
                         <!-- eBay Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-fba-inv-badge" style="color: black; font-weight: bold;">Total eBay INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total eBay L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold Count: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
                         
                         <!-- Financial Metrics -->
@@ -871,6 +872,31 @@
                             continue;
                         }
                         
+                        // Skip if account is restricted (check status in table if available)
+                        let isAccountRestricted = false;
+                        if (table) {
+                            try {
+                                const rows = table.getRows();
+                                for (let i = 0; i < rows.length; i++) {
+                                    const rowData = rows[i].getData();
+                                    if (rowData['(Child) sku'] === sku) {
+                                        if (rowData.SPRICE_STATUS === 'account_restricted') {
+                                            isAccountRestricted = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            } catch (e) {
+                                // Continue if table check fails
+                            }
+                        }
+                        
+                        if (isAccountRestricted) {
+                            console.log(`SKU ${sku} is account restricted, skipping background retry`);
+                            removeFailedSkuFromRetry(sku);
+                            continue;
+                        }
+                        
                         // Try to find the cell in the table for UI update
                         let cell = null;
                         if (table) {
@@ -1062,7 +1088,32 @@
                     return true;
                 } catch (xhr) {
                     const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseJSON?.message || 'Failed to apply price';
+                    const errorCode = xhr.responseJSON?.errors?.[0]?.code || '';
                     console.error(`Attempt ${retries + 1} for SKU ${sku} failed:`, errorMsg);
+
+                    // Check if this is an account restriction error (don't retry)
+                    const isAccountRestricted = errorCode === 'AccountRestricted' || 
+                                                errorMsg.includes('ACCOUNT RESTRICTION') ||
+                                                errorMsg.includes('account is restricted') ||
+                                                errorMsg.includes('embargoed country');
+                    
+                    if (isAccountRestricted) {
+                        // Account restriction - don't retry, mark as account_restricted
+                        if (rowData) {
+                            rowData.SPRICE_STATUS = 'account_restricted';
+                            row.update(rowData);
+                        }
+                        
+                        if ($btn && cell) {
+                            $btn.prop('disabled', false);
+                            $btn.html('<i class="fa-solid fa-ban"></i>');
+                            $btn.attr('style', 'border: none; background: none; color: #ff6b00; padding: 0;'); // Orange text for restriction
+                            $btn.attr('title', 'Account restricted - cannot update price');
+                        }
+                        
+                        showToast(`Account restriction detected for SKU: ${sku}. Please resolve account restrictions in eBay before updating prices.`, 'error');
+                        return false;
+                    }
 
                     if (retries < 5) {
                         console.log(`Retrying SKU ${sku} in 5 seconds...`);
@@ -2019,6 +2070,10 @@
                                 icon = '<i class="fa-solid fa-x"></i>';
                                 iconColor = '#dc3545'; // Red text
                                 titleText = 'Error applying price to eBay';
+                            } else if (status === 'account_restricted') {
+                                icon = '<i class="fa-solid fa-ban"></i>';
+                                iconColor = '#ff6b00'; // Orange text
+                                titleText = 'Account restricted - Cannot update price. Please resolve account restrictions in eBay.';
                             }
 
                             // Show only icon with color, no background
@@ -2467,6 +2522,7 @@
                 let totalFbaL30 = 0;
                 let totalDilPercent = 0;
                 let dilCount = 0;
+                let zeroSoldCount = 0;
 
                 data.forEach(row => {
                     if (parseFloat(row.INV) > 0) {
@@ -2477,6 +2533,12 @@
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
                         totalFbaInv += parseFloat(row.INV || 0);
                         totalFbaL30 += parseFloat(row['eBay L30'] || 0);
+                        
+                        // Count SKUs with 0 sold (L30 = 0)
+                        const l30 = parseFloat(row['eBay L30'] || 0);
+                        if (l30 === 0) {
+                            zeroSoldCount++;
+                        }
                         
                         const dil = parseFloat(row['E Dil%'] || 0);
                         if (!isNaN(dil)) {
@@ -2511,7 +2573,7 @@
                 $('#cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 
 
-                $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos) + '%');
+                $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
                 $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
                 $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
@@ -2520,6 +2582,7 @@
                 $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
                 $('#total-fba-inv-badge').text('Total eBay INV: ' + Math.round(totalFbaInv).toLocaleString());
                 $('#total-fba-l30-badge').text('Total eBay L30: ' + Math.round(totalFbaL30).toLocaleString());
+                $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
                 const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
                 $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
                 $('#total-pft-amt').text('$' + Math.round(totalPftAmt));

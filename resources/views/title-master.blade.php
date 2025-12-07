@@ -1,0 +1,685 @@
+@extends('layouts.vertical', ['title' => 'Title Master', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+
+@section('css')
+    @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
+    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+
+    <style>
+        .table-responsive {
+            position: relative;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            max-height: 600px;
+            overflow-y: auto;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            background-color: white;
+        }
+
+        .table-responsive thead th {
+            position: sticky;
+            top: 0;
+            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
+            color: white;
+            z-index: 10;
+            padding: 15px 18px;
+            font-weight: 600;
+            border-bottom: none;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            transition: all 0.2s ease;
+        }
+
+        .table-responsive thead th:hover {
+            background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%) !important;
+        }
+
+        .table-responsive thead input {
+            background-color: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 4px;
+            color: #333;
+            padding: 6px 10px;
+            margin-top: 8px;
+            font-size: 12px;
+            width: 100%;
+            transition: all 0.2s;
+        }
+
+        .table-responsive thead input:focus {
+            background-color: white;
+            box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.3);
+            outline: none;
+        }
+
+        .table-responsive tbody td {
+            padding: 12px 18px;
+            vertical-align: middle;
+            border-bottom: 1px solid #edf2f9;
+            font-size: 13px;
+            color: #495057;
+        }
+
+        .table-responsive tbody tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+
+        .table-responsive tbody tr:hover {
+            background-color: #e8f0fe;
+        }
+
+        .title-text {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0 2px;
+        }
+
+        .edit-btn {
+            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+            color: white;
+        }
+
+        .edit-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3);
+        }
+
+        #rainbow-loader {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .rainbow-loader .loading-text {
+            margin-top: 20px;
+            font-weight: bold;
+            color: #2c6ed5;
+        }
+
+        .modal-header-gradient {
+            background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%);
+            border-bottom: 4px solid #4D55E6;
+            color: white;
+        }
+
+        .char-counter {
+            font-size: 11px;
+            color: #6c757d;
+            float: right;
+        }
+
+        .char-counter.error {
+            color: #dc3545;
+        }
+    </style>
+@endsection
+
+@section('content')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+
+    @include('layouts.shared/page-title', [
+        'page_title' => 'Title Master',
+        'sub_title' => 'Manage Product Titles',
+    ])
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="mb-3 d-flex justify-content-between align-items-center">
+                        <div>
+                            <button id="addTitleBtn" class="btn btn-success">
+                                <i class="fas fa-plus"></i> Add Title
+                            </button>
+                            <button id="exportBtn" class="btn btn-primary ms-2">
+                                <i class="fas fa-download"></i> Export
+                            </button>
+                            <button id="importBtn" class="btn btn-info ms-2">
+                                <i class="fas fa-upload"></i> Import
+                            </button>
+                            <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display: none;">
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table id="title-master-table" class="table dt-responsive nowrap w-100">
+                            <thead>
+                                <tr>
+                                    <th>Images</th>
+                                    <th>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <span>Parent</span>
+                                            <span id="parentCount">(0)</span>
+                                        </div>
+                                        <input type="text" id="parentSearch" class="form-control-sm"
+                                            placeholder="Search Parent">
+                                    </th>
+                                    <th>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <span>SKU</span>
+                                            <span id="skuCount">(0)</span>
+                                        </div>
+                                        <input type="text" id="skuSearch" class="form-control-sm"
+                                            placeholder="Search SKU">
+                                    </th>
+                                    <th>Title 150</th>
+                                    <th>Title 100</th>
+                                    <th>Title 80</th>
+                                    <th>Title 60</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="rainbow-loader" class="rainbow-loader">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <div class="loading-text">Loading Title Master Data...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Title Modal -->
+    <div class="modal fade" id="titleModal" tabindex="-1" aria-labelledby="titleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title" id="titleModalLabel">
+                        <i class="fas fa-edit me-2"></i><span id="modalTitle">Add Title</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="titleForm">
+                        <input type="hidden" id="editSku" name="sku">
+                        
+                        <div class="mb-3">
+                            <label for="selectSku" class="form-label">Select SKU <span class="text-danger">*</span></label>
+                            <select class="form-select" id="selectSku" name="sku" required>
+                                <option value="">Choose SKU...</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="title150" class="form-label">
+                                Title 150 <span class="char-counter" id="counter150">0/150</span>
+                            </label>
+                            <textarea class="form-control" id="title150" name="title150" rows="3" maxlength="150"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="title100" class="form-label">
+                                Title 100 <span class="char-counter" id="counter100">0/100</span>
+                            </label>
+                            <textarea class="form-control" id="title100" name="title100" rows="2" maxlength="100"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="title80" class="form-label">
+                                Title 80 <span class="char-counter" id="counter80">0/80</span>
+                            </label>
+                            <textarea class="form-control" id="title80" name="title80" rows="2" maxlength="80"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="title60" class="form-label">
+                                Title 60 <span class="char-counter" id="counter60">0/60</span>
+                            </label>
+                            <textarea class="form-control" id="title60" name="title60" rows="2" maxlength="60"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveTitleBtn">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@section('script')
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        let tableData = [];
+        let titleModal;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            titleModal = new bootstrap.Modal(document.getElementById('titleModal'));
+            loadTitleData();
+            setupSearchHandlers();
+            setupModalHandlers();
+            setupButtonHandlers();
+        });
+
+        function setupButtonHandlers() {
+            // Add Title Button
+            document.getElementById('addTitleBtn').addEventListener('click', function() {
+                openModal('add');
+            });
+
+            // Export Button
+            document.getElementById('exportBtn').addEventListener('click', function() {
+                exportToExcel();
+            });
+
+            // Import Button
+            document.getElementById('importBtn').addEventListener('click', function() {
+                document.getElementById('importFile').click();
+            });
+
+            // Import File Handler
+            document.getElementById('importFile').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    importFromExcel(file);
+                }
+            });
+        }
+
+        function setupModalHandlers() {
+            // Character counters
+            const fields = ['title150', 'title100', 'title80', 'title60'];
+            fields.forEach(field => {
+                const maxLength = parseInt(field.replace('title', ''));
+                const input = document.getElementById(field);
+                const counter = document.getElementById('counter' + maxLength);
+                
+                input.addEventListener('input', function() {
+                    const length = this.value.length;
+                    counter.textContent = `${length}/${maxLength}`;
+                    if (length > maxLength) {
+                        counter.classList.add('error');
+                    } else {
+                        counter.classList.remove('error');
+                    }
+                });
+            });
+
+            // Save button
+            document.getElementById('saveTitleBtn').addEventListener('click', function() {
+                saveTitleFromModal();
+            });
+        }
+
+        function loadTitleData() {
+            document.getElementById('rainbow-loader').style.display = 'block';
+            
+            fetch('/product-master-data-view')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(response => {
+                    // Handle both direct array and wrapped response
+                    const data = response.data ? response.data : response;
+                    
+                    if (data && Array.isArray(data)) {
+                        tableData = data;
+                        renderTable(tableData);
+                        updateCounts();
+                    } else {
+                        console.error('Invalid data:', response);
+                        showError('Invalid data format received from server');
+                    }
+                    document.getElementById('rainbow-loader').style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showError('Failed to load product data: ' + error.message);
+                    document.getElementById('rainbow-loader').style.display = 'none';
+                });
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center">No products found</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                // Skip parent rows (rows with SKU containing 'PARENT')
+                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
+                    return;
+                }
+
+                const row = document.createElement('tr');
+
+                // Images
+                const imageCell = document.createElement('td');
+                imageCell.innerHTML = item.image_path 
+                    ? `<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`
+                    : '-';
+                row.appendChild(imageCell);
+
+                // Parent
+                const parentCell = document.createElement('td');
+                parentCell.textContent = escapeHtml(item.Parent) || '-';
+                row.appendChild(parentCell);
+
+                // SKU
+                const skuCell = document.createElement('td');
+                skuCell.textContent = escapeHtml(item.SKU) || '-';
+                row.appendChild(skuCell);
+
+                // Title 150
+                const title150Cell = document.createElement('td');
+                title150Cell.className = 'title-text';
+                title150Cell.textContent = item.title150 || '-';
+                title150Cell.title = item.title150 || '';
+                row.appendChild(title150Cell);
+
+                // Title 100
+                const title100Cell = document.createElement('td');
+                title100Cell.className = 'title-text';
+                title100Cell.textContent = item.title100 || '-';
+                title100Cell.title = item.title100 || '';
+                row.appendChild(title100Cell);
+
+                // Title 80
+                const title80Cell = document.createElement('td');
+                title80Cell.className = 'title-text';
+                title80Cell.textContent = item.title80 || '-';
+                title80Cell.title = item.title80 || '';
+                row.appendChild(title80Cell);
+
+                // Title 60
+                const title60Cell = document.createElement('td');
+                title60Cell.className = 'title-text';
+                title60Cell.textContent = item.title60 || '-';
+                title60Cell.title = item.title60 || '';
+                row.appendChild(title60Cell);
+
+                // Action - Edit Button
+                const actionCell = document.createElement('td');
+                actionCell.innerHTML = `<button class="action-btn edit-btn" data-sku="${escapeHtml(item.SKU)}">
+                    <i class="fas fa-edit"></i> Edit
+                </button>`;
+                row.appendChild(actionCell);
+
+                tbody.appendChild(row);
+            });
+
+            setupEditButtons();
+        }
+
+        function setupEditButtons() {
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const sku = this.getAttribute('data-sku');
+                    openModal('edit', sku);
+                });
+            });
+        }
+
+        function openModal(mode, sku = null) {
+            const modal = document.getElementById('titleModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const selectSku = document.getElementById('selectSku');
+            const editSku = document.getElementById('editSku');
+            
+            // Reset form
+            document.getElementById('titleForm').reset();
+            ['title150', 'title100', 'title80', 'title60'].forEach(field => {
+                const maxLength = parseInt(field.replace('title', ''));
+                document.getElementById('counter' + maxLength).textContent = `0/${maxLength}`;
+                document.getElementById('counter' + maxLength).classList.remove('error');
+            });
+
+            if (mode === 'add') {
+                modalTitle.textContent = 'Add Title';
+                selectSku.style.display = 'block';
+                selectSku.required = true;
+                editSku.value = '';
+                
+                // Populate SKU dropdown
+                selectSku.innerHTML = '<option value="">Choose SKU...</option>';
+                tableData.forEach(item => {
+                    if (item.SKU && !item.SKU.toUpperCase().includes('PARENT')) {
+                        selectSku.innerHTML += `<option value="${escapeHtml(item.SKU)}">${escapeHtml(item.SKU)}</option>`;
+                    }
+                });
+            } else if (mode === 'edit' && sku) {
+                modalTitle.textContent = 'Edit Title';
+                selectSku.style.display = 'none';
+                selectSku.required = false;
+                editSku.value = sku;
+                
+                // Load existing data
+                const item = tableData.find(d => d.SKU === sku);
+                if (item) {
+                    ['title150', 'title100', 'title80', 'title60'].forEach(field => {
+                        const input = document.getElementById(field);
+                        input.value = item[field] || '';
+                        const maxLength = parseInt(field.replace('title', ''));
+                        const length = input.value.length;
+                        document.getElementById('counter' + maxLength).textContent = `${length}/${maxLength}`;
+                    });
+                }
+            }
+
+            titleModal.show();
+        }
+
+        function saveTitleFromModal() {
+            const form = document.getElementById('titleForm');
+            const selectSku = document.getElementById('selectSku');
+            const editSku = document.getElementById('editSku');
+            const sku = editSku.value || selectSku.value;
+
+            if (!sku) {
+                alert('Please select a SKU');
+                return;
+            }
+
+            const title150 = document.getElementById('title150').value;
+            const title100 = document.getElementById('title100').value;
+            const title80 = document.getElementById('title80').value;
+            const title60 = document.getElementById('title60').value;
+
+            const saveBtn = document.getElementById('saveTitleBtn');
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+            fetch('/title-master/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                body: JSON.stringify({
+                    sku: sku,
+                    title150: title150,
+                    title100: title100,
+                    title80: title80,
+                    title60: title60
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    titleModal.hide();
+                    loadTitleData(); // Reload data
+                    alert('Title saved successfully!');
+                } else {
+                    alert(data.message || 'Failed to save title');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error saving title: ' + error.message);
+            })
+            .finally(() => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+            });
+        }
+
+        function exportToExcel() {
+            const exportData = tableData
+                .filter(item => item.SKU && !item.SKU.toUpperCase().includes('PARENT'))
+                .map(item => ({
+                    'Parent': item.Parent || '',
+                    'SKU': item.SKU || '',
+                    'Title 150': item.title150 || '',
+                    'Title 100': item.title100 || '',
+                    'Title 80': item.title80 || '',
+                    'Title 60': item.title60 || ''
+                }));
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Titles');
+            XLSX.writeFile(wb, 'title_master_' + new Date().toISOString().split('T')[0] + '.xlsx');
+        }
+
+        function importFromExcel(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+                    if (jsonData.length === 0) {
+                        alert('No data found in the file');
+                        return;
+                    }
+
+                    // Process and save imported data
+                    processImportedData(jsonData);
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error reading file: ' + error.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            document.getElementById('importFile').value = ''; // Reset file input
+        }
+
+        function processImportedData(jsonData) {
+            let successCount = 0;
+            let errorCount = 0;
+            const totalRows = jsonData.length;
+
+            const savePromises = jsonData.map(row => {
+                const sku = row['SKU'] || row['sku'];
+                if (!sku) {
+                    errorCount++;
+                    return Promise.resolve();
+                }
+
+                return fetch('/title-master/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({
+                        sku: sku,
+                        title150: (row['Title 150'] || row['title150'] || '').substring(0, 150),
+                        title100: (row['Title 100'] || row['title100'] || '').substring(0, 100),
+                        title80: (row['Title 80'] || row['title80'] || '').substring(0, 80),
+                        title60: (row['Title 60'] || row['title60'] || '').substring(0, 60)
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        successCount++;
+                    } else {
+                        errorCount++;
+                    }
+                })
+                .catch(() => {
+                    errorCount++;
+                });
+            });
+
+            Promise.all(savePromises).then(() => {
+                alert(`Import completed!\nSuccess: ${successCount}\nErrors: ${errorCount}\nTotal: ${totalRows}`);
+                loadTitleData(); // Reload data
+            });
+        }
+
+        function setupSearchHandlers() {
+            const parentSearch = document.getElementById('parentSearch');
+            const skuSearch = document.getElementById('skuSearch');
+
+            parentSearch.addEventListener('input', filterTable);
+            skuSearch.addEventListener('input', filterTable);
+        }
+
+        function filterTable() {
+            const parentFilter = document.getElementById('parentSearch').value.toLowerCase();
+            const skuFilter = document.getElementById('skuSearch').value.toLowerCase();
+
+            const filteredData = tableData.filter(item => {
+                const parentMatch = !parentFilter || (item.Parent && item.Parent.toLowerCase().includes(parentFilter));
+                const skuMatch = !skuFilter || (item.SKU && item.SKU.toLowerCase().includes(skuFilter));
+                return parentMatch && skuMatch;
+            });
+
+            renderTable(filteredData);
+        }
+
+        function updateCounts() {
+            const parentSet = new Set();
+            let skuCount = 0;
+
+            tableData.forEach(item => {
+                if (item.Parent) parentSet.add(item.Parent);
+                if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
+                    skuCount++;
+                }
+            });
+
+            document.getElementById('parentCount').textContent = `(${parentSet.size})`;
+            document.getElementById('skuCount').textContent = `(${skuCount})`;
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return String(text).replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function showError(message) {
+            alert(message);
+        }
+    </script>
+@endsection

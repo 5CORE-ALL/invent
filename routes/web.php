@@ -768,6 +768,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/home', fn() => view('index'))->name('home');
     Route::get('/product-master', [ProductMasterController::class, 'product_master_index'])
         ->name('product.master');
+    Route::get('/title-master', fn() => view('title-master'))->name('title.master');
+    Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');
+    Route::get('/bullet-points', fn() => view('bullet-points'))->name('bullet.points');
+    Route::post('/bullet-points/save', [ProductMasterController::class, 'saveBulletData'])->name('bullet.points.save');
+    Route::get('/product-description', fn() => view('product-description'))->name('product.description');
+    Route::post('/product-description/save', [ProductMasterController::class, 'saveDescriptionData'])->name('product.description.save');
+    Route::get('/features', fn() => view('features'))->name('features');
+    Route::post('/features/save', [ProductMasterController::class, 'saveFeaturesData'])->name('features.save');
+    Route::get('/product-images', fn() => view('images'))->name('images');
+    Route::post('/product-images/save', [ProductMasterController::class, 'saveImagesData'])->name('images.save');
     Route::get('/catalogue/{first?}/{second?}', [CatalougeManagerController::class, 'catalouge_manager_index'])
         ->name('catalogue.manager');
     //channel index
@@ -2087,7 +2097,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
         Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
         Route::post('/meta-all-ads-control/sync-meta-api', 'syncMetaAdsFromApi')->name('meta.ads.sync');
-        Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
+        
+        // Group management routes
+        Route::post('/meta-ads/group/store', 'storeGroup')->name('meta.ads.group.store');
+        
+        // Import/Export routes
+        Route::post('/meta-ads/import', 'importAds')->name('meta.ads.import');
+        Route::post('/meta-ads/export', 'exportAds')->name('meta.ads.export');
         
         // Facebook AD Type specific routes
         Route::get('/meta-ads/facebook/single-image', 'metaFacebookSingleImage')->name('meta.ads.facebook.single.image');

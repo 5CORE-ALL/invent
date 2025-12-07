@@ -298,6 +298,21 @@
                                 Masters</a>
                         </li>
                         <li>
+                            <a href="{{ route('title.master') }}">Title Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('bullet.points') }}">Bullet Points</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('product.description') }}">Product Description</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('features') }}">Features</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('images') }}">Images</a>
+                        </li>
+                        <li>
                             <a href="{{ url('/parent.pricing-masters') }}">ROI dashboard</a>
                         </li>
                         <li>
@@ -1192,25 +1207,25 @@
                                     <li>
                                         <a data-bs-toggle="collapse" href="#facebook-ads-submenu" aria-expanded="false"
                                             aria-controls="facebook-ads-submenu">
-                                            Facebook Ads
+                                            FB Ads
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="facebook-ads-submenu">
                                             <ul class="side-nav-third-level">
                                                 <li>
-                                                    <a href="{{ route('meta.ads.facebook.single.image') }}">Single Image</a>
+                                                    <a href="{{ route('meta.ads.facebook.single.image') }}">FB Single Image</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.facebook.single.video') }}">Single Video</a>
+                                                    <a href="{{ route('meta.ads.facebook.single.video') }}">FB Single Video</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.facebook.carousal') }}">Carousal</a>
+                                                    <a href="{{ route('meta.ads.facebook.carousal') }}">FB GRP Carousal</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.facebook.existing.post') }}">Existing Post</a>
+                                                    <a href="{{ route('meta.ads.facebook.existing.post') }}">FB Existing Post</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.facebook.catalogue') }}">Catalogue Ad</a>
+                                                    <a href="{{ route('meta.ads.facebook.catalogue') }}">FB Catalogue Ad</a>
                                                 </li>
                                             </ul>
                                         </div>
