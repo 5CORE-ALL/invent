@@ -805,6 +805,28 @@
 
                 function combinedFilter(data) {
 
+                    // Inventory filter - DEFAULT: Show only INV > 0
+                    let invFilterVal = $("#inv-filter").val();
+                    
+                    // If no filter selected, default to showing only INV > 0
+                    if (!invFilterVal || invFilterVal === "") {
+                        if (parseFloat(data.INV) <= 0) {
+                            return false;
+                        }
+                    } else if (invFilterVal === "ALL") {
+                        // Show all inventory including 0 and negative
+                        // No filtering needed
+                    } else if (invFilterVal === "INV_0") {
+                        // Show only INV = 0
+                        if (parseFloat(data.INV) !== 0) {
+                            return false;
+                        }
+                    } else if (invFilterVal === "OTHERS") {
+                        // Show only INV > 0
+                        if (parseFloat(data.INV) <= 0) {
+                            return false;
+                        }
+                    }
 
                     // Global search filter
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
@@ -816,17 +838,6 @@
                     let statusVal = $("#status-filter").val();
                     if (statusVal && data.campaignStatus !== statusVal) {
                         return false;
-                    }
-
-                    // Inventory filter
-                    let invFilterVal = $("#inv-filter").val();
-                    if (invFilterVal && invFilterVal !== "ALL") {
-                        if (invFilterVal === "INV_0" && parseFloat(data.INV) !== 0) {
-                            return false;
-                        }
-                        if (invFilterVal === "OTHERS" && parseFloat(data.INV) === 0) {
-                            return false;
-                        }
                     }
 
                     // NR filter
