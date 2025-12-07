@@ -1456,6 +1456,49 @@
                         },
                      
                     },
+                    {
+                        title: "Links",
+                        field: "links_column",
+                        frozen: true,
+                        width: 100,
+                        hozAlign: "center",
+                        visible: true,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const buyerLink = rowData['buyer_link'] || '';
+                            const sellerLink = rowData['seller_link'] || '';
+                            
+                            // Enhanced debug logging - log every row
+                            console.log('Amazon Row Data:', {
+                                sku: rowData['(Child) sku'],
+                                buyerLink: buyerLink,
+                                sellerLink: sellerLink,
+                                allKeys: Object.keys(rowData).filter(k => k.toLowerCase().includes('link'))
+                            });
+                            
+                            let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
+                            
+                            if (sellerLink) {
+                                html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
+                                    <i class="fa fa-link"></i> S Link
+                                </a>`;
+                            }
+                            
+                            if (buyerLink) {
+                                html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
+                                    <i class="fa fa-link"></i> B Link
+                                </a>`;
+                            }
+                            
+                            if (!sellerLink && !buyerLink) {
+                                html += '<span class="text-muted" style="font-size: 12px;">-</span>';
+                            }
+                            
+                            html += '</div>';
+                            return html;
+                        },
+                        headerSort: false
+                    },
 
                     {
                         title: "INV",

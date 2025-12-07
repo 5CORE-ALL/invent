@@ -35,6 +35,30 @@
         .tabulator-paginator label {
             margin-right: 5px;
         }
+
+        /* Link tooltip styling */
+        .link-tooltip {
+            position: absolute;
+            background-color: #333;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .link-tooltip a {
+            text-decoration: none;
+        }
+
+        .link-tooltip a:hover {
+            text-decoration: underline;
+        }
     </style>
 @endsection
 
@@ -1569,17 +1593,63 @@
                                 return `<span>${sku}</span>`;
                             }
                             
-                            return `
-                                <span>${sku}</span>
-                                <i class="fa fa-copy text-secondary copy-sku-btn" 
-                                   style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
-                                   data-sku="${sku}"
-                                   title="Copy SKU"></i>
-                                <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;">
-                                    <i class="fa fa-info-circle"></i>
-                                </button>
-                            `;
+                            let html = `<span>${sku}</span>`;
+                            
+                            // Copy button
+                            html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
+                                       style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
+                                       data-sku="${sku}"
+                                       title="Copy SKU"></i>`;
+                            
+                            // Metrics chart button
+                            html += `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;">
+                                        <i class="fa fa-info-circle"></i>
+                                     </button>`;
+                            
+                            return html;
                         }
+                    },
+                    {
+                        title: "Links",
+                        field: "links_column",
+                        frozen: true,
+                        width: 100,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const buyerLink = rowData['B Link'] || '';
+                            const sellerLink = rowData['S Link'] || '';
+                            
+                            // Enhanced debug logging - log every row to see what's happening
+                            console.log('eBay Row Data:', {
+                                sku: rowData['(Child) sku'],
+                                buyerLink: buyerLink,
+                                sellerLink: sellerLink,
+                                allKeys: Object.keys(rowData).filter(k => k.toLowerCase().includes('link'))
+                            });
+                            
+                            let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
+                            
+                            if (sellerLink) {
+                                html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
+                                    <i class="fa fa-link"></i> S Link
+                                </a>`;
+                            }
+                            
+                            if (buyerLink) {
+                                html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
+                                    <i class="fa fa-link"></i> B Link
+                                </a>`;
+                            }
+                            
+                            if (!sellerLink && !buyerLink) {
+                                html += '<span class="text-muted" style="font-size: 12px;">-</span>';
+                            }
+                            
+                            html += '</div>';
+                            return html;
+                        },
+                        headerSort: false
                     },
                     
                     {
@@ -2937,6 +3007,23 @@
             });
             $('#lmpDataList').html(html);
             $('#lmpModal').modal('show');
+        }
+
+        // Tooltip functions for eBay links
+        function showEbayTooltip(element) {
+            const tooltip = element.nextElementSibling;
+            if (tooltip && tooltip.classList.contains('link-tooltip')) {
+                tooltip.style.opacity = '1';
+                tooltip.style.visibility = 'visible';
+            }
+        }
+
+        function hideEbayTooltip(element) {
+            const tooltip = element.nextElementSibling;
+            if (tooltip && tooltip.classList.contains('link-tooltip')) {
+                tooltip.style.opacity = '0';
+                tooltip.style.visibility = 'hidden';
+            }
         }
     </script>
 @endsection
