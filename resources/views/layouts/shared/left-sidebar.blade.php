@@ -2276,6 +2276,9 @@
                                     <li>
                                         <a href="{{ route('listing.audit.temu') }}">Listing Audit Temu</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('temu.pmt.ads') }}">Temu PMT Ads</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -2696,6 +2699,8 @@
                                     </li>
 
                                     <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
+                                    </li>
+                                    <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
                                     </li>
                                 </ul>
                             </div>
