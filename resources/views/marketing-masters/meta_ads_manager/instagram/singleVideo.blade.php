@@ -30,7 +30,6 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         var dataUrl = "{{ route('meta.ads.instagram.single.video.data') }}";
-        var adType = "Instagram Single Video";
     </script>
     @include('marketing-masters.meta_ads_manager.partials.table-script-full')
 @endsection

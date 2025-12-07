@@ -2097,7 +2097,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
         Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
         Route::post('/meta-all-ads-control/sync-meta-api', 'syncMetaAdsFromApi')->name('meta.ads.sync');
-        Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
+        
+        // Group management routes
+        Route::post('/meta-ads/group/store', 'storeGroup')->name('meta.ads.group.store');
+        
+        // Import/Export routes
+        Route::post('/meta-ads/import', 'importAds')->name('meta.ads.import');
+        Route::post('/meta-ads/export', 'exportAds')->name('meta.ads.export');
         
         // Facebook AD Type specific routes
         Route::get('/meta-ads/facebook/single-image', 'metaFacebookSingleImage')->name('meta.ads.facebook.single.image');

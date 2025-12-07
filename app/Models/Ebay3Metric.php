@@ -16,7 +16,9 @@ class Ebay3Metric extends Model
         'sku',
         'ebay_l30',
         'ebay_l60',
+        'ebay_l7',
         'ebay_price',
         'views',
+        'l7_views',
     ];    
 }

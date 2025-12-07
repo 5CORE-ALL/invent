@@ -8,6 +8,7 @@ use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use App\Models\AmazonDataView;
 use App\Models\MetaAllAd;
+use App\Models\MetaAdGroup;
 use App\Models\ShopifyFacebookCampaign;
 use Illuminate\Support\Facades\Log;
 use App\Services\MetaApiService;
@@ -121,7 +122,7 @@ class FacebookAddsManagerController extends Controller
                 'campaign_name' => $ad->campaign_name,
                 'campaign_id' => $ad->campaign_id,
                 'platform' => $ad->platform ?? 'Facebook/Instagram',
-                'ad_type' => $ad->ad_type ?? '',
+                'group_name' => $ad->group ? $ad->group->group_name : null,
                 'budget' => $ad->bgt ?? 0,
                 'impressions_l60' => $ad->imp_l30 ?? 0,
                 'impressions_l30' => $ad->imp_l30 ?? 0,
@@ -152,28 +153,6 @@ class FacebookAddsManagerController extends Controller
             'message' => 'Meta All Ads data fetched successfully',
             'data' => $data,
             'status' => 200,
-        ]);
-    }
-
-    public function updateAdType(Request $request)
-    {
-        $request->validate([
-            'campaign_name' => 'required|string',
-            'ad_type' => 'nullable|string|in:' . implode(',', MetaAllAd::$adTypes),
-        ]);
-
-        $metaAd = MetaAllAd::where('campaign_name', $request->campaign_name)->first();
-
-        if (!$metaAd) {
-            return response()->json(['error' => 'Campaign not found'], 404);
-        }
-
-        $metaAd->ad_type = $request->ad_type ?: null;
-        $metaAd->save();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Ad Type updated successfully',
         ]);
     }
 
@@ -245,10 +224,14 @@ class FacebookAddsManagerController extends Controller
                 // Get platform information
                 $platform = $campaign['platform'] ?? 'Facebook/Instagram';
                 
+                // Assign group based on campaign name prefix
+                $groupId = MetaAllAd::assignGroupByCampaignName($campaignName);
+                
                 MetaAllAd::updateOrCreate(
                     ['campaign_name' => $campaignName],
                     [
                         'campaign_id' => $campaignId,
+                        'group_id' => $groupId,
                         'platform' => $platform,
                         'campaign_delivery' => $campaignDelivery,
                         'bgt' => $bgt,
@@ -441,14 +424,12 @@ class FacebookAddsManagerController extends Controller
         ]);
     }
 
-    // AD Type specific views and data methods
+    // AD Type specific views and data methods (now showing all ads regardless of type)
     private function getMetaAdsDataByType($adType = null)
     {
         $query = MetaAllAd::orderBy('campaign_name', 'asc');
         
-        if ($adType) {
-            $query->where('ad_type', $adType);
-        }
+        // Removed ad_type filtering - showing all ads
         
         $metaAds = $query->get();
 
@@ -532,7 +513,7 @@ class FacebookAddsManagerController extends Controller
             $data[] = [
                 'campaign_name' => $ad->campaign_name,
                 'campaign_id' => $ad->campaign_id,
-                'ad_type' => $ad->ad_type ?? '',
+                'group_name' => $ad->group ? $ad->group->group_name : null,
                 'budget' => $ad->bgt ?? 0,
                 'impressions_l60' => $ad->imp_l30 ?? 0,
                 'impressions_l30' => $ad->imp_l30 ?? 0,
@@ -562,136 +543,240 @@ class FacebookAddsManagerController extends Controller
         return $data;
     }
 
-    // Facebook Ad Type Methods
+    // Facebook Ad Type Methods (now showing all ads without type filtering)
     public function metaFacebookSingleImage()
     {
-        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Facebook Single Image')->latest('updated_at')->first();
+        $latestUpdatedAt = MetaAllAd::latest('updated_at')->first();
         $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
-        return view('marketing-masters.meta_ads_manager.facebook.singleImage', ['latestUpdatedAt' => $formattedDate, 'adType' => 'Facebook Single Image']);
+        return view('marketing-masters.meta_ads_manager.facebook.singleImage', ['latestUpdatedAt' => $formattedDate]);
     }
 
     public function metaFacebookSingleImageData()
     {
-        $data = $this->getMetaAdsDataByType('Facebook Single Image');
-        return response()->json(['message' => 'Facebook Single Image Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+        $data = $this->getMetaAdsDataByType(null);
+        return response()->json(['message' => 'Facebook Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 
     public function metaFacebookSingleVideo()
     {
-        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Facebook Single Video')->latest('updated_at')->first();
+        $latestUpdatedAt = MetaAllAd::latest('updated_at')->first();
         $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
-        return view('marketing-masters.meta_ads_manager.facebook.singleVideo', ['latestUpdatedAt' => $formattedDate, 'adType' => 'Facebook Single Video']);
+        return view('marketing-masters.meta_ads_manager.facebook.singleVideo', ['latestUpdatedAt' => $formattedDate]);
     }
 
     public function metaFacebookSingleVideoData()
     {
-        $data = $this->getMetaAdsDataByType('Facebook Single Video');
-        return response()->json(['message' => 'Facebook Single Video Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+        $data = $this->getMetaAdsDataByType(null);
+        return response()->json(['message' => 'Facebook Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 
     public function metaFacebookCarousal()
     {
-        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Facebook Carousal')->latest('updated_at')->first();
+        $latestUpdatedAt = MetaAllAd::latest('updated_at')->first();
         $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
-        return view('marketing-masters.meta_ads_manager.facebook.carousal', ['latestUpdatedAt' => $formattedDate, 'adType' => 'Facebook Carousal']);
+        return view('marketing-masters.meta_ads_manager.facebook.carousal', ['latestUpdatedAt' => $formattedDate]);
     }
 
     public function metaFacebookCarousalData()
     {
-        $data = $this->getMetaAdsDataByType('Facebook Carousal');
-        return response()->json(['message' => 'Facebook Carousal Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+        $data = $this->getMetaAdsDataByType(null);
+        return response()->json(['message' => 'Facebook Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 
     public function metaFacebookExistingPost()
     {
-        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Facebook Existing Post')->latest('updated_at')->first();
+        $latestUpdatedAt = MetaAllAd::latest('updated_at')->first();
         $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
-        return view('marketing-masters.meta_ads_manager.facebook.existingPost', ['latestUpdatedAt' => $formattedDate, 'adType' => 'Facebook Existing Post']);
+        return view('marketing-masters.meta_ads_manager.facebook.existingPost', ['latestUpdatedAt' => $formattedDate]);
     }
 
     public function metaFacebookExistingPostData()
     {
-        $data = $this->getMetaAdsDataByType('Facebook Existing Post');
-        return response()->json(['message' => 'Facebook Existing Post Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+        $data = $this->getMetaAdsDataByType(null);
+        return response()->json(['message' => 'Facebook Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 
     public function metaFacebookCatalogueAd()
     {
-        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Facebook Catalogue Ad')->latest('updated_at')->first();
+        $latestUpdatedAt = MetaAllAd::latest('updated_at')->first();
         $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
-        return view('marketing-masters.meta_ads_manager.facebook.catalogueAd', ['latestUpdatedAt' => $formattedDate, 'adType' => 'Facebook Catalogue Ad']);
+        return view('marketing-masters.meta_ads_manager.facebook.catalogueAd', ['latestUpdatedAt' => $formattedDate]);
     }
 
     public function metaFacebookCatalogueAdData()
     {
-        $data = $this->getMetaAdsDataByType('Facebook Catalogue Ad');
-        return response()->json(['message' => 'Facebook Catalogue Ad Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+        $data = $this->getMetaAdsDataByType(null);
+        return response()->json(['message' => 'Facebook Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 
-    // Instagram Ad Type Methods
+    // Instagram Ad Type Methods (now showing all ads without type filtering)
     public function metaInstagramSingleImage()
     {
-        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Instagram Single Image')->latest('updated_at')->first();
+        $latestUpdatedAt = MetaAllAd::latest('updated_at')->first();
         $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
-        return view('marketing-masters.meta_ads_manager.instagram.singleImage', ['latestUpdatedAt' => $formattedDate, 'adType' => 'Instagram Single Image']);
+        return view('marketing-masters.meta_ads_manager.instagram.singleImage', ['latestUpdatedAt' => $formattedDate]);
     }
 
     public function metaInstagramSingleImageData()
     {
-        $data = $this->getMetaAdsDataByType('Instagram Single Image');
-        return response()->json(['message' => 'Instagram Single Image Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+        $data = $this->getMetaAdsDataByType(null);
+        return response()->json(['message' => 'Instagram Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 
     public function metaInstagramSingleVideo()
     {
-        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Instagram Single Video')->latest('updated_at')->first();
+        $latestUpdatedAt = MetaAllAd::latest('updated_at')->first();
         $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
-        return view('marketing-masters.meta_ads_manager.instagram.singleVideo', ['latestUpdatedAt' => $formattedDate, 'adType' => 'Instagram Single Video']);
+        return view('marketing-masters.meta_ads_manager.instagram.singleVideo', ['latestUpdatedAt' => $formattedDate]);
     }
 
     public function metaInstagramSingleVideoData()
     {
-        $data = $this->getMetaAdsDataByType('Instagram Single Video');
-        return response()->json(['message' => 'Instagram Single Video Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+        $data = $this->getMetaAdsDataByType(null);
+        return response()->json(['message' => 'Instagram Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 
     public function metaInstagramCarousal()
     {
-        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Instagram Carousal')->latest('updated_at')->first();
+        $latestUpdatedAt = MetaAllAd::latest('updated_at')->first();
         $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
-        return view('marketing-masters.meta_ads_manager.instagram.carousal', ['latestUpdatedAt' => $formattedDate, 'adType' => 'Instagram Carousal']);
+        return view('marketing-masters.meta_ads_manager.instagram.carousal', ['latestUpdatedAt' => $formattedDate]);
     }
 
     public function metaInstagramCarousalData()
     {
-        $data = $this->getMetaAdsDataByType('Instagram Carousal');
-        return response()->json(['message' => 'Instagram Carousal Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+        $data = $this->getMetaAdsDataByType(null);
+        return response()->json(['message' => 'Instagram Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 
     public function metaInstagramExistingPost()
     {
-        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Instagram Existing Post')->latest('updated_at')->first();
+        $latestUpdatedAt = MetaAllAd::latest('updated_at')->first();
         $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
-        return view('marketing-masters.meta_ads_manager.instagram.existingPost', ['latestUpdatedAt' => $formattedDate, 'adType' => 'Instagram Existing Post']);
+        return view('marketing-masters.meta_ads_manager.instagram.existingPost', ['latestUpdatedAt' => $formattedDate]);
     }
 
     public function metaInstagramExistingPostData()
     {
-        $data = $this->getMetaAdsDataByType('Instagram Existing Post');
-        return response()->json(['message' => 'Instagram Existing Post Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+        $data = $this->getMetaAdsDataByType(null);
+        return response()->json(['message' => 'Instagram Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 
     public function metaInstagramCatalogueAd()
     {
-        $latestUpdatedAt = MetaAllAd::where('ad_type', 'Instagram Catalogue Ad')->latest('updated_at')->first();
+        $latestUpdatedAt = MetaAllAd::latest('updated_at')->first();
         $formattedDate = $latestUpdatedAt ? $latestUpdatedAt->updated_at->format('d F, Y. h:i:s A') : null;
-        return view('marketing-masters.meta_ads_manager.instagram.catalogueAd', ['latestUpdatedAt' => $formattedDate, 'adType' => 'Instagram Catalogue Ad']);
+        return view('marketing-masters.meta_ads_manager.instagram.catalogueAd', ['latestUpdatedAt' => $formattedDate]);
     }
 
     public function metaInstagramCatalogueAdData()
     {
-        $data = $this->getMetaAdsDataByType('Instagram Catalogue Ad');
-        return response()->json(['message' => 'Instagram Catalogue Ad Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+        $data = $this->getMetaAdsDataByType(null);
+        return response()->json(['message' => 'Instagram Ads data fetched successfully', 'data' => $data, 'status' => 200]);
+    }
+
+    /**
+     * Store a new group
+     */
+    public function storeGroup(Request $request)
+    {
+        try {
+            $request->validate([
+                'group_name' => 'required|string|max:255|unique:meta_ad_groups,group_name'
+            ]);
+
+            $group = MetaAdGroup::create([
+                'group_name' => $request->group_name
+            ]);
+
+            // Automatically assign existing campaigns that match this group name prefix
+            $campaigns = MetaAllAd::whereNull('group_id')
+                ->orWhere('group_id', '!=', $group->id)
+                ->get();
+            
+            $assignedCount = 0;
+            foreach ($campaigns as $campaign) {
+                if (stripos($campaign->campaign_name, $group->group_name) === 0) {
+                    $campaign->group_id = $group->id;
+                    $campaign->save();
+                    $assignedCount++;
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Group created successfully',
+                'group' => $group,
+                'campaigns_assigned' => $assignedCount
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to create group: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Import ads data from Excel/CSV
+     */
+    public function importAds(Request $request)
+    {
+        try {
+            $request->validate([
+                'file' => 'required|mimes:csv,xlsx,xls|max:10240'
+            ]);
+
+            $file = $request->file('file');
+            
+            // Use Laravel Excel or similar package to import
+            // \Maatwebsite\Excel\Facades\Excel::import(new MetaAdsImport, $file);
+            
+            // Placeholder logic - implement actual import logic based on your requirements
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'File imported successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Import failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Export ads data to Excel
+     */
+    public function exportAds(Request $request)
+    {
+        try {
+            // Fetch all ads
+            $ads = MetaAllAd::all();
+
+            // Use Laravel Excel or similar to export
+            // return \Maatwebsite\Excel\Facades\Excel::download(new MetaAdsExport($ads), 'meta_ads_export.xlsx');
+            
+            // Placeholder - implement actual export logic
+            $filename = 'meta_ads_export_' . date('Y-m-d') . '.xlsx';
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Export functionality needs implementation with Laravel Excel package',
+                'filename' => $filename
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Export failed: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }
 

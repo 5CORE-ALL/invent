@@ -189,21 +189,26 @@ class FetchEbayReports extends Command
         // Update views per itemId
         $this->updateViews($token, $itemIdToSkus);
 
+        // Update L7 views (last 7 days)
+        $this->updateL7Views($token, $itemIdToSkus);
+
         // Update organic clicks for last 30 days
         $this->updateOrganicClicksFromSheet($itemIdToSkus);
 
-        // L30 / L60
+        // L7 / L30 / L60
         $existingItemIds = array_keys($itemIdToSkus);
         $dateRanges = $this->dateRanges();
 
+        $l7 = $this->orderQty($token, $dateRanges['l7'], $existingItemIds);
         $l30 = $this->orderQty($token, $dateRanges['l30'], $existingItemIds);
         $l60 = $this->orderQty($token, $dateRanges['l60'], $existingItemIds);
 
-        // Save L30/L60 for each SKU
+        // Save L7/L30/L60 for each SKU
         foreach ($itemIdToSkus as $itemId => $skus) {
             foreach ($skus as $sku) {
                 EbayMetric::where('sku', $sku)
                     ->update([
+                        'ebay_l7' => $l7[$itemId] ?? 0,
                         'ebay_l30' => $l30[$itemId] ?? 0,
                         'ebay_l60' => $l60[$itemId] ?? 0,
                     ]);
@@ -218,6 +223,10 @@ class FetchEbayReports extends Command
         $today = Carbon::today();
 
         return [
+            'l7' => [
+                'start' => $today->copy()->subDays(6),
+                'end' => $today->copy()->subDay(),
+            ],
             'l30' => [
                 'start' => $today->copy()->subDays(29),
                 'end' => $today->copy()->subDay(),
@@ -381,9 +390,24 @@ class FetchEbayReports extends Command
             $primarySku = trim((string) ($item->SKU ?? ''));
             $price = isset($item->Price) ? (float) $item->Price : null;
 
+            // Process variations first to collect SKUs with prices
+            $variationData = [];
+            foreach ($item->Variations->Variation ?? [] as $v) {
+                $varSku = (string) $v->SKU;
+                $varPrice = isset($v->Price) ? (float) $v->Price : $price;
+                
+                $variationData[$varSku] = [
+                    'item_id' => $itemId,
+                    'sku' => $varSku,
+                    'price' => $varPrice,
+                ];
+            }
+
+            // Add primary SKU only if it's not in variations OR if it has a price
             if ($primarySku !== '') {
                 $key = $itemId . '|' . $primarySku;
-                if (!isset($seen[$key])) {
+                // Skip primary SKU if it exists in variations (variation price takes priority)
+                if (!isset($variationData[$primarySku]) && !isset($seen[$key])) {
                     $out[] = [
                         'item_id' => $itemId,
                         'sku' => $primarySku,
@@ -393,15 +417,11 @@ class FetchEbayReports extends Command
                 }
             }
 
-            foreach ($item->Variations->Variation ?? [] as $v) {
-                $varSku = (string) $v->SKU;
+            // Add all variations
+            foreach ($variationData as $varSku => $varData) {
                 $key = $itemId . '|' . $varSku;
                 if (!isset($seen[$key])) {
-                    $out[] = [
-                        'item_id' => $itemId,
-                        'sku' => $varSku,
-                        'price' => isset($v->Price) ? (float) $v->Price : $price,
-                    ];
+                    $out[] = $varData;
                     $seen[$key] = true;
                 }
             }
@@ -580,6 +600,48 @@ class FetchEbayReports extends Command
         $this->info('✅ Organic clicks updated from Sheet');
     }
 
+    private function updateL7Views($token, $map)
+    {
+        // $map = [ itemId => [sku,sku,...], ... ]
+        $chunks = array_chunk(array_keys($map), 20);
+        
+        $this->info('🔄 Fetching L7 views for ' . count($map) . ' items in ' . count($chunks) . ' chunks...');
+
+        foreach ($chunks as $chunkIndex => $chunk) {
+            $ids = implode('|', $chunk);
+            $range = now()->subDays(6)->format('Ymd').'..'.now()->subDay()->format('Ymd');
+
+            $url = "https://api.ebay.com/sell/analytics/v1/traffic_report?dimension=LISTING&filter=listing_ids:%7B{$ids}%7D,date_range:[{$range}]&metric=LISTING_VIEWS_TOTAL";
+            
+            $r = Http::withToken($token)->get($url);
+            
+            if (!$r->successful()) {
+                $this->error('❌ L7 Views API failed for chunk ' . $chunkIndex . ': ' . $r->body());
+                continue;
+            }
+
+            $records = $r['records'] ?? [];
+
+            foreach ($records as $rec) {
+                $id = $rec['dimensionValues'][0]['value'] ?? null;
+                $v = $rec['metricValues'][0]['value'] ?? 0;
+                if (! $id) continue;
+
+                $skus = $map[$id] ?? [];
+                foreach ($skus as $sku) {
+                    EbayMetric::where('sku', $sku)
+                        ->update(['l7_views' => $v]);
+                }
+            }
+            
+            // Add small delay between API calls
+            if ($chunkIndex < count($chunks) - 1) {
+                sleep(1);
+            }
+        }
+
+        $this->info('✅ L7 views updated');
+    }
 
 
     private function orderQty($token, $range, $validIds)
