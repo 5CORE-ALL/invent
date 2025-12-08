@@ -1003,7 +1003,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body d-flex align-items-center" style="gap: 12px;">
-                    <div id="percent-edit-div" class="d-flex align-items-center">
+                    <div id="percent-edit-div" class="d-flex align-items-center" style="display: none !important;">
                         <div class="input-group" style="width: 150px;">
                             <input type="number" id="updateAllSkusPercent" class="form-control" min="0"
                                 max="100" value="{{ $ebayPercentage }}" step="0.01" title="Percent" disabled />
@@ -1013,7 +1013,7 @@
                             <i class="fa fa-pen"></i>
                         </button>
                     </div>
-                    <div id="adupdates-edit-div" class="d-flex align-items-center">
+                    <div id="adupdates-edit-div" class="d-flex align-items-center" style="display: none !important;">
                         <div class="input-group" style="width: 150px;">
                             <input type="number" id="updateAdUpdatesPercent" class="form-control" min="0" value="{{ $ebayAdPercentage }}"  step="any" placeholder="Ad Per" disabled />
                             <span class="input-group-text">%</span>
@@ -2711,6 +2711,9 @@
                         sbidColor = "green";
                     }
 
+                    // Cap sbidValue to maximum of 15
+                    sbidValue = Math.min(sbidValue, 15);
+
                     $row.append($('<td data-field="sbid">').html(
                         `<span class="dil-percent-value ${sbidColor}">
                            ${sbidValue}
@@ -2791,21 +2794,20 @@
                     if (item.is_parent) {
                         $row.append($('<td>')); // Empty cell for parent
                     } else {
-                        let currentNR = (item.NRL === 'RL' || item.NRL === 'NRL' || item.NRL === 'LATER') ? item.NRL : 'RL';
+                        let currentNR = (item.NRL === 'REQ' || item.NRL === 'NR') ? item.NRL : 'REQ';
 
                         const $select = $(`
                             <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                                <option value="RL" ${currentNR === 'RL' ? 'selected' : ''}>RL</option>
-                                <option value="NRL" ${currentNR === 'NRL' ? 'selected' : ''}>NRL</option>
-                                <option value="LATER" ${currentNR === 'LATER' ? 'selected' : ''}>LATER</option>
+                                <option value="REQ" ${currentNR === 'REQ' ? 'selected' : ''}>REQ</option>
+                                <option value="NR" ${currentNR === 'NR' ? 'selected' : ''}>NRL</option>
                             </select>
                         `);
 
                         // Set background color based on value
-                        if (currentNR === 'NRL') {
+                        if (currentNR === 'NR') {
                             $select.css('background-color', '#dc3545');
                             $select.css('color', '#ffffff');
-                        } else if (currentNR === 'RL') {
+                        } else if (currentNR === 'REQ') {
                             $select.css('background-color', '#28a745');
                             $select.css('color', '#ffffff');
                         }
@@ -2814,7 +2816,10 @@
                         $row.append($('<td>').append($select));
                     }
 
-
+                    // Hide row if NRL equals 'NR'
+                    if (item.NRL === 'NR') {
+                        $row.addClass('nr-hide');
+                    }
 
                     $tbody.append($row);
                 });
@@ -2919,7 +2924,7 @@
                             }
 
                             $.ajax({
-                                url: '/ebay/save-nr',
+                                url: '/isting_ebaytwo/save-status',
                                 type: 'POST',
                                 data: data,
                                 success: function(response) {
@@ -2982,21 +2987,26 @@
                     const $select = $(this);
                     const newValue = $select.val();
                     const sku = $select.data('sku');
+                    const $row = $select.closest('tr');
 
                     // Change background color based on selected value
-                    if (newValue === 'NRL') {
+                    if (newValue === 'NR') {
                         $select.css('background-color', '#dc3545').css('color', '#ffffff');
+                        // Hide the row
+                        $row.addClass('nr-hide');
                     } else {
                         $select.css('background-color', '#28a745').css('color', '#ffffff');
+                        // Show the row
+                        $row.removeClass('nr-hide');
                     }
 
                     // Send AJAX
                     $.ajax({
-                        url: '/ebay/save-nr',
+                        url: '/listing_ebaytwo/save-status',
                         type: 'POST',
                         data: {
                             sku: sku,
-                            nrl: newValue,
+                            nr_req: newValue,
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
@@ -3014,7 +3024,6 @@
                                 }
                             });
                             calculateTotals();
-                            renderTable();
                         },
                         error: function(xhr) {
                             showNotification('danger', 'Failed to update.');
@@ -4760,8 +4769,8 @@
                 if (nraFilter && nraFilter !== 'all') {
                     filteredData = filteredData.filter(item => {
                         const nra = (item.NRL || '').toUpperCase();
-                        if (nraFilter === 'RL') return nra === 'RL';
-                        if (nraFilter === 'NRL') return nra === 'NRL';
+                        if (nraFilter === 'REQ') return nra === 'REQ';
+                        if (nraFilter === 'NR') return nra === 'NR';
                         if (nraFilter === 'LATER') return nra === 'LATER';
                         return true;
                     });
@@ -5510,7 +5519,7 @@
                         '<span class="spinner-border spinner-border-sm me-2"></span>Updating Selected...');
 
                 $.ajax({
-                    url: '/ebay/save-nr',
+                    url: '/isting_ebaytwo/save-status',
                     type: 'POST',
                     data: {
                         skus: skusToUpdate,

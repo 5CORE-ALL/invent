@@ -2277,7 +2277,7 @@
                                         <a href="{{ route('listing.audit.temu') }}">Listing Audit Temu</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('temu.pmt.ads') }}">Temu PMT Ads</a>
+                                        <a href="{{ route('temu.ads') }}">Temu Ads</a>
                                     </li>
                                 </ul>
                             </div>
