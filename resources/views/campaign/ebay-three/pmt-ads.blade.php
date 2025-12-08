@@ -1004,7 +1004,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body d-flex align-items-center" style="gap: 12px;">
-                    <div id="percent-edit-div" class="d-flex align-items-center">
+                    <div id="percent-edit-div" class="d-flex align-items-center" style="display: none !important;">
                         <div class="input-group" style="width: 150px;">
                             <input type="number" id="updateAllSkusPercent" class="form-control" min="0"
                                 max="100" value="{{ $ebayPercentage }}" step="0.01" title="Percent" disabled />
@@ -1014,7 +1014,7 @@
                             <i class="fa fa-pen"></i>
                         </button>
                     </div>
-                    <div id="adupdates-edit-div" class="d-flex align-items-center">
+                    <div id="adupdates-edit-div" class="d-flex align-items-center" style="display: none !important;">
                         <div class="input-group" style="width: 150px;">
                             <input type="number" id="updateAdUpdatesPercent" class="form-control" min="0" value="{{ $ebayAdPercentage }}"  step="any" placeholder="Ad Per" disabled />
                             <span class="input-group-text">%</span>
@@ -3071,20 +3071,12 @@
                     $row.append($('<td class="tpft_col">').text(item.TPFT.toFixed(2)));
                     $row.append($('<td class="troi_col">').text(""));
 
-                    // Show NRL for both parent and child rows
-                    // Map old values to new ones for backward compatibility
-                    let currentNR = item.NRL;
-                    if (currentNR === 'RL') currentNR = 'REQ';  // Map old RL to REQ
-                    if (currentNR === 'NRL') currentNR = 'NR';   // Map old NRL to NR
-                    if (!currentNR || (currentNR !== 'REQ' && currentNR !== 'NR' && currentNR !== 'LATER')) {
-                        currentNR = 'REQ';
-                    }
+                    let currentNR = (item.NRL === 'REQ' || item.NRL === 'NR') ? item.NRL : 'REQ';
 
                     const $select = $(`
                         <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
                             <option value="REQ" ${currentNR === 'REQ' ? 'selected' : ''}>REQ</option>
                             <option value="NR" ${currentNR === 'NR' ? 'selected' : ''}>NRL</option>
-                            <option value="LATER" ${currentNR === 'LATER' ? 'selected' : ''}>LATER</option>
                         </select>
                     `);
 
@@ -3100,7 +3092,10 @@
                     $select.data('sku', item['(Child) sku']);
                     $row.append($('<td>').append($select));
 
-
+                    // Hide row if NRL equals 'NR'
+                    if (item.NRL === 'NR') {
+                        $row.addClass('nr-hide');
+                    }   
 
                     $tbody.append($row);
                 });
