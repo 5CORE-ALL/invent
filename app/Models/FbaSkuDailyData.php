@@ -32,3 +32,5 @@ class FbaSkuDailyData extends Model
 
 
 
+
+

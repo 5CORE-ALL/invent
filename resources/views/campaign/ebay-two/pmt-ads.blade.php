@@ -2711,6 +2711,9 @@
                         sbidColor = "green";
                     }
 
+                    // Cap sbidValue to maximum of 15
+                    sbidValue = Math.min(sbidValue, 15);
+
                     $row.append($('<td data-field="sbid">').html(
                         `<span class="dil-percent-value ${sbidColor}">
                            ${sbidValue}

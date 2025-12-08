@@ -2484,9 +2484,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::controller(TemuPmtAdsController::class)->group(function () {
-        Route::get('/temu/pmt/ads', 'index')->name('temu.pmt.ads');
-        Route::get('/temu/pmt/ads/data', 'getTemuPmtAdsData');
-        Route::post('/temu/pmt/ads/update', 'updateTemuPmtAds')->name('temu.pmt.ads.update');
+        Route::get('/temu/ads', 'index')->name('temu.ads');
+        Route::get('/temu/ads/data', 'getTemuPmtAdsData');
+        Route::post('/temu/ads/update', 'updateTemuPmtAds')->name('temu.ads.update');
     });
 
     Route::controller(TiktokAdsController::class)->group(function () {
