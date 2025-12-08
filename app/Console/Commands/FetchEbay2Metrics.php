@@ -109,20 +109,25 @@ class FetchEbay2Metrics extends Command
         // Update views per itemId -> sku list
         $this->updateViews($token, $itemIdToSku);
 
-        // L30 / L60
+        // Update L7 views (last 7 days)
+        $this->updateL7Views($token, $itemIdToSku);
+
+        // L7 / L30 / L60
         $existingItemIds = array_keys($itemIdToSku);
         $dateRanges = $this->dateRanges();
 
+        $l7 = $this->orderQty($token, $dateRanges['l7'], $existingItemIds);
         $l30 = $this->orderQty($token, $dateRanges['l30'], $existingItemIds);
         $l60 = $this->orderQty($token, $dateRanges['l60'], $existingItemIds);
 
-        // Save L30/L60 for each SKU under the item
+        // Save L7/L30/L60 for each SKU under the item
         foreach ($existingItemIds as $itemId) {
             $skus = $itemIdToSku[$itemId] ?? [];
             foreach ($skus as $sku) {
                 Ebay2Metric::where('item_id', $itemId)
                     ->where('sku', $sku)
                     ->update([
+                        'ebay_l7' => $l7[$itemId] ?? 0,
                         'ebay_l30' => $l30[$itemId] ?? 0,
                         'ebay_l60' => $l60[$itemId] ?? 0,
                     ]);
@@ -137,6 +142,10 @@ class FetchEbay2Metrics extends Command
         $today = Carbon::today();
 
         return [
+            'l7' => [
+                'start' => $today->copy()->subDays(6),
+                'end' => $today->copy()->subDay(),
+            ],
             'l30' => [
                 'start' => $today->copy()->subDays(29),
                 'end' => $today->copy()->subDay(),
@@ -288,6 +297,7 @@ class FetchEbay2Metrics extends Command
     private function parseXml($xml)
     {
         $out = [];
+        $seen = []; // Track item_id + sku combinations to avoid duplicates
 
         foreach ($xml->ActiveInventoryReport->SKUDetails as $item) {
             $itemId = (string) $item->ItemID;
@@ -299,20 +309,40 @@ class FetchEbay2Metrics extends Command
             $primarySku = trim((string) ($item->SKU ?? ''));
             $price = isset($item->Price) ? (float) $item->Price : null;
 
-            if ($primarySku !== '') {
-                $out[] = [
+            // Process variations first to collect SKUs with prices
+            $variationData = [];
+            foreach ($item->Variations->Variation ?? [] as $v) {
+                $varSku = (string) $v->SKU;
+                $varPrice = isset($v->Price) ? (float) $v->Price : $price;
+                
+                $variationData[$varSku] = [
                     'item_id' => $itemId,
-                    'sku' => $primarySku,
-                    'price' => $price,
+                    'sku' => $varSku,
+                    'price' => $varPrice,
                 ];
             }
 
-            foreach ($item->Variations->Variation ?? [] as $v) {
-                $out[] = [
-                    'item_id' => $itemId,
-                    'sku' => (string) $v->SKU,
-                    'price' => isset($v->Price) ? (float) $v->Price : $price,
-                ];
+            // Add primary SKU only if it's not in variations
+            if ($primarySku !== '') {
+                $key = $itemId . '|' . $primarySku;
+                // Skip primary SKU if it exists in variations (variation price takes priority)
+                if (!isset($variationData[$primarySku]) && !isset($seen[$key])) {
+                    $out[] = [
+                        'item_id' => $itemId,
+                        'sku' => $primarySku,
+                        'price' => $price,
+                    ];
+                    $seen[$key] = true;
+                }
+            }
+
+            // Add all variations
+            foreach ($variationData as $varSku => $varData) {
+                $key = $itemId . '|' . $varSku;
+                if (!isset($seen[$key])) {
+                    $out[] = $varData;
+                    $seen[$key] = true;
+                }
             }
         }
 
@@ -424,6 +454,50 @@ class FetchEbay2Metrics extends Command
                 sleep(1);
             }
         }
+    }
+
+    private function updateL7Views($token, $map)
+    {
+        // $map = [ itemId => [sku,sku,...], ... ]
+        $chunks = array_chunk(array_keys($map), 20);
+        
+        $this->info('🔄 Fetching L7 views for ' . count($map) . ' items in ' . count($chunks) . ' chunks...');
+
+        foreach ($chunks as $chunkIndex => $chunk) {
+            $ids = implode('|', $chunk);
+            $range = now()->subDays(6)->format('Ymd').'..'.now()->subDay()->format('Ymd');
+
+            $url = "https://api.ebay.com/sell/analytics/v1/traffic_report?dimension=LISTING&filter=listing_ids:%7B{$ids}%7D,date_range:[{$range}]&metric=LISTING_VIEWS_TOTAL";
+            
+            $r = Http::withToken($token)->get($url);
+            
+            if (!$r->successful()) {
+                $this->error('❌ L7 Views API failed for chunk ' . $chunkIndex . ': ' . $r->body());
+                continue;
+            }
+
+            $records = $r['records'] ?? [];
+
+            foreach ($records as $rec) {
+                $id = $rec['dimensionValues'][0]['value'] ?? null;
+                $v = $rec['metricValues'][0]['value'] ?? 0;
+                if (! $id) continue;
+
+                $skus = $map[$id] ?? [];
+                foreach ($skus as $sku) {
+                    Ebay2Metric::where('item_id', $id)
+                        ->where('sku', $sku)
+                        ->update(['l7_views' => $v]);
+                }
+            }
+            
+            // Add small delay between API calls
+            if ($chunkIndex < count($chunks) - 1) {
+                sleep(1);
+            }
+        }
+
+        $this->info('✅ L7 views updated');
     }
 
     private function orderQty($token, $range, $validIds)

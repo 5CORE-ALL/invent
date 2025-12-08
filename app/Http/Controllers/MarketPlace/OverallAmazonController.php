@@ -1650,6 +1650,8 @@ class OverallAmazonController extends Controller
             if ($listingStatus && $listingStatus->value) {
                 $listingValue = is_array($listingStatus->value) ? $listingStatus->value : [];
                 $row['NR'] = $listingValue['nr_req'] ?? null;
+                $row['buyer_link'] = $listingValue['buyer_link'] ?? null;
+                $row['seller_link'] = $listingValue['seller_link'] ?? null;
             }
 
             // Load other data from AmazonDataView for backward compatibility

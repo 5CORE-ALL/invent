@@ -184,6 +184,7 @@ use App\Http\Controllers\Campaigns\Ebay3PmtAdsController;
 use App\Http\Controllers\Campaigns\Ebay3RunningAdsController;
 use App\Http\Controllers\Campaigns\Ebay3UtilizedAdsController;
 use App\Http\Controllers\Campaigns\EbayKwAdsController;
+use App\Http\Controllers\Campaigns\TemuPmtAdsController;
 use App\Http\Controllers\Campaigns\EbayOverUtilizedBgtController;
 use App\Http\Controllers\Campaigns\EbayPinkDilAdController;
 use App\Http\Controllers\Campaigns\EbayPMPAdsController;
@@ -208,6 +209,7 @@ use App\Http\Controllers\Channels\SetupAccountChannelController;
 use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
 use App\Http\Controllers\Campaigns\EbayMissingAdsController;
+use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\WalmartRunningAdsController;
 
 use App\Http\Controllers\ChannelWiseReviewsController;
@@ -2098,7 +2100,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
         Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
         Route::post('/meta-all-ads-control/sync-meta-api', 'syncMetaAdsFromApi')->name('meta.ads.sync');
-        Route::post('/meta-all-ads-control/update-ad-type', 'updateAdType')->name('meta.ads.update.ad.type');
+        
+        // Group management routes
+        Route::post('/meta-ads/group/store', 'storeGroup')->name('meta.ads.group.store');
+        
+        // Import/Export routes
+        Route::post('/meta-ads/import', 'importAds')->name('meta.ads.import');
+        Route::post('/meta-ads/export', 'exportAds')->name('meta.ads.export');
         
         // Facebook AD Type specific routes
         Route::get('/meta-ads/facebook/single-image', 'metaFacebookSingleImage')->name('meta.ads.facebook.single.image');
@@ -2360,8 +2368,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
 
-
-
     Route::controller(Ebay3UtilizedAdsController::class)->group(function () {
         Route::get('/ebay-3/over-utilized', 'ebay3OverUtilizedAdsView')->name('ebay3.over.utilized');
         Route::get('/ebay-3/under-utilized', 'ebay3UnderUtilizedAdsView')->name('ebay3.under.utilized');
@@ -2475,6 +2481,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::post('/update-google-ads-bid-price', 'updateGoogleAdsCampaignSbid');
         Route::post('/update-google-nr-data', 'updateGoogleNrData');
+    });
+
+    Route::controller(TemuPmtAdsController::class)->group(function () {
+        Route::get('/temu/pmt/ads', 'index')->name('temu.pmt.ads');
+        Route::get('/temu/pmt/ads/data', 'getTemuPmtAdsData');
+        Route::post('/temu/pmt/ads/update', 'updateTemuPmtAds')->name('temu.pmt.ads.update');
+    });
+
+    Route::controller(TiktokAdsController::class)->group(function () {
+        Route::get('/tiktok/ads', 'index')->name('tiktokshop.ads');
     });
 
     Route::get('/facebook-image-ads', [FacebookAdsController::class, 'facebookImageAds'])->name('facebook.image.ads');

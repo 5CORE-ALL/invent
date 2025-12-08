@@ -2954,7 +2954,7 @@
                     let ebayL30 = Number(item['eBay L30']) || 0;
                     let views = Number(item.VIEWS) || 0;
 
-                    let scvr = (ebayL30 / views ) * 100 ;
+                    let scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
 
                     if(isNaN(scvr)){
                         scvr = 0;

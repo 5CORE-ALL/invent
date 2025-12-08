@@ -252,30 +252,59 @@ class TemuController extends Controller
     public function updateAllTemuSkus(Request $request)
     {
         try {
-            $percent = $request->input('percent');
+            $type = $request->input('type');
+            $value = $request->input('value');
+            
+            // Support legacy 'percent' parameter
+            if (!$type && $request->has('percent')) {
+                $type = 'percentage';
+                $value = $request->input('percent');
+            }
 
-            if (!is_numeric($percent) || $percent < 0 || $percent > 100) {
-                return response()->json([
-                    'status' => 400,
-                    'message' => 'Invalid percentage value. Must be between 0 and 100.'
-                ], 400);
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            $percent = $marketplaceData ? $marketplaceData->percentage : 100;
+            $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 100;
+
+            if ($type === 'percentage') {
+                if (!is_numeric($value) || $value < 0 || $value > 100) {
+                    return response()->json([
+                        'status' => 400,
+                        'message' => 'Invalid percentage value. Must be between 0 and 100.'
+                    ], 400);
+                }
+                $percent = $value;
+            }
+
+            if ($type === 'ad_updates') {
+                if (!is_numeric($value) || $value < 0) {
+                    return response()->json([
+                        'status' => 400,
+                        'message' => 'Invalid ad_updates value.'
+                    ], 400);
+                }
+                $adUpdates = $value;
             }
 
             // Update database
-            MarketplacePercentage::updateOrCreate(
+            $marketplace = MarketplacePercentage::updateOrCreate(
                 ['marketplace' => 'Temu'],
-                ['percentage' => $percent]
+                [
+                    'percentage' => $percent,
+                    'ad_updates' => $adUpdates
+                ]
             );
 
             // Store in cache
             Cache::put('temu_marketplace_percentage', $percent, now()->addDays(30));
+            Cache::put('temu_marketplace_ad_updates', $adUpdates, now()->addDays(30));
 
             return response()->json([
                 'status' => 200,
-                'message' => 'Percentage updated successfully',
+                'message' => ucfirst($type) . ' updated successfully',
                 'data' => [
-                    'marketplace' => 'Wayfair',
-                    'percentage' => $percent
+                    'marketplace' => 'Temu',
+                    'percentage' => $marketplace->percentage,
+                    'ad_updates' => $marketplace->ad_updates
                 ]
             ]);
         } catch (\Exception $e) {
