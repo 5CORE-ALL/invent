@@ -165,6 +165,9 @@ class UpdateEbaySuggestedBid extends Command
                             $newBid = 2; // Flat 2%
                         }
                         
+                        // Cap newBid to maximum of 15
+                        $newBid = min($newBid, 15);
+                        
                         $listing->new_bid = $newBid;
                         $updatedListings++;
                     }

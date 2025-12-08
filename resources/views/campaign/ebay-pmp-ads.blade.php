@@ -3015,6 +3015,9 @@
                         sbidValue = 2; // Flat 2
                     }
 
+                    // Cap sbidValue to maximum of 15
+                    sbidValue = Math.min(sbidValue, 15);
+
                     $row.append($('<td data-field="sbid">').html(
                         `<span class="dil-percent-value">
                            ${sbidValue.toFixed(1)}
