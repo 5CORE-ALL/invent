@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\EbayDataView;
+use App\Models\EbayMetric;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -38,8 +39,14 @@ class ListingEbayController extends Controller
         
         // Fetch all data from ebay_data_view table
         $ebayDataView = EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Fetch listing_status from ebay_metrics table
+        $ebayMetrics = EbayMetric::whereIn('sku', $skus)
+            ->select('sku', 'listing_status')
+            ->get()
+            ->keyBy('sku');
 
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $ebayDataView) {
+        $processedData = $productMasters->map(function ($item) use ($shopifyData, $ebayDataView, $ebayMetrics) {
             $childSku = $item->sku;
             $parent = $item->parent ?? '';
             $isParent = stripos($childSku, 'PARENT') !== false;
@@ -78,7 +85,11 @@ class ListingEbayController extends Controller
                 
                 $buyer_link = $ebayData['buyer_link'] ?? null;
                 $seller_link = $ebayData['seller_link'] ?? null;
-                $listing_status = $ebayData['listing_status'] ?? null;
+            }
+            
+            // Get listing_status from ebay_metrics table
+            if (isset($ebayMetrics[$childSku])) {
+                $listing_status = $ebayMetrics[$childSku]->listing_status;
             }
 
             $item->nr_req = $nr_req;
