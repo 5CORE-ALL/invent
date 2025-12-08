@@ -23,6 +23,7 @@ class EbayMetric extends Model
         'organic_clicks',
         'price_lmpa',
         'report_date',
+        'listing_status',
     ];
 
 }

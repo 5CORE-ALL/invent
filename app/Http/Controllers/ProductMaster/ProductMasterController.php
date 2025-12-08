@@ -784,24 +784,28 @@ class ProductMasterController extends Controller
                 'title60' => 'nullable|string',
             ]);
 
-            $product = ProductMaster::where('sku', $validated['sku'])->first();
+            // Try both uppercase SKU and lowercase sku columns
+            $product = ProductMaster::where('SKU', $validated['sku'])
+                ->orWhere('sku', $validated['sku'])
+                ->first();
 
             if (!$product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found.'
+                    'message' => 'Product with SKU "' . $validated['sku'] . '" not found in database.'
                 ], 404);
             }
 
-            $product->title150 = $validated['title150'];
-            $product->title100 = $validated['title100'];
-            $product->title80 = $validated['title80'];
-            $product->title60 = $validated['title60'];
+            // Update only the 4 title columns in product_master table
+            $product->title150 = $validated['title150'] ?? null;
+            $product->title100 = $validated['title100'] ?? null;
+            $product->title80 = $validated['title80'] ?? null;
+            $product->title60 = $validated['title60'] ?? null;
             $product->save();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Title data saved successfully.'
+                'message' => 'Title data saved successfully for SKU: ' . $validated['sku']
             ]);
         } catch (\Exception $e) {
             Log::error('Error saving title data: ' . $e->getMessage());

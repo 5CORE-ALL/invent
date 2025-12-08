@@ -567,15 +567,76 @@
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
                     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                    
+                    // First, try to read with default (row 0 as header)
+                    let jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                    
+                    console.log('First attempt - columns:', Object.keys(jsonData[0] || {}));
+                    
+                    // If we get __EMPTY columns, try reading from row 1 as header
+                    const firstCol = Object.keys(jsonData[0] || {})[0];
+                    if (firstCol && firstCol.includes('__EMPTY')) {
+                        console.log('Detected merged cells or empty headers, trying range option...');
+                        // Try reading with header at row 1 (index 1)
+                        jsonData = XLSX.utils.sheet_to_json(firstSheet, { range: 1 });
+                        console.log('Second attempt - columns:', Object.keys(jsonData[0] || {}));
+                    }
+                    
+                    // Still empty? Try raw data approach
+                    if (!jsonData || jsonData.length === 0 || Object.keys(jsonData[0])[0].includes('__EMPTY')) {
+                        console.log('Still getting empty columns, reading as raw array...');
+                        const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                        console.log('Raw data first 3 rows:', rawData.slice(0, 3));
+                        
+                        // Find the header row (first row with non-empty values)
+                        let headerRowIndex = -1;
+                        for (let i = 0; i < Math.min(5, rawData.length); i++) {
+                            const row = rawData[i];
+                            if (row && row.some(cell => cell && cell.toString().trim() !== '')) {
+                                headerRowIndex = i;
+                                console.log('Found header row at index:', i, 'Values:', row);
+                                break;
+                            }
+                        }
+                        
+                        if (headerRowIndex >= 0) {
+                            // Convert to proper JSON with detected headers
+                            const headers = rawData[headerRowIndex];
+                            jsonData = [];
+                            for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+                                const row = rawData[i];
+                                if (!row || row.length === 0) continue;
+                                
+                                const obj = {};
+                                for (let j = 0; j < headers.length; j++) {
+                                    const header = headers[j] || `Column_${j}`;
+                                    obj[header] = row[j];
+                                }
+                                jsonData.push(obj);
+                            }
+                            console.log('Converted data - columns:', Object.keys(jsonData[0] || {}));
+                            console.log('First data row:', jsonData[0]);
+                        }
+                    }
 
                     if (jsonData.length === 0) {
                         alert('No data found in the file');
                         return;
                     }
 
-                    // Process and save imported data
-                    processImportedData(jsonData);
+                    console.log('Final Excel data loaded!');
+                    console.log('Total rows:', jsonData.length);
+                    console.log('Columns:', Object.keys(jsonData[0]));
+                    console.log('First 3 rows:', jsonData.slice(0, 3));
+                    
+                    // Show user what columns we found
+                    const cols = Object.keys(jsonData[0]).join(', ');
+                    const proceed = confirm(`Found ${jsonData.length} rows with these columns:\n\n${cols}\n\nProceed with import?`);
+                    
+                    if (proceed) {
+                        // Process and save imported data
+                        processImportedData(jsonData);
+                    }
                 } catch (error) {
                     console.error('Error:', error);
                     alert('Error reading file: ' + error.message);
@@ -588,13 +649,114 @@
         function processImportedData(jsonData) {
             let successCount = 0;
             let errorCount = 0;
+            let skippedCount = 0;
             const totalRows = jsonData.length;
+            const errors = [];
 
-            const savePromises = jsonData.map(row => {
-                const sku = row['SKU'] || row['sku'];
-                if (!sku) {
-                    errorCount++;
+            // Log first row to see column names
+            if (jsonData.length > 0) {
+                console.log('=== EXCEL COLUMNS FOUND ===');
+                console.log('All columns:', Object.keys(jsonData[0]));
+                console.log('First row full data:', jsonData[0]);
+                console.log('Second row data:', jsonData[1]);
+            }
+
+            // Detect SKU column dynamically - try all columns to find one with SKU-like data
+            let skuColumnName = null;
+            if (jsonData.length > 0) {
+                const firstRow = jsonData[0];
+                
+                // First priority: columns with 'sku' or 'child' in name
+                for (const colName of Object.keys(firstRow)) {
+                    const lower = colName.toLowerCase();
+                    if ((lower.includes('sku') || lower.includes('child')) && 
+                        firstRow[colName] && 
+                        firstRow[colName].toString().trim() !== '' &&
+                        firstRow[colName].toString().trim() !== '__EMPTY' &&
+                        firstRow[colName].toString().trim() !== '0') {
+                        skuColumnName = colName;
+                        console.log(`✓ Found SKU column (priority): "${skuColumnName}" = "${firstRow[colName]}"`);
+                        break;
+                    }
+                }
+                
+                // Second priority: any column with actual data that looks like SKU
+                if (!skuColumnName) {
+                    for (const [colName, value] of Object.entries(firstRow)) {
+                        const val = value ? value.toString().trim() : '';
+                        if (val && val !== '__EMPTY' && val !== '0' && val !== '' && val.length > 2) {
+                            skuColumnName = colName;
+                            console.log(`✓ Found SKU column (fallback): "${skuColumnName}" = "${val}"`);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!skuColumnName) {
+                console.error('❌ Available columns:', Object.keys(jsonData[0]));
+                console.error('❌ First row values:', Object.values(jsonData[0]));
+                alert('Error: Could not detect SKU column in Excel file.\nPlease check the console for available columns and their values.');
+                return;
+            }
+
+            // Detect title columns - more flexible matching
+            const titleColumns = {
+                title150: null,
+                title100: null,
+                title80: null,
+                title60: null
+            };
+
+            if (jsonData.length > 0) {
+                const columns = Object.keys(jsonData[0]);
+                for (const colName of columns) {
+                    const lower = colName.toLowerCase();
+                    
+                    // Match Amazon/150 column
+                    if (!titleColumns.title150 && (lower.includes('amazon') || lower.includes('150'))) {
+                        titleColumns.title150 = colName;
+                    }
+                    // Match Shopify/100 column
+                    else if (!titleColumns.title100 && (lower.includes('shopify') || (lower.includes('100') && !lower.includes('150')))) {
+                        titleColumns.title100 = colName;
+                    }
+                    // Match eBay/80 column
+                    else if (!titleColumns.title80 && (lower.includes('ebay') || (lower.includes('80') && !lower.includes('180')))) {
+                        titleColumns.title80 = colName;
+                    }
+                    // Match Faire/60 column
+                    else if (!titleColumns.title60 && (lower.includes('faire') || (lower.includes('60') && !lower.includes('160')))) {
+                        titleColumns.title60 = colName;
+                    }
+                }
+                console.log('✓ Detected title columns:', titleColumns);
+            }
+
+            const savePromises = jsonData.map((row, index) => {
+                // Get SKU from detected column
+                const sku = row[skuColumnName];
+                
+                // Check if SKU contains the word "PARENT" (case-insensitive, as a whole word)
+                const skuStr = sku ? sku.toString().trim() : '';
+                const isParentSKU = /\bPARENT\b/i.test(skuStr);
+                
+                if (!sku || skuStr === '' || sku === '__EMPTY' || skuStr === '0' || isParentSKU) {
+                    skippedCount++;
+                    if (skippedCount <= 3) {
+                        console.log(`⊘ Skipped row ${index + 2}: "${skuStr}" (${!sku || skuStr === '' ? 'Empty' : isParentSKU ? 'Parent' : 'Invalid'})`);
+                    }
                     return Promise.resolve();
+                }
+
+                // Extract title data using detected columns
+                const title150 = titleColumns.title150 ? (row[titleColumns.title150] || '').toString().substring(0, 150) : '';
+                const title100 = titleColumns.title100 ? (row[titleColumns.title100] || '').toString().substring(0, 100) : '';
+                const title80 = titleColumns.title80 ? (row[titleColumns.title80] || '').toString().substring(0, 80) : '';
+                const title60 = titleColumns.title60 ? (row[titleColumns.title60] || '').toString().substring(0, 60) : '';
+
+                if (successCount + errorCount < 3) {
+                    console.log(`→ Processing row ${index + 2}: SKU="${skuStr}"`);
                 }
 
                 return fetch('/title-master/save', {
@@ -604,29 +766,57 @@
                         'X-CSRF-TOKEN': csrfToken
                     },
                     body: JSON.stringify({
-                        sku: sku,
-                        title150: (row['Title 150'] || row['title150'] || '').substring(0, 150),
-                        title100: (row['Title 100'] || row['title100'] || '').substring(0, 100),
-                        title80: (row['Title 80'] || row['title80'] || '').substring(0, 80),
-                        title60: (row['Title 60'] || row['title60'] || '').substring(0, 60)
+                        sku: skuStr,
+                        title150: title150,
+                        title100: title100,
+                        title80: title80,
+                        title60: title60
                     })
                 })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
                         successCount++;
+                        if (successCount <= 3) {
+                            console.log(`✓ Row ${index + 2} success: ${skuStr}`);
+                        }
                     } else {
                         errorCount++;
+                        const errorMsg = `Row ${index + 2} (${skuStr}): ${data.message || 'Unknown error'}`;
+                        if (errorCount <= 10) {
+                            console.error(`✗ ${errorMsg}`);
+                            errors.push(errorMsg);
+                        }
                     }
                 })
-                .catch(() => {
+                .catch(err => {
                     errorCount++;
+                    const errorMsg = `Row ${index + 2} (${skuStr}): ${err.message}`;
+                    if (errorCount <= 10) {
+                        console.error(`✗ ${errorMsg}`);
+                        errors.push(errorMsg);
+                    }
                 });
             });
 
             Promise.all(savePromises).then(() => {
-                alert(`Import completed!\nSuccess: ${successCount}\nErrors: ${errorCount}\nTotal: ${totalRows}`);
-                loadTitleData(); // Reload data
+                let message = `Import completed!\n\nSuccess: ${successCount}\nErrors: ${errorCount}\nSkipped (Parent/Empty): ${skippedCount}\nTotal: ${totalRows}`;
+                
+                if (errors.length > 0) {
+                    message += '\n\nFirst errors:\n' + errors.join('\n');
+                }
+                
+                console.log('=== IMPORT SUMMARY ===');
+                console.log('Success:', successCount);
+                console.log('Errors:', errorCount);
+                console.log('Skipped:', skippedCount);
+                console.log('Total:', totalRows);
+                
+                alert(message);
+                
+                if (successCount > 0) {
+                    loadTitleData(); // Reload data to show updates
+                }
             });
         }
 
