@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\EbayDataView;
-use App\Models\EbayListingStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -36,38 +35,57 @@ class ListingEbayController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $ebayDataViewValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        
+        // Fetch all data from ebay_data_view table
+        $ebayDataView = EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        // Fetch all status records for these SKUs
-        $statusData = EbayListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
-
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $ebayDataViewValues, $statusData) {
+        $processedData = $productMasters->map(function ($item) use ($shopifyData, $ebayDataView) {
             $childSku = $item->sku;
             $parent = $item->parent ?? '';
             $isParent = stripos($childSku, 'PARENT') !== false;
 
             $item->INV = $shopifyData[$childSku]->inv ?? 0;
             $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
-            $item->Parent = $parent;
+            $item->parent = $parent;
             $item->is_parent = $isParent;
 
-            // If status exists, fill values from JSON
-            if (isset($statusData[$childSku])) {
-                $status = $statusData[$childSku]->value;
-                // Use stored values or calculate defaults based on INV
-                // $item->nr_req = $status['nr_req'] ?? (floatval($item->INV) > 0 ? 'REQ' : 'NR');
-                $item->nr_req = $status['nr_req'] ?? '';
-                $item->listed = $status['listed'] ?? null;
-                $item->buyer_link = $status['buyer_link'] ?? null;
-                $item->seller_link = $status['seller_link'] ?? null;
-            } else {
-                // No status record exists - set defaults based on INV
-                // $item->nr_req = floatval($item->INV) > 0 ? 'REQ' : 'NR';
-                $item->nr_req = '';
-                $item->listed = null;
-                $item->buyer_link = null;
-                $item->seller_link = null;
+            // Default values
+            $nr_req = 'REQ'; // Default to REQ (shows as RL)
+            $listed = null;
+            $buyer_link = null;
+            $seller_link = null;
+            $listing_status = null;
+
+            // Get data from ebay_data_view table
+            if (isset($ebayDataView[$childSku])) {
+                $ebayData = $ebayDataView[$childSku]->value;
+                
+                // Read NRL field - "REQ" means RL, "NRL" means NRL
+                $nrlValue = $ebayData['NRL'] ?? null;
+                if ($nrlValue === 'NRL') {
+                    $nr_req = 'NR';
+                } else if ($nrlValue === 'REQ') {
+                    $nr_req = 'REQ';
+                }
+                
+                // Read listed field
+                $listedValue = $ebayData['Listed'] ?? $ebayData['listed'] ?? null;
+                if (is_bool($listedValue)) {
+                    $listed = $listedValue ? 'Listed' : 'Pending';
+                } else if (is_string($listedValue)) {
+                    $listed = $listedValue;
+                }
+                
+                $buyer_link = $ebayData['buyer_link'] ?? null;
+                $seller_link = $ebayData['seller_link'] ?? null;
+                $listing_status = $ebayData['listing_status'] ?? null;
             }
+
+            $item->nr_req = $nr_req;
+            $item->listed = $listed;
+            $item->buyer_link = $buyer_link;
+            $item->seller_link = $seller_link;
+            $item->listing_status = $listing_status;
 
             return $item;
         })->values();
@@ -78,35 +96,51 @@ class ListingEbayController extends Controller
         ]);
     }
 
-    public function saveStatus(Request $request)
+    public function updateStatus(Request $request)
     {
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',
             'listed' => 'nullable|string',
-            'buyer_link' => 'nullable|url',
-            'seller_link' => 'nullable|url',
+            'buyer_link' => 'nullable|string',
+            'seller_link' => 'nullable|string',
         ]);
 
         $sku = $validated['sku'];
-        $status = EbayListingStatus::where('sku', $sku)->first();
+        $ebayData = EbayDataView::where('sku', $sku)->first();
 
-        $existing = $status ? $status->value : [];
+        $existing = $ebayData ? $ebayData->value : [];
 
-        // Only update the fields that are present in the request
-        $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
+        // Handle nr_req - save as NRL field in ebay_data_view
+        if ($request->has('nr_req')) {
+            // Map: 'NR' -> 'NRL', 'REQ' -> 'REQ'
+            $existing['NRL'] = ($validated['nr_req'] === 'NR') ? 'NRL' : 'REQ';
+        }
+
+        // Handle listed field - save as Listed (capitalized) to match the JSON structure
+        if ($request->has('listed')) {
+            // Save to both 'Listed' (for boolean conversion) and 'listed' (for string)
+            $existing['Listed'] = ($validated['listed'] === 'Listed') ? true : false;
+            $existing['listed'] = $validated['listed'];
+        }
+
+        // Only update other fields that are present in the request
+        $fields = ['buyer_link', 'seller_link'];
         foreach ($fields as $field) {
             if ($request->has($field)) {
                 $existing[$field] = $validated[$field];
             }
         }
 
-        EbayListingStatus::updateOrCreate(
+        EbayDataView::updateOrCreate(
             ['sku' => $validated['sku']],
             ['value' => $existing]
         );
 
-        return response()->json(['status' => 'success']);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Status updated successfully'
+        ]);
     }
 
     public function getNrReqCount()
@@ -115,7 +149,7 @@ class ListingEbayController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $statusData = EbayListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $reqCount = 0;
         $listedCount = 0;
@@ -133,13 +167,28 @@ class ListingEbayController extends Controller
                 $status = json_decode($status, true);
             }
 
-            // NR/REQ logic
-            $nrReq = $status['nr_req'] ?? (floatval($inv) > 0 ? 'REQ' : 'NR');
+            // NR/REQ logic - read from NRL field
+            $nrlValue = $status['NRL'] ?? null;
+            $nrReq = 'REQ'; // Default
+            if ($nrlValue === 'NRL') {
+                $nrReq = 'NR';
+            } else if ($nrlValue === 'REQ') {
+                $nrReq = 'REQ';
+            }
+            
             if ($nrReq === 'REQ') {
                 $reqCount++;
             }
 
-            $listed = $status['listed'] ?? null;
+            // Read listed field
+            $listedValue = $status['Listed'] ?? $status['listed'] ?? null;
+            $listed = null;
+            if (is_bool($listedValue)) {
+                $listed = $listedValue ? 'Listed' : 'Pending';
+            } else if (is_string($listedValue)) {
+                $listed = $listedValue;
+            }
+            
             if ($listed === 'Listed') {
                 $listedCount++;
             }
@@ -257,17 +306,30 @@ class ListingEbayController extends Controller
                         continue;
                     }
 
-                    $status = EbayListingStatus::where('sku', $sku)->first();
-                    $existing = $status ? $status->value : [];
+                    $ebayData = EbayDataView::where('sku', $sku)->first();
+                    $existing = $ebayData ? $ebayData->value : [];
 
-                    $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
-                    foreach ($fields as $field) {
+                    // Handle nr_req - save as NRL field
+                    if (array_key_exists('nr_req', $rowData) && $rowData['nr_req'] !== '') {
+                        $existing['NRL'] = (trim($rowData['nr_req']) === 'NR') ? 'NRL' : 'REQ';
+                    }
+
+                    // Handle listed field
+                    if (array_key_exists('listed', $rowData) && $rowData['listed'] !== '') {
+                        $listedVal = trim($rowData['listed']);
+                        $existing['Listed'] = ($listedVal === 'Listed') ? true : false;
+                        $existing['listed'] = $listedVal;
+                    }
+
+                    // Handle other fields
+                    $otherFields = ['buyer_link', 'seller_link'];
+                    foreach ($otherFields as $field) {
                         if (array_key_exists($field, $rowData) && $rowData[$field] !== '') {
                             $existing[$field] = trim($rowData[$field]);
                         }
                     }
 
-                    EbayListingStatus::updateOrCreate(
+                    EbayDataView::updateOrCreate(
                         ['sku' => $sku],
                         ['value' => $existing]
                     );
@@ -325,14 +387,32 @@ class ListingEbayController extends Controller
             $productMasters = ProductMaster::pluck('sku');
 
             foreach ($productMasters as $sku) {
-                $status = EbayListingStatus::where('sku', $sku)->first();
+                $ebayData = EbayDataView::where('sku', $sku)->first();
+
+                // Read NRL field
+                $nrlValue = $ebayData->value['NRL'] ?? null;
+                $nr_req = '';
+                if ($nrlValue === 'NRL') {
+                    $nr_req = 'NR';
+                } else if ($nrlValue === 'REQ') {
+                    $nr_req = 'REQ';
+                }
+
+                // Read listed field
+                $listedValue = $ebayData->value['Listed'] ?? $ebayData->value['listed'] ?? null;
+                $listed = '';
+                if (is_bool($listedValue)) {
+                    $listed = $listedValue ? 'Listed' : 'Pending';
+                } else if (is_string($listedValue)) {
+                    $listed = $listedValue;
+                }
 
                 $row = [
                     'sku'         => $sku,
-                    'nr_req'      => $status->value['nr_req'] ?? '',
-                    'listed'      => $status->value['listed'] ?? '',
-                    'buyer_link'  => $status->value['buyer_link'] ?? '',
-                    'seller_link' => $status->value['seller_link'] ?? '',
+                    'nr_req'      => $nr_req,
+                    'listed'      => $listed,
+                    'buyer_link'  => $ebayData->value['buyer_link'] ?? '',
+                    'seller_link' => $ebayData->value['seller_link'] ?? '',
                 ];
 
                 fputcsv($file, $row);

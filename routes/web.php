@@ -1377,7 +1377,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-one/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
     Route::post('/ebay/save-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
 
-    Route::post('/listing_ebay/save-status', [ListingEbayController::class, 'saveStatus']);
+    Route::post('/listing_ebay/save-status', [ListingEbayController::class, 'updateStatus']);
+    Route::post('/listing_ebay/update-status', [ListingEbayController::class, 'updateStatus']);
     Route::post('/listing_audit_ebay/save-na', [ListingAuditEbayController::class, 'saveAuditToDatabase']);
     Route::post('/ebay-zero/reason-action/update', [EbayZeroController::class, 'updateReasonAction']);
     Route::post('/ebay-low-visibility/reason-action/update', [EbayLowVisibilityController::class, 'updateReasonAction']);
