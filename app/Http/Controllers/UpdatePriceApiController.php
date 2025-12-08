@@ -92,13 +92,39 @@ class UpdatePriceApiController extends Controller
             ]);
 
             if ($response->successful()) {
-                Log::info('Shopify price updated successfully', [
+                // CRITICAL: Verify the price was actually updated in the response
+                $updatedPrice = null;
+                if (isset($responseBody['variant']['price'])) {
+                    $updatedPrice = (float) $responseBody['variant']['price'];
+                }
+                
+                // Verify the price matches what we sent (with small tolerance for rounding)
+                $priceMatches = $updatedPrice && abs($updatedPrice - (float)$newPrice) < 0.01;
+                
+                if (!$priceMatches) {
+                    Log::error('Shopify API returned success but price mismatch detected', [
+                        'variant_id' => $variantId,
+                        'expected_price' => $newPrice,
+                        'actual_price_in_response' => $updatedPrice,
+                        'response' => $responseBody
+                    ]);
+                    return [
+                        "status" => "error",
+                        "message" => "Price update verification failed - price mismatch in API response",
+                        "expected_price" => $newPrice,
+                        "actual_price" => $updatedPrice
+                    ];
+                }
+                
+                Log::info('Shopify price updated and verified successfully', [
                     'variant_id' => $variantId,
-                    'new_price' => $newPrice
+                    'new_price' => $newPrice,
+                    'verified_price' => $updatedPrice
                 ]);
                 return [
                     "status" => "success",
-                    "data" => $responseBody
+                    "data" => $responseBody,
+                    "verified_price" => $updatedPrice
                 ];
             } else {
                 $errorMessage = 'API returned error';

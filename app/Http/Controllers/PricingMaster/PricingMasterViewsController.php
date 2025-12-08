@@ -2230,12 +2230,51 @@ class PricingMasterViewsController extends Controller
         $result = UpdatePriceApiController::updateShopifyVariantPrice($variantId, $price);
 
         if ($result['status'] === 'success') {
-            Log::info('Shopify price updated successfully', [
-                'sku' => $sku,
-                'variant_id' => $variantId,
-                'price' => $price,
-                'api_response' => $result
-            ]);
+            // CRITICAL FIX: Update local database immediately after successful API push
+            // Use transaction to ensure atomic update
+            try {
+                DB::beginTransaction();
+                
+                // Verify the price from API response matches
+                $verifiedPrice = $result['verified_price'] ?? $price;
+                if (abs((float)$verifiedPrice - (float)$price) > 0.01) {
+                    Log::warning('Price mismatch between sent and verified', [
+                        'sku' => $sku,
+                        'sent_price' => $price,
+                        'verified_price' => $verifiedPrice
+                    ]);
+                    // Use verified price from API response
+                    $price = $verifiedPrice;
+                }
+                
+                $shopifyRecord->price = $price;
+                $shopifyRecord->price_updated_manually_at = now(); // Mark as manually updated
+                $shopifyRecord->save();
+                
+                DB::commit();
+                
+                Log::info('Shopify price updated successfully (API + Local DB + Manual Flag)', [
+                    'sku' => $sku,
+                    'variant_id' => $variantId,
+                    'price' => $price,
+                    'verified_price' => $verifiedPrice,
+                    'manual_update_timestamp' => $shopifyRecord->price_updated_manually_at,
+                    'api_response' => $result
+                ]);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                // CRITICAL: If local DB update fails, we should still log but API update succeeded
+                // However, this creates inconsistency - log as error for monitoring
+                Log::error('Shopify API update succeeded but local DB update FAILED - DATA INCONSISTENCY', [
+                    'sku' => $sku,
+                    'variant_id' => $variantId,
+                    'price' => $price,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                // Still return success since API worked, but log as error for monitoring
+            }
+            
             return response()->json(['success' => true]);
         } else {
             $reason = $result['message'] ?? 'API error';
