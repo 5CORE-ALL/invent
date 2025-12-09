@@ -60,12 +60,13 @@ class ShopifyMarketingService
     }
 
     /**
-     * Fetch orders with UTM parameters for Facebook campaigns
+     * Fetch orders with UTM parameters for Meta campaigns (Facebook or Instagram)
      * 
      * @param string $dateRange
+     * @param string $channel ('facebook', 'instagram', or 'both')
      * @return array
      */
-    public function fetchOrdersWithUtmData($dateRange = '30_days')
+    public function fetchOrdersWithUtmData($dateRange = '30_days', $channel = 'facebook')
     {
         $dates = $this->getDateRange($dateRange);
         $startDate = $dates['start'];
@@ -125,20 +126,35 @@ class ShopifyMarketingService
                 if ($response->successful()) {
                     $data = $response->json();
                     
-                    // Filter orders from Facebook
-                    $facebookOrders = array_filter($data['orders'] ?? [], function($order) {
+                    // Filter orders based on channel
+                    $filteredOrders = array_filter($data['orders'] ?? [], function($order) use ($channel) {
                         $landingSite = $order['landing_site'] ?? '';
                         $referringSite = $order['referring_site'] ?? '';
                         $sourceName = $order['source_name'] ?? '';
                         
-                        return stripos($landingSite, 'facebook') !== false 
+                        $isFacebook = stripos($landingSite, 'facebook') !== false 
                             || stripos($landingSite, 'fb') !== false
                             || stripos($landingSite, 'utm_source=facebook') !== false
                             || stripos($referringSite, 'facebook') !== false
                             || stripos($sourceName, 'facebook') !== false;
+                        
+                        $isInstagram = stripos($landingSite, 'instagram') !== false 
+                            || stripos($landingSite, 'insta') !== false
+                            || stripos($landingSite, 'utm_source=instagram') !== false
+                            || stripos($referringSite, 'instagram') !== false
+                            || stripos($sourceName, 'instagram') !== false;
+                        
+                        if ($channel === 'both') {
+                            return $isFacebook || $isInstagram;
+                        } elseif ($channel === 'instagram') {
+                            return $isInstagram;
+                        } else {
+                            // Default to Facebook
+                            return $isFacebook;
+                        }
                     });
 
-                    $orders = array_merge($orders, $facebookOrders);
+                    $orders = array_merge($orders, $filteredOrders);
 
                     // Check for pagination
                     $linkHeader = $response->header('Link');
@@ -162,7 +178,7 @@ class ShopifyMarketingService
                 }
             }
 
-            return $this->aggregateOrderData($orders, $dateRange, $startDate, $endDate);
+            return $this->aggregateOrderData($orders, $dateRange, $startDate, $endDate, $channel);
 
         } catch (\Exception $e) {
             Log::error("Exception fetching Shopify orders", [
@@ -180,15 +196,17 @@ class ShopifyMarketingService
      * @param string $dateRange
      * @param Carbon $startDate
      * @param Carbon $endDate
+     * @param string $channel
      * @return array
      */
-    protected function aggregateOrderData($orders, $dateRange, $startDate, $endDate)
+    protected function aggregateOrderData($orders, $dateRange, $startDate, $endDate, $channel = 'facebook')
     {
         $campaigns = [];
 
         foreach ($orders as $order) {
-            $campaignName = $this->extractCampaignName($order);
+            $campaignName = $this->extractCampaignName($order, $channel);
             $campaignId = $this->extractCampaignId($order);
+            $detectedChannel = $this->detectChannel($order);
             
             $key = $campaignId ?: $campaignName;
 
@@ -205,7 +223,7 @@ class ShopifyMarketingService
                     'conversion_rate' => 0,
                     'ad_spend' => 0,
                     'roas' => 0,
-                    'referring_channel' => 'facebook',
+                    'referring_channel' => $detectedChannel,
                     'traffic_type' => 'paid',
                     'country' => 'IN',
                 ];
@@ -229,12 +247,34 @@ class ShopifyMarketingService
     }
 
     /**
-     * Extract campaign name from order
+     * Detect channel from order
      * 
      * @param array $order
      * @return string
      */
-    protected function extractCampaignName($order)
+    protected function detectChannel($order)
+    {
+        $landingSite = $order['landing_site'] ?? '';
+        $referringSite = $order['referring_site'] ?? '';
+        $sourceName = $order['source_name'] ?? '';
+        
+        $isInstagram = stripos($landingSite, 'instagram') !== false 
+            || stripos($landingSite, 'insta') !== false
+            || stripos($landingSite, 'utm_source=instagram') !== false
+            || stripos($referringSite, 'instagram') !== false
+            || stripos($sourceName, 'instagram') !== false;
+        
+        return $isInstagram ? 'instagram' : 'facebook';
+    }
+
+    /**
+     * Extract campaign name from order
+     * 
+     * @param array $order
+     * @param string $channel
+     * @return string
+     */
+    protected function extractCampaignName($order, $channel = 'facebook')
     {
         $landingSite = $order['landing_site'] ?? '';
         
@@ -243,9 +283,19 @@ class ShopifyMarketingService
             return urldecode($matches[1]);
         }
 
-        // Try to extract fbclid or other identifiers
-        if (preg_match('/fbclid=([^&]+)/', $landingSite, $matches)) {
-            return 'Facebook Campaign - ' . substr($matches[1], 0, 20);
+        // Try to extract fbclid for Facebook
+        if ($channel === 'facebook' || $channel === 'both') {
+            if (preg_match('/fbclid=([^&]+)/', $landingSite, $matches)) {
+                return 'Facebook Campaign - ' . substr($matches[1], 0, 20);
+            }
+        }
+
+        // Default based on channel
+        if ($channel === 'instagram') {
+            return 'Instagram - General';
+        } elseif ($channel === 'both') {
+            $detectedChannel = $this->detectChannel($order);
+            return ucfirst($detectedChannel) . ' - General';
         }
 
         return 'Facebook - General';

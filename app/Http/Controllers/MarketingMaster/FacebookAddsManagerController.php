@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use App\Models\AmazonDataView;
 use App\Models\MetaAllAd;
 use App\Models\MetaAdGroup;
-use App\Models\ShopifyFacebookCampaign;
+use App\Models\ShopifyMetaCampaign;
 use Illuminate\Support\Facades\Log;
 use App\Services\MetaApiService;
 
@@ -31,8 +31,8 @@ class FacebookAddsManagerController extends Controller
     {
         $metaAds = MetaAllAd::orderBy('campaign_name', 'asc')->get();
 
-        // Fetch all Shopify Facebook campaign sales data grouped by campaign_id and date_range
-        $shopifySales = ShopifyFacebookCampaign::whereNotNull('campaign_id')
+        // Fetch all Shopify Meta campaign sales data grouped by campaign_id and date_range
+        $shopifySales = ShopifyMetaCampaign::whereNotNull('campaign_id')
             ->select('campaign_id', 'date_range', 'sales', 'orders')
             ->get()
             ->groupBy('campaign_id');
@@ -425,7 +425,7 @@ class FacebookAddsManagerController extends Controller
     }
 
     // AD Type specific views and data methods (now showing all ads regardless of type)
-    private function getMetaAdsDataByType($adType = null)
+    private function getMetaAdsDataByType($adType = null, $channel = null)
     {
         $query = MetaAllAd::orderBy('campaign_name', 'asc');
         
@@ -433,11 +433,16 @@ class FacebookAddsManagerController extends Controller
         
         $metaAds = $query->get();
 
-        // Fetch all Shopify Facebook campaign sales data grouped by campaign_id and date_range
-        $shopifySales = ShopifyFacebookCampaign::whereNotNull('campaign_id')
-            ->select('campaign_id', 'date_range', 'sales', 'orders')
-            ->get()
-            ->groupBy('campaign_id');
+        // Fetch Shopify Meta campaign sales data grouped by campaign_id and date_range
+        $shopifySalesQuery = ShopifyMetaCampaign::whereNotNull('campaign_id')
+            ->select('campaign_id', 'date_range', 'sales', 'orders', 'referring_channel');
+        
+        // Filter by channel if specified (facebook, instagram)
+        if ($channel) {
+            $shopifySalesQuery->where('referring_channel', $channel);
+        }
+        
+        $shopifySales = $shopifySalesQuery->get()->groupBy('campaign_id');
 
         $data = [];
         foreach ($metaAds as $ad) {
@@ -457,10 +462,17 @@ class FacebookAddsManagerController extends Controller
             $sales_l60 = 0;
             $sales_l7 = 0;
             
+            // Match Shopify sales data by campaign_id
+            // Channel filtering is already applied in the query, but we verify here for safety
             if ($ad->campaign_id && isset($shopifySales[$ad->campaign_id])) {
                 $campaignSales = $shopifySales[$ad->campaign_id];
                 
                 foreach ($campaignSales as $sale) {
+                    // Double-check channel match if channel filter is applied (safety check for data integrity)
+                    if ($channel && isset($sale->referring_channel) && $sale->referring_channel !== $channel) {
+                        continue;
+                    }
+                    
                     if ($sale->date_range === '30_days') {
                         $sales_l30 = $sale->sales ?? 0;
                         $units_sold_l30 = $sale->orders ?? 0;
@@ -579,7 +591,15 @@ class FacebookAddsManagerController extends Controller
 
     public function metaFacebookCarousalData()
     {
-        $data = $this->getMetaAdsDataByType(null);
+        $data = $this->getMetaAdsDataByType(null, 'facebook');
+        // Filter out campaigns with empty groups and campaigns without "FB" in campaign name
+        $data = array_filter($data, function($campaign) {
+            $hasGroup = !empty($campaign['group_name']);
+            $hasFB = !empty($campaign['campaign_name']) && stripos($campaign['campaign_name'], 'FB') !== false;
+            return $hasGroup && $hasFB;
+        });
+        // Re-index array after filtering
+        $data = array_values($data);
         return response()->json(['message' => 'Facebook Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 
@@ -645,7 +665,15 @@ class FacebookAddsManagerController extends Controller
 
     public function metaInstagramCarousalData()
     {
-        $data = $this->getMetaAdsDataByType(null);
+        $data = $this->getMetaAdsDataByType(null, 'instagram');
+        // Filter out campaigns with empty groups and campaigns without "INSTA" in campaign name
+        $data = array_filter($data, function($campaign) {
+            $hasGroup = !empty($campaign['group_name']);
+            $hasInsta = !empty($campaign['campaign_name']) && stripos($campaign['campaign_name'], 'INSTA') !== false;
+            return $hasGroup && $hasInsta;
+        });
+        // Re-index array after filtering
+        $data = array_values($data);
         return response()->json(['message' => 'Instagram Ads data fetched successfully', 'data' => $data, 'status' => 200]);
     }
 

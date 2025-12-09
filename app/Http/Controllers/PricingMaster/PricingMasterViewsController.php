@@ -74,7 +74,7 @@ use App\Models\TiktokShopListingStatus;
 use App\Models\EbayPriorityReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\WalmartCampaignReport;
-use App\Models\ShopifyFacebookCampaign;
+use App\Models\ShopifyMetaCampaign;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\View\ViewServiceProvider;
 use App\Models\BusinessFiveCoreSheetdata;
@@ -621,9 +621,9 @@ class PricingMasterViewsController extends Controller
             }
 
             try {
-                // Fetch Shopify Facebook campaigns
+                // Fetch Shopify Meta campaigns
                 if (count($nonParentSkus) > 0) {
-                    $shopifyFbCampaigns = ShopifyFacebookCampaign::where('date_range', 'L30')
+                    $shopifyFbCampaigns = ShopifyMetaCampaign::where('date_range', 'L30')
                         ->where(function($query) use ($nonParentSkus) {
                             foreach ($nonParentSkus as $sku) {
                                 $query->orWhere('campaign_name', 'LIKE', "%{$sku}%");
