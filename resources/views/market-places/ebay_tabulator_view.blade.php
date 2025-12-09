@@ -2492,8 +2492,8 @@
 
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const isParent = data.Parent && data.Parent.startsWith('PARENT');
-                        if (isParent) return true;
+                        // const isParent = data.Parent && data.Parent.startsWith('PARENT');
+                        // if (isParent) return true;
                         
                         // GPFT% is stored as a number, not a string with %
                         const gpft = parseFloat(data['GPFT%']) || 0;
@@ -2512,31 +2512,34 @@
 
                 if (cvrFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const isParent = data.Parent && data.Parent.startsWith('PARENT');
-                        if (isParent) return true;
+                        // const isParent = data.Parent && data.Parent.startsWith('PARENT');
+                        // if (isParent) return true;
                         // Extract CVR from SCVR field
                         const scvrValue = parseFloat(data['SCVR'] || 0);
                         const views = parseFloat(data.views || 0);
                         const l30 = parseFloat(data['eBay L30'] || 0);
                         const cvr = views > 0 ? (l30 / views) * 100 : 0;
                         
-                        if (cvrFilter === '0-0') return cvr === 0;
-                        if (cvrFilter === '0.01-1') return cvr > 0 && cvr <= 1;
-                        if (cvrFilter === '1-2') return cvr > 1 && cvr <= 2;
-                        if (cvrFilter === '2-3') return cvr > 2 && cvr <= 3;
-                        if (cvrFilter === '3-4') return cvr > 3 && cvr <= 4;
-                        if (cvrFilter === '0-4') return cvr >= 0 && cvr <= 4;
-                        if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
-                        if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
-                        if (cvrFilter === '10plus') return cvr > 10;
+                        // Round to 2 decimal places to avoid floating point precision issues
+                        const cvrRounded = Math.round(cvr * 100) / 100;
+                        
+                        if (cvrFilter === '0-0') return cvrRounded === 0;
+                        if (cvrFilter === '0.01-1') return cvrRounded >= 0.01 && cvrRounded <= 1;
+                        if (cvrFilter === '1-2') return cvrRounded > 1 && cvrRounded <= 2;
+                        if (cvrFilter === '2-3') return cvrRounded > 2 && cvrRounded <= 3;
+                        if (cvrFilter === '3-4') return cvrRounded > 3 && cvrRounded <= 4;
+                        if (cvrFilter === '0-4') return cvrRounded >= 0 && cvrRounded <= 4;
+                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '7-10') return cvrRounded > 7 && cvrRounded <= 10;
+                        if (cvrFilter === '10plus') return cvrRounded > 10;
                         return true;
                     });
                 }
 
                 if (statusFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const isParent = data.Parent && data.Parent.startsWith('PARENT');
-                        if (isParent) return true;
+                        // const isParent = data.Parent && data.Parent.startsWith('PARENT');
+                        // if (isParent) return true;
                         
                         const status = data.nr_req || '';
                         
