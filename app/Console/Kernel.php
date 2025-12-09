@@ -310,6 +310,31 @@ class Kernel extends ConsoleKernel
         $schedule->command('sbid:update')
             ->dailyAt('00:01') 
             ->timezone('Asia/Kolkata');
+        
+        // SERP (SEARCH) SBID Update - runs after SHOPPING SBID update
+        $schedule->command('sbid:update-serp')
+            ->dailyAt('00:02') 
+            ->timezone('Asia/Kolkata');
+        
+        // SHOPPING Budget Update - based on ACOS (L30 data)
+        $schedule->command('budget:update-shopping')
+            ->dailyAt('00:03') 
+            ->timezone('Asia/Kolkata');
+        
+        // SERP (SEARCH) Budget Update - based on ACOS (L30 data)
+        $schedule->command('budget:update-serp')
+            ->dailyAt('00:04') 
+            ->timezone('Asia/Kolkata');
+        
+        // Amazon FBA Keyword Budget Update - based on ACOS (L30 data)
+        $schedule->command('budget:update-amazon-fba-kw')
+            ->dailyAt('00:05') 
+            ->timezone('Asia/Kolkata');
+        
+        // Amazon FBA Product Target Budget Update - based on ACOS (L30 data)
+        $schedule->command('budget:update-amazon-fba-pt')
+            ->dailyAt('00:06') 
+            ->timezone('Asia/Kolkata');
 
         $schedule->command('app:sync-cp-master-to-sheet')->hourly();
                 
