@@ -1423,10 +1423,8 @@
                         // Set default value for nr_req if missing and INV > 0
                         tableData = tableData.map(item => ({
                             ...item,
-                            nr_req: item.nr_req || (parseFloat(item.INV) > 0 ? 'REQ' :
-                                'NR'),
-                            listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' :
-                                'Listed')
+                            nr_req: item.nr_req,
+                            listed: item.listed,
                         }));
 
                         filteredData = [...tableData];
@@ -1547,25 +1545,21 @@
                 $row.append($('<td>').text(item.INV)); // INV
 
                 // NR/REQ dropdown only for non-parent rows
-                if (!item.sku.includes('PARENT')) {
-                    const $dropdown = $('<select>')
-                        .addClass('nr-req-dropdown form-control form-control-sm')
-                        .append('<option value="REQ" class="req-option">REQ</option>')
-                        .append('<option value="NR" class="nr-option">NRL</option>');
+                const $dropdown = $('<select>')
+                    .addClass('nr-req-dropdown form-control form-control-sm')
+                    .append('<option value="REQ" class="req-option">REQ</option>')
+                    .append('<option value="NR" class="nr-option">NRL</option>');
 
-                    const initialValue = item.nr_req || 'REQ';
-                    $dropdown.val(initialValue);
+                const initialValue = item.nr_req || 'REQ';
+                $dropdown.val(initialValue);
 
-                    if (initialValue === 'REQ') {
-                        $dropdown.css('background-color', '#28a745').css('color', 'white');
-                    } else if (initialValue === 'NR') {
-                        $dropdown.css('background-color', '#dc3545').css('color', 'white');
-                    }
-
-                    $row.append($('<td>').append($dropdown));
-                } else {
-                    $row.append($('<td>').text('')); // Empty cell for parent rows
+                if (initialValue === 'REQ') {
+                    $dropdown.css('background-color', '#28a745').css('color', 'white');
+                } else if (initialValue === 'NR') {
+                    $dropdown.css('background-color', '#dc3545').css('color', 'white');
                 }
+
+                $row.append($('<td>').append($dropdown));
 
                 // --- BUYER LINK, SELLER LINK, AND PEN ICON IN ONE TD ---
                 const $linkCell = $('<td>');
@@ -1585,57 +1579,50 @@
                 }
 
                 // Pen icon (always show for non-parent rows, or adjust as needed)
-                if (!item.sku.includes('PARENT')) {
-                    $linkCell.append(
-                        $('<i>')
-                        .addClass('fas fa-pen text-primary link-edit-icon')
-                        .css({
-                            cursor: 'pointer',
-                            marginLeft: '6px'
-                        })
-                        .attr('title', 'Edit Links')
-                        .data('sku', item.sku)
-                    );
-                }
+                $linkCell.append(
+                    $('<i>')
+                    .addClass('fas fa-pen text-primary link-edit-icon')
+                    .css({
+                        cursor: 'pointer',
+                        marginLeft: '6px'
+                    })
+                    .attr('title', 'Edit Links')
+                    .data('sku', item.sku)
+                );
 
                 $row.append($linkCell);
 
                 // Listed/Pending dropdown only for non-parent rows
-                if (!item.sku.includes('PARENT')) {
-                    // Check if nr_req is 'NR', then show 'NRL' button instead of dropdown
-                    if (item.nr_req === 'NR') {
-                        const $badge = $('<button>').text('NRL').css({
-                            'color': 'white',
-                            'background-color': '#dc3545',
-                            'padding': '6px 8px',
-                            'border': 'none',
-                            'cursor': 'default',
-                            'font-size': '14px',
-                            'width': '100%',
-                            'text-align': 'center'
-                        });
-                        $row.append($('<td>').append($badge));
-                    } else {
-                        const $listedDropdown = $('<select>')
-                            .addClass('listed-dropdown form-control form-control-sm')
-                            .append('<option value="Listed" class="listed-option">Listed</option>')
-                            .append('<option value="Pending" class="pending-option">Pending</option>');
-
-                        const listedValue = item.listed || 'Pending';
-                        $listedDropdown.val(listedValue);
-
-                        if (listedValue === 'Listed') {
-                            $listedDropdown.css('background-color', '#28a745').css('color', 'white');
-                        } else if (listedValue === 'Pending') {
-                            $listedDropdown.css('background-color', '#dc3545').css('color', 'white');
-                        }
-
-                        $row.append($('<td>').append($listedDropdown));
-                    }
+                // Check if nr_req is 'NR', then show 'NRL' button instead of dropdown
+                if (item.nr_req === 'NR') {
+                    const $badge = $('<button>').text('NRL').css({
+                        'color': 'white',
+                        'background-color': '#dc3545',
+                        'padding': '6px 8px',
+                        'border': 'none',
+                        'cursor': 'default',
+                        'font-size': '14px',
+                        'width': '100%',
+                        'text-align': 'center'
+                    });
+                    $row.append($('<td>').append($badge));
                 } else {
-                    $row.append($('<td>').text('')); // Empty cell for parent rows
-                }
+                    const $listedDropdown = $('<select>')
+                        .addClass('listed-dropdown form-control form-control-sm')
+                        .append('<option value="Listed" class="listed-option">Listed</option>')
+                        .append('<option value="Pending" class="pending-option">Pending</option>');
 
+                    const listedValue = item.listed || 'Pending';
+                    $listedDropdown.val(listedValue);
+
+                    if (listedValue === 'Listed') {
+                        $listedDropdown.css('background-color', '#28a745').css('color', 'white');
+                    } else if (listedValue === 'Pending') {
+                        $listedDropdown.css('background-color', '#dc3545').css('color', 'white');
+                    }
+
+                    $row.append($('<td>').append($listedDropdown));
+                }
                 return $row;
             }
 

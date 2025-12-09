@@ -236,8 +236,8 @@ class UpdateEbayThreeSuggestedBid extends Command
     private function getEbayAccessToken()
     {
         try {
-            if (Cache::has('ebay_access_token')) {
-                return Cache::get('ebay_access_token');
+            if (Cache::has('ebay3_access_token')) {
+                return Cache::get('ebay3_access_token');
             }
 
             $clientId = env('EBAY_3_APP_ID');
@@ -291,7 +291,7 @@ class UpdateEbayThreeSuggestedBid extends Command
                 $accessToken = $data['access_token'];
                 $expiresIn = $data['expires_in'] ?? 7200;
 
-                Cache::put('ebay_access_token', $accessToken, $expiresIn - 60);
+                Cache::put('ebay3_access_token', $accessToken, $expiresIn - 60);
 
                 return $accessToken;
             }

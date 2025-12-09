@@ -1003,7 +1003,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body d-flex align-items-center" style="gap: 12px;">
-                    <div id="percent-edit-div" class="d-flex align-items-center">
+                    <div id="percent-edit-div" class="d-flex align-items-center" style="display: none !important;">
                         <div class="input-group" style="width: 150px;">
                             <input type="number" id="updateAllSkusPercent" class="form-control" min="0"
                                 max="100" value="{{ $ebayPercentage }}" step="0.01" title="Percent" disabled />
@@ -1013,7 +1013,7 @@
                             <i class="fa fa-pen"></i>
                         </button>
                     </div>
-                    <div id="adupdates-edit-div" class="d-flex align-items-center">
+                    <div id="adupdates-edit-div" class="d-flex align-items-center" style="display: none !important;">
                         <div class="input-group" style="width: 150px;">
                             <input type="number" id="updateAdUpdatesPercent" class="form-control" min="0" value="{{ $ebayAdPercentage }}"  step="any" placeholder="Ad Per" disabled />
                             <span class="input-group-text">%</span>
