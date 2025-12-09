@@ -63,17 +63,6 @@ class EbayPriceLessBidsAutoUpdate extends Command
                 $result = $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($chunk, $bidChunks[$index]);
                 $resultData = $result->getData(true);
                 
-                // Log the full response for debugging
-                Log::info("Batch " . ($index + 1) . " Response:", [
-                    'campaigns' => $campaignNames,
-                    'campaign_ids' => $chunk,
-                    'bids' => $bidChunks[$index],
-                    'status' => $resultData['status'],
-                    'message' => $resultData['message'],
-                    'data_count' => count($resultData['data'] ?? []),
-                    'sample_data' => array_slice($resultData['data'] ?? [], 0, 3)
-                ]);
-                
                 $batchSuccess = count(array_filter($resultData['data'], function($item) {
                     // Count as success if status is NOT 'error' (includes 'unknown', 'Updated', 'SUCCESS', etc.)
                     $status = strtolower($item['status'] ?? '');
@@ -216,20 +205,33 @@ class EbayPriceLessBidsAutoUpdate extends Command
             
             // Apply price-based SBID caps - this runs AFTER the ub7 calculation
             if($row['price'] < 30 && $row['campaignName'] !== ''){
-                // Cap the bid based on price, but use calculated bid if it's lower
+                // Force exact bid values based on price ranges (consistent with EbayKwAdsController)
                 if($row['price'] <= 10){
-                    $row['sbid'] = min($row['sbid'], 0.10);  // Maximum 0.10
+                    $row['sbid'] = max(0.10, min($row['sbid'], 0.10));  // Exactly 0.10
                 }
                 elseif($row['price'] > 10 && $row['price'] <= 20){
-                    $row['sbid'] = min($row['sbid'], 0.20);  // Maximum 0.20
+                    $row['sbid'] = max(0.20, min($row['sbid'], 0.20));  // Exactly 0.20
                 }
                 elseif($row['price'] > 20 && $row['price'] <= 30){
-                    $row['sbid'] = min($row['sbid'], 0.30);  // Maximum 0.30
+                    $row['sbid'] = max(0.30, min($row['sbid'], 0.30));  // Exactly 0.30
                 }
                 
                 // Only show data under price 30, exclude PARENT SKUs, and only show items with campaigns
                 // Also exclude INV <= 0 (zero and negative inventory)
                 if($row['price'] < 30 && stripos($row['sku'], 'PARENT') === false && $row['campaignName'] !== '' && $row['INV'] > 0){
+                    // Debug output for PM-883
+                    if(strtoupper($row['sku']) === 'PM-883'){
+                        Log::info('PM-883 Debug', [
+                            'sku' => $row['sku'],
+                            'price' => $row['price'],
+                            'sbid' => $row['sbid'],
+                            'ub7' => $ub7,
+                            'l7_cpc' => $l7_cpc,
+                            'l1_cpc' => $l1_cpc,
+                            'campaign_id' => $row['campaign_id'],
+                            'campaignName' => $row['campaignName']
+                        ]);
+                    }
                     $result[] = (object) $row;
                 }
             }

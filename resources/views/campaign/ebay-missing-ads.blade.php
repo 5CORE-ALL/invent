@@ -407,13 +407,39 @@
                             return `
                                 <select class="form-select form-select-sm editable-select" 
                                         data-sku="${sku}" 
-                                        data-field="NRA"
+                                        data-field="NR"
                                         style="width: 120px; ${bgColor}">
                                     <option value="RA" ${value === 'RA' ? 'selected' : ''}>RA</option>
                                     <option value="NRA KW" ${value === 'NRA KW' ? 'selected' : ''}>NRA KW</option>
                                     <option value="NRA PMT" ${value === 'NRA PMT' ? 'selected' : ''}>NRA PMT</option>
                                     <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>NRA BOTH</option>
                                     <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
+                                </select>
+                            `;
+                        },
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "NRL",
+                        field: "NRL",
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData().sku;
+                            const value = cell.getValue()?.trim() || 'REQ';
+
+                            let bgColor = "background-color:#28a745;color:#fff;";
+                            if (value === "NR") {
+                                bgColor = "background-color:#dc3545;color:#fff;";
+                            }
+
+                            return `
+                                <select class="form-select form-select-sm editable-select" 
+                                        data-sku="${sku}" 
+                                        data-field="NRL"
+                                        style="width: 90px; ${bgColor}">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
+                                    <option value="NR" ${value === 'NR' ? 'selected' : ''}>NRL</option>
                                 </select>
                             `;
                         },
@@ -545,7 +571,18 @@
                         e.target.style.color = "#000";
                     }
 
-                    fetch('/update-ebay-nr-data', {
+                    // Set background color if NRL
+                    if (field === "NRL" && value === "NR") {
+                        e.target.style.backgroundColor = "#dc3545";
+                        e.target.style.color = "#fff";
+                    } else if (field === "NRL" && value === "REQ") {
+                        e.target.style.backgroundColor = "#28a745";
+                        e.target.style.color = "#fff";
+                    }
+
+                    let endpoint = field === 'NRL' ? '/update-ebay-nrl-data' : '/update-ebay-nr-data';
+
+                    fetch(endpoint, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -789,7 +826,7 @@
                 if (e.target.classList.contains("toggle-cols-btn")) {
                     let btn = e.target;
 
-                    let colsToToggle = ["INV", "L30", "DIL %", "NRA"];
+                    let colsToToggle = ["INV", "L30", "DIL %", "NRA", "NRL"];
 
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);

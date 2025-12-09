@@ -88,15 +88,21 @@ class EbayACOSController extends Controller
             $ebay = $ebayMetricData[$pm->sku] ?? null;
 
             $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($sku) {
-                return stripos($item->campaign_name, $sku) !== false;
+                // Normalize non-breaking spaces to regular spaces for comparison
+                $normalizedCampaign = str_replace("\xC2\xA0", ' ', $item->campaign_name);
+                return stripos($normalizedCampaign, $sku) !== false;
             });
 
             $matchedCampaignL1 = $ebayCampaignReportsL1->first(function ($item) use ($sku) {
-                return stripos($item->campaign_name, $sku) !== false;
+                // Normalize non-breaking spaces to regular spaces for comparison
+                $normalizedCampaign = str_replace("\xC2\xA0", ' ', $item->campaign_name);
+                return stripos($normalizedCampaign, $sku) !== false;
             });
 
             $matchedCampaignL30 = $ebayCampaignReportsL30->first(function ($item) use ($sku) {
-                return stripos($item->campaign_name, $sku) !== false;
+                // Normalize non-breaking spaces to regular spaces for comparison
+                $normalizedCampaign = str_replace("\xC2\xA0", ' ', $item->campaign_name);
+                return stripos($normalizedCampaign, $sku) !== false;
             });
 
             if (!$matchedCampaignL7 && !$matchedCampaignL1) {

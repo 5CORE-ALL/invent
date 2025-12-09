@@ -2219,8 +2219,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/campaign/reports/data', 'getAmazonCampaignsData');
     });
 
-
-
     Route::controller(AmazonFbaAdsController::class)->group(function () {
         Route::get('/amazon/fba/over/kw/ads', 'amzFbaUtilizedBgtKw')->name('amazon.fba.over.kw.ads');
         Route::get('/amazon/fba/over/pt/ads', 'amzFbaUtilizedBgtPt')->name('amazon.fba.over.pt.ads');
@@ -2309,6 +2307,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/ad-missing/list', 'index')->name('ebay.missing.ads');
         Route::get('/ebay/ad-missing/data', 'getEbayMissingAdsData');
         Route::get('/adv-ebay/missing/save-data', 'getEbayMissingSaveData')->name('adv-ebay.missing.save-data');
+        Route::post('/update-ebay-nrl-data', 'updateNrlData');
     });
 
     Route::controller(EbayViewsController::class)->group(function () {

@@ -29,7 +29,7 @@ class EbayMissingAdsController extends Controller
     public function getEbayMissingAdsData()
     {
         try {
-            $normalizeSku = fn($sku) => strtoupper(trim($sku));
+            $normalizeSku = fn($sku) => strtoupper(trim(str_replace(["\xC2\xA0", "\u{00A0}"], ' ', $sku)));
 
             $productMasters = ProductMaster::orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
@@ -68,6 +68,7 @@ class EbayMissingAdsController extends Controller
             // Fetch all required data
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
             $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+            $nrlValues = EbayListingStatus::whereIn('sku', $skus)->pluck('value', 'sku');
             $ebayMetricData = EbayMetric::select('sku', 'ebay_price', 'item_id')
                 ->whereIn('sku', $skus)
                 ->get()
@@ -82,8 +83,9 @@ class EbayMissingAdsController extends Controller
 
             $campaignLookup = [];
             foreach ($ebayCampaignReports as $campaign) {
+                $normalizedCampaignName = $normalizeSku($campaign->campaign_name);
                 foreach ($skus as $sku) {
-                    if (strpos($campaign->campaign_name, $sku) !== false) {
+                    if (strpos($normalizedCampaignName, $sku) !== false) {
                         if (!isset($campaignLookup[$sku])) {
                             $campaignLookup[$sku] = $campaign;
                         }
@@ -141,7 +143,7 @@ class EbayMissingAdsController extends Controller
                         $raw = json_decode($raw, true);
                     }
                     if (is_array($raw)) {
-                        $nrActual = $raw['NRA'] ?? null;
+                        $nrActual = $raw['NR'] ?? null;
                     }
                 }
 
@@ -151,28 +153,17 @@ class EbayMissingAdsController extends Controller
                     $pmtBidPercentage = $campaignListings[$ebayMetric->item_id]->bid_percentage;
                 }
 
-                // Debug logging for specific SKU
-                if (strpos($sku, 'SP 12120') !== false) {
-                    $itemIdToCheck = $ebayMetric->item_id ?? '';
-                    $campaignListingDetails = null;
-                    if (isset($campaignListings[$itemIdToCheck])) {
-                        $campaignListingDetails = $campaignListings[$itemIdToCheck];
+
+                // Get NRL value
+                $nrlActual = null;
+                if (isset($nrlValues[$pm->sku])) {
+                    $raw = $nrlValues[$pm->sku];
+                    if (!is_array($raw)) {
+                        $raw = json_decode($raw, true);
                     }
-                    
-                    Log::info('PMT Matching Debug', [
-                        'sku' => $sku,
-                        'ebay_metric_exists' => $ebayMetric ? 'yes' : 'no',
-                        'item_id' => $itemIdToCheck,
-                        'item_id_type' => $ebayMetric ? gettype($ebayMetric->item_id) : 'none',
-                        'listing_id_exists' => isset($campaignListings[$itemIdToCheck]) ? 'yes' : 'no',
-                        'campaign_listing_details' => $campaignListingDetails,
-                        'pmt_bid_percentage' => $pmtBidPercentage,
-                        'campaign_listings_count' => count($campaignListings),
-                        'campaign_listings_with_target_id' => $campaignListings->has($itemIdToCheck) ? 'yes' : 'no',
-                        'all_listing_ids_containing_236379' => $campaignListings->keys()->filter(function($key) {
-                            return strpos($key, '236379') !== false;
-                        })->toArray()
-                    ]);
+                    if (is_array($raw)) {
+                        $nrlActual = $raw['nr_req'] ?? null;
+                    }
                 }
 
                 $result[] = [
@@ -181,6 +172,7 @@ class EbayMissingAdsController extends Controller
                     'INV' => $shopify->inv ?? 0,
                     'L30' => $shopify->quantity ?? 0,
                     'NRA' => $nrActual,
+                    'NRL' => $nrlActual,
                     'kw_campaign_name' => $campaignReport->campaign_name ?? null,
                     'pmt_bid_percentage' => $pmtBidPercentage,
                     'campaignStatus' => $campaignReport->campaignStatus ?? null,
@@ -204,5 +196,32 @@ class EbayMissingAdsController extends Controller
                 'status'  => 500,
             ]);
         }
+    }
+
+    public function updateNrlData(Request $request)
+    {
+        $sku   = $request->input('sku');
+        $field = $request->input('field');
+        $value = $request->input('value');
+
+        $ebayListingStatus = EbayListingStatus::firstOrNew(['sku' => $sku]);
+
+        $jsonData = $ebayListingStatus->value ?? [];
+
+        // Map field to nr_req for NRL
+        if ($field === 'NRL') {
+            $jsonData['nr_req'] = $value;
+        } else {
+            $jsonData[$field] = $value;
+        }
+
+        $ebayListingStatus->value = $jsonData;
+        $ebayListingStatus->save();
+
+        return response()->json([
+            'status' => 200,
+            'message' => "Field updated successfully",
+            'updated_json' => $jsonData
+        ]);
     }
 }

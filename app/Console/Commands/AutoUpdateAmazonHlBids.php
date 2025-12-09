@@ -13,6 +13,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmazonHlBids extends Command
 {
@@ -28,35 +29,227 @@ class AutoUpdateAmazonHlBids extends Command
 
     public function handle()
     {
-        $this->info("Starting Amazon bids auto-update...");
+        try {
+            $this->info("Starting Amazon HL bids auto-update...");
 
-        $updateKwBids = new AmazonSbBudgetController;
+            // Check database connection after server restart
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                $this->error("Database connection error after server restart", ['error' => $e->getMessage()]);
+                return 1;
+            }
 
-        $campaigns = $this->getAutomateAmzUtilizedBgtHl();
+            $updateKwBids = new AmazonSbBudgetController;
 
-        if (empty($campaigns)) {
-            $this->warn("No campaigns matched filter conditions.");
-            return 0;
+            $campaigns = $this->getAutomateAmzUtilizedBgtHl();
+
+            if (empty($campaigns)) {
+                $this->warn("No campaigns matched filter conditions.");
+                $this->warn("No campaigns found - check filters and data availability");
+                return 0;
+            }
+
+            $this->info("Found " . count($campaigns) . " campaigns to process.");
+
+            // Build a map to handle duplicate campaign IDs properly
+            $campaignBudgetMap = [];
+            $campaignDetails = [];
+            
+            foreach ($campaigns as $campaign) {
+                $campaignId = $campaign->campaign_id ?? '';
+                $sbid = $campaign->sbid ?? 0;
+                $campaignName = $campaign->campaignName ?? '';
+                
+                if (!empty($campaignId) && $sbid > 0) {
+                    // Only add if we haven't seen this campaign ID before
+                    if (!isset($campaignBudgetMap[$campaignId])) {
+                        $campaignBudgetMap[$campaignId] = $sbid;
+                        $campaignDetails[$campaignId] = [
+                            'name' => $campaignName,
+                            'bid' => $sbid
+                        ];
+                    } else {
+                        // Log duplicate but keep first one
+                        $this->warn("Duplicate campaign ID skipped: {$campaignId} ({$campaignName}). Already using bid: {$campaignBudgetMap[$campaignId]}");
+                    }
+                }
+            }
+
+            $campaignIds = array_keys($campaignBudgetMap);
+            $newBids = array_values($campaignBudgetMap);
+
+            if (empty($campaignIds)) {
+                $this->warn("No valid campaign IDs found to update.");
+                return 0;
+            }
+
+            // Validate arrays are aligned
+            if (count($campaignIds) !== count($newBids)) {
+                $this->error("Mismatch: " . count($campaignIds) . " campaign IDs but " . count($newBids) . " bids!");
+                $this->error("Campaign ID and bid array mismatch", [
+                    'campaign_ids_count' => count($campaignIds),
+                    'bids_count' => count($newBids)
+                ]);
+                return 1;
+            }
+
+            $this->info("Found " . count($campaignIds) . " unique campaigns to update.");
+            
+            // Log campaigns with names
+            $this->info("========================================");
+            $this->info("CAMPAIGNS TO UPDATE:");
+            $this->info("========================================");
+            foreach ($campaignDetails as $campaignId => $details) {
+                $this->info("Campaign Name: {$details['name']}");
+                $this->info("  - Campaign ID: {$campaignId}");
+                $this->info("  - Bid: {$details['bid']}");
+                $this->info("---");
+            }
+            $this->info("========================================");
+
+            // Validate all bids are valid before sending
+            $invalidBids = [];
+            foreach ($newBids as $index => $bid) {
+                if (!is_numeric($bid) || $bid <= 0 || $bid > 1000) {
+                    $invalidBids[] = [
+                        'index' => $index,
+                        'campaign_id' => $campaignIds[$index] ?? 'unknown',
+                        'bid' => $bid
+                    ];
+                }
+            }
+            
+            if (!empty($invalidBids)) {
+                $this->error("Found " . count($invalidBids) . " invalid bids. Skipping update.");
+                $this->error("Invalid bids detected", ['invalid_bids' => $invalidBids]);
+                return 1;
+            }
+
+            // Retry logic for API calls
+            $maxRetries = 3;
+            $result = null;
+            $lastError = null;
+            
+            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+                try {
+                    if ($attempt > 1) {
+                        $this->info("Retry attempt {$attempt} of {$maxRetries}...");
+                        sleep(2); // Wait 2 seconds before retry
+                    }
+                    
+                    $result = $updateKwBids->updateAutoCampaignSbKeywordsBid($campaignIds, $newBids);
+                    
+                    // Check if result indicates success
+                    if (is_array($result)) {
+                        $status = $result['status'] ?? null;
+                        if ($status == 200 || (isset($result['message']) && stripos($result['message'], 'success') !== false)) {
+                            break; // Success, exit retry loop
+                        }
+                        
+                        // Check for retryable errors
+                        $error = $result['error'] ?? '';
+                        if (stripos($error, 'timeout') !== false || 
+                            stripos($error, 'connection') !== false ||
+                            stripos($error, '500') !== false ||
+                            stripos($error, '503') !== false) {
+                            $lastError = $result;
+                            if ($attempt < $maxRetries) {
+                                continue; // Retry
+                            }
+                        }
+                    }
+                    
+                    break; // Exit loop if we got a result (success or non-retryable error)
+                    
+                } catch (\GuzzleHttp\Exception\ServerException $e) {
+                    $lastError = ['error' => $e->getMessage(), 'type' => 'ServerException'];
+                    if ($attempt < $maxRetries) {
+                        continue; // Retry server errors
+                    }
+                } catch (\GuzzleHttp\Exception\ClientException $e) {
+                    $lastError = ['error' => $e->getMessage(), 'type' => 'ClientException'];
+                    // Don't retry client errors (4xx), they're usually permanent
+                    break;
+                } catch (\Exception $e) {
+                    $lastError = ['error' => $e->getMessage(), 'type' => 'Exception'];
+                    if ($attempt < $maxRetries) {
+                        continue; // Retry other exceptions
+                    }
+                }
+            }
+            
+            // Log results
+            if ($result) {
+                $this->info("Update Result Status: " . (is_array($result) && isset($result['status']) ? $result['status'] : 'unknown'));
+                if (is_array($result) && isset($result['message'])) {
+                    $this->info("Update Message: " . $result['message']);
+                }
+                if (is_array($result) && isset($result['error'])) {
+                    $this->error("Update Error: " . $result['error']);
+                }
+            } else {
+                $this->error("Update failed after {$maxRetries} attempts");
+                if ($lastError) {
+                    $this->error("Last Error: " . ($lastError['error'] ?? json_encode($lastError)));
+                }
+            }
+            
+            $this->info("Amazon HL Bids Update", [
+                'total_campaigns' => count($campaignIds),
+                'campaigns' => $campaignDetails,
+                'campaign_ids' => $campaignIds,
+                'bids' => $newBids,
+                'result' => $result,
+                'last_error' => $lastError,
+                'attempts' => $attempt
+            ]);
+
+            if ($result && is_array($result) && ($result['status'] ?? 0) == 200) {
+                $this->info("✓ Command completed successfully");
+                return 0;
+            } else {
+                $this->warn("⚠ Command completed with warnings or errors");
+                return 1;
+            }
+
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            $this->error("Amazon HL Bids Update Error", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return 1;
         }
-
-        $campaignIds = collect($campaigns)->pluck('campaign_id')->toArray();
-        $newBids = collect($campaigns)->pluck('sbid')->toArray();
-
-        $result = $updateKwBids->updateAutoCampaignSbKeywordsBid($campaignIds, $newBids);
-        $this->info("Update Result: " . json_encode($result));
-
     }
 
     public function getAutomateAmzUtilizedBgtHl()
     {
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
+        try {
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get();
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            if ($productMasters->isEmpty()) {
+                $this->warn("No product masters found in database!");
+                $this->warn("No ProductMaster records found");
+                return [];
+            }
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            
+            if (empty($skus)) {
+                $this->warn("No valid SKUs found!");
+                return [];
+            }
+
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $amazonSpCampaignReportsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
             ->where('report_date_range', 'L7')
@@ -77,6 +270,7 @@ class AutoUpdateAmazonHlBids extends Command
             ->get();
 
         $result = [];
+        $processedCampaignIds = []; // Track to avoid processing same campaign multiple times
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
@@ -84,25 +278,41 @@ class AutoUpdateAmazonHlBids extends Command
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                $expected1 = $sku;                
-                $expected2 = $sku . ' HEAD';      
+                // Normalize spaces: replace multiple spaces with single space
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
+                $cleanSku = preg_replace('/\s+/', ' ', $sku);
+                $expected1 = $cleanSku;                
+                $expected2 = $cleanSku . ' HEAD';      
 
                 return ($cleanName === $expected1 || $cleanName === $expected2);
             });
 
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                $expected1 = $sku;
-                $expected2 = $sku . ' HEAD';
+                // Normalize spaces: replace multiple spaces with single space
+                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($item->campaignName)));
+                $cleanSku = preg_replace('/\s+/', ' ', $sku);
+                $expected1 = $cleanSku;
+                $expected2 = $cleanSku . ' HEAD';
 
                 return ($cleanName === $expected1 || $cleanName === $expected2);
             });
 
+            if (!$matchedCampaignL7 && !$matchedCampaignL1) {
+                continue;
+            }
+
+            // Skip if we've already processed this campaign ID (avoid duplicates)
+            $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
+            if (!empty($campaignId) && isset($processedCampaignIds[$campaignId])) {
+                continue;
+            }
+            $processedCampaignIds[$campaignId] = true;
+
             $row = [];
             $row['INV']    = $shopify->inv ?? 0;
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
+            $row['campaign_id'] = $campaignId;
+            $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
             $row['l7_spend'] = $matchedCampaignL7->cost ?? 0;
 
             $costPerClick7 = ($matchedCampaignL7 && $matchedCampaignL7->clicks > 0)
@@ -134,6 +344,15 @@ class AutoUpdateAmazonHlBids extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
+            // Validate all required fields before adding
+            if (empty($row['campaign_id'])) {
+                continue; // Skip if no campaign ID
+            }
+            
+            if (!is_numeric($row['sbid']) || $row['sbid'] <= 0) {
+                continue; // Skip if invalid bid
+            }
+
             if ($ub7 > 90 && $ub1 > 90) {
                 $result[] = (object) $row;
             }
@@ -141,6 +360,15 @@ class AutoUpdateAmazonHlBids extends Command
         }
 
         return $result;
+        
+        } catch (\Exception $e) {
+            $this->error("Error in getAutomateAmzUtilizedBgtHl: " . $e->getMessage());
+            $this->error("getAutomateAmzUtilizedBgtHl error", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return [];
+        }
     }
 
 }

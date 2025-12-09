@@ -123,19 +123,19 @@ class AutoUpdateAmazonFbaUnderKwBids extends Command
 
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
-            
-            if ($l7_cpc === 0.0) {
-                $row['sbid'] = 0.75;
-            } else {
-                $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
-            }
-
             $budget = floatval($row['campaignBudgetAmount']);
             $l7_spend = floatval($row['l7_spend']);
-
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
 
+            // New SBID rule
             if($row['campaignName'] != '' && $ub7 < 70) {
+                if ($ub7 < 10 || $l7_cpc == 0) {
+                    $row['sbid'] = 0.75;
+                } else if ($l7_cpc > 0 && $l7_cpc < 0.30) {
+                    $row['sbid'] = round($l7_cpc + 0.20, 2);
+                } else {
+                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
+                }
                 $result[] = (object) $row;
             }
         }
