@@ -2447,7 +2447,7 @@
                 $('#cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 
 
-                $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos) + '%');
+                $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
                 $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
                 $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
