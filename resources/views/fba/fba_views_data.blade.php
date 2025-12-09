@@ -130,6 +130,9 @@
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-percent"></i> Decrease
                     </button>
+                    <button id="increase-btn" class="btn btn-sm btn-success">
+                        <i class="fas fa-percent"></i> Increase
+                    </button>
                 </div>
 
                 <!-- Metrics Chart Section -->
@@ -165,6 +168,7 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-fba-inv-badge" style="color: black; font-weight: bold;">Total FBA INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total FBA L30: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-sku-count-badge" style="color: black; font-weight: bold;">0 Sold SKU: 0</span>
                         
                         <!-- Financial Metrics -->
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
@@ -180,12 +184,12 @@
                 <!-- Discount Input Box (shown when SKUs are selected) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
                     <div class="d-flex align-items-center gap-2">
-                        <label class="mb-0 fw-bold">Discount %:</label>
+                        <label class="mb-0 fw-bold" id="discount-label">Discount %:</label>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="Enter discount %" step="0.1" min="0" max="100" 
+                            placeholder="Enter percentage %" step="0.1" min="0" max="100" 
                             style="width: 150px; display: inline-block;">
                         <button id="apply-discount-btn" class="btn btn-sm btn-primary">
-                            <i class="fas fa-check"></i> Apply Discount
+                            <i class="fas fa-check"></i> Apply
                         </button>
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
@@ -343,6 +347,7 @@
             let metricsChart = null;
             let table = null; // Global table reference
             let decreaseModeActive = false; // Track decrease mode state
+            let increaseModeActive = false; // Track increase mode state
             let selectedSkus = new Set(); // Track selected SKUs across all pages
             
             // Toast notification function
@@ -1022,12 +1027,12 @@
                 $('#select-all-checkbox').prop('checked', allSelected);
             }
 
-            // Apply discount to selected SKUs
+            // Apply discount/increase to selected SKUs
             function applyDiscount() {
-                const discountPercent = parseFloat($('#discount-percentage-input').val());
+                const percent = parseFloat($('#discount-percentage-input').val());
                 
-                if (isNaN(discountPercent) || discountPercent < 0 || discountPercent > 100) {
-                    showToast('error', 'Please enter a valid discount percentage (0-100)');
+                if (isNaN(percent) || percent < 0 || percent > 100) {
+                    showToast('error', 'Please enter a valid percentage (0-100)');
                     return;
                 }
 
@@ -1036,8 +1041,14 @@
                     return;
                 }
 
+                if (!decreaseModeActive && !increaseModeActive) {
+                    showToast('error', 'Please activate Decrease or Increase mode first');
+                    return;
+                }
+
                 const allData = table.getData('active');
                 let updatedCount = 0;
+                const mode = increaseModeActive ? 'increase' : 'decrease';
 
                 allData.forEach(row => {
                     if (row.is_parent) return;
@@ -1045,8 +1056,15 @@
                     if (selectedSkus.has(row.SKU)) {
                         const currentPrice = parseFloat(row.FBA_Price) || 0;
                         if (currentPrice > 0) {
-                            const discountedPrice = currentPrice * (1 - discountPercent / 100);
-                            const newSPrice = Math.max(0.01, discountedPrice);
+                            let newSPrice;
+                            if (increaseModeActive) {
+                                // Increase: multiply by (1 + percent/100)
+                                newSPrice = currentPrice * (1 + percent / 100);
+                            } else {
+                                // Decrease: multiply by (1 - percent/100)
+                                newSPrice = currentPrice * (1 - percent / 100);
+                            }
+                            newSPrice = Math.max(0.01, newSPrice);
                             
                             // Update S_Price in database
                             $.ajax({
@@ -1061,12 +1079,13 @@
                                 success: function() {
                                     updatedCount++;
                                     if (updatedCount === selectedSkus.size) {
-                                        showToast('success', `Discount applied to ${updatedCount} SKU(s)`);
+                                        const actionText = increaseModeActive ? 'Increase' : 'Decrease';
+                                        showToast('success', `${actionText} applied to ${updatedCount} SKU(s)`);
                                         table.replaceData();
                                     }
                                 },
                                 error: function() {
-                                    showToast('error', 'Error applying discount');
+                                    showToast('error', `Error applying ${mode}`);
                                 }
                             });
                         }
@@ -1432,9 +1451,16 @@
                     const selectColumn = table.getColumn('_select');
                     
                     if (decreaseModeActive) {
+                        // If increase mode is active, deactivate it first
+                        if (increaseModeActive) {
+                            increaseModeActive = false;
+                            $('#increase-btn').removeClass('btn-danger').addClass('btn-success');
+                            $('#increase-btn').html('<i class="fas fa-percent"></i> Increase');
+                        }
                         selectColumn.show();
                         $(this).removeClass('btn-warning').addClass('btn-danger');
                         $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
+                        $('#discount-label').text('Decrease %:');
                     } else {
                         selectColumn.hide();
                         $(this).removeClass('btn-danger').addClass('btn-warning');
@@ -1442,6 +1468,34 @@
                         selectedSkus.clear();
                         updateSelectedCount();
                         updateSelectAllCheckbox();
+                        $('#discount-input-container').hide();
+                    }
+                });
+
+                // Increase button toggle
+                $('#increase-btn').on('click', function() {
+                    increaseModeActive = !increaseModeActive;
+                    const selectColumn = table.getColumn('_select');
+                    
+                    if (increaseModeActive) {
+                        // If decrease mode is active, deactivate it first
+                        if (decreaseModeActive) {
+                            decreaseModeActive = false;
+                            $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning');
+                            $('#decrease-btn').html('<i class="fas fa-percent"></i> Decrease');
+                        }
+                        selectColumn.show();
+                        $(this).removeClass('btn-success').addClass('btn-danger');
+                        $(this).html('<i class="fas fa-times"></i> Cancel Increase');
+                        $('#discount-label').text('Increase %:');
+                    } else {
+                        selectColumn.hide();
+                        $(this).removeClass('btn-danger').addClass('btn-success');
+                        $(this).html('<i class="fas fa-percent"></i> Increase');
+                        selectedSkus.clear();
+                        updateSelectedCount();
+                        updateSelectAllCheckbox();
+                        $('#discount-input-container').hide();
                     }
                 });
 
@@ -1550,37 +1604,38 @@
                             row.getElement().classList.add("parent-row");
                         }
                     },
-                    columns: [{
-                            title: "Parent",
-                            field: "Parent",
-                            headerFilter: "input",
-                            headerFilterPlaceholder: "Search Parent...",
-                            cssClass: "text-primary",
-                            tooltip: true,
-                            frozen: true
-                        },
-                        {
-                            title: "Child <br> SKU",
-                            field: "SKU",
-                            headerFilter: "input",
-                            headerFilterPlaceholder: "Search SKU...",
-                            cssClass: "font-weight-bold",
-                            tooltip: true,
-                            frozen: true,
-                            formatter: function(cell) {
-                                const sku = cell.getValue();
-                                const rowData = cell.getRow().getData();
-                                if (rowData.is_parent) return sku;
+                    columns: [
+                        // {
+                        //     title: "Parent",
+                        //     field: "Parent",
+                        //     headerFilter: "input",
+                        //     headerFilterPlaceholder: "Search Parent...",
+                        //     cssClass: "text-primary",
+                        //     tooltip: true,
+                        //     frozen: true
+                        // },
+                        // {
+                        //     title: "Child <br> SKU",
+                        //     field: "SKU",
+                        //     headerFilter: "input",
+                        //     headerFilterPlaceholder: "Search SKU...",
+                        //     cssClass: "font-weight-bold",
+                        //     tooltip: true,
+                        //     frozen: true,
+                        //     formatter: function(cell) {
+                        //         const sku = cell.getValue();
+                        //         const rowData = cell.getRow().getData();
+                        //         if (rowData.is_parent) return sku;
                                 
-                                return `
-                                    <span>${sku}</span>
-                                    <i class="fa fa-copy text-secondary copy-sku-btn" 
-                                       style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
-                                       data-sku="${sku}"
-                                       title="Copy SKU"></i>
-                                `;
-                            }
-                        },
+                        //         return `
+                        //             <span>${sku}</span>
+                        //             <i class="fa fa-copy text-secondary copy-sku-btn" 
+                        //                style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
+                        //                data-sku="${sku}"
+                        //                title="Copy SKU"></i>
+                        //         `;
+                        //     }
+                        // },
                         {
                             title: "FBA <br>SKU",
                             field: "FBA_SKU",
@@ -2522,6 +2577,7 @@
                     let totalFbaL30 = 0;
                     let totalDilPercent = 0;
                     let dilCount = 0;
+                    let zeroSoldSkuCount = 0;
 
                     data.forEach(row => {
                         if (parseFloat(row.FBA_Quantity) > 0) {
@@ -2537,6 +2593,12 @@
                             if (!isNaN(dil)) {
                                 totalDilPercent += dil;
                                 dilCount++;
+                            }
+                            
+                            // Count SKUs with 0 L30 units sold
+                            const l30Units = parseFloat(row.l30_units || 0);
+                            if (l30Units === 0) {
+                                zeroSoldSkuCount++;
                             }
                         }
                     });
@@ -2576,6 +2638,7 @@
                     $('#total-fba-l30-badge').text('Total FBA L30: ' + Math.round(totalFbaL30).toLocaleString());
                     const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
                     $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
+                    $('#zero-sold-sku-count-badge').text('0 Sold SKU: ' + zeroSoldSkuCount);
                     $('#total-pft-amt').text('$' + Math.round(totalPftAmt));
                     $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                     $('#total-sales-amt').text('$' + Math.round(totalSalesAmt));

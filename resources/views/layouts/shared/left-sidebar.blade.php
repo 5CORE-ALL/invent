@@ -2258,6 +2258,8 @@
                                                     <a href="{{ url('temu-pricing-cvr') }}">Temu Pricing
                                                         CVR</a>
                                                 </li>
+
+                                              
                                             </ul>
                                         </div>
                                     </li>
@@ -2265,9 +2267,7 @@
                                     <li>
                                         <a href="{{ route('temu.pricing.inc') }}"> Temu Pricing Increase CVR</a>
                                     </li>
-                                    <li>
-                                        <a href="{{ route('temu.pricing.dsc') }}"> Temu Pricing Decrease CVR</a>
-                                    </li>
+                                    <li><a href="{{ url('temu-tabulator') }}">Temu Decrease CVR</a></li>
 
                                     <li>
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>
