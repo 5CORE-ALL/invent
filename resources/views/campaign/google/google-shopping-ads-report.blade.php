@@ -1,6 +1,3 @@
-
-
-
 @extends('layouts.vertical', ['title' => 'Google Shopping Ads Report', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">

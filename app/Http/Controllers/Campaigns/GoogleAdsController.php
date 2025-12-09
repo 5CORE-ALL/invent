@@ -344,7 +344,7 @@ class GoogleAdsController extends Controller
                 SUM(ga4_ad_sales) as sales
             ')
             ->whereDate('date', '>=', $thirtyDaysAgo)
-            ->where('campaign_advertising_channel_type', 'SEARCH')
+            ->where('advertising_channel_type', 'SEARCH')
             ->groupBy('date')
             ->orderBy('date', 'asc')
             ->get()
@@ -396,7 +396,7 @@ class GoogleAdsController extends Controller
                 SUM(ga4_ad_sales) as sales
             ')
             ->whereDate('date', '>=', $thirtyDaysAgo)
-            ->where('campaign_advertising_channel_type', 'SEARCH')
+            ->where('advertising_channel_type', 'SEARCH')
             ->groupBy('date')
             ->orderBy('date', 'asc')
             ->get()
@@ -448,7 +448,7 @@ class GoogleAdsController extends Controller
                 SUM(ga4_ad_sales) as sales
             ')
             ->whereDate('date', '>=', $thirtyDaysAgo)
-            ->where('campaign_advertising_channel_type', 'PERFORMANCE_MAX')
+            ->where('advertising_channel_type', 'PERFORMANCE_MAX')
             ->groupBy('date')
             ->orderBy('date', 'asc')
             ->get()
@@ -501,7 +501,7 @@ class GoogleAdsController extends Controller
         $dateRanges = $this->calculateDateRanges();
         $rangesNeeded = ['L1', 'L7', 'L30'];
         
-        // Fetch campaigns data within the maximum date range needed (L30)
+        // Only fetch SEARCH campaigns for SERP page
         $googleCampaigns = DB::table('google_ads_campaigns')
             ->select(
                 'campaign_id',
@@ -515,6 +515,7 @@ class GoogleAdsController extends Controller
                 'ga4_sold_units',
                 'ga4_ad_sales'
             )
+            ->where('advertising_channel_type', 'SEARCH')
             ->whereBetween('date', [$dateRanges['L30']['start'], $dateRanges['L30']['end']])
             ->get();
 
@@ -523,23 +524,35 @@ class GoogleAdsController extends Controller
         foreach ($productMasters as $pm) {
             $sku = strtoupper(trim($pm->sku));
             $parent = $pm->parent;
-            $shopify = $shopifyData[$sku] ?? null;
+            
+            // Fixed: Use original SKU for shopifyData lookup (not uppercase)
+            $shopify = $shopifyData[$pm->sku] ?? null;
 
-            // Find the latest campaign for this SKU
-            $matchedCampaign = $googleCampaigns->filter(function ($c) use ($sku) {
+            // Fixed: Use improved matching logic for SEARCH campaigns
+            // SEARCH campaigns end with " SEARCH." so we need special handling
+            $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
                 $campaign = strtoupper(trim($c->campaign_name));
                 $skuTrimmed = strtoupper(trim($sku));
                 
-                if (!str_ends_with($campaign, 'SEARCH.')) {
+                // Check if campaign ends with ' SEARCH.'
+                if (!str_ends_with($campaign, ' SEARCH.')) {
                     return false;
                 }
                 
-                $contains = strpos($campaign, $skuTrimmed) !== false;
-                $parts = array_map('trim', explode(',', $campaign));
+                // Remove ' SEARCH.' suffix for matching
+                $campaignBase = str_replace(' SEARCH.', '', $campaign);
+                
+                // Check if SKU is in comma-separated list
+                $parts = array_map('trim', explode(',', $campaignBase));
                 $exactMatch = in_array($skuTrimmed, $parts);
                 
-                return ($contains || $exactMatch) && $c->campaign_status === 'ENABLED';
-            })->sortByDesc('date')->first();
+                // If not in list, check if campaign base exactly equals SKU
+                if (!$exactMatch) {
+                    $exactMatch = $campaignBase === $skuTrimmed;
+                }
+                
+                return $exactMatch && $c->campaign_status === 'ENABLED';
+            });
 
             $row = [];
             $row['parent'] = $parent;
@@ -547,13 +560,15 @@ class GoogleAdsController extends Controller
             $row['INV']    = $shopify->inv ?? 0;
             $row['L30']    = $shopify->quantity ?? 0;
             
-            $row['campaign_id'] = $matchedCampaign->campaign_id ?? null;
-            $row['campaignName'] = $matchedCampaign->campaign_name ?? null;
-            $row['campaignBudgetAmount'] = $matchedCampaign->budget_amount_micros ?? null;
+            // Fixed: Add null checks before accessing properties to prevent null pointer exceptions
+            $row['campaign_id'] = $matchedCampaign ? ($matchedCampaign->campaign_id ?? null) : null;
+            $row['campaignName'] = $matchedCampaign ? ($matchedCampaign->campaign_name ?? null) : null;
+            $row['campaignBudgetAmount'] = $matchedCampaign ? ($matchedCampaign->budget_amount_micros ?? null) : null;
             $row['campaignBudgetAmount'] = $row['campaignBudgetAmount'] ? $row['campaignBudgetAmount'] / 1000000 : null;
-            $row['status'] = $matchedCampaign->campaign_status ?? null;
+            $row['status'] = $matchedCampaign ? ($matchedCampaign->campaign_status ?? null) : null;
 
             // Aggregate metrics for each date range
+            // Note: $googleCampaigns already filtered to SEARCH campaigns only
             foreach ($rangesNeeded as $rangeName) {
                 $metrics = $this->aggregateMetricsByRange(
                     $googleCampaigns, 
@@ -570,7 +585,8 @@ class GoogleAdsController extends Controller
                 $row["ad_sold_$rangeName"] = $metrics['ad_sold'];
             }
 
-            if($row['campaignName'] != '') {
+            // Fixed: Use !empty() instead of != '' to properly handle null values
+            if(!empty($row['campaignName'])) {
                 $result[] = (object) $row;
             }
         }
@@ -620,7 +636,8 @@ class GoogleAdsController extends Controller
             $sku = strtoupper(trim($pm->sku));
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$sku] ?? null;
+            // Fixed: Use original SKU for shopifyData lookup (not uppercase)
+            $shopify = $shopifyData[$pm->sku] ?? null;
 
             $matchedCampaign = $googleCampaigns->filter(function ($c) use ($sku) {
                 $campaign = strtoupper(trim($c->campaign_name));
@@ -643,11 +660,12 @@ class GoogleAdsController extends Controller
             $row['INV']    = $shopify->inv ?? 0;
             $row['L30']    = $shopify->quantity ?? 0;
             
-            $row['campaign_id'] = $matchedCampaign->campaign_id ?? null;
-            $row['campaignName'] = $matchedCampaign->campaign_name ?? null;
-            $row['campaignBudgetAmount'] = $matchedCampaign->budget_amount_micros ?? null;
+            // Fixed: Add null checks before accessing properties to prevent null pointer exceptions
+            $row['campaign_id'] = $matchedCampaign ? ($matchedCampaign->campaign_id ?? null) : null;
+            $row['campaignName'] = $matchedCampaign ? ($matchedCampaign->campaign_name ?? null) : null;
+            $row['campaignBudgetAmount'] = $matchedCampaign ? ($matchedCampaign->budget_amount_micros ?? null) : null;
             $row['campaignBudgetAmount'] = $row['campaignBudgetAmount'] ? $row['campaignBudgetAmount'] / 1000000 : null;
-            $row['campaignStatus'] = $matchedCampaign->campaign_status ?? null;
+            $row['campaignStatus'] = $matchedCampaign ? ($matchedCampaign->campaign_status ?? null) : null;
 
             foreach ($rangesNeeded as $rangeName) {
                 $metrics = $this->aggregateMetricsByRange(
@@ -665,7 +683,8 @@ class GoogleAdsController extends Controller
                 $row["ad_sold_$rangeName"] = $metrics['ad_sold'];
             }
 
-            if($row['campaignName'] != '') {
+            // Fixed: Use !empty() instead of != '' to properly handle null values
+            if(!empty($row['campaignName'])) {
                 $result[] = (object) $row;
             }
 
@@ -694,6 +713,7 @@ class GoogleAdsController extends Controller
         $dateRanges = $this->calculateDateRanges();
         $rangesNeeded = ['L1', 'L7', 'L30'];
 
+        // Only fetch SHOPPING campaigns for Shopping Ads
         $googleCampaigns = DB::table('google_ads_campaigns')
             ->select(
                 'campaign_id',
@@ -707,6 +727,7 @@ class GoogleAdsController extends Controller
                 'ga4_sold_units',
                 'ga4_ad_sales'
             )
+            ->where('advertising_channel_type', 'SHOPPING')
             ->whereBetween('date', [$dateRanges['L30']['start'], $dateRanges['L30']['end']])
             ->get();
 
@@ -716,14 +737,22 @@ class GoogleAdsController extends Controller
             $sku = strtoupper(trim($pm->sku));
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$sku] ?? null;
+            // Fixed: Use original SKU for shopifyData lookup (not uppercase)
+            $shopify = $shopifyData[$pm->sku] ?? null;
 
+            // Fixed: Use consistent matching logic (same as aggregateMetricsByRange)
             $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
                 $campaign = strtoupper(trim($c->campaign_name));
                 $skuTrimmed = strtoupper(trim($sku));
                 
                 $parts = array_map('trim', explode(',', $campaign));
                 $exactMatch = in_array($skuTrimmed, $parts);
+                
+                // Allow single-campaign names to match only when fully equal (prevents partial substring matches)
+                if (!$exactMatch) {
+                    $exactMatch = $campaign === $skuTrimmed;
+                }
+                
                 return $exactMatch;
             });
 
@@ -733,11 +762,12 @@ class GoogleAdsController extends Controller
             $row['INV']    = $shopify->inv ?? 0;
             $row['L30']    = $shopify->quantity ?? 0;
             
-            $row['campaign_id'] = $matchedCampaign->campaign_id ?? null;
-            $row['campaignName'] = $matchedCampaign->campaign_name ?? null;
-            $row['campaignBudgetAmount'] = $matchedCampaign->budget_amount_micros ?? null;
+            // Fixed: Add null checks before accessing properties to prevent null pointer exceptions
+            $row['campaign_id'] = $matchedCampaign ? ($matchedCampaign->campaign_id ?? null) : null;
+            $row['campaignName'] = $matchedCampaign ? ($matchedCampaign->campaign_name ?? null) : null;
+            $row['campaignBudgetAmount'] = $matchedCampaign ? ($matchedCampaign->budget_amount_micros ?? null) : null;
             $row['campaignBudgetAmount'] = $row['campaignBudgetAmount'] ? $row['campaignBudgetAmount'] / 1000000 : null;
-            $row['status'] = $matchedCampaign->campaign_status ?? null;
+            $row['status'] = $matchedCampaign ? ($matchedCampaign->campaign_status ?? null) : null;
 
             foreach ($rangesNeeded as $rangeName) {
                 $metrics = $this->aggregateMetricsByRange(
@@ -755,7 +785,8 @@ class GoogleAdsController extends Controller
                 $row["ad_sold_$rangeName"] = $metrics['ad_sold'];
             }
 
-            if($row['campaignName'] != '') {
+            // Fixed: Use !empty() instead of != '' to properly handle null values
+            if(!empty($row['campaignName'])) {
                 $result[] = (object) $row;
             }
 
@@ -806,14 +837,21 @@ class GoogleAdsController extends Controller
             $sku = strtoupper(trim($pm->sku));
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$sku] ?? null;
+            // Fixed: Use original SKU for shopifyData lookup (not uppercase)
+            $shopify = $shopifyData[$pm->sku] ?? null;
 
+            // Fixed: Use consistent matching logic (same as aggregateMetricsByRange)
             $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
                 $campaign = strtoupper(trim($c->campaign_name));
                 $skuTrimmed = strtoupper(trim($sku));
                 
                 $parts = array_map('trim', explode(',', $campaign));
                 $exactMatch = in_array($skuTrimmed, $parts);
+                
+                // Allow single-campaign names to match only when fully equal (prevents partial substring matches)
+                if (!$exactMatch) {
+                    $exactMatch = $campaign === $skuTrimmed;
+                }
                 
                 return $exactMatch;
             });
@@ -823,11 +861,13 @@ class GoogleAdsController extends Controller
             $row['sku']    = $pm->sku;
             $row['INV']    = $shopify->inv ?? 0;
             $row['L30']    = $shopify->quantity ?? 0;
-            $row['campaign_id'] = $matchedCampaign->campaign_id ?? null;
-            $row['campaignName'] = $matchedCampaign->campaign_name ?? null;
-            $row['campaignBudgetAmount'] = $matchedCampaign->budget_amount_micros ?? null;
+            
+            // Fixed: Add null checks before accessing properties to prevent null pointer exceptions
+            $row['campaign_id'] = $matchedCampaign ? ($matchedCampaign->campaign_id ?? null) : null;
+            $row['campaignName'] = $matchedCampaign ? ($matchedCampaign->campaign_name ?? null) : null;
+            $row['campaignBudgetAmount'] = $matchedCampaign ? ($matchedCampaign->budget_amount_micros ?? null) : null;
             $row['campaignBudgetAmount'] = $row['campaignBudgetAmount'] ? $row['campaignBudgetAmount'] / 1000000 : null;
-            $row['campaignStatus'] = $matchedCampaign->campaign_status ?? null;
+            $row['campaignStatus'] = $matchedCampaign ? ($matchedCampaign->campaign_status ?? null) : null;
 
             foreach ($rangesNeeded as $rangeName) {
                 $metrics = $this->aggregateMetricsByRange(
@@ -845,7 +885,8 @@ class GoogleAdsController extends Controller
                 $row["ad_sold_$rangeName"] = $metrics['ad_sold'];
             }
 
-            if($row['campaignName'] != '') {
+            // Fixed: Use !empty() instead of != '' to properly handle null values
+            if(!empty($row['campaignName'])) {
                 $result[] = (object) $row;
             }
 
@@ -1044,17 +1085,21 @@ class GoogleAdsController extends Controller
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
         $nrValues = GoogleDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
+        // Calculate date ranges for recent data
+        $dateRanges = $this->calculateDateRanges();
+
+        // Only fetch SHOPPING campaigns that are ENABLED and have recent data
         $googleCampaigns = DB::table('google_ads_campaigns')
             ->select(
                 'campaign_id',
                 'campaign_name',
-                'campaign_status',
+                'campaign_status'
             )
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->where('campaign_status', 'ENABLED')
+            ->whereBetween('date', [$dateRanges['L30']['start'], $dateRanges['L30']['end']])
+            ->distinct()
             ->get();
-
-        $googleCampaignsKeyed = $googleCampaigns->keyBy(function ($item) {
-            return strtoupper(trim($item->campaign_name));
-        });
 
         $result = [];
 
@@ -1063,16 +1108,35 @@ class GoogleAdsController extends Controller
             $parent = $pm->parent;
             $shopify = $shopifyData[$pm->sku] ?? null;
 
-            $matchedCampaign = $googleCampaignsKeyed[$sku] ?? null;
+            // Fixed: Use improved matching logic (same as other methods)
+            // Only match if SKU is in comma-separated list OR campaign name exactly equals SKU
+            // This prevents partial matches like "MX 12CH" matching "MX 12CH XU"
+            $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
+                $campaign = strtoupper(trim($c->campaign_name));
+                $skuTrimmed = strtoupper(trim($sku));
+                
+                // Check if SKU is in comma-separated list
+                $parts = array_map('trim', explode(',', $campaign));
+                $exactMatch = in_array($skuTrimmed, $parts);
+                
+                // If not in list, check if campaign name exactly equals SKU
+                if (!$exactMatch) {
+                    $exactMatch = $campaign === $skuTrimmed;
+                }
+                
+                return $exactMatch;
+            });
 
             $row = [];
             $row['parent'] = $parent;
             $row['sku'] = $pm->sku;
             $row['INV'] = $shopify->inv ?? 0;
             $row['L30'] = $shopify->quantity ?? 0;
-            $row['campaign_id'] = $matchedCampaign->campaign_id ?? null;
-            $row['campaignName'] = $matchedCampaign->campaign_name ?? null;
-            $row['campaignStatus'] = $matchedCampaign->campaign_status ?? null;
+            
+            // Fixed: Add null checks before accessing properties to prevent null pointer exceptions
+            $row['campaign_id'] = $matchedCampaign ? ($matchedCampaign->campaign_id ?? null) : null;
+            $row['campaignName'] = $matchedCampaign ? ($matchedCampaign->campaign_name ?? null) : null;
+            $row['campaignStatus'] = $matchedCampaign ? ($matchedCampaign->campaign_status ?? null) : null;
 
             $row['NR'] = '';
             if (isset($nrValues[$pm->sku])) {
@@ -1148,17 +1212,17 @@ class GoogleAdsController extends Controller
 
     public function filterGoogleSerpChart(Request $request)
     {
-        return $this->getChartData($request, ['campaign_advertising_channel_type' => 'SEARCH']);
+        return $this->getChartData($request, ['advertising_channel_type' => 'SEARCH']);
     }
 
     public function filterGoogleSerpReportChart(Request $request)
     {
-        return $this->getChartData($request, ['campaign_advertising_channel_type' => 'SEARCH']);
+        return $this->getChartData($request, ['advertising_channel_type' => 'SEARCH']);
     }
 
     public function filterGooglePmaxChart(Request $request)
     {
-        return $this->getChartData($request, ['campaign_advertising_channel_type' => 'PERFORMANCE_MAX']);
+        return $this->getChartData($request, ['advertising_channel_type' => 'PERFORMANCE_MAX']);
     }
 
     private function getChartData(Request $request, array $additionalFilters = [])

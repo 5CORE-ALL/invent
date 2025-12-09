@@ -605,7 +605,6 @@
                 function combinedFilter(data) {
                     let budget = parseFloat(data.campaignBudgetAmount) || 0;
                     let spend_L7 = parseFloat(data.spend_L7) || 0;
-                    let spend_l1 = parseFloat(data.spend_l1) || 0;
                     let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
 
                     // filter by UB7 > 90
@@ -704,14 +703,14 @@
                     if(rowEl && rowEl.offsetParent !== null){
                         
                         var rowData = row.getData();
-                        var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
-                        var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
+                        var cpc_L1 = parseFloat(rowData.cpc_L1) || 0;
+                        var cpc_L7 = parseFloat(rowData.cpc_L7) || 0;
 
                         var sbid = 0;
-                        if (l1_cpc === 0 && l7_cpc === 0) {
+                        if (cpc_L1 === 0 && cpc_L7 === 0) {
                             sbid = 0.75;
                         }else{
-                            sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                            sbid = Math.floor(cpc_L7 * 0.90 * 100) / 100;
                         }
 
                         campaignIds.push(rowData.campaign_id);
