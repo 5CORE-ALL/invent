@@ -816,6 +816,268 @@ class ProductMasterController extends Controller
         }
     }
 
+    public function updateTitlesToAmazon(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'skus' => 'required|array',
+                'skus.*' => 'required|string',
+            ]);
+
+            $skus = $validated['skus'];
+
+            // Get Amazon API configuration
+            $clientId = env('SPAPI_CLIENT_ID');
+            $clientSecret = env('SPAPI_CLIENT_SECRET');
+            $refreshToken = env('SPAPI_REFRESH_TOKEN');
+            $sellerId = env('AMAZON_SELLER_ID');
+            $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
+
+            if (!$clientId || !$clientSecret || !$refreshToken || !$sellerId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Amazon SP-API credentials not configured properly in .env file'
+                ], 500);
+            }
+
+            // Get LWA access token
+            $lwaToken = $this->getAmazonAccessToken($clientId, $clientSecret, $refreshToken);
+            
+            if (!$lwaToken) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to obtain Amazon LWA access token'
+                ], 500);
+            }
+
+            $successCount = 0;
+            $errorCount = 0;
+            $errors = [];
+
+            foreach ($skus as $sku) {
+                // Get product from database
+                $product = ProductMaster::where('SKU', $sku)
+                    ->orWhere('sku', $sku)
+                    ->first();
+
+                if (!$product) {
+                    $errorCount++;
+                    $errors[] = "SKU {$sku}: Product not found";
+                    continue;
+                }
+
+                $amazonSuccess = false;
+                $shopifySuccess = false;
+
+                // Update Amazon if title150 exists
+                if ($product->title150) {
+                    try {
+                        // Use Listings Items API PATCH method
+                        $endpoint = "https://sellingpartnerapi-na.amazon.com";
+                        $path = "/listings/2021-08-01/items/{$sellerId}/{$sku}";
+                        $url = $endpoint . $path . "?marketplaceIds={$marketplaceId}";
+
+                        $payload = [
+                            'productType' => 'PRODUCT',
+                            'patches' => [
+                                [
+                                    'op' => 'replace',
+                                    'path' => '/attributes/item_name',
+                                    'value' => [
+                                        [
+                                            'value' => $product->title150,
+                                            'language_tag' => 'en_US'
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ];
+
+                        $response = \Illuminate\Support\Facades\Http::withHeaders([
+                            'x-amz-access-token' => $lwaToken,
+                            'Content-Type' => 'application/json',
+                            'Accept' => 'application/json',
+                        ])
+                        ->timeout(30)
+                        ->patch($url, $payload);
+
+                        $statusCode = $response->status();
+
+                        if ($statusCode == 200 || $statusCode == 202) {
+                            $amazonSuccess = true;
+                            
+                            // Update sync status
+                            $product->amazon_last_sync = now();
+                            $product->amazon_sync_status = 'success';
+                            $product->amazon_sync_error = null;
+                            $product->save();
+                        } else {
+                            $errorMsg = $response->body();
+                            $errors[] = "Amazon - SKU {$sku}: {$statusCode} - " . substr($errorMsg, 0, 100);
+                            
+                            // Update error status
+                            $product->amazon_sync_status = 'failed';
+                            $product->amazon_sync_error = substr($errorMsg, 0, 500);
+                            $product->save();
+                        }
+                    } catch (\Exception $e) {
+                        $errors[] = "Amazon - SKU {$sku}: " . $e->getMessage();
+                        
+                        $product->amazon_sync_status = 'failed';
+                        $product->amazon_sync_error = $e->getMessage();
+                        $product->save();
+                    }
+                }
+
+                // Update Shopify if title100 exists
+                if ($product->title100) {
+                    // Add delay before Shopify API call to avoid rate limiting
+                    usleep(500000); // 500ms delay
+                    
+                    try {
+                        $shopifySuccess = $this->updateShopifyTitle($sku, $product->title100);
+                        if (!$shopifySuccess) {
+                            $errors[] = "Shopify - SKU {$sku}: Update failed (check logs)";
+                        }
+                    } catch (\Exception $e) {
+                        $errors[] = "Shopify - SKU {$sku}: " . $e->getMessage();
+                        Log::error("Shopify update exception for SKU {$sku}: " . $e->getMessage());
+                    }
+                }
+
+                // Count success only if at least one platform succeeded
+                if ($amazonSuccess || $shopifySuccess) {
+                    $successCount++;
+                } else {
+                    $errorCount++;
+                }
+
+                // Rate limiting: 500ms delay between products (2 requests per second)
+                usleep(500000);
+            }
+
+            $message = count($errors) > 0 ? implode("\n", array_slice($errors, 0, 5)) : '';
+            
+            return response()->json([
+                'success' => true,
+                'success_count' => $successCount,
+                'error_count' => $errorCount,
+                'message' => $message,
+                'total' => count($skus)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error updating titles to Amazon: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update titles: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    private function getAmazonAccessToken($clientId, $clientSecret, $refreshToken)
+    {
+        try {
+            $response = \Illuminate\Support\Facades\Http::asForm()->post('https://api.amazon.com/auth/o2/token', [
+                'grant_type' => 'refresh_token',
+                'refresh_token' => $refreshToken,
+                'client_id' => $clientId,
+                'client_secret' => $clientSecret,
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                return $data['access_token'] ?? null;
+            }
+
+            Log::error('Failed to get Amazon access token: ' . $response->body());
+            return null;
+        } catch (\Exception $e) {
+            Log::error('Error getting Amazon access token: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    private function updateShopifyTitle($sku, $title)
+    {
+        try {
+            Log::info("Starting Shopify title update for SKU: {$sku}, Title: {$title}");
+            
+            // Get Shopify credentials from env - try multiple variable names
+            $shopifyDomain = env('SHOPIFY_DOMAIN') ?? env('SHOPIFY_STORE_URL') ?? env('SHOPIFY_5CORE_DOMAIN');
+            $shopifyToken = env('SHOPIFY_ACCESS_TOKEN') ?? env('SHOPIFY_PASSWORD');
+            
+            if (!$shopifyDomain || !$shopifyToken) {
+                Log::warning("Shopify credentials not configured. SHOPIFY_DOMAIN: " . ($shopifyDomain ? 'set' : 'missing') . ", SHOPIFY_ACCESS_TOKEN: " . ($shopifyToken ? 'set' : 'missing'));
+                return false;
+            }
+
+            Log::info("Shopify credentials found. Domain: {$shopifyDomain}");
+
+            // Find Shopify product by SKU - try both uppercase and lowercase
+            $shopifySku = ShopifySku::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+            
+            if (!$shopifySku || !$shopifySku->variant_id) {
+                Log::info("No Shopify variant found for SKU: {$sku}");
+                return false;
+            }
+
+            $variantId = $shopifySku->variant_id;
+            Log::info("Found Shopify variant ID: {$variantId} for SKU: {$sku}");
+            
+            // First, get the product ID from the variant
+            $variantUrl = "https://{$shopifyDomain}/admin/api/2024-01/variants/{$variantId}.json";
+            
+            $variantResponse = \Illuminate\Support\Facades\Http::withHeaders([
+                'X-Shopify-Access-Token' => $shopifyToken,
+            ])->get($variantUrl);
+            
+            if (!$variantResponse->successful()) {
+                Log::error("Failed to fetch variant for SKU {$sku}: " . $variantResponse->body());
+                return false;
+            }
+            
+            $variantData = $variantResponse->json();
+            $productId = $variantData['variant']['product_id'] ?? null;
+            
+            if (!$productId) {
+                Log::error("No product ID found in variant for SKU: {$sku}");
+                return false;
+            }
+
+            Log::info("Found product ID: {$productId} for SKU: {$sku}");
+
+            // Now update the product title
+            $productUrl = "https://{$shopifyDomain}/admin/api/2024-01/products/{$productId}.json";
+
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'X-Shopify-Access-Token' => $shopifyToken,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(30)
+            ->put($productUrl, [
+                'product' => [
+                    'id' => $productId,
+                    'title' => $title
+                ]
+            ]);
+
+            if ($response->successful()) {
+                Log::info("✓ Successfully updated Shopify title for SKU: {$sku} (Product ID: {$productId})");
+                return true;
+            } else {
+                Log::error("✗ Failed to update Shopify title for SKU {$sku}: " . $response->body());
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("✗ Exception updating Shopify title for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
+    }
+
     public function saveBulletData(Request $request)
     {
         try {

@@ -772,6 +772,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('product.master');
     Route::get('/title-master', fn() => view('title-master'))->name('title.master');
     Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');
+    Route::post('/title-master/update-amazon', [ProductMasterController::class, 'updateTitlesToAmazon'])->name('title.master.update.amazon');
     Route::get('/bullet-points', fn() => view('bullet-points'))->name('bullet.points');
     Route::post('/bullet-points/save', [ProductMasterController::class, 'saveBulletData'])->name('bullet.points.save');
     Route::get('/product-description', fn() => view('product-description'))->name('product.description');
