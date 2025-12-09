@@ -111,9 +111,22 @@ class AmazonSpBudgetController extends Controller
         $accessToken = $this->getAccessToken();
         $client = new Client();
 
+        $normalizedCampaignIds = array_values(array_filter(array_map(function ($id) {
+            if (is_null($id)) {
+                return null;
+            }
+            return trim((string) $id);
+        }, is_array($campaignId) ? $campaignId : [$campaignId]), function ($id) {
+            return $id !== '';
+        }));
+
+        if (empty($normalizedCampaignIds)) {
+            return [];
+        }
+
         $payload = [
             'campaignIdFilter' => [
-                'include' => is_array($campaignId) ? $campaignId : [$campaignId],
+                'include' => $normalizedCampaignIds,
             ],
         ];
 
