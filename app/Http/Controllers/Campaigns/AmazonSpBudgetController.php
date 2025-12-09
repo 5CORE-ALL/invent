@@ -358,9 +358,13 @@ class AmazonSpBudgetController extends Controller
             if (empty($adTargets)) continue;
 
             foreach ($adTargets as $adTarget) {
+                $targetId = isset($adTarget['targetId']) ? trim((string) $adTarget['targetId']) : '';
+                if ($targetId === '') {
+                    continue;
+                }
                 $allTargets[] = [
                     'bid' => $newBid,
-                    'targetId' => $adTarget['targetId'],
+                    'targetId' => $targetId,
                 ];
             }
         }
@@ -445,9 +449,13 @@ class AmazonSpBudgetController extends Controller
             if (empty($adTargets)) continue;
 
             foreach ($adTargets as $adTarget) {
+                $targetId = isset($adTarget['targetId']) ? trim((string) $adTarget['targetId']) : '';
+                if ($targetId === '') {
+                    continue;
+                }
                 $allTargets[] = [
                     'bid' => $newBid,
-                    'targetId' => $adTarget['targetId'],
+                    'targetId' => $targetId,
                 ];
             }
         }
