@@ -197,7 +197,7 @@ class AutoUpdateAmazonHlBids extends Command
                 }
             }
             
-            $this->info("Amazon HL Bids Update", [
+            Log::info("Amazon HL Bids Update", [
                 'total_campaigns' => count($campaignIds),
                 'campaigns' => $campaignDetails,
                 'campaign_ids' => $campaignIds,
@@ -206,6 +206,7 @@ class AutoUpdateAmazonHlBids extends Command
                 'last_error' => $lastError,
                 'attempts' => $attempt
             ]);
+            $this->info("Detailed HL update log captured. Check laravel.log for payload/context.");
 
             if ($result && is_array($result) && ($result['status'] ?? 0) == 200) {
                 $this->info("✓ Command completed successfully");

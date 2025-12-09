@@ -44,9 +44,22 @@ class AmazonSbBudgetController extends Controller
         $accessToken = $this->getAccessToken();
         $client = new Client();
 
+        // Normalize campaign IDs to strings (Amazon API requires strings, not numbers)
+        $normalizedCampaignIds = array_filter(
+            array_map(function($id) {
+                $strId = trim((string)$id);
+                return !empty($strId) ? $strId : null;
+            }, $campaignIds),
+            function($id) { return $id !== null; }
+        );
+
+        if (empty($normalizedCampaignIds)) {
+            return [];
+        }
+
         $url = 'https://advertising-api.amazon.com/sb/v4/adGroups/list';
         $payload = [
-            'campaignIdFilter' => ['include' => $campaignIds],
+            'campaignIdFilter' => ['include' => array_values($normalizedCampaignIds)],
             'stateFilter' => ['include' => ['ENABLED']],
         ];
 
