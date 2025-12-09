@@ -46,9 +46,23 @@ class AmazonSpBudgetController extends Controller
         $accessToken = $this->getAccessToken();
         $client = new Client();
 
+        $normalizedCampaignIds = array_values(array_filter(array_map(function ($id) {
+            if (is_null($id)) {
+                return null;
+            }
+            // Force string to avoid JSON encoding large integers as floats
+            return trim((string) $id);
+        }, $campaignIds), function ($id) {
+            return $id !== '';
+        }));
+
+        if (empty($normalizedCampaignIds)) {
+            return [];
+        }
+
         $url = 'https://advertising-api.amazon.com/sp/adGroups/list';
         $payload = [
-            'campaignIdFilter' => ['include' => $campaignIds],
+            'campaignIdFilter' => ['include' => $normalizedCampaignIds],
             'stateFilter' => ['include' => ['ENABLED']],
         ];
 

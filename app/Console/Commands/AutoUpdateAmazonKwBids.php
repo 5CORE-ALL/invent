@@ -195,7 +195,7 @@ class AutoUpdateAmazonKwBids extends Command
                 }
             }
             
-            $this->info("Amazon KW Bids Update", [
+            Log::info("Amazon KW Bids Update", [
                 'total_campaigns' => count($campaignIds),
                 'campaigns' => $campaignDetails,
                 'campaign_ids' => $campaignIds,
@@ -204,6 +204,7 @@ class AutoUpdateAmazonKwBids extends Command
                 'last_error' => $lastError,
                 'attempts' => $attempt
             ]);
+            $this->info("Detailed update log captured. Check laravel.log for payload/context.");
 
             if ($result && is_array($result) && ($result['status'] ?? 0) == 200) {
                 $this->info("✓ Command completed successfully");
