@@ -2581,10 +2581,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     
 });
 
-// Shopify Facebook Campaigns Routes
-Route::prefix('shopify/facebook-campaigns')->middleware(['auth'])->group(function () {
-    Route::get('/summary', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'summary'])->name('shopify.facebook.campaigns.summary');
-    Route::get('/compare/{campaignId}', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'compare'])->name('shopify.facebook.campaigns.compare');
-    Route::post('/fetch', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'fetch'])->name('shopify.facebook.campaigns.fetch');
+// Shopify Meta Campaigns Routes (Facebook & Instagram)
+Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function () {
+    Route::get('/summary', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'summary'])->name('shopify.meta.campaigns.summary');
+    Route::get('/compare/{campaignId}', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'compare'])->name('shopify.meta.campaigns.compare');
+    Route::post('/fetch', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'fetch'])->name('shopify.meta.campaigns.fetch');
 });
 

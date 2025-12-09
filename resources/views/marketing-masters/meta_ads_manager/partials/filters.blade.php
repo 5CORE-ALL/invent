@@ -28,7 +28,7 @@
         <div class="col-md-6">
             <div class="d-flex gap-2 justify-content-end">
                 <button type="button" class="btn btn-sm btn-success" id="sync-btn">
-                    <i class="fa fa-sync me-1"></i>Sync from Google Sheets
+                    <i class="fa fa-sync me-1"></i>Sync from Meta API
                 </button>
                 <button class="btn btn-success btn-md">
                     <i class="fa fa-bullhorn me-1"></i>
