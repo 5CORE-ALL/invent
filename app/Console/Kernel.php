@@ -373,8 +373,8 @@ class Kernel extends ConsoleKernel
             ->name('stock-mapping-daily-update')
             ->withoutOverlapping();
 
-        // Shopify Facebook Campaigns - Fetch daily at 2 AM PST
-        $schedule->command('shopify:fetch-facebook-campaigns')
+        // Shopify Meta Campaigns (Facebook & Instagram) - Fetch daily at 2 AM PST
+        $schedule->command('shopify:fetch-meta-campaigns --channel=both')
             ->dailyAt('02:00')
             ->timezone('America/Los_Angeles')
             ->name('fetch-shopify-fb-campaigns-7-30-60-days')

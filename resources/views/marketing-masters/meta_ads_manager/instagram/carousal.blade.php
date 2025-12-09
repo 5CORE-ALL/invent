@@ -15,7 +15,7 @@
             <div class="card shadow-sm">
                 <div class="card-body py-3">
                     @include('marketing-masters.meta_ads_manager.partials.filters', [
-                        'adType' => 'INSTAGRAM CAROUSAL',
+                        'adType' => 'INSTA GRP CAROUSAL',
                         'latestUpdatedAt' => $latestUpdatedAt ?? null
                     ])
                     <div id="budget-under-table"></div>
