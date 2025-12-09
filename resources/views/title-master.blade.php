@@ -151,6 +151,9 @@
                             <button id="importBtn" class="btn btn-info ms-2">
                                 <i class="fas fa-upload"></i> Import
                             </button>
+                            <button id="updateAmazonBtn" class="btn btn-warning ms-2" style="display:none;">
+                                <i class="fas fa-sync"></i> Update to Amazon & Shopify (<span id="selectedCount">0</span>)
+                            </button>
                             <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display: none;">
                         </div>
                     </div>
@@ -159,6 +162,9 @@
                         <table id="title-master-table" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
+                                    <th>
+                                        <input type="checkbox" id="selectAll" title="Select All">
+                                    </th>
                                     <th>Images</th>
                                     <th>
                                         <div style="display: flex; align-items: center; gap: 10px;">
@@ -262,6 +268,7 @@
 @section('script')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
+        @verbatim
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         let tableData = [];
         let titleModal;
@@ -297,6 +304,102 @@
                     importFromExcel(file);
                 }
             });
+
+            // Update Amazon Button
+            document.getElementById('updateAmazonBtn').addEventListener('click', function() {
+                updateSelectedToAmazon();
+            });
+        }
+
+        function setupCheckboxHandlers() {
+            // Select All checkbox
+            document.getElementById('selectAll').addEventListener('change', function() {
+                const checkboxes = document.querySelectorAll('.row-checkbox');
+                checkboxes.forEach(cb => cb.checked = this.checked);
+                updateSelectedCount();
+            });
+
+            // Individual checkboxes
+            document.querySelectorAll('.row-checkbox').forEach(cb => {
+                cb.addEventListener('change', updateSelectedCount);
+            });
+        }
+
+        function updateSelectedCount() {
+            const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+            const count = checkedBoxes.length;
+            const countElement = document.getElementById('selectedCount');
+            if (countElement) {
+                countElement.textContent = count;
+            }
+            const updateBtn = document.getElementById('updateAmazonBtn');
+            if (updateBtn) {
+                updateBtn.style.display = count > 0 ? 'inline-block' : 'none';
+            }
+        }
+
+        function updateSelectedToAmazon() {
+            const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+            const skus = Array.from(checkedBoxes).map(cb => cb.getAttribute('data-sku'));
+
+            if (skus.length === 0) {
+                alert('Please select at least one product');
+                return;
+            }
+
+            if (!confirm('Update ' + skus.length + ' product title(s) to Amazon Seller Central?\n\nThis will update the product titles on Amazon.')) {
+                return;
+            }
+
+            const updateBtn = document.getElementById('updateAmazonBtn');
+            updateBtn.disabled = true;
+            updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+
+            fetch('/title-master/update-amazon', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                body: JSON.stringify({ skus: skus })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    let message = 'Update Completed!\n\n';
+                    message += 'Amazon & Shopify Update:\n';
+                    message += 'Success: ' + data.success_count + '\n';
+                    message += 'Failed: ' + data.error_count + '\n';
+                    
+                    if (data.message && data.message.trim() !== '') {
+                        message += '\nDetails:\n' + data.message;
+                    }
+                    
+                    alert(message);
+                    
+                    // Uncheck all checkboxes
+                    document.querySelectorAll('.row-checkbox:checked').forEach(cb => cb.checked = false);
+                    document.getElementById('selectAll').checked = false;
+                    updateSelectedCount();
+                    
+                    // Reload data to show updated sync status
+                    loadTitleData();
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to update titles'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error updating to Amazon: ' + error.message);
+            })
+            .finally(() => {
+                updateBtn.disabled = false;
+                const count = document.querySelectorAll('.row-checkbox:checked').length;
+                updateBtn.innerHTML = '<i class="fas fa-sync"></i> Update to Amazon & Shopify (<span id="selectedCount">' + count + '</span>)';
+                if (count === 0) {
+                    updateBtn.style.display = 'none';
+                }
+            });
         }
 
         function setupModalHandlers() {
@@ -309,7 +412,7 @@
                 
                 input.addEventListener('input', function() {
                     const length = this.value.length;
-                    counter.textContent = `${length}/${maxLength}`;
+                    counter.textContent = length + '/' + maxLength;
                     if (length > maxLength) {
                         counter.classList.add('error');
                     } else {
@@ -360,7 +463,7 @@
             tbody.innerHTML = '';
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -372,10 +475,15 @@
 
                 const row = document.createElement('tr');
 
+                // Checkbox
+                const checkboxCell = document.createElement('td');
+                checkboxCell.innerHTML = '<input type="checkbox" class="row-checkbox" data-sku="' + escapeHtml(item.SKU) + '">';
+                row.appendChild(checkboxCell);
+
                 // Images
                 const imageCell = document.createElement('td');
                 imageCell.innerHTML = item.image_path 
-                    ? `<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`
+                    ? '<img src="' + item.image_path + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">'
                     : '-';
                 row.appendChild(imageCell);
 
@@ -419,15 +527,14 @@
 
                 // Action - Edit Button
                 const actionCell = document.createElement('td');
-                actionCell.innerHTML = `<button class="action-btn edit-btn" data-sku="${escapeHtml(item.SKU)}">
-                    <i class="fas fa-edit"></i> Edit
-                </button>`;
+                actionCell.innerHTML = '<button class="action-btn edit-btn" data-sku="' + escapeHtml(item.SKU) + '"><i class="fas fa-edit"></i> Edit</button>';
                 row.appendChild(actionCell);
 
                 tbody.appendChild(row);
             });
 
             setupEditButtons();
+            setupCheckboxHandlers();
         }
 
         function setupEditButtons() {
@@ -449,7 +556,7 @@
             document.getElementById('titleForm').reset();
             ['title150', 'title100', 'title80', 'title60'].forEach(field => {
                 const maxLength = parseInt(field.replace('title', ''));
-                document.getElementById('counter' + maxLength).textContent = `0/${maxLength}`;
+                document.getElementById('counter' + maxLength).textContent = '0/' + maxLength;
                 document.getElementById('counter' + maxLength).classList.remove('error');
             });
 
@@ -463,7 +570,7 @@
                 selectSku.innerHTML = '<option value="">Choose SKU...</option>';
                 tableData.forEach(item => {
                     if (item.SKU && !item.SKU.toUpperCase().includes('PARENT')) {
-                        selectSku.innerHTML += `<option value="${escapeHtml(item.SKU)}">${escapeHtml(item.SKU)}</option>`;
+                        selectSku.innerHTML += '<option value="' + escapeHtml(item.SKU) + '">' + escapeHtml(item.SKU) + '</option>';
                     }
                 });
             } else if (mode === 'edit' && sku) {
@@ -480,7 +587,7 @@
                         input.value = item[field] || '';
                         const maxLength = parseInt(field.replace('title', ''));
                         const length = input.value.length;
-                        document.getElementById('counter' + maxLength).textContent = `${length}/${maxLength}`;
+                        document.getElementById('counter' + maxLength).textContent = length + '/' + maxLength;
                     });
                 }
             }
@@ -609,7 +716,7 @@
                                 
                                 const obj = {};
                                 for (let j = 0; j < headers.length; j++) {
-                                    const header = headers[j] || `Column_${j}`;
+                                    const header = headers[j] || 'Column_' + j;
                                     obj[header] = row[j];
                                 }
                                 jsonData.push(obj);
@@ -631,7 +738,7 @@
                     
                     // Show user what columns we found
                     const cols = Object.keys(jsonData[0]).join(', ');
-                    const proceed = confirm(`Found ${jsonData.length} rows with these columns:\n\n${cols}\n\nProceed with import?`);
+                    const proceed = confirm('Found ' + jsonData.length + ' rows with these columns:\n\n' + cols + '\n\nProceed with import?');
                     
                     if (proceed) {
                         // Process and save imported data
@@ -675,7 +782,7 @@
                         firstRow[colName].toString().trim() !== '__EMPTY' &&
                         firstRow[colName].toString().trim() !== '0') {
                         skuColumnName = colName;
-                        console.log(`✓ Found SKU column (priority): "${skuColumnName}" = "${firstRow[colName]}"`);
+                        console.log('✓ Found SKU column (priority): "' + skuColumnName + '" = "' + firstRow[colName] + '"');
                         break;
                     }
                 }
@@ -686,7 +793,7 @@
                         const val = value ? value.toString().trim() : '';
                         if (val && val !== '__EMPTY' && val !== '0' && val !== '' && val.length > 2) {
                             skuColumnName = colName;
-                            console.log(`✓ Found SKU column (fallback): "${skuColumnName}" = "${val}"`);
+                            console.log('✓ Found SKU column (fallback): "' + skuColumnName + '" = "' + val + '"');
                             break;
                         }
                     }
@@ -744,7 +851,8 @@
                 if (!sku || skuStr === '' || sku === '__EMPTY' || skuStr === '0' || isParentSKU) {
                     skippedCount++;
                     if (skippedCount <= 3) {
-                        console.log(`⊘ Skipped row ${index + 2}: "${skuStr}" (${!sku || skuStr === '' ? 'Empty' : isParentSKU ? 'Parent' : 'Invalid'})`);
+                        const reason = !sku || skuStr === '' ? 'Empty' : isParentSKU ? 'Parent' : 'Invalid';
+                        console.log('⊘ Skipped row ' + (index + 2) + ': "' + skuStr + '" (' + reason + ')');
                     }
                     return Promise.resolve();
                 }
@@ -756,7 +864,7 @@
                 const title60 = titleColumns.title60 ? (row[titleColumns.title60] || '').toString().substring(0, 60) : '';
 
                 if (successCount + errorCount < 3) {
-                    console.log(`→ Processing row ${index + 2}: SKU="${skuStr}"`);
+                    console.log('→ Processing row ' + (index + 2) + ': SKU="' + skuStr + '"');
                 }
 
                 return fetch('/title-master/save', {
@@ -778,22 +886,22 @@
                     if (data.success) {
                         successCount++;
                         if (successCount <= 3) {
-                            console.log(`✓ Row ${index + 2} success: ${skuStr}`);
+                            console.log('✓ Row ' + (index + 2) + ' success: ' + skuStr);
                         }
                     } else {
                         errorCount++;
-                        const errorMsg = `Row ${index + 2} (${skuStr}): ${data.message || 'Unknown error'}`;
+                        const errorMsg = 'Row ' + (index + 2) + ' (' + skuStr + '): ' + (data.message || 'Unknown error');
                         if (errorCount <= 10) {
-                            console.error(`✗ ${errorMsg}`);
+                            console.error('✗ ' + errorMsg);
                             errors.push(errorMsg);
                         }
                     }
                 })
                 .catch(err => {
                     errorCount++;
-                    const errorMsg = `Row ${index + 2} (${skuStr}): ${err.message}`;
+                    const errorMsg = 'Row ' + (index + 2) + ' (' + skuStr + '): ' + err.message;
                     if (errorCount <= 10) {
-                        console.error(`✗ ${errorMsg}`);
+                        console.error('✗ ' + errorMsg);
                         errors.push(errorMsg);
                     }
                 });
@@ -871,5 +979,6 @@
         function showError(message) {
             alert(message);
         }
+        @endverbatim
     </script>
 @endsection

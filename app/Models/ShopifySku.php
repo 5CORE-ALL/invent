@@ -17,10 +17,15 @@ class ShopifySku extends Model
         'inv',
         'quantity',
         'price',
+        'price_updated_manually_at',
         'image_src',
         'shopify_l30',
         'available_to_sell',
         'committed',        
         'on_hand',
+    ];
+
+    protected $dates = [
+        'price_updated_manually_at',
     ];
 }

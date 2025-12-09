@@ -105,6 +105,9 @@ class StockBalanceController extends Controller
      */
     public function store(Request $request)
     {
+        // Increase max execution time to prevent timeout
+        set_time_limit(120);
+        
         $request->validate([
             'from_parent_name' => 'required|string',
             'from_sku' => 'required|string',
@@ -157,7 +160,7 @@ class StockBalanceController extends Controller
                 $variantId = $shopifySku->variant_id;
 
                 // Step 2: Get inventory_item_id from variant
-                sleep(2); // Rate limit protection (2 calls/second max)
+                usleep(500000); // Rate limit protection - 0.5s delay (allows 2 calls/second)
                 $variantResponse = $this->shopifyApiCall(
                     'GET',
                     "https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$variantId}.json"
@@ -190,7 +193,7 @@ class StockBalanceController extends Controller
                 }
 
                 // Step 3: Get location_id from inventory levels
-                sleep(2); // Rate limit protection (2 calls/second max)
+                usleep(500000); // Rate limit protection - 0.5s delay (allows 2 calls/second)
                 $levelsResponse = $this->shopifyApiCall(
                     'GET',
                     "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels.json",
@@ -213,6 +216,7 @@ class StockBalanceController extends Controller
 
                 $levels = $levelsResponse->json('inventory_levels');
                 $locationId = $levels[0]['location_id'] ?? null;
+                $availableQty = $levels[0]['available'] ?? 0;
 
                 if (!$locationId) {
                     return [
@@ -226,13 +230,15 @@ class StockBalanceController extends Controller
                     'sku' => $sku,
                     'variant_id' => $variantId,
                     'inventory_item_id' => $inventoryItemId,
-                    'location_id' => $locationId
+                    'location_id' => $locationId,
+                    'available_qty' => $availableQty
                 ]);
 
                 return [
                     'success' => true,
                     'inventory_item_id' => $inventoryItemId,
                     'location_id' => $locationId,
+                    'available' => $availableQty,
                 ];
             };
 
@@ -246,7 +252,25 @@ class StockBalanceController extends Controller
                 ], 404);
             }
 
-            sleep(2); // Rate limit protection (2 calls/second max)
+            // Validate that there's enough inventory available
+            $currentAvailable = $fromInfo['available'] ?? 0;
+            if ($currentAvailable < $fromQty) {
+                Log::warning("Insufficient inventory for transfer", [
+                    'from_sku' => $fromSku,
+                    'requested_qty' => $fromQty,
+                    'available_qty' => $currentAvailable
+                ]);
+                
+                return response()->json([
+                    'error' => 'Insufficient Inventory',
+                    'details' => "Cannot transfer {$fromQty} units from SKU: {$fromSku}<br><br>" .
+                                "<strong>Current Available:</strong> {$currentAvailable} units<br>" .
+                                "<strong>Requested Transfer:</strong> {$fromQty} units<br><br>" .
+                                "You need <strong>" . ($fromQty - $currentAvailable) . " more units</strong> to complete this transfer."
+                ], 400);
+            }
+
+            usleep(500000); // Rate limit protection - 0.5s delay (allows 2 calls/second)
             $decrease = $this->shopifyApiCall(
                 'POST',
                 "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",
@@ -258,14 +282,23 @@ class StockBalanceController extends Controller
             );
 
             if (!$decrease->successful()) {
+                $responseBody = $decrease->json();
+                $shopifyError = $responseBody['errors'] ?? $decrease->body();
+                
                 Log::error("Failed to deduct inventory for SKU", [
                     'sku' => $fromSku,
                     'status' => $decrease->status(),
-                    'response' => $decrease->body()
+                    'response' => $decrease->body(),
+                    'requested_qty' => $fromQty,
+                    'available_before_attempt' => $currentAvailable
                 ]);
+                
                 return response()->json([
                     'error' => 'Failed to deduct inventory from Shopify',
-                    'details' => "Could not decrease stock for SKU: $fromSku"
+                    'details' => "Could not decrease stock for SKU: {$fromSku}<br><br>" .
+                                "<strong>Available Quantity:</strong> {$currentAvailable} units<br>" .
+                                "<strong>Attempted Deduction:</strong> {$fromQty} units<br><br>" .
+                                "<strong>Shopify Error:</strong> " . (is_string($shopifyError) ? $shopifyError : json_encode($shopifyError))
                 ], 500);
             }
 
@@ -276,7 +309,7 @@ class StockBalanceController extends Controller
             ]);
 
             // Step 2: Get inventory info and increase to 'to_sku'
-            sleep(2); // Rate limit protection before processing second SKU
+            usleep(500000); // Rate limit protection - 0.5s delay before processing second SKU
             $toInfo = $getInventoryInfo($toSku);
             
             if (!$toInfo['success']) {
@@ -286,7 +319,7 @@ class StockBalanceController extends Controller
                 ], 404);
             }
 
-            sleep(2); // Rate limit protection (2 calls/second max)
+            usleep(500000); // Rate limit protection - 0.5s delay (allows 2 calls/second)
             $increase = $this->shopifyApiCall(
                 'POST',
                 "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",
@@ -310,7 +343,7 @@ class StockBalanceController extends Controller
                     'rollback_qty' => $fromQty
                 ]);
                 
-                sleep(1);
+                usleep(500000); // 0.5s delay for rollback
                 $rollback = $this->shopifyApiCall(
                     'POST',
                     "https://{$this->shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json",

@@ -753,6 +753,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/zero-reverb/view-data', [ReverbZeroController::class, 'getViewReverbZeroData']);
     Route::get('/reverb/zero-low-visibility/view-data', [ReverbLowVisibilityController::class, 'getViewReverbLowVisibilityData']);
     Route::get('/temu/view-data', [TemuController::class, 'getViewTemuData']);
+    Route::post('/temu/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataChunk']);
+    Route::get('/temu/download-daily-data-sample', [TemuController::class, 'downloadDailyDataSample'])->name('temu.daily.sample');
+    Route::get('/temu/daily-data', [TemuController::class, 'getDailyData'])->name('temu.daily.data');
     Route::get('/amazonfba/view-data', [OverallAmazonFbaController::class, 'getViewAmazonFbaData'])->name('amazonfba.viewData');
     Route::get('/fbainv/view-data', [AmazonFbaInvController::class, 'getViewAmazonfbaInvData'])->name('fbainv.viewData');
     Route::get('/product-master-data', [ProductMasterController::class, 'product_master_data']);
@@ -772,6 +775,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('product.master');
     Route::get('/title-master', fn() => view('title-master'))->name('title.master');
     Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');
+    Route::post('/title-master/update-amazon', [ProductMasterController::class, 'updateTitlesToAmazon'])->name('title.master.update.amazon');
     Route::get('/bullet-points', fn() => view('bullet-points'))->name('bullet.points');
     Route::post('/bullet-points/save', [ProductMasterController::class, 'saveBulletData'])->name('bullet.points.save');
     Route::get('/product-description', fn() => view('product-description'))->name('product.description');
@@ -1065,6 +1069,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-analytics/import', [TemuController::class, 'importTemuAnalytics'])->name('temu.analytics.import');
     Route::get('/temu-analytics/export', [TemuController::class, 'exportTemuAnalytics'])->name('temu.analytics.export');
     Route::get('/temu-analytics/sample', [TemuController::class, 'downloadSample'])->name('temu.analytics.sample');
+    
+    // Temu Tabulator View
+    Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');
+    Route::post('/temu-column-visibility', [TemuController::class, 'saveTemuColumnVisibility']);
+    Route::get('/temu-column-visibility', [TemuController::class, 'getTemuColumnVisibility']);
 
 
     // Advertisement Master view routes

@@ -4216,6 +4216,9 @@ $.ajax({
                 let errorMessages = [];
                 let successCount = 0;
                 
+                // Get CSRF token once
+                const csrfToken = $('meta[name="csrf-token"]').attr('content');
+                
                 // Sequential API calls with delay to avoid rate limits
                 async function pushToAllMarketplaces() {
                     const marketplaces = [
@@ -4243,7 +4246,7 @@ $.ajax({
                                 data: { 
                                     sku: sku, 
                                     price: price,
-                                    _token: '{{ csrf_token() }}'
+                                    _token: csrfToken
                                 }
                             });
                             
@@ -4307,10 +4310,14 @@ $.ajax({
                     success: function(res) {
                         if (res.success) {
                             console.log('✅ Amazon price updated successfully!');
+                            alert('✅ Amazon price updated successfully!');
+                        } else {
+                            alert('❌ Amazon price update failed');
                         }
                     },
                     error: function(xhr) {
                         const errorMsg = xhr.responseJSON?.error || 'Error updating Amazon price';
+                        console.error('Amazon push error:', xhr);
                         alert('❌ ' + errorMsg);
                     },
                     complete: function() {
@@ -4330,10 +4337,14 @@ $.ajax({
                     success: function(res) {
                         if (res.success) {
                             console.log('✅ eBay price updated successfully!');
+                            alert('✅ eBay price updated successfully!');
+                        } else {
+                            alert('❌ eBay price update failed');
                         }
                     },
                     error: function(xhr) {
                         const errorMsg = xhr.responseJSON?.error || 'Error updating eBay price';
+                        console.error('eBay push error:', xhr);
                         alert('❌ ' + errorMsg);
                     },
                     complete: function() {
@@ -4354,10 +4365,14 @@ $.ajax({
                     success: function(res) {
                         if (res.success) {
                             console.log('✅ eBay2 price updated successfully!');
+                            alert('✅ eBay2 price updated successfully!');
+                        } else {
+                            alert('❌ eBay2 price update failed');
                         }
                     },
                     error: function(xhr) {
                         const errorMsg = xhr.responseJSON?.error || 'Error updating eBay2 price';
+                        console.error('eBay2 push error:', xhr);
                         alert('❌ ' + errorMsg);
                     },
                     complete: function() {
@@ -4377,10 +4392,14 @@ $.ajax({
                     success: function(res) {
                         if (res.success) {
                             console.log('✅ eBay3 price updated successfully!');
+                            alert('✅ eBay3 price updated successfully!');
+                        } else {
+                            alert('❌ eBay3 price update failed');
                         }
                     },
                     error: function(xhr) {
                         const errorMsg = xhr.responseJSON?.error || 'Error updating eBay3 price';
+                        console.error('eBay3 push error:', xhr);
                         alert('❌ ' + errorMsg);
                     },
                     complete: function() {
@@ -4401,10 +4420,14 @@ $.ajax({
                     success: function(res) {
                         if (res.success) {
                             console.log('✅ Shopify price updated successfully!');
+                            alert('✅ Shopify price updated successfully!');
+                        } else {
+                            alert('❌ Shopify price update failed');
                         }
                     },
                     error: function(xhr) {
                         const errorMsg = xhr.responseJSON?.error || 'Error updating Shopify price';
+                        console.error('Shopify push error:', xhr);
                         alert('❌ ' + errorMsg);
                     },
                     complete: function() {
@@ -4423,10 +4446,14 @@ $.ajax({
                     success: function(res) {
                         if (res.success) {
                             console.log('✅ Temu price updated successfully!');
+                            alert('✅ Temu price updated successfully!');
+                        } else {
+                            alert('❌ Temu price update failed');
                         }
                     },
                     error: function(xhr) {
                         const errorMsg = xhr.responseJSON?.error || 'Error updating Temu price';
+                        console.error('Temu push error:', xhr);
                         alert('❌ ' + errorMsg);
                     },
                     complete: function() {
