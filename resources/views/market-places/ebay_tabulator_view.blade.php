@@ -1587,11 +1587,11 @@
                         formatter: function(cell) {
                             const sku = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
+                            // const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
                             
-                            if (isParent) {
-                                return `<span>${sku}</span>`;
-                            }
+                            // if (isParent) {
+                            //     return `<span>${sku}</span>`;
+                            // }
                             
                             let html = `<span>${sku}</span>`;
                             
@@ -1778,9 +1778,9 @@
                             const isParent = rowData['Parent'] && rowData['Parent'].startsWith('PARENT');
                             
                             // Don't show dropdown for parent rows
-                            if (isParent) {
-                                return '';
-                            }
+                            // if (isParent) {
+                            //     return '';
+                            // }
                             
                             // Get value and handle null/undefined/empty cases
                             let value = cell.getValue();
@@ -1948,8 +1948,8 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
-                            
-                            if (isParent) return '';
+                            // 
+                            // if (isParent) return '';
                             
                             const sku = rowData['(Child) sku'];
                             const isSelected = selectedSkus.has(sku);
@@ -2106,7 +2106,7 @@
                             const rowData = cell.getRow().getData();
                             const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
                             
-                            if (isParent) return '';
+                            // if (isParent) return '';
 
                             const sku = rowData['(Child) sku'];
                             const sprice = parseFloat(rowData.SPRICE) || 0;
