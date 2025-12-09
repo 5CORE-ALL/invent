@@ -195,7 +195,7 @@ class AutoUpdateAmazonPtBids extends Command
                 }
             }
             
-            $this->info("Amazon PT Bids Update", [
+            Log::info("Amazon PT Bids Update", [
                 'total_campaigns' => count($campaignIds),
                 'campaigns' => $campaignDetails,
                 'campaign_ids' => $campaignIds,
@@ -204,6 +204,7 @@ class AutoUpdateAmazonPtBids extends Command
                 'last_error' => $lastError,
                 'attempts' => $attempt
             ]);
+            $this->info("Detailed PT update log captured. Check laravel.log for payload/context.");
 
             if ($result && is_array($result) && ($result['status'] ?? 0) == 200) {
                 $this->info("✓ Command completed successfully");
