@@ -266,7 +266,8 @@
 
                                 <div class="mb-3">
                                     <label for="from_adjust_qty" class="form-label fw-bold">Qty Adj</label>
-                                    <input type="number" name="from_adjust_qty" class="form-control">
+                                    <input type="number" id="from_adjust_qty" name="from_adjust_qty" class="form-control" min="1" required>
+                                    <small class="text-muted" id="from_qty_hint"></small>
                                 </div>
 
                                 <!-- <div class="mb-3 text-center">
@@ -313,7 +314,7 @@
 
                                 <div class="mb-3">
                                     <label for="to_adjust_qty" class="form-label fw-bold">Qty Adj</label>
-                                    <input type="number" name="to_adjust_qty" class="form-control">
+                                    <input type="number" id="to_adjust_qty" name="to_adjust_qty" class="form-control" min="1" required>
                                 </div>
 
                                 <div class="mt-4 text-end">
@@ -534,16 +535,42 @@
 
                 $('#stockBalanceForm').on('submit', function (e) {
                     e.preventDefault();
+                    
+                    // Validate inventory before submitting
+                    const fromQty = parseInt($('#from_adjust_qty').val()) || 0;
+                    const availableQty = parseInt($('#from_available_qty').val()) || 0;
+                    const fromSku = $('#from_sku option:selected').text();
+                    
+                    if (fromQty > availableQty) {
+                        showLargeErrorAlert(
+                            'Insufficient Inventory',
+                            `Cannot transfer <strong>${fromQty} units</strong> from SKU: <strong>${fromSku}</strong><br><br>` +
+                            `<strong>Available Quantity:</strong> ${availableQty} units<br>` +
+                            `<strong>Requested Transfer:</strong> ${fromQty} units<br><br>` +
+                            `You need <strong>${fromQty - availableQty} more units</strong> to complete this transfer.<br><br>` +
+                            `<em>Please adjust the quantity or select a different SKU.</em>`
+                        );
+                        return false;
+                    }
+                    
+                    if (fromQty <= 0) {
+                        showLargeErrorAlert(
+                            'Invalid Quantity',
+                            'Transfer quantity must be greater than 0.'
+                        );
+                        return false;
+                    }
 
                     const formData = $(this).serialize();
                     const $submitBtn = $(this).find('button[type="submit"]');
                     const originalText = $submitBtn.text();
-                    $submitBtn.prop('disabled', true).text('Processing...');
+                    $submitBtn.prop('disabled', true).text('Processing (This may take 30-60 seconds)...');
 
                     $.ajax({
                         url: '{{ route("stock.balance.store") }}',
                         method: 'POST',
                         data: formData,
+                        timeout: 120000, // 120 second timeout (2 minutes)
                         success: function (response) {
                             $submitBtn.prop('disabled', false).text(originalText);
                             $('#addWarehouseModal').modal('hide');
@@ -568,15 +595,32 @@
                                 // Handle validation errors
                                 const errors = xhr.responseJSON.errors;
                                 errorMessage = Object.values(errors).flat().join('<br>');
+                            } else if (xhr.status === 400) {
+                                // Insufficient inventory or bad request
+                                errorMessage = xhr.responseJSON?.error || 'Invalid Request';
+                                errorDetails = xhr.responseJSON?.details || 'The request could not be processed. Please check your input and try again.';
                             } else if (xhr.status === 429) {
-                                errorMessage = 'Shopify API rate limit exceeded!';
-                                errorDetails = 'Too many requests. Please wait 5-10 seconds and try again.';
+                                errorMessage = 'Shopify API Rate Limit Exceeded!';
+                                errorDetails = 'Too many requests to Shopify. Please wait 10-15 seconds and try again.';
+                            } else if (xhr.status === 504 || xhr.status === 524) {
+                                errorMessage = 'Request Timeout';
+                                errorDetails = 'The operation took too long to complete. This could be due to:<br>' +
+                                              '• Shopify API being slow<br>' +
+                                              '• Network connectivity issues<br><br>' +
+                                              'Please wait a moment and try again. If the problem persists, contact support.';
                             } else if (xhr.status === 500) {
                                 errorMessage = 'Server Error';
-                                errorDetails = xhr.responseJSON?.message || 'Please check the logs or contact support.';
+                                errorDetails = xhr.responseJSON?.message || xhr.responseJSON?.details || 'An unexpected server error occurred. Please check the logs or contact support.';
                             } else if (xhr.status === 0) {
-                                errorMessage = 'Connection Failed';
-                                errorDetails = 'Unable to connect to the server. Please check your internet connection.';
+                                errorMessage = 'Connection Failed or Request Timeout';
+                                errorDetails = 'Unable to complete the request. This could be because:<br>' +
+                                              '• The operation is taking longer than expected (try again)<br>' +
+                                              '• Network connection was lost<br>' +
+                                              '• Server is not responding<br><br>' +
+                                              'Please refresh the page and try again.';
+                            } else if (xhr.statusText === 'timeout') {
+                                errorMessage = 'Request Timeout';
+                                errorDetails = 'The stock transfer operation took too long (>2 minutes). Please try again or contact support if this persists.';
                             }
                             
                             // Add SKU info to error details
@@ -638,7 +682,30 @@
                     console.log('dilll',fromDil);
                     
                     $('#from_dil_percent').val(fromDil);
+                    
+                    // Show available quantity hint
+                    $('#from_qty_hint').text(`Available: ${availableQty || 0} units`).css('color', '#6c757d');
 
+                });
+
+                // Validate quantity when user enters it
+                $('#from_adjust_qty').on('input', function() {
+                    const requestedQty = parseInt($(this).val()) || 0;
+                    const availableQty = parseInt($('#from_available_qty').val()) || 0;
+                    const hint = $('#from_qty_hint');
+                    
+                    if (requestedQty > availableQty) {
+                        hint.text(`⚠️ Not enough inventory! Available: ${availableQty} units, Requested: ${requestedQty} units`)
+                            .css('color', '#dc3545');
+                        $(this).addClass('is-invalid');
+                    } else if (requestedQty > 0) {
+                        hint.text(`✓ Valid quantity (${availableQty - requestedQty} units will remain)`)
+                            .css('color', '#28a745');
+                        $(this).removeClass('is-invalid');
+                    } else {
+                        hint.text(`Available: ${availableQty} units`).css('color', '#6c757d');
+                        $(this).removeClass('is-invalid');
+                    }
                 });
 
 
