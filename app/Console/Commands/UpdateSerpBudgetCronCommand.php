@@ -1,0 +1,228 @@
+<?php
+
+namespace App\Console\Commands;
+
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use App\Services\GoogleAdsSbidService;
+use App\Models\ProductMaster;
+use App\Models\GoogleAdsCampaign;
+use App\Models\ShopifySku;
+
+class UpdateSerpBudgetCronCommand extends Command
+{
+    protected $signature = 'budget:update-serp';
+    protected $description = 'Update budget for SERP (SEARCH) campaigns based on ACOS (L30 data)';
+
+    protected $sbidService;
+
+    public function __construct(GoogleAdsSbidService $sbidService)
+    {
+        parent::__construct();
+        $this->sbidService = $sbidService;
+    }
+
+    public function handle()
+    {
+        $this->info('Starting budget update cron for SERP (SEARCH) campaigns (ACOS-based)...');
+
+        $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+        $this->info("Customer ID: {$customerId}");
+
+        // Calculate date ranges - same logic as GoogleAdsDateRangeTrait
+        $today = now();
+        $currentHour = (int) $today->format('H');
+        $endDateDaysBack = ($currentHour < 12) ? 2 : 1;
+        $endDate = $today->copy()->subDays($endDateDaysBack)->format('Y-m-d');
+        
+        $dateRanges = [
+            'L30' => [
+                // L30 = last 30 days including end date (end date - 29 days = 30 days total)
+                'start' => $today->copy()->subDays($endDateDaysBack + 29)->format('Y-m-d'),
+                'end' => $endDate
+            ],
+        ];
+
+        $this->info("Date range - L30: {$dateRanges['L30']['start']} to {$dateRanges['L30']['end']}");
+
+        // Fetch product masters
+        $productMasters = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        // Get all SKUs to fetch Shopify inventory data
+        $skus = $productMasters->pluck('sku')->toArray();
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $this->info("Found " . $productMasters->count() . " product masters");
+
+        // Fetch SEARCH campaigns data within L30 range
+        $googleCampaigns = GoogleAdsCampaign::select(
+                'campaign_id',
+                'campaign_name',
+                'campaign_status',
+                'budget_id',
+                'budget_amount_micros',
+                'date',
+                'metrics_cost_micros',
+                'ga4_ad_sales'
+            )
+            ->where('advertising_channel_type', 'SEARCH')
+            ->where('campaign_status', 'ENABLED')
+            ->whereBetween('date', [$dateRanges['L30']['start'], $dateRanges['L30']['end']])
+            ->get();
+
+        $this->info("Found " . $googleCampaigns->count() . " SERP (SEARCH) campaigns in L30 range");
+
+        $campaignUpdates = []; 
+
+        foreach ($productMasters as $pm) {
+            $sku = strtoupper(trim($pm->sku));
+
+            // Use original SKU for shopifyData lookup
+            $shopify = $shopifyData[$pm->sku] ?? null;
+            if ($shopify && $shopify->inv <= 0) {
+                continue; // Skip zero inventory
+            }
+
+            // Use improved matching logic for SEARCH campaigns
+            $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
+                $campaign = strtoupper(trim($c->campaign_name));
+                $skuTrimmed = strtoupper(trim($sku));
+                
+                // Check if campaign ends with ' SEARCH.'
+                if (!str_ends_with($campaign, ' SEARCH.')) {
+                    return false;
+                }
+                
+                // Remove ' SEARCH.' suffix for matching
+                $campaignBase = str_replace(' SEARCH.', '', $campaign);
+                
+                // Check if SKU is in comma-separated list
+                $parts = array_map('trim', explode(',', $campaignBase));
+                $exactMatch = in_array($skuTrimmed, $parts);
+                
+                // If not in list, check if campaign base exactly equals SKU
+                if (!$exactMatch) {
+                    $exactMatch = $campaignBase === $skuTrimmed;
+                }
+                
+                return $exactMatch && $c->campaign_status === 'ENABLED';
+            });
+
+            if (!$matchedCampaign) {
+                continue;
+            }
+
+            $campaignId = $matchedCampaign->campaign_id;
+            $budgetId = $matchedCampaign->budget_id;
+            
+            if (!$budgetId) {
+                $this->line("Skipping campaign {$campaignId} (SKU: {$pm->sku}) - No budget ID");
+                continue;
+            }
+
+            // Aggregate metrics for L30 range
+            $campaignRanges = $googleCampaigns->filter(function ($c) use ($sku, $dateRanges) {
+                $campaign = strtoupper(trim($c->campaign_name));
+                $skuTrimmed = strtoupper(trim($sku));
+                
+                // Handle SEARCH campaigns (end with " SEARCH.")
+                $isSearchCampaign = str_ends_with($campaign, ' SEARCH.');
+                if ($isSearchCampaign) {
+                    // Remove ' SEARCH.' suffix for matching
+                    $campaignBase = str_replace(' SEARCH.', '', $campaign);
+                    
+                    // Check if SKU is in comma-separated list
+                    $parts = array_map('trim', explode(',', $campaignBase));
+                    $exactMatch = in_array($skuTrimmed, $parts);
+                    
+                    // If not in list, check if campaign base exactly equals SKU
+                    if (!$exactMatch) {
+                        $exactMatch = $campaignBase === $skuTrimmed;
+                    }
+                } else {
+                    $exactMatch = false;
+                }
+                
+                $matchesCampaign = $exactMatch;
+                $matchesStatus = $c->campaign_status === 'ENABLED';
+                
+                $campaignDate = is_string($c->date) ? $c->date : (is_object($c->date) && method_exists($c->date, 'format') ? $c->date->format('Y-m-d') : (string)$c->date);
+                $matchesDate = $campaignDate >= $dateRanges['L30']['start'] && $campaignDate <= $dateRanges['L30']['end'];
+                
+                return $matchesCampaign && $matchesStatus && $matchesDate;
+            });
+
+            $totalSpend = $campaignRanges->sum('metrics_cost_micros') / 1000000; // Convert to dollars
+            $totalSales = $campaignRanges->sum('ga4_ad_sales'); // Already in dollars
+            
+            // Calculate ACOS: (Spend / Sales) * 100
+            $acos = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
+            
+            // Get current budget
+            $currentBudget = $matchedCampaign->budget_amount_micros ? $matchedCampaign->budget_amount_micros / 1000000 : 0;
+            
+            if ($currentBudget <= 0) {
+                $this->line("Skipping campaign {$campaignId} (SKU: {$pm->sku}) - Invalid budget");
+                continue;
+            }
+
+            // Determine budget multiplier based on ACOS
+            // ACOS < 10% → multiplier 5
+            // ACOS 10-20% → multiplier 4
+            // ACOS 20-30% → multiplier 3
+            // ACOS 30-40% → multiplier 2
+            // ACOS > 40% → multiplier 1
+            $multiplier = 1;
+            if ($acos < 10) {
+                $multiplier = 5;
+            } elseif ($acos >= 10 && $acos < 20) {
+                $multiplier = 4;
+            } elseif ($acos >= 20 && $acos < 30) {
+                $multiplier = 3;
+            } elseif ($acos >= 30 && $acos < 40) {
+                $multiplier = 2;
+            } else {
+                $multiplier = 1;
+            }
+            
+            $newBudget = $currentBudget * $multiplier;
+            
+            // Only update if budget changed
+            if (abs($newBudget - $currentBudget) < 0.01) {
+                continue; // Budget unchanged
+            }
+            
+            if (!isset($campaignUpdates[$budgetId])) {
+                try {
+                    $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
+                    $this->sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
+                    $campaignUpdates[$budgetId] = true;
+                    $this->info("Updated SERP campaign {$campaignId} (SKU: {$pm->sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%, Multiplier={$multiplier})");
+                } catch (\Exception $e) {
+                    $this->error("Failed to update SERP campaign budget {$campaignId}: " . $e->getMessage());
+                    Log::error("SERP Budget Update Failed", [
+                        'campaign_id' => $campaignId,
+                        'budget_id' => $budgetId,
+                        'sku' => $pm->sku,
+                        'current_budget' => $currentBudget,
+                        'new_budget' => $newBudget,
+                        'acos' => $acos,
+                        'multiplier' => $multiplier,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+        }
+
+        $processedCount = count($campaignUpdates);
+        $this->info("Done. Processed: {$processedCount} unique SERP campaign budgets.");
+        Log::info('SERP Budget Cron Run', ['processed' => $processedCount]);
+
+        return 0;
+    }
+}
+

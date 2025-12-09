@@ -697,8 +697,9 @@
                     if(rowEl && rowEl.offsetParent !== null){
                         
                         var rowData = row.getData();
-                        var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
-                        var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
+                        // Fixed: Use correct field names (cpc_L1, cpc_L7) instead of lowercase versions
+                        var l1_cpc = parseFloat(rowData.cpc_L1) || 0;
+                        var l7_cpc = parseFloat(rowData.cpc_L7) || 0;
 
                         var sbid = 0;
                         if (l1_cpc === 0 && l7_cpc === 0) {

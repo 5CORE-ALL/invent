@@ -61,29 +61,27 @@ class FetchGoogleAdsCampaigns extends Command
 
             $this->info("Date range: {$startDate} to {$endDate}");
 
-            // Build GAQL query
+            // Step 1: Fetch all active campaigns first (without date/metrics filter)
+            // This ensures we capture campaigns even if they have no metrics
+            $this->info("Step 1: Fetching all active campaigns...");
+            $allActiveCampaigns = $this->fetchAllActiveCampaigns($customerId);
+            $this->info("Found " . count($allActiveCampaigns) . " active campaigns");
+
+            // Step 2: Fetch metrics for the date range
+            $this->info("Step 2: Fetching metrics for date range...");
             $query = $this->buildQuery($startDate, $endDate);
-
-            $this->info("Executing query...");
-            
-            // Fetch data from Google Ads API
             $results = $this->googleAdsService->runQuery($customerId, $query);
+            $this->info("Found " . count($results) . " records with metrics");
 
-            if (empty($results)) {
-                $this->warn('No data returned from Google Ads API');
-                Log::warning('No data returned from Google Ads API');
-                return 0;
-            }
-
-            $this->info("Found " . count($results) . " records");
-            
+            // Step 3: Process metrics data
             $insertedCount = 0;
             $updatedCount = 0;
+            $processedCampaignIds = [];
 
-            // Process and save data
             foreach ($results as $row) {
                 try {
                     $data = $this->prepareData($row);
+                    $processedCampaignIds[$data['campaign_id']] = true;
                     
                     // Update or create record
                     $campaign = GoogleAdsCampaign::updateOrCreate(
@@ -109,8 +107,53 @@ class FetchGoogleAdsCampaigns extends Command
                 }
             }
 
-            $this->info("Successfully inserted: {$insertedCount}, updated: {$updatedCount} records");
-            Log::info("Google Ads campaign data fetch completed. Inserted: {$insertedCount}, Updated: {$updatedCount}");
+            // Step 4: For active campaigns without metrics, create records with zero metrics
+            $zeroMetricsCount = 0;
+            foreach ($allActiveCampaigns as $campaignData) {
+                $campaign = $campaignData['campaign'] ?? [];
+                $campaignId = (string) ($campaign['id'] ?? '');
+                
+                if (empty($campaignId)) {
+                    continue;
+                }
+                
+                // Skip if we already processed this campaign (it has metrics)
+                if (isset($processedCampaignIds[$campaignId])) {
+                    continue;
+                }
+
+                // Create records with zero metrics for each date in range
+                $currentDate = Carbon::parse($startDate);
+                $endDateObj = Carbon::parse($endDate);
+                
+                while ($currentDate->lte($endDateObj)) {
+                    try {
+                        $data = $this->prepareDataFromCampaign($campaignData, $currentDate->format('Y-m-d'));
+                        
+                        $campaign = GoogleAdsCampaign::updateOrCreate(
+                            [
+                                'campaign_id' => $data['campaign_id'],
+                                'date' => $data['date']
+                            ],
+                            $data
+                        );
+
+                        if ($campaign->wasRecentlyCreated) {
+                            $zeroMetricsCount++;
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Error creating zero-metrics record: ' . $e->getMessage());
+                    }
+                    
+                    $currentDate->addDay();
+                }
+            }
+
+            $this->info("Successfully inserted: {$insertedCount}, updated: {$updatedCount} records with metrics");
+            if ($zeroMetricsCount > 0) {
+                $this->info("Created {$zeroMetricsCount} records for campaigns with zero metrics");
+            }
+            Log::info("Google Ads campaign data fetch completed. Inserted: {$insertedCount}, Updated: {$updatedCount}, Zero-metrics: {$zeroMetricsCount}");
 
             return 0;
 
@@ -120,6 +163,56 @@ class FetchGoogleAdsCampaigns extends Command
                 'trace' => $e->getTraceAsString()
             ]);
             return 1;
+        }
+    }
+
+    /**
+     * Fetch all active campaigns (without metrics filter)
+     */
+    private function fetchAllActiveCampaigns($customerId)
+    {
+        $query = "
+            SELECT
+                campaign.id,
+                campaign.name,
+                campaign.status,
+                campaign.primary_status,
+                campaign.primary_status_reasons,
+                campaign.serving_status,
+                campaign.advertising_channel_type,
+                campaign.experiment_type,
+                campaign.bidding_strategy_type,
+                campaign.payment_mode,
+                campaign.start_date,
+                campaign.end_date,
+                campaign.network_settings.target_google_search,
+                campaign.network_settings.target_search_network,
+                campaign.network_settings.target_content_network,
+                campaign.network_settings.target_partner_search_network,
+                campaign.shopping_setting.merchant_id,
+                campaign.shopping_setting.feed_label,
+                campaign.shopping_setting.campaign_priority,
+                campaign.geo_target_type_setting.positive_geo_target_type,
+                campaign.geo_target_type_setting.negative_geo_target_type,
+                campaign.manual_cpc.enhanced_cpc_enabled,
+                campaign_budget.id,
+                campaign_budget.name,
+                campaign_budget.status,
+                campaign_budget.amount_micros,
+                campaign_budget.total_amount_micros,
+                campaign_budget.delivery_method,
+                campaign_budget.period,
+                campaign_budget.explicitly_shared,
+                campaign_budget.has_recommended_budget
+            FROM campaign
+            WHERE campaign.status = 'ENABLED'
+        ";
+
+        try {
+            return $this->googleAdsService->runQuery($customerId, $query);
+        } catch (\Exception $e) {
+            Log::error('Error fetching active campaigns: ' . $e->getMessage());
+            return [];
         }
     }
 
@@ -206,6 +299,12 @@ class FetchGoogleAdsCampaigns extends Command
         $metrics = $row['metrics'] ?? [];
         $segments = $row['segments'] ?? [];
 
+        // Safely access nested arrays to prevent null pointer errors
+        $networkSettings = $campaign['networkSettings'] ?? [];
+        $shoppingSetting = $campaign['shoppingSetting'] ?? [];
+        $geoTargetTypeSetting = $campaign['geoTargetTypeSetting'] ?? [];
+        $manualCpc = $campaign['manualCpc'] ?? [];
+
         return [
             'campaign_id' => (string) ($campaign['id'] ?? ''),
             'campaign_name' => $campaign['name'] ?? null,
@@ -222,23 +321,23 @@ class FetchGoogleAdsCampaigns extends Command
             'start_date' => $campaign['startDate'] ?? null,
             'end_date' => $campaign['endDate'] ?? null,
             
-            // Network Settings
-            'target_google_search' => (bool) ($campaign['networkSettings']['targetGoogleSearch'] ?? false),
-            'target_search_network' => (bool) ($campaign['networkSettings']['targetSearchNetwork'] ?? false),
-            'target_content_network' => (bool) ($campaign['networkSettings']['targetContentNetwork'] ?? false),
-            'target_partner_search_network' => (bool) ($campaign['networkSettings']['targetPartnerSearchNetwork'] ?? false),
+            // Network Settings - Fixed: Safe nested array access
+            'target_google_search' => (bool) ($networkSettings['targetGoogleSearch'] ?? false),
+            'target_search_network' => (bool) ($networkSettings['targetSearchNetwork'] ?? false),
+            'target_content_network' => (bool) ($networkSettings['targetContentNetwork'] ?? false),
+            'target_partner_search_network' => (bool) ($networkSettings['targetPartnerSearchNetwork'] ?? false),
             
-            // Shopping Settings
-            'shopping_merchant_id' => $campaign['shoppingSetting']['merchantId'] ?? null,
-            'shopping_feed_label' => $campaign['shoppingSetting']['feedLabel'] ?? null,
-            'shopping_campaign_priority' => $campaign['shoppingSetting']['campaignPriority'] ?? null,
+            // Shopping Settings - Fixed: Safe nested array access
+            'shopping_merchant_id' => $shoppingSetting['merchantId'] ?? null,
+            'shopping_feed_label' => $shoppingSetting['feedLabel'] ?? null,
+            'shopping_campaign_priority' => $shoppingSetting['campaignPriority'] ?? null,
             
-            // Geo Target Settings
-            'positive_geo_target_type' => $campaign['geoTargetTypeSetting']['positiveGeoTargetType'] ?? null,
-            'negative_geo_target_type' => $campaign['geoTargetTypeSetting']['negativeGeoTargetType'] ?? null,
+            // Geo Target Settings - Fixed: Safe nested array access
+            'positive_geo_target_type' => $geoTargetTypeSetting['positiveGeoTargetType'] ?? null,
+            'negative_geo_target_type' => $geoTargetTypeSetting['negativeGeoTargetType'] ?? null,
             
-            // Manual CPC
-            'manual_cpc_enhanced_enabled' => (bool) ($campaign['manualCpc']['enhancedCpcEnabled'] ?? false),
+            // Manual CPC - Fixed: Safe nested array access
+            'manual_cpc_enhanced_enabled' => (bool) ($manualCpc['enhancedCpcEnabled'] ?? false),
             
             // Budget Information
             'budget_id' => (string) ($campaignBudget['id'] ?? ''),
@@ -281,8 +380,111 @@ class FetchGoogleAdsCampaigns extends Command
             'metrics_video_quartile_p100_rate' => $metrics['videoQuartileP100Rate'] ?? 0,
             'metrics_video_view_rate' => $metrics['videoViewRate'] ?? 0,
             
+            // GA4 Metrics - Note: These may need to come from GA4 API separately
+            // Google Ads API doesn't directly provide GA4 metrics, they need separate integration
+            'ga4_sold_units' => 0, // TODO: Fetch from GA4 API or Google Ads conversion tracking
+            'ga4_ad_sales' => 0,   // TODO: Fetch from GA4 API or Google Ads conversion tracking
+            
             // Date
             'date' => $segments['date'] ?? Carbon::now()->format('Y-m-d'),
+        ];
+    }
+
+    /**
+     * Prepare data from campaign object (for zero-metrics campaigns)
+     */
+    private function prepareDataFromCampaign($campaignData, $date)
+    {
+        $campaign = $campaignData['campaign'] ?? [];
+        $campaignBudget = $campaignData['campaignBudget'] ?? [];
+
+        // Safely access nested arrays
+        $networkSettings = $campaign['networkSettings'] ?? [];
+        $shoppingSetting = $campaign['shoppingSetting'] ?? [];
+        $geoTargetTypeSetting = $campaign['geoTargetTypeSetting'] ?? [];
+        $manualCpc = $campaign['manualCpc'] ?? [];
+
+        return [
+            'campaign_id' => (string) ($campaign['id'] ?? ''),
+            'campaign_name' => $campaign['name'] ?? null,
+            'campaign_status' => $campaign['status'] ?? null,
+            'campaign_primary_status' => $campaign['primaryStatus'] ?? null,
+            'campaign_primary_status_reasons' => is_array($campaign['primaryStatusReasons'] ?? null) 
+                ? implode(', ', $campaign['primaryStatusReasons']) 
+                : ($campaign['primaryStatusReasons'] ?? null),
+            'campaign_serving_status' => $campaign['servingStatus'] ?? null,
+            'advertising_channel_type' => $campaign['advertisingChannelType'] ?? null,
+            'experiment_type' => $campaign['experimentType'] ?? null,
+            'bidding_strategy_type' => $campaign['biddingStrategyType'] ?? null,
+            'payment_mode' => $campaign['paymentMode'] ?? null,
+            'start_date' => $campaign['startDate'] ?? null,
+            'end_date' => $campaign['endDate'] ?? null,
+            
+            // Network Settings
+            'target_google_search' => (bool) ($networkSettings['targetGoogleSearch'] ?? false),
+            'target_search_network' => (bool) ($networkSettings['targetSearchNetwork'] ?? false),
+            'target_content_network' => (bool) ($networkSettings['targetContentNetwork'] ?? false),
+            'target_partner_search_network' => (bool) ($networkSettings['targetPartnerSearchNetwork'] ?? false),
+            
+            // Shopping Settings
+            'shopping_merchant_id' => $shoppingSetting['merchantId'] ?? null,
+            'shopping_feed_label' => $shoppingSetting['feedLabel'] ?? null,
+            'shopping_campaign_priority' => $shoppingSetting['campaignPriority'] ?? null,
+            
+            // Geo Target Settings
+            'positive_geo_target_type' => $geoTargetTypeSetting['positiveGeoTargetType'] ?? null,
+            'negative_geo_target_type' => $geoTargetTypeSetting['negativeGeoTargetType'] ?? null,
+            
+            // Manual CPC
+            'manual_cpc_enhanced_enabled' => (bool) ($manualCpc['enhancedCpcEnabled'] ?? false),
+            
+            // Budget Information
+            'budget_id' => (string) ($campaignBudget['id'] ?? ''),
+            'budget_name' => $campaignBudget['name'] ?? null,
+            'budget_status' => $campaignBudget['status'] ?? null,
+            'budget_amount_micros' => $campaignBudget['amountMicros'] ?? null,
+            'budget_total_amount_micros' => $campaignBudget['totalAmountMicros'] ?? null,
+            'budget_delivery_method' => $campaignBudget['deliveryMethod'] ?? null,
+            'budget_period' => $campaignBudget['period'] ?? null,
+            'budget_explicitly_shared' => (bool) ($campaignBudget['explicitlyShared'] ?? false),
+            'budget_has_recommended_budget' => (bool) ($campaignBudget['hasRecommendedBudget'] ?? false),
+            
+            // All metrics set to zero (no activity)
+            'metrics_impressions' => 0,
+            'metrics_clicks' => 0,
+            'metrics_ctr' => 0,
+            'metrics_average_cpc' => 0,
+            'metrics_average_cpm' => 0,
+            'metrics_average_cpe' => 0,
+            'metrics_average_cpv' => 0,
+            'metrics_cost_micros' => 0,
+            'metrics_interactions' => 0,
+            'metrics_interaction_rate' => 0,
+            'metrics_all_conversions' => 0,
+            'metrics_all_conversions_value' => 0,
+            'metrics_conversions' => 0,
+            'metrics_conversions_value' => 0,
+            'metrics_cost_per_conversion' => 0,
+            'metrics_cost_per_all_conversions' => 0,
+            'metrics_value_per_conversion' => 0,
+            'metrics_value_per_all_conversions' => 0,
+            'metrics_search_absolute_top_impression_share' => 0,
+            'metrics_search_impression_share' => 0,
+            'metrics_search_rank_lost_impression_share' => 0,
+            'metrics_search_budget_lost_impression_share' => 0,
+            'metrics_video_views' => 0,
+            'metrics_video_quartile_p25_rate' => 0,
+            'metrics_video_quartile_p50_rate' => 0,
+            'metrics_video_quartile_p75_rate' => 0,
+            'metrics_video_quartile_p100_rate' => 0,
+            'metrics_video_view_rate' => 0,
+            
+            // GA4 Metrics
+            'ga4_sold_units' => 0,
+            'ga4_ad_sales' => 0,
+            
+            // Date
+            'date' => $date,
         ];
     }
 }

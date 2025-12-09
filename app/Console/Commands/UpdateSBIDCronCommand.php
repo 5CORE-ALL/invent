@@ -30,16 +30,24 @@ class UpdateSBIDCronCommand extends Command
         $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
         $this->info("Customer ID: {$customerId}");
 
-        // Calculate date ranges
+        // Calculate date ranges - same logic as GoogleAdsDateRangeTrait
+        // Google Ads data is fetched daily at 12 PM via cron
+        // If it's before 12 PM, yesterday's data won't be available yet
         $today = now();
+        $currentHour = (int) $today->format('H');
+        $endDateDaysBack = ($currentHour < 12) ? 2 : 1; // Use 2 days ago if before 12 PM, otherwise yesterday
+        $l1DaysBack = $endDateDaysBack;
+        $endDate = $today->copy()->subDays($endDateDaysBack)->format('Y-m-d');
+        
         $dateRanges = [
             'L1' => [
-                'start' => $today->copy()->subDay(1)->format('Y-m-d'),
-                'end' => $today->copy()->subDay(1)->format('Y-m-d')
+                'start' => $today->copy()->subDays($l1DaysBack)->format('Y-m-d'),
+                'end' => $today->copy()->subDays($l1DaysBack)->format('Y-m-d')
             ],
             'L7' => [
-                'start' => $today->copy()->subDays(7)->format('Y-m-d'),
-                'end' => $today->copy()->subDay(1)->format('Y-m-d')
+                // L7 = last 7 days including end date (end date - 6 days = 7 days total)
+                'start' => $today->copy()->subDays($endDateDaysBack + 6)->format('Y-m-d'),
+                'end' => $endDate
             ],
         ];
 
@@ -58,7 +66,8 @@ class UpdateSBIDCronCommand extends Command
 
         $this->info("Found " . $productMasters->count() . " product masters");
 
-        // Fetch campaigns data within L7 range
+        // Fetch SHOPPING campaigns data within L7 range only
+        // Note: SEARCH campaigns should not be updated via this command
         $googleCampaigns = GoogleAdsCampaign::select(
                 'campaign_id',
                 'campaign_name',
@@ -68,6 +77,7 @@ class UpdateSBIDCronCommand extends Command
                 'metrics_cost_micros',
                 'metrics_clicks'
             )
+            ->where('advertising_channel_type', 'SHOPPING')
             ->where('campaign_status', 'ENABLED')
             ->whereBetween('date', [$dateRanges['L7']['start'], $dateRanges['L7']['end']])
             ->get();
@@ -81,18 +91,30 @@ class UpdateSBIDCronCommand extends Command
         foreach ($productMasters as $pm) {
             $sku = strtoupper(trim($pm->sku));
 
-            // Check inventory - skip if zero inventory
-            $shopify = $shopifyData[$sku] ?? null;
+            // Fixed: Use original SKU for shopifyData lookup (not uppercase)
+            $shopify = $shopifyData[$pm->sku] ?? null;
             if ($shopify && $shopify->inv <= 0) {
-                $this->line("Skipping SKU {$sku} - Zero inventory (inv: {$shopify->inv})");
+                $this->line("Skipping SKU {$pm->sku} - Zero inventory (inv: {$shopify->inv})");
                 continue;
             }
 
-            // Find the latest campaign for this SKU - use exact match
-            $matchedCampaign = $googleCampaigns->filter(function ($c) use ($sku) {
+            // Fixed: Use improved matching logic (same as GoogleAdsController)
+            // Check if SKU is in comma-separated list OR campaign name exactly equals SKU
+            $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
                 $campaign = strtoupper(trim($c->campaign_name));
-                return $campaign === $sku && $c->campaign_status === 'ENABLED';
-            })->sortByDesc('date')->first();
+                $skuTrimmed = strtoupper(trim($sku));
+                
+                // Check if SKU is in comma-separated list
+                $parts = array_map('trim', explode(',', $campaign));
+                $exactMatch = in_array($skuTrimmed, $parts);
+                
+                // If not in list, check if campaign name exactly equals SKU
+                if (!$exactMatch) {
+                    $exactMatch = $campaign === $skuTrimmed;
+                }
+                
+                return $exactMatch && $c->campaign_status === 'ENABLED';
+            });
 
             if (!$matchedCampaign) {
                 continue;
@@ -106,9 +128,22 @@ class UpdateSBIDCronCommand extends Command
             foreach ($ranges as $rangeName) {
                 $campaignRanges = $googleCampaigns->filter(function ($c) use ($sku, $dateRanges, $rangeName) {
                     $campaign = strtoupper(trim($c->campaign_name));
-                    $matchesCampaign = $campaign === $sku; // Use exact match here too
+                    $skuTrimmed = strtoupper(trim($sku));
+                    
+                    // Use improved matching logic (same as above)
+                    $parts = array_map('trim', explode(',', $campaign));
+                    $exactMatch = in_array($skuTrimmed, $parts);
+                    
+                    if (!$exactMatch) {
+                        $exactMatch = $campaign === $skuTrimmed;
+                    }
+                    
+                    $matchesCampaign = $exactMatch;
                     $matchesStatus = $c->campaign_status === 'ENABLED';
-                    $matchesDate = $c->date >= $dateRanges[$rangeName]['start'] && $c->date <= $dateRanges[$rangeName]['end'];
+                    
+                    // Fixed: Handle both string and Carbon date instances for proper comparison
+                    $campaignDate = is_string($c->date) ? $c->date : (is_object($c->date) && method_exists($c->date, 'format') ? $c->date->format('Y-m-d') : (string)$c->date);
+                    $matchesDate = $campaignDate >= $dateRanges[$rangeName]['start'] && $campaignDate <= $dateRanges[$rangeName]['end'];
                     
                     return $matchesCampaign && $matchesStatus && $matchesDate;
                 });
