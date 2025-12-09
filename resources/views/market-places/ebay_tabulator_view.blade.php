@@ -754,29 +754,29 @@
                 }
             });
 
-            // Select all checkbox handler
+            // Select all checkbox handler (matching Amazon approach)
             $(document).on('change', '#select-all-checkbox', function() {
                 const isChecked = $(this).prop('checked');
-                const allData = table.getData('active');
-                const childRows = allData.filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
                 
-                childRows.forEach(row => {
+                // Get all filtered data (excluding parent rows)
+                const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+                
+                // Add or remove all filtered SKUs from the selected set
+                filteredData.forEach(row => {
                     const sku = row['(Child) sku'];
-                    if (isChecked) {
-                        selectedSkus.add(sku);
-                    } else {
-                        selectedSkus.delete(sku);
+                    if (sku) {
+                        if (isChecked) {
+                            selectedSkus.add(sku);
+                        } else {
+                            selectedSkus.delete(sku);
+                        }
                     }
                 });
                 
-                // Update all checkboxes
-                table.getRows().forEach(tableRow => {
-                    const rowData = tableRow.getData();
-                    const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
-                    if (!isParent) {
-                        const checkbox = $(tableRow.getElement()).find('.sku-select-checkbox');
-                        checkbox.prop('checked', isChecked);
-                    }
+                // Update all visible checkboxes
+                $('.sku-select-checkbox').each(function() {
+                    const sku = $(this).data('sku');
+                    $(this).prop('checked', selectedSkus.has(sku));
                 });
                 
                 updateSelectedCount();
@@ -838,12 +838,26 @@
                 $('#discount-input-container').toggle(count > 0);
             }
 
-            // Update select all checkbox state
+            // Update select all checkbox state (matching Amazon approach)
             function updateSelectAllCheckbox() {
-                const allData = table.getData('active');
-                const childRows = allData.filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
-                const allSelected = childRows.length > 0 && childRows.every(row => selectedSkus.has(row['(Child) sku']));
-                $('#select-all-checkbox').prop('checked', allSelected);
+                if (!table) return;
+                
+                // Get all filtered data (excluding parent rows)
+                const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+                
+                if (filteredData.length === 0) {
+                    $('#select-all-checkbox').prop('checked', false);
+                    return;
+                }
+                
+                // Get all filtered SKUs
+                const filteredSkus = new Set(filteredData.map(row => row['(Child) sku']).filter(sku => sku));
+                
+                // Check if all filtered SKUs are selected
+                const allFilteredSelected = filteredSkus.size > 0 && 
+                    Array.from(filteredSkus).every(sku => selectedSkus.has(sku));
+                
+                $('#select-all-checkbox').prop('checked', allFilteredSelected);
             }
 
             // Background retry storage key
@@ -2554,6 +2568,10 @@
                 
                 updateCalcValues();
                 updateSummary();
+                // Update select all checkbox after filter is applied (matching Amazon approach)
+                setTimeout(function() {
+                    updateSelectAllCheckbox();
+                }, 100);
             }
 
             $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter').on('change', function() {
@@ -2760,20 +2778,14 @@
             table.on('dataLoaded', function() {
                 updateCalcValues();
                 updateSummary();
-                // Sync checkboxes with selectedSkus
-                table.getRows().forEach(tableRow => {
-                    const rowData = tableRow.getData();
-                    const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
-                    if (!isParent) {
-                        const checkbox = $(tableRow.getElement()).find('.sku-select-checkbox');
-                        if (checkbox.length) {
-                            checkbox.prop('checked', selectedSkus.has(rowData['(Child) sku']));
-                        }
-                    }
-                });
-                updateSelectAllCheckbox();
-                // Initialize Bootstrap tooltips for dynamically created elements
+                // Refresh checkboxes to reflect selectedSkus set (matching Amazon approach)
                 setTimeout(function() {
+                    $('.sku-select-checkbox').each(function() {
+                        const sku = $(this).data('sku');
+                        $(this).prop('checked', selectedSkus.has(sku));
+                    });
+                    updateSelectAllCheckbox();
+                    // Initialize Bootstrap tooltips for dynamically created elements
                     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
                     tooltipTriggerList.forEach(function (tooltipTriggerEl) {
                         new bootstrap.Tooltip(tooltipTriggerEl);
@@ -2781,9 +2793,16 @@
                 }, 100);
             });
 
-            // Also initialize tooltips when table is rendered
+            // Also initialize tooltips when table is rendered (matching Amazon approach)
             table.on('renderComplete', function() {
                 setTimeout(function() {
+                    // Refresh checkboxes to reflect selectedSkus set
+                    $('.sku-select-checkbox').each(function() {
+                        const sku = $(this).data('sku');
+                        $(this).prop('checked', selectedSkus.has(sku));
+                    });
+                    updateSelectAllCheckbox();
+                    // Initialize Bootstrap tooltips for dynamically created elements
                     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
                     tooltipTriggerList.forEach(function (tooltipTriggerEl) {
                         new bootstrap.Tooltip(tooltipTriggerEl);
