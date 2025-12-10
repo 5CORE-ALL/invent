@@ -694,6 +694,12 @@ class FbaDataController extends Controller
          }
 
          $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
+         
+         // Use same data sources as analytics for PFT/ROI/SPFT/SROI calculations
+         $LP_FOR_PFT = $product ? floatval($product->Values['lp'] ?? 0) : 0; // Match analytics: direct from product
+         $FBA_SHIP_FOR_PFT = $fbaReportsInfo ? floatval($fbaReportsInfo->fulfillment_fee ?? 0) : 0; // Match analytics: simple fulfillment fee
+         
+         // Keep enhanced calculations for other metrics (GPFT, GROI, etc.)
          $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
          $FBA_SHIP = $this->fbaManualDataService->calculateFbaShipCalculation(
             $fba->seller_sku,
@@ -708,37 +714,19 @@ class FbaDataController extends Controller
          }
 
          $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
-         // --- Calculate all profit & ROI metrics ---
-
-         $sgpft = ($S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $S_PRICE : 0;
-
-         $pft = ($PRICE > 0) ? (($PRICE * 0.66) - $LP - $FBA_SHIP) / $PRICE : 0;
-
-         // SROI: Calculate ROI percentage first, then subtract TCOS percentage
-         $sroiBase = ($LP > 0 && $S_PRICE > 0) ? (($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP) / $LP) * 100 : 0;
-         $sroi = $sroiBase - $tcosPercentage;
+         // --- Calculate all profit & ROI metrics (same as analytics) ---
          
-         $sgroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)  / $LP : 0;
-
-
+         // PFT and ROI calculations matching analytics exactly (using same LP and FBA_SHIP sources)
+         $pft = ($PRICE > 0) ? (($PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $PRICE : 0;
+         $roi = ($LP_FOR_PFT > 0) ? (($PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
+         
+         // SPFT and SROI calculations matching analytics exactly (using same LP and FBA_SHIP sources)
+         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $S_PRICE : 0;
+         $sroi = ($LP_FOR_PFT > 0) ? (($S_PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
 
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
-         // Calculate GPFT%
-
-
-
-         $roi = 0;
-         if ($LP > 0) {
-            $roi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $LP;
-         }
-
-         $spft = 0;
-         if ($S_PRICE > 0) {
-            $spft = ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $S_PRICE;
-         }
-
-
+         // Keep GPFT and GROI calculations with commission for backward compatibility
          $gpft = 0;
          if ($PRICE > 0) {
             $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
@@ -748,6 +736,10 @@ class FbaDataController extends Controller
          if ($LP > 0) {
             $groi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $LP;
          }
+
+         // Keep SGPFT and SGROI calculations with commission for backward compatibility
+         $sgpft = ($S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $S_PRICE : 0;
+         $sgroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)  / $LP : 0;
 
          $avgprice = $overallAvgPrice;
 
@@ -760,10 +752,10 @@ class FbaDataController extends Controller
          $gpftPercentage = round($gpft * 100);
          $sgpftPercentage = round($sgpft * 100);
          $groiPercentage = round($groi * 100);
-         $pftPercentage = round($pft * 100);
-         $roiPercentage = round($roi * 100);
-         $spftPercentage = round($spft * 100);
-         $sroiPercentage = round($sroi);
+         $pftPercentage = round($pft * 100, 2); // Match analytics: round to 2 decimal places
+         $roiPercentage = round($roi * 100, 2); // Match analytics: round to 2 decimal places
+         $spftPercentage = round($spft * 100, 2); // Match analytics: round to 2 decimal places
+         $sroiPercentage = round($sroi * 100, 2); // Match analytics: round to 2 decimal places
          $sgroiPercentage = round($sgroi * 100);
 
          $pft_amt = $l30Units * $PRICE * $gpft;

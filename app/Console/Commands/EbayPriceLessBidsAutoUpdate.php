@@ -9,7 +9,6 @@ use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 
 class EbayPriceLessBidsAutoUpdate extends Command
 {
@@ -25,23 +24,56 @@ class EbayPriceLessBidsAutoUpdate extends Command
 
     public function handle()
     {
-        $this->info("Starting Ebay bids auto-update...");
+        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        $this->info("🚀 Starting eBay Price Less Bids Auto-Update");
+        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
         $updateOverUtilizedBids = new EbayOverUtilizedBgtController;
 
         $campaigns = $this->getEbayPriceLessBidsCampaign();
 
         if (empty($campaigns)) {
-            $this->warn("No campaigns matched filter conditions.");
+            $this->warn("⚠️  No campaigns matched filter conditions.");
             return 0;
         }
 
-        $this->info("Found " . count($campaigns) . " campaigns to update.");
+        // Filter out campaigns with empty campaign_id
+        $validCampaigns = array_filter($campaigns, function($campaign) {
+            return !empty($campaign->campaign_id);
+        });
+        
+        if (empty($validCampaigns)) {
+            $this->warn("⚠️  No valid campaigns found (all have empty campaign_id).");
+            return 0;
+        }
+        
+        $this->info("📊 Found " . count($validCampaigns) . " campaigns to update");
+        $this->info("");
 
-        $campaignIds = collect($campaigns)->pluck('campaign_id')->toArray();
-        $newBids = collect($campaigns)->pluck('sbid')->toArray();
+        // Log all campaigns before update
+        $this->info("📋 Campaigns to be updated:");
+        foreach ($validCampaigns as $index => $campaign) {
+            $campaignName = $campaign->campaignName ?? 'Unknown';
+            $campaignId = $campaign->campaign_id ?? 'N/A';
+            $newBid = $campaign->sbid ?? 0;
+            $oldCpc = $campaign->l7_cpc ?? 0;
+            
+            $this->line("   " . ($index + 1) . ". Campaign: {$campaignName} | ID: {$campaignId} | Old CPC: \${$oldCpc} | New Bid: \${$newBid}");
+        }
+        
+        $this->info("");
 
-        $this->info("Processing campaigns in batches of 10...");
+        $campaignIds = collect($validCampaigns)->pluck('campaign_id')->toArray();
+        $newBids = collect($validCampaigns)->pluck('sbid')->toArray();
+        $campaignNames = collect($validCampaigns)->pluck('campaignName', 'campaign_id')->toArray();
+        
+        // Create mapping of campaign_id to bid for easy lookup
+        $campaignBidMap = [];
+        foreach ($validCampaigns as $campaign) {
+            $campaignBidMap[$campaign->campaign_id] = $campaign->sbid ?? 0;
+        }
+
+        $this->info("🔄 Processing campaigns in batches of 10...");
         
         // Process in smaller batches to avoid timeout
         $chunks = array_chunk($campaignIds, 10);
@@ -49,65 +81,97 @@ class EbayPriceLessBidsAutoUpdate extends Command
         
         $totalSuccess = 0;
         $totalFailed = 0;
+        $allCampaignResults = [];
         
         foreach ($chunks as $index => $chunk) {
             $this->info("Processing batch " . ($index + 1) . " of " . count($chunks) . "...");
             
             // Get campaign names for this batch
-            $batchCampaigns = array_slice($campaigns, $index * 10, 10);
-            $campaignNames = collect($batchCampaigns)->pluck('campaignName')->toArray();
+            $batchCampaigns = array_slice($validCampaigns, $index * 10, 10);
+            $batchCampaignNames = collect($batchCampaigns)->pluck('campaignName')->toArray();
             
-            $this->info("Campaigns: " . implode(', ', array_slice($campaignNames, 0, 3)) . (count($campaignNames) > 3 ? '...' : ''));
+            $this->info("Campaigns: " . implode(', ', array_slice($batchCampaignNames, 0, 3)) . (count($batchCampaignNames) > 3 ? '...' : ''));
             
             try {
                 $result = $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($chunk, $bidChunks[$index]);
                 $resultData = $result->getData(true);
                 
-                // Log the full response for debugging
-                Log::info("Batch " . ($index + 1) . " Response:", [
-                    'campaigns' => $campaignNames,
-                    'campaign_ids' => $chunk,
-                    'bids' => $bidChunks[$index],
-                    'status' => $resultData['status'],
-                    'message' => $resultData['message'],
-                    'data_count' => count($resultData['data'] ?? []),
-                    'sample_data' => array_slice($resultData['data'] ?? [], 0, 3)
-                ]);
+                // Store results for detailed reporting
+                foreach ($resultData['data'] ?? [] as $item) {
+                    $allCampaignResults[] = $item;
+                }
                 
-                $batchSuccess = count(array_filter($resultData['data'], function($item) {
-                    // Count as success if status is NOT 'error' (includes 'unknown', 'Updated', 'SUCCESS', etc.)
+                $batchSuccess = count(array_filter($resultData['data'] ?? [], function($item) {
                     $status = strtolower($item['status'] ?? '');
                     return $status !== 'error' && $status !== '';
                 }));
                 
-                $batchFailed = count($resultData['data']) - $batchSuccess;
+                $batchFailed = count($resultData['data'] ?? []) - $batchSuccess;
                 
                 $totalSuccess += $batchSuccess;
                 $totalFailed += $batchFailed;
                 
-                $this->info("Batch " . ($index + 1) . " - Status: " . $resultData['status'] . " | Success: {$batchSuccess} | Failed: {$batchFailed}");
+                $this->info("Batch " . ($index + 1) . " - Status: " . ($resultData['status'] ?? 'unknown') . " | Success: {$batchSuccess} | Failed: {$batchFailed}");
                 
             } catch (\Exception $e) {
                 $this->error("Batch " . ($index + 1) . " failed: " . $e->getMessage());
-                Log::error("Batch " . ($index + 1) . " Exception:", [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
                 $totalFailed += count($chunk);
             }
             
             // Small delay between batches to avoid rate limiting
             if ($index < count($chunks) - 1) {
-                sleep(5); // Increased to 5 seconds to avoid network/rate limit issues
+                sleep(5);
             }
         }
 
-        $this->info("========================================");
-        $this->info("All batches completed!");
-        $this->info("Total Campaigns: " . count($campaigns));
-        $this->info("Total Keywords Updated: {$totalSuccess}");
-        $this->info("Total Failed: {$totalFailed}");
-        $this->info("========================================");
+        $this->info("");
+        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        $this->info("📊 Detailed Results by Campaign");
+        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+        // Group results by campaign_id
+        $campaignResults = [];
+        foreach ($allCampaignResults as $item) {
+            $campId = $item['campaign_id'] ?? 'unknown';
+            if (!isset($campaignResults[$campId])) {
+                $campaignResults[$campId] = [
+                    'campaign_name' => $campaignNames[$campId] ?? 'Unknown',
+                    'success' => 0,
+                    'failed' => 0,
+                    'errors' => []
+                ];
+            }
+            
+            if (($item['status'] ?? '') === 'error') {
+                $campaignResults[$campId]['failed']++;
+                $campaignResults[$campId]['errors'][] = $item['message'] ?? 'Unknown error';
+            } else {
+                $campaignResults[$campId]['success']++;
+            }
+        }
+
+        // Display results per campaign
+        foreach ($campaignResults as $campId => $result) {
+            $campaignName = $result['campaign_name'];
+            $success = $result['success'];
+            $failed = $result['failed'];
+            $newBid = $campaignBidMap[$campId] ?? 'N/A';
+            
+            if ($failed > 0) {
+                $this->warn("   ❌ Campaign: {$campaignName} (ID: {$campId}) | Bid: \${$newBid}");
+                $this->warn("      Success: {$success} keywords | Failed: {$failed} keywords");
+                foreach (array_unique($result['errors']) as $error) {
+                    $this->error("      Error: {$error}");
+                }
+            } else {
+                $this->info("   ✅ Campaign: {$campaignName} (ID: {$campId}) | Bid: \${$newBid} | Updated: {$success} keywords");
+            }
+        }
+
+        $this->info("");
+        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        $this->info("📈 Summary: {$totalSuccess} keywords updated successfully, {$totalFailed} failed");
+        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         
         return 0;
     }
@@ -216,15 +280,15 @@ class EbayPriceLessBidsAutoUpdate extends Command
             
             // Apply price-based SBID caps - this runs AFTER the ub7 calculation
             if($row['price'] < 30 && $row['campaignName'] !== ''){
-                // Cap the bid based on price, but use calculated bid if it's lower
+                // Force exact bid values based on price ranges (consistent with EbayKwAdsController)
                 if($row['price'] <= 10){
-                    $row['sbid'] = min($row['sbid'], 0.10);  // Maximum 0.10
+                    $row['sbid'] = max(0.10, min($row['sbid'], 0.10));  // Exactly 0.10
                 }
                 elseif($row['price'] > 10 && $row['price'] <= 20){
-                    $row['sbid'] = min($row['sbid'], 0.20);  // Maximum 0.20
+                    $row['sbid'] = max(0.20, min($row['sbid'], 0.20));  // Exactly 0.20
                 }
                 elseif($row['price'] > 20 && $row['price'] <= 30){
-                    $row['sbid'] = min($row['sbid'], 0.30);  // Maximum 0.30
+                    $row['sbid'] = max(0.30, min($row['sbid'], 0.30));  // Exactly 0.30
                 }
                 
                 // Only show data under price 30, exclude PARENT SKUs, and only show items with campaigns

@@ -9,11 +9,10 @@ use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
-use AWS\CRT\Log;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log as FacadesLog;
+use Illuminate\Support\Facades\Log;
 
 class AmazonACOSController extends Controller
 {

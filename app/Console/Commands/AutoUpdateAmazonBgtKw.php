@@ -103,6 +103,7 @@ class AutoUpdateAmazonBgtKw extends Command
             $row = [];
             $row['price']  = $amazonSheet->price ?? 0;
             $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? '';
+            $row['campaignName'] = $matchedCampaignL30->campaignName ?? '';
 
             $sales = $matchedCampaignL30->sales30d ?? 0;
             $spend = $matchedCampaignL30->spend ?? 0;
@@ -127,14 +128,18 @@ class AutoUpdateAmazonBgtKw extends Command
 
             $price = (float) ($row['price'] ?? 0);
 
-            $sbgt = round($price * 0.07, 0);
-
-            if($sbgt > 5){
+            // ACOS-based sbgt rule (updated)
+            if ($acos < 10) {
                 $sbgt = 5;
-            } else if($sbgt < 1){
+            } elseif ($acos < 20) {
+                $sbgt = 4;
+            } elseif ($acos < 30) {
+                $sbgt = 3;
+            } elseif ($acos < 40) {
+                $sbgt = 2;
+            } else {
                 $sbgt = 1;
             }
-
             $row['sbgt'] = $sbgt;
 
             $result[] = (object) $row;

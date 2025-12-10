@@ -576,15 +576,22 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
+                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
+                            var l7_spend = parseFloat(row.l7_spend) || 0;
+                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                             var sbid;
-                            if (l7_cpc === 0) {
-                                sbid = 0.75;
+                            if (ub7 < 70) {
+                                if (ub7 < 10 || l7_cpc === 0) {
+                                    sbid = 0.75;
+                                } else if (l7_cpc > 0 && l7_cpc < 0.30) {
+                                    sbid = (l7_cpc + 0.20).toFixed(2);
+                                } else {
+                                    sbid = (Math.floor((l7_cpc * 1.10) * 100) / 100).toFixed(2);
+                                }
                             } else {
-                                sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
+                                sbid = '';
                             }
-                            sbid = sbid.toFixed(2);
                             return sbid;
                         },
                     },
@@ -603,15 +610,22 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains("update-row-btn")) {
                                 var row = cell.getRow().getData();
-                                var l1_cpc = parseFloat(row.l1_cpc) || 0;
                                 var l7_cpc = parseFloat(row.l7_cpc) || 0;
+                                var budget = parseFloat(row.campaignBudgetAmount) || 0;
+                                var l7_spend = parseFloat(row.l7_spend) || 0;
+                                var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                                 var sbid;
-                                if (l7_cpc === 0) {
-                                    sbid = 0.75;
+                                if (ub7 < 70) {
+                                    if (ub7 < 10 || l7_cpc === 0) {
+                                        sbid = 0.75;
+                                    } else if (l7_cpc > 0 && l7_cpc < 0.30) {
+                                        sbid = (l7_cpc + 0.20).toFixed(2);
+                                    } else {
+                                        sbid = (Math.floor((l7_cpc * 1.10) * 100) / 100).toFixed(2);
+                                    }
                                 } else {
-                                    sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
+                                    sbid = '';
                                 }
-                                sbid = sbid.toFixed(2);
                                 updateBid(sbid, row.campaign_id);
                             }
                         }
@@ -880,16 +894,28 @@
                     var rowEl = row.getElement();
                     if(rowEl && rowEl.offsetParent !== null){
                         var rowData = row.getData();
-                        var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
                         var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
+                        var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
+                        var l7_spend = parseFloat(rowData.l7_spend) || 0;
+                        var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                         var sbid;
+                        if (ub7 < 70) {
+                            if (ub7 < 10 || l7_cpc === 0) {
+                                sbid = 0.75;
+                            } else if (l7_cpc > 0 && l7_cpc < 0.30) {
+                                sbid = (l7_cpc + 0.20).toFixed(2);
+                            } else {
+                                sbid = (Math.floor((l7_cpc * 1.10) * 100) / 100).toFixed(2);
+                            }
+                        } else {
+                            sbid = '';
+                        }
 
                         if (l7_cpc === 0) {
                             sbid = 0.75;
                         } else {
                             sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
                         }
-                        sbid = sbid.toFixed(2);
 
                         campaignIds.push(rowData.campaign_id);
                         bids.push(sbid);

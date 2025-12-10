@@ -1242,19 +1242,19 @@
                                         <div class="collapse" id="instagram-ads-submenu">
                                             <ul class="side-nav-third-level">
                                                 <li>
-                                                    <a href="{{ route('meta.ads.instagram.single.image') }}">Single Image</a>
+                                                    <a href="{{ route('meta.ads.instagram.single.image') }}">Insta Single Image</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.instagram.single.video') }}">Single Video</a>
+                                                    <a href="{{ route('meta.ads.instagram.single.video') }}">Insta Single Video</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.instagram.carousal') }}">Carousal</a>
+                                                    <a href="{{ route('meta.ads.instagram.carousal') }}">Insta GRP Carousal</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.instagram.existing.post') }}">Existing Post</a>
+                                                    <a href="{{ route('meta.ads.instagram.existing.post') }}">Insta Existing Post</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.instagram.catalogue') }}">Catalogue Ad</a>
+                                                    <a href="{{ route('meta.ads.instagram.catalogue') }}">Insta     Catalogue Ad</a>
                                                 </li>
                                             </ul>
                                         </div>
@@ -2261,6 +2261,8 @@
                                                     <a href="{{ url('temu-pricing-cvr') }}">Temu Pricing
                                                         CVR</a>
                                                 </li>
+
+                                              
                                             </ul>
                                         </div>
                                     </li>
@@ -2268,9 +2270,7 @@
                                     <li>
                                         <a href="{{ route('temu.pricing.inc') }}"> Temu Pricing Increase CVR</a>
                                     </li>
-                                    <li>
-                                        <a href="{{ route('temu.pricing.dsc') }}"> Temu Pricing Decrease CVR</a>
-                                    </li>
+                                    <li><a href="{{ url('temu-tabulator') }}">Temu Decrease CVR</a></li>
 
                                     <li>
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>

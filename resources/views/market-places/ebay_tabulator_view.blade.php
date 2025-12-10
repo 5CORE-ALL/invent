@@ -754,29 +754,29 @@
                 }
             });
 
-            // Select all checkbox handler
+            // Select all checkbox handler (matching Amazon approach)
             $(document).on('change', '#select-all-checkbox', function() {
                 const isChecked = $(this).prop('checked');
-                const allData = table.getData('active');
-                const childRows = allData.filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
                 
-                childRows.forEach(row => {
+                // Get all filtered data (excluding parent rows)
+                const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+                
+                // Add or remove all filtered SKUs from the selected set
+                filteredData.forEach(row => {
                     const sku = row['(Child) sku'];
-                    if (isChecked) {
-                        selectedSkus.add(sku);
-                    } else {
-                        selectedSkus.delete(sku);
+                    if (sku) {
+                        if (isChecked) {
+                            selectedSkus.add(sku);
+                        } else {
+                            selectedSkus.delete(sku);
+                        }
                     }
                 });
                 
-                // Update all checkboxes
-                table.getRows().forEach(tableRow => {
-                    const rowData = tableRow.getData();
-                    const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
-                    if (!isParent) {
-                        const checkbox = $(tableRow.getElement()).find('.sku-select-checkbox');
-                        checkbox.prop('checked', isChecked);
-                    }
+                // Update all visible checkboxes
+                $('.sku-select-checkbox').each(function() {
+                    const sku = $(this).data('sku');
+                    $(this).prop('checked', selectedSkus.has(sku));
                 });
                 
                 updateSelectedCount();
@@ -838,12 +838,26 @@
                 $('#discount-input-container').toggle(count > 0);
             }
 
-            // Update select all checkbox state
+            // Update select all checkbox state (matching Amazon approach)
             function updateSelectAllCheckbox() {
-                const allData = table.getData('active');
-                const childRows = allData.filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
-                const allSelected = childRows.length > 0 && childRows.every(row => selectedSkus.has(row['(Child) sku']));
-                $('#select-all-checkbox').prop('checked', allSelected);
+                if (!table) return;
+                
+                // Get all filtered data (excluding parent rows)
+                const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+                
+                if (filteredData.length === 0) {
+                    $('#select-all-checkbox').prop('checked', false);
+                    return;
+                }
+                
+                // Get all filtered SKUs
+                const filteredSkus = new Set(filteredData.map(row => row['(Child) sku']).filter(sku => sku));
+                
+                // Check if all filtered SKUs are selected
+                const allFilteredSelected = filteredSkus.size > 0 && 
+                    Array.from(filteredSkus).every(sku => selectedSkus.has(sku));
+                
+                $('#select-all-checkbox').prop('checked', allFilteredSelected);
             }
 
             // Background retry storage key
@@ -1587,11 +1601,11 @@
                         formatter: function(cell) {
                             const sku = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
+                            // const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
                             
-                            if (isParent) {
-                                return `<span>${sku}</span>`;
-                            }
+                            // if (isParent) {
+                            //     return `<span>${sku}</span>`;
+                            // }
                             
                             let html = `<span>${sku}</span>`;
                             
@@ -1778,9 +1792,9 @@
                             const isParent = rowData['Parent'] && rowData['Parent'].startsWith('PARENT');
                             
                             // Don't show dropdown for parent rows
-                            if (isParent) {
-                                return '';
-                            }
+                            // if (isParent) {
+                            //     return '';
+                            // }
                             
                             // Get value and handle null/undefined/empty cases
                             let value = cell.getValue();
@@ -1948,8 +1962,8 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
-                            
-                            if (isParent) return '';
+                            // 
+                            // if (isParent) return '';
                             
                             const sku = rowData['(Child) sku'];
                             const isSelected = selectedSkus.has(sku);
@@ -2106,7 +2120,7 @@
                             const rowData = cell.getRow().getData();
                             const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
                             
-                            if (isParent) return '';
+                            // if (isParent) return '';
 
                             const sku = rowData['(Child) sku'];
                             const sprice = parseFloat(rowData.SPRICE) || 0;
@@ -2492,8 +2506,8 @@
 
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const isParent = data.Parent && data.Parent.startsWith('PARENT');
-                        if (isParent) return true;
+                        // const isParent = data.Parent && data.Parent.startsWith('PARENT');
+                        // if (isParent) return true;
                         
                         // GPFT% is stored as a number, not a string with %
                         const gpft = parseFloat(data['GPFT%']) || 0;
@@ -2512,31 +2526,34 @@
 
                 if (cvrFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const isParent = data.Parent && data.Parent.startsWith('PARENT');
-                        if (isParent) return true;
+                        // const isParent = data.Parent && data.Parent.startsWith('PARENT');
+                        // if (isParent) return true;
                         // Extract CVR from SCVR field
                         const scvrValue = parseFloat(data['SCVR'] || 0);
                         const views = parseFloat(data.views || 0);
                         const l30 = parseFloat(data['eBay L30'] || 0);
                         const cvr = views > 0 ? (l30 / views) * 100 : 0;
                         
-                        if (cvrFilter === '0-0') return cvr === 0;
-                        if (cvrFilter === '0.01-1') return cvr > 0 && cvr <= 1;
-                        if (cvrFilter === '1-2') return cvr > 1 && cvr <= 2;
-                        if (cvrFilter === '2-3') return cvr > 2 && cvr <= 3;
-                        if (cvrFilter === '3-4') return cvr > 3 && cvr <= 4;
-                        if (cvrFilter === '0-4') return cvr >= 0 && cvr <= 4;
-                        if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
-                        if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
-                        if (cvrFilter === '10plus') return cvr > 10;
+                        // Round to 2 decimal places to avoid floating point precision issues
+                        const cvrRounded = Math.round(cvr * 100) / 100;
+                        
+                        if (cvrFilter === '0-0') return cvrRounded === 0;
+                        if (cvrFilter === '0.01-1') return cvrRounded >= 0.01 && cvrRounded <= 1;
+                        if (cvrFilter === '1-2') return cvrRounded > 1 && cvrRounded <= 2;
+                        if (cvrFilter === '2-3') return cvrRounded > 2 && cvrRounded <= 3;
+                        if (cvrFilter === '3-4') return cvrRounded > 3 && cvrRounded <= 4;
+                        if (cvrFilter === '0-4') return cvrRounded >= 0 && cvrRounded <= 4;
+                        if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                        if (cvrFilter === '7-10') return cvrRounded > 7 && cvrRounded <= 10;
+                        if (cvrFilter === '10plus') return cvrRounded > 10;
                         return true;
                     });
                 }
 
                 if (statusFilter !== 'all') {
                     table.addFilter(function(data) {
-                        const isParent = data.Parent && data.Parent.startsWith('PARENT');
-                        if (isParent) return true;
+                        // const isParent = data.Parent && data.Parent.startsWith('PARENT');
+                        // if (isParent) return true;
                         
                         const status = data.nr_req || '';
                         
@@ -2551,6 +2568,10 @@
                 
                 updateCalcValues();
                 updateSummary();
+                // Update select all checkbox after filter is applied (matching Amazon approach)
+                setTimeout(function() {
+                    updateSelectAllCheckbox();
+                }, 100);
             }
 
             $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter').on('change', function() {
@@ -2757,20 +2778,14 @@
             table.on('dataLoaded', function() {
                 updateCalcValues();
                 updateSummary();
-                // Sync checkboxes with selectedSkus
-                table.getRows().forEach(tableRow => {
-                    const rowData = tableRow.getData();
-                    const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
-                    if (!isParent) {
-                        const checkbox = $(tableRow.getElement()).find('.sku-select-checkbox');
-                        if (checkbox.length) {
-                            checkbox.prop('checked', selectedSkus.has(rowData['(Child) sku']));
-                        }
-                    }
-                });
-                updateSelectAllCheckbox();
-                // Initialize Bootstrap tooltips for dynamically created elements
+                // Refresh checkboxes to reflect selectedSkus set (matching Amazon approach)
                 setTimeout(function() {
+                    $('.sku-select-checkbox').each(function() {
+                        const sku = $(this).data('sku');
+                        $(this).prop('checked', selectedSkus.has(sku));
+                    });
+                    updateSelectAllCheckbox();
+                    // Initialize Bootstrap tooltips for dynamically created elements
                     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
                     tooltipTriggerList.forEach(function (tooltipTriggerEl) {
                         new bootstrap.Tooltip(tooltipTriggerEl);
@@ -2778,9 +2793,16 @@
                 }, 100);
             });
 
-            // Also initialize tooltips when table is rendered
+            // Also initialize tooltips when table is rendered (matching Amazon approach)
             table.on('renderComplete', function() {
                 setTimeout(function() {
+                    // Refresh checkboxes to reflect selectedSkus set
+                    $('.sku-select-checkbox').each(function() {
+                        const sku = $(this).data('sku');
+                        $(this).prop('checked', selectedSkus.has(sku));
+                    });
+                    updateSelectAllCheckbox();
+                    // Initialize Bootstrap tooltips for dynamically created elements
                     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
                     tooltipTriggerList.forEach(function (tooltipTriggerEl) {
                         new bootstrap.Tooltip(tooltipTriggerEl);

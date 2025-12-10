@@ -47,6 +47,8 @@
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h4>FBA Dispatch Data</h4>
                         <div>
+                            <input type="text" id="sku-search" class="form-control form-control-sm me-2"
+                                style="width: 200px; display: inline-block;" placeholder="Search SKU or FBA SKU...">
                             <select id="inventory-filter" class="form-select form-select-sm me-2"
                                 style="width: auto; display: inline-block;">
                                 <option value="all">All Inventory</option>
@@ -796,26 +798,22 @@
                         },
 
 
-                        {
-                            title: "Pft%",
-                            field: "Pft%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const data = cell.getRow().getData();
-                                return data['Pft%_HTML'] ||
-                                    `${parseFloat(cell.getValue() || 0).toFixed(1)}%`;
+                         {
+                                title: "Pft%",
+                                field: "Pft%",
+                                hozAlign: "center",
+                                formatter: function(cell) {
+                                    return cell.getValue();
+                                }
                             },
-                        },
-
-                        {
-                            title: "ROI%",
-                            field: "ROI%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                return cell.getValue();
+                            {
+                                title: "ROI%",
+                                field: "ROI%",
+                                hozAlign: "center",
+                                formatter: function(cell) {
+                                    return cell.getValue();
+                                }
                             },
-                        },
-
 
 
                         {
@@ -1149,6 +1147,15 @@
 
                     table.clearFilter(true);
 
+                    // SKU Search Filter
+                    if (skuSearch) {
+                        table.addFilter(function(data) {
+                            const sku = (data.SKU || '').toUpperCase();
+                            const fbaSku = (data.FBA_SKU || '').toUpperCase();
+                            return sku.includes(skuSearch) || fbaSku.includes(skuSearch);
+                        });
+                    }
+
                     if (inventoryFilter === 'zero') {
                         table.addFilter('FBA_Quantity', '=', 0);
                     } else if (inventoryFilter === 'more') {
@@ -1183,6 +1190,10 @@
                         });
                     }
                 }
+
+                $('#sku-search').on('input', function() {
+                    applyFilters();
+                });
 
                 $('#inventory-filter').on('change', function() {
                     applyFilters();

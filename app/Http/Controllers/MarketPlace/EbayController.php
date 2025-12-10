@@ -242,7 +242,12 @@ class EbayController extends Controller
         $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
         
         // Fetch listing status data for nr_req field
-        $listingStatusData = EbayListingStatus::whereIn("sku", $skus)->get()->keyBy("sku");
+        // Key listing status by lowercase SKU for case-insensitive lookup (UI sends upper/lower mixed)
+        $listingStatusData = EbayListingStatus::whereIn("sku", $skus)
+            ->get()
+            ->mapWithKeys(function ($item) {
+                return [strtolower($item->sku) => $item];
+            });
 
         $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
             ->where(function ($q) use ($skus) {
@@ -292,7 +297,7 @@ class EbayController extends Controller
 
             $shopify = $shopifyData[$pm->sku] ?? null;
             $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
-            $listingStatus = $listingStatusData[$pm->sku] ?? null;
+            $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
 
             $row = [];
             $row["Parent"] = $parent;

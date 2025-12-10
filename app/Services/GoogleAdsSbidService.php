@@ -13,6 +13,9 @@ use Google\Ads\GoogleAds\V20\Services\SearchGoogleAdsStreamRequest;
 use Google\Ads\GoogleAds\V20\Services\MutateAdGroupsRequest;
 use Illuminate\Support\Facades\Log;
 use Google\Ads\GoogleAds\V20\Services\MutateAdGroupCriteriaRequest;
+use Google\Ads\GoogleAds\V20\Services\CampaignBudgetOperation;
+use Google\Ads\GoogleAds\V20\Services\MutateCampaignBudgetsRequest;
+use Google\Ads\GoogleAds\V20\Resources\CampaignBudget;
 
 class GoogleAdsSbidService
 {
@@ -321,6 +324,72 @@ class GoogleAdsSbidService
                 'sbid_factor' => $sbidFactor,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Update Campaign Budget
+     */
+    public function updateCampaignBudget($customerId, $budgetResourceName, $newBudgetAmount)
+    {
+        try {
+            // Validate inputs
+            if (empty($customerId) || empty($budgetResourceName) || !is_numeric($newBudgetAmount)) {
+                throw new \InvalidArgumentException("Invalid parameters for budget update");
+            }
+
+            if ($newBudgetAmount <= 0) {
+                throw new \InvalidArgumentException("Budget must be greater than 0, got: {$newBudgetAmount}");
+            }
+
+            $campaignBudgetService = $this->getClient()->getCampaignBudgetServiceClient();
+
+            // Convert dollars to micros (multiply by 1,000,000)
+            $budgetMicros = round($newBudgetAmount * 1_000_000);
+            
+            // Minimum budget is usually $1.00 (1,000,000 micros)
+            if ($budgetMicros < 1_000_000) {
+                $budgetMicros = 1_000_000;
+            }
+
+            $campaignBudget = new CampaignBudget([
+                'resource_name' => $budgetResourceName,
+                'amount_micros' => $budgetMicros
+            ]);
+
+            $operation = new CampaignBudgetOperation();
+            $operation->setUpdate($campaignBudget);
+            $operation->setUpdateMask(new FieldMask(['paths' => ['amount_micros']]));
+
+            $request = new MutateCampaignBudgetsRequest([
+                'customer_id' => $customerId,
+                'operations' => [$operation]
+            ]);
+
+            $response = $campaignBudgetService->mutateCampaignBudgets($request);
+            
+            // Validate response
+            if (!$response || !$response->getResults()) {
+                throw new \Exception("No response received from Google Ads API");
+            }
+
+            $results = $response->getResults();
+            if (count($results) === 0) {
+                throw new \Exception("No results returned from budget update operation");
+            }
+            
+            return $response;
+            
+        } catch (\Exception $e) {
+            Log::error("Failed to update Campaign Budget", [
+                'customer_id' => $customerId,
+                'budget_resource' => $budgetResourceName,
+                'new_budget' => $newBudgetAmount,
+                'error_message' => $e->getMessage(),
+                'error_code' => $e->getCode(),
+                'error_trace' => $e->getTraceAsString()
             ]);
             throw $e;
         }

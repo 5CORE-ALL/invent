@@ -757,6 +757,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/zero-reverb/view-data', [ReverbZeroController::class, 'getViewReverbZeroData']);
     Route::get('/reverb/zero-low-visibility/view-data', [ReverbLowVisibilityController::class, 'getViewReverbLowVisibilityData']);
     Route::get('/temu/view-data', [TemuController::class, 'getViewTemuData']);
+    Route::post('/temu/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataChunk']);
+    Route::get('/temu/download-daily-data-sample', [TemuController::class, 'downloadDailyDataSample'])->name('temu.daily.sample');
+    Route::get('/temu/daily-data', [TemuController::class, 'getDailyData'])->name('temu.daily.data');
     Route::get('/amazonfba/view-data', [OverallAmazonFbaController::class, 'getViewAmazonFbaData'])->name('amazonfba.viewData');
     Route::get('/fbainv/view-data', [AmazonFbaInvController::class, 'getViewAmazonfbaInvData'])->name('fbainv.viewData');
     Route::get('/product-master-data', [ProductMasterController::class, 'product_master_data']);
@@ -1073,6 +1076,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-analytics/import', [TemuController::class, 'importTemuAnalytics'])->name('temu.analytics.import');
     Route::get('/temu-analytics/export', [TemuController::class, 'exportTemuAnalytics'])->name('temu.analytics.export');
     Route::get('/temu-analytics/sample', [TemuController::class, 'downloadSample'])->name('temu.analytics.sample');
+    
+    // Temu Tabulator View
+    Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');
+    Route::post('/temu-column-visibility', [TemuController::class, 'saveTemuColumnVisibility']);
+    Route::get('/temu-column-visibility', [TemuController::class, 'getTemuColumnVisibility']);
 
 
     // Advertisement Master view routes
@@ -2227,8 +2235,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/campaign/reports/data', 'getAmazonCampaignsData');
     });
 
-
-
     Route::controller(AmazonFbaAdsController::class)->group(function () {
         Route::get('/amazon/fba/over/kw/ads', 'amzFbaUtilizedBgtKw')->name('amazon.fba.over.kw.ads');
         Route::get('/amazon/fba/over/pt/ads', 'amzFbaUtilizedBgtPt')->name('amazon.fba.over.pt.ads');
@@ -2317,6 +2323,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/ad-missing/list', 'index')->name('ebay.missing.ads');
         Route::get('/ebay/ad-missing/data', 'getEbayMissingAdsData');
         Route::get('/adv-ebay/missing/save-data', 'getEbayMissingSaveData')->name('adv-ebay.missing.save-data');
+        Route::post('/update-ebay-nrl-data', 'updateNrlData');
     });
 
     Route::controller(EbayViewsController::class)->group(function () {
@@ -2581,10 +2588,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     
 });
 
-// Shopify Facebook Campaigns Routes
-Route::prefix('shopify/facebook-campaigns')->middleware(['auth'])->group(function () {
-    Route::get('/summary', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'summary'])->name('shopify.facebook.campaigns.summary');
-    Route::get('/compare/{campaignId}', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'compare'])->name('shopify.facebook.campaigns.compare');
-    Route::post('/fetch', [\App\Http\Controllers\ShopifyFacebookCampaignController::class, 'fetch'])->name('shopify.facebook.campaigns.fetch');
+// Shopify Meta Campaigns Routes (Facebook & Instagram)
+Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function () {
+    Route::get('/summary', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'summary'])->name('shopify.meta.campaigns.summary');
+    Route::get('/compare/{campaignId}', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'compare'])->name('shopify.meta.campaigns.compare');
+    Route::post('/fetch', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'fetch'])->name('shopify.meta.campaigns.fetch');
 });
 

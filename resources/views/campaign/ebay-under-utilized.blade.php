@@ -965,13 +965,17 @@
                             var row = cell.getRow().getData();
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
-
+                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
+                            var l7_spend = parseFloat(row.l7_spend) || 0;
+                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                             var sbid = 0;
-                            if(l7_cpc == 0) {
-                                sbid = 0.75;
-                            }else{
+
+                            if (ub7 < 10) {
+                                sbid = 0.50;
+                            }else {
                                 sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
                             }
+                            
                             sbid = sbid.toFixed(2);
                             return sbid;
                         },

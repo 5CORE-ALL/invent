@@ -310,6 +310,31 @@ class Kernel extends ConsoleKernel
         $schedule->command('sbid:update')
             ->dailyAt('00:01') 
             ->timezone('Asia/Kolkata');
+        
+        // SERP (SEARCH) SBID Update - runs after SHOPPING SBID update
+        $schedule->command('sbid:update-serp')
+            ->dailyAt('00:02') 
+            ->timezone('Asia/Kolkata');
+        
+        // SHOPPING Budget Update - based on ACOS (L30 data)
+        $schedule->command('budget:update-shopping')
+            ->dailyAt('00:03') 
+            ->timezone('Asia/Kolkata');
+        
+        // SERP (SEARCH) Budget Update - based on ACOS (L30 data)
+        $schedule->command('budget:update-serp')
+            ->dailyAt('00:04') 
+            ->timezone('Asia/Kolkata');
+        
+        // Amazon FBA Keyword Budget Update - based on ACOS (L30 data)
+        $schedule->command('budget:update-amazon-fba-kw')
+            ->dailyAt('00:05') 
+            ->timezone('Asia/Kolkata');
+        
+        // Amazon FBA Product Target Budget Update - based on ACOS (L30 data)
+        $schedule->command('budget:update-amazon-fba-pt')
+            ->dailyAt('00:06') 
+            ->timezone('Asia/Kolkata');
 
         $schedule->command('app:sync-cp-master-to-sheet')->hourly();
                 
@@ -348,8 +373,8 @@ class Kernel extends ConsoleKernel
             ->name('stock-mapping-daily-update')
             ->withoutOverlapping();
 
-        // Shopify Facebook Campaigns - Fetch daily at 2 AM PST
-        $schedule->command('shopify:fetch-facebook-campaigns')
+        // Shopify Meta Campaigns (Facebook & Instagram) - Fetch daily at 2 AM PST
+        $schedule->command('shopify:fetch-meta-campaigns --channel=both')
             ->dailyAt('02:00')
             ->timezone('America/Los_Angeles')
             ->name('fetch-shopify-fb-campaigns-7-30-60-days')
