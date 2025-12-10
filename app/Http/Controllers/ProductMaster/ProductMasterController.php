@@ -816,6 +816,55 @@ class ProductMasterController extends Controller
         }
     }
 
+    public function saveVideosData(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'video_product_overview' => 'nullable|string|max:500',
+                'video_unboxing' => 'nullable|string|max:500',
+                'video_how_to' => 'nullable|string|max:500',
+                'video_setup' => 'nullable|string|max:500',
+                'video_troubleshooting' => 'nullable|string|max:500',
+                'video_brand_story' => 'nullable|string|max:500',
+                'video_product_benefits' => 'nullable|string|max:500',
+            ]);
+
+            // Try both uppercase SKU and lowercase sku columns
+            $product = ProductMaster::where('SKU', $validated['sku'])
+                ->orWhere('sku', $validated['sku'])
+                ->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product with SKU "' . $validated['sku'] . '" not found in database.'
+                ], 404);
+            }
+
+            // Update video columns in product_master table
+            $product->video_product_overview = $validated['video_product_overview'] ?? null;
+            $product->video_unboxing = $validated['video_unboxing'] ?? null;
+            $product->video_how_to = $validated['video_how_to'] ?? null;
+            $product->video_setup = $validated['video_setup'] ?? null;
+            $product->video_troubleshooting = $validated['video_troubleshooting'] ?? null;
+            $product->video_brand_story = $validated['video_brand_story'] ?? null;
+            $product->video_product_benefits = $validated['video_product_benefits'] ?? null;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Video data saved successfully for SKU: ' . $validated['sku']
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving video data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save video data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function updateTitlesToAmazon(Request $request)
     {
         try {
@@ -1007,6 +1056,12 @@ class ProductMasterController extends Controller
             $shopifyDomain = env('SHOPIFY_DOMAIN') ?? env('SHOPIFY_STORE_URL') ?? env('SHOPIFY_5CORE_DOMAIN');
             $shopifyToken = env('SHOPIFY_ACCESS_TOKEN') ?? env('SHOPIFY_PASSWORD');
             
+            // Clean up domain (remove https://, trailing slashes)
+            if ($shopifyDomain) {
+                $shopifyDomain = preg_replace('#^https?://#', '', $shopifyDomain);
+                $shopifyDomain = rtrim($shopifyDomain, '/');
+            }
+            
             if (!$shopifyDomain || !$shopifyToken) {
                 Log::warning("Shopify credentials not configured. SHOPIFY_DOMAIN: " . ($shopifyDomain ? 'set' : 'missing') . ", SHOPIFY_ACCESS_TOKEN: " . ($shopifyToken ? 'set' : 'missing'));
                 return false;
@@ -1021,22 +1076,47 @@ class ProductMasterController extends Controller
                 ->first();
             
             if (!$shopifySku || !$shopifySku->variant_id) {
-                Log::info("No Shopify variant found for SKU: {$sku}");
+                Log::warning("No Shopify variant found for SKU: {$sku}");
                 return false;
             }
 
             $variantId = $shopifySku->variant_id;
             Log::info("Found Shopify variant ID: {$variantId} for SKU: {$sku}");
             
-            // First, get the product ID from the variant
+            // Add delay before API call (3 seconds to safely respect Shopify's 2 calls/second limit)
+            sleep(3);
+            
+            // First, get the product ID from the variant with retry logic
             $variantUrl = "https://{$shopifyDomain}/admin/api/2024-01/variants/{$variantId}.json";
             
-            $variantResponse = \Illuminate\Support\Facades\Http::withHeaders([
-                'X-Shopify-Access-Token' => $shopifyToken,
-            ])->get($variantUrl);
+            Log::info("Fetching variant from: {$variantUrl}");
+            
+            $maxRetries = 3;
+            $retryDelay = 2; // Start with 2 seconds
+            $variantResponse = null;
+            
+            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+                $variantResponse = \Illuminate\Support\Facades\Http::withHeaders([
+                    'X-Shopify-Access-Token' => $shopifyToken,
+                ])->timeout(30)->get($variantUrl);
+                
+                if ($variantResponse->successful()) {
+                    break; // Success, exit retry loop
+                }
+                
+                if ($variantResponse->status() == 429 && $attempt < $maxRetries) {
+                    Log::warning("Rate limited on attempt {$attempt} for SKU {$sku}, waiting {$retryDelay} seconds...");
+                    sleep($retryDelay);
+                    $retryDelay *= 2; // Exponential backoff
+                    continue;
+                }
+                
+                // Not rate limited or final attempt failed
+                break;
+            }
             
             if (!$variantResponse->successful()) {
-                Log::error("Failed to fetch variant for SKU {$sku}: " . $variantResponse->body());
+                Log::error("Failed to fetch variant for SKU {$sku} after {$maxRetries} attempts. Status: " . $variantResponse->status() . ", Body: " . $variantResponse->body());
                 return false;
             }
             
@@ -1044,36 +1124,341 @@ class ProductMasterController extends Controller
             $productId = $variantData['variant']['product_id'] ?? null;
             
             if (!$productId) {
-                Log::error("No product ID found in variant for SKU: {$sku}");
+                Log::error("No product ID found in variant response for SKU: {$sku}. Response: " . json_encode($variantData));
                 return false;
             }
 
             Log::info("Found product ID: {$productId} for SKU: {$sku}");
 
-            // Now update the product title
-            $productUrl = "https://{$shopifyDomain}/admin/api/2024-01/products/{$productId}.json";
+            // Add another delay before product update (3 seconds)
+            sleep(3);
 
-            $response = \Illuminate\Support\Facades\Http::withHeaders([
-                'X-Shopify-Access-Token' => $shopifyToken,
-                'Content-Type' => 'application/json',
-            ])
-            ->timeout(30)
-            ->put($productUrl, [
-                'product' => [
-                    'id' => $productId,
-                    'title' => $title
-                ]
-            ]);
+            // Now update the product title with retry logic
+            $productUrl = "https://{$shopifyDomain}/admin/api/2024-01/products/{$productId}.json";
+            
+            Log::info("Updating product at: {$productUrl}");
+
+            $maxRetries = 3;
+            $retryDelay = 2;
+            $response = null;
+            
+            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+                $response = \Illuminate\Support\Facades\Http::withHeaders([
+                    'X-Shopify-Access-Token' => $shopifyToken,
+                    'Content-Type' => 'application/json',
+                ])
+                ->timeout(30)
+                ->put($productUrl, [
+                    'product' => [
+                        'id' => $productId,
+                        'title' => $title
+                    ]
+                ]);
+                
+                if ($response->successful()) {
+                    break; // Success, exit retry loop
+                }
+                
+                if ($response->status() == 429 && $attempt < $maxRetries) {
+                    Log::warning("Rate limited on product update attempt {$attempt} for SKU {$sku}, waiting {$retryDelay} seconds...");
+                    sleep($retryDelay);
+                    $retryDelay *= 2; // Exponential backoff
+                    continue;
+                }
+                
+                // Not rate limited or final attempt failed
+                break;
+            }
 
             if ($response->successful()) {
                 Log::info("✓ Successfully updated Shopify title for SKU: {$sku} (Product ID: {$productId})");
                 return true;
             } else {
-                Log::error("✗ Failed to update Shopify title for SKU {$sku}: " . $response->body());
+                Log::error("✗ Failed to update Shopify title for SKU {$sku} after {$maxRetries} attempts. Status: " . $response->status() . ", Body: " . $response->body());
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Shopify title for SKU {$sku}: " . $e->getMessage());
+            Log::error("✗ Exception updating Shopify title for SKU {$sku}: " . $e->getMessage() . "\nTrace: " . $e->getTraceAsString());
+            return false;
+        }
+    }
+
+    public function updateTitlesToPlatforms(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'skus' => 'required|array',
+                'skus.*' => 'required|string',
+                'platforms' => 'required|array',
+            ]);
+
+            $skus = $validated['skus'];
+            $platforms = $validated['platforms'];
+
+            // Platform to title field mapping
+            $platformTitleMap = [
+                'amazon' => 'title150',
+                'shopify' => 'title100',
+                'ebay1' => 'title80',
+                'ebay2' => 'title80',
+                'ebay3' => 'title80',
+                'walmart' => 'title80',
+                'temu' => 'title150',
+                'doba' => 'title100',
+            ];
+
+            $results = [];
+            foreach ($platforms as $platform) {
+                $results[$platform] = ['success' => 0, 'failed' => 0];
+            }
+
+            $errors = [];
+
+            foreach ($skus as $sku) {
+                // Get product from database
+                $product = ProductMaster::where('SKU', $sku)
+                    ->orWhere('sku', $sku)
+                    ->first();
+
+                if (!$product) {
+                    $errors[] = "SKU {$sku}: Product not found";
+                    foreach ($platforms as $platform) {
+                        $results[$platform]['failed']++;
+                    }
+                    continue;
+                }
+
+                // Update each selected platform
+                foreach ($platforms as $platform) {
+                    $titleField = $platformTitleMap[$platform] ?? null;
+                    
+                    if (!$titleField) {
+                        $errors[] = ucfirst($platform) . " - SKU {$sku}: Unknown platform";
+                        $results[$platform]['failed']++;
+                        continue;
+                    }
+
+                    $title = $product->{$titleField};
+                    
+                    if (!$title) {
+                        $errors[] = ucfirst($platform) . " - SKU {$sku}: No title available for {$titleField}";
+                        $results[$platform]['failed']++;
+                        continue;
+                    }
+
+                    // Call platform-specific update method
+                    $success = $this->updatePlatformTitle($platform, $sku, $title);
+                    
+                    if ($success) {
+                        $results[$platform]['success']++;
+                    } else {
+                        $results[$platform]['failed']++;
+                        $errors[] = ucfirst($platform) . " - SKU {$sku}: Update failed";
+                    }
+                    
+                    // Rate limiting delay - Shopify needs more time (2 calls per product)
+                    if ($platform === 'shopify') {
+                        sleep(5); // 5 seconds for Shopify to safely clear rate limit
+                    } else {
+                        sleep(1); // 1 second for other platforms
+                    }
+                }
+            }
+
+            // Calculate totals
+            $totalSuccess = array_sum(array_column($results, 'success'));
+            $totalFailed = array_sum(array_column($results, 'failed'));
+
+            $message = count($errors) > 0 ? implode("\n", array_slice($errors, 0, 10)) : '';
+            
+            return response()->json([
+                'success' => true,
+                'results' => $results,
+                'total_success' => $totalSuccess,
+                'total_failed' => $totalFailed,
+                'message' => $message,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error updating titles to platforms: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update titles: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    private function updatePlatformTitle($platform, $sku, $title)
+    {
+        try {
+            Log::info("Updating {$platform} title for SKU: {$sku}");
+
+            switch ($platform) {
+                case 'amazon':
+                    return $this->updateAmazonTitle($sku, $title);
+                
+                case 'shopify':
+                    return $this->updateShopifyTitle($sku, $title);
+                
+                case 'ebay1':
+                case 'ebay2':
+                case 'ebay3':
+                    return $this->updateEbayTitle($platform, $sku, $title);
+                
+                case 'walmart':
+                    return $this->updateWalmartTitle($sku, $title);
+                
+                case 'temu':
+                    return $this->updateTemuTitle($sku, $title);
+                
+                case 'doba':
+                    return $this->updateDobaTitle($sku, $title);
+                
+                default:
+                    Log::warning("Unknown platform: {$platform}");
+                    return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("Error updating {$platform} title for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    private function updateAmazonTitle($sku, $title)
+    {
+        try {
+            // Get credentials from environment
+            $clientId = env('SPAPI_CLIENT_ID');
+            $clientSecret = env('SPAPI_CLIENT_SECRET');
+            $refreshToken = env('SPAPI_REFRESH_TOKEN');
+            $sellerId = env('AMAZON_SELLER_ID');
+            $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
+
+            if (!$clientId || !$clientSecret || !$refreshToken || !$sellerId) {
+                Log::warning("Amazon credentials not configured");
+                return false;
+            }
+
+            // Get access token
+            $accessToken = $this->getAmazonAccessToken();
+            if (!$accessToken) {
+                Log::error("Failed to get Amazon access token");
+                return false;
+            }
+
+            // Update listing via SP-API
+            $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$sku}?marketplaceIds={$marketplaceId}";
+
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(30)
+            ->patch($url, [
+                'productType' => 'PRODUCT',
+                'patches' => [
+                    [
+                        'op' => 'replace',
+                        'path' => '/attributes/item_name',
+                        'value' => [
+                            [
+                                'value' => $title,
+                                'marketplace_id' => $marketplaceId
+                            ]
+                        ]
+                    ]
+                ]
+            ]);
+
+            if ($response->successful()) {
+                Log::info("✓ Successfully updated Amazon title for SKU: {$sku}");
+                return true;
+            } else {
+                Log::error("✗ Failed to update Amazon title for SKU {$sku}: " . $response->body());
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("✗ Exception updating Amazon title for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    private function updateEbayTitle($account, $sku, $title)
+    {
+        try {
+            // Get eBay credentials based on account (ebay1, ebay2, ebay3)
+            $tokenKey = strtoupper($account) . '_ACCESS_TOKEN';
+            $accessToken = env($tokenKey);
+
+            if (!$accessToken) {
+                Log::warning("{$account} credentials not configured");
+                return false;
+            }
+
+            // eBay API logic would go here
+            // This is a placeholder - implement actual eBay API call
+            Log::info("Placeholder: Would update {$account} title for SKU {$sku}");
+            return false; // Change to true when implemented
+        } catch (\Exception $e) {
+            Log::error("Exception updating {$account} title for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    private function updateWalmartTitle($sku, $title)
+    {
+        try {
+            $clientId = env('WALMART_CLIENT_ID');
+            $clientSecret = env('WALMART_CLIENT_SECRET');
+
+            if (!$clientId || !$clientSecret) {
+                Log::warning("Walmart credentials not configured");
+                return false;
+            }
+
+            // Walmart API logic would go here
+            Log::info("Placeholder: Would update Walmart title for SKU {$sku}");
+            return false; // Change to true when implemented
+        } catch (\Exception $e) {
+            Log::error("Exception updating Walmart title for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    private function updateTemuTitle($sku, $title)
+    {
+        try {
+            $apiKey = env('TEMU_API_KEY');
+            
+            if (!$apiKey) {
+                Log::warning("Temu credentials not configured");
+                return false;
+            }
+
+            // Temu API logic would go here
+            Log::info("Placeholder: Would update Temu title for SKU {$sku}");
+            return false; // Change to true when implemented
+        } catch (\Exception $e) {
+            Log::error("Exception updating Temu title for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    private function updateDobaTitle($sku, $title)
+    {
+        try {
+            $apiKey = env('DOBA_API_KEY');
+            
+            if (!$apiKey) {
+                Log::warning("Doba credentials not configured");
+                return false;
+            }
+
+            // Doba API logic would go here
+            Log::info("Placeholder: Would update Doba title for SKU {$sku}");
+            return false; // Change to true when implemented
+        } catch (\Exception $e) {
+            Log::error("Exception updating Doba title for SKU {$sku}: " . $e->getMessage());
             return false;
         }
     }

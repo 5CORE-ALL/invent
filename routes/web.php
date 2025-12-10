@@ -507,6 +507,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/row-hide-toggle', [VerificationAdjustmentController::class, 'toggleHide']);
     Route::get('/get-hidden-rows', [VerificationAdjustmentController::class, 'getHiddenRows']);
     Route::post('/unhide-multiple-rows', [VerificationAdjustmentController::class, 'unhideMultipleRows']);
+    // Shopify inventory update management
+    Route::post('/shopify-update-retry', [VerificationAdjustmentController::class, 'retryShopifyUpdate']);
+    Route::get('/shopify-update-status', [VerificationAdjustmentController::class, 'getShopifyUpdateStatus']);
+    Route::get('/shopify-updates-pending', [VerificationAdjustmentController::class, 'getPendingShopifyUpdates']);
 
     //incoming
     Route::get('/incoming-view', [IncomingController::class, 'index'])->name('incoming.view');
@@ -776,6 +780,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/title-master', fn() => view('title-master'))->name('title.master');
     Route::post('/title-master/save', [ProductMasterController::class, 'saveTitleData'])->name('title.master.save');
     Route::post('/title-master/update-amazon', [ProductMasterController::class, 'updateTitlesToAmazon'])->name('title.master.update.amazon');
+    Route::post('/title-master/update-platforms', [ProductMasterController::class, 'updateTitlesToPlatforms'])->name('title.master.update.platforms');
+    Route::get('/videos-master', fn() => view('videos-master'))->name('videos.master');
+    Route::post('/videos-master/save', [ProductMasterController::class, 'saveVideosData'])->name('videos.master.save');
     Route::get('/bullet-points', fn() => view('bullet-points'))->name('bullet.points');
     Route::post('/bullet-points/save', [ProductMasterController::class, 'saveBulletData'])->name('bullet.points.save');
     Route::get('/product-description', fn() => view('product-description'))->name('product.description');

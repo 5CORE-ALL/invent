@@ -52,6 +52,13 @@ class ProductMaster extends Model
         'image10',
         'image11',
         'image12',
+        'video_product_overview',
+        'video_unboxing',
+        'video_how_to',
+        'video_setup',
+        'video_troubleshooting',
+        'video_brand_story',
+        'video_product_benefits',
     ];
 
     public function setTemuShipAttribute($value)
