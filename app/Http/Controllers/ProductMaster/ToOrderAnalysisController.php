@@ -113,6 +113,12 @@ class ToOrderAnalysisController extends Controller
 
                 $product = $productData->get($sheetSku);
                 $forecast = $forecastData->get($sheetSku);
+                
+                // Skip if SKU has NR in forecast_analysis table
+                if ($forecast && strtoupper(trim($forecast->nr ?? '')) === 'NR') {
+                    continue; // Skip this SKU - don't show in to-order-analysis
+                }
+                
                 $parent = $toOrder->parent ?? $product->parent ?? '';
                 $supplierName = '';
 
@@ -151,7 +157,7 @@ class ToOrderAnalysisController extends Controller
                     'SKU'             => $sheetSku,
                     'Approved QTY'    => $approvedQty,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
-                    'Clink'           => $forecast->clink ?? '',
+                    'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
                     'Supplier'        => $toOrder->supplier_name ?? $supplierName ?? '',
                     'RFQ Form Link'   => $toOrder->rfq_form_link ?? '',
                     'sheet_link'      => $toOrder->sheet_link ?? '',
@@ -273,6 +279,12 @@ class ToOrderAnalysisController extends Controller
 
                 $product = $productData->get($sheetSku);
                 $forecast = $forecastData->get($sheetSku);
+                
+                // Skip if SKU has NR in forecast_analysis table
+                if ($forecast && strtoupper(trim($forecast->nr ?? '')) === 'NR') {
+                    continue; // Skip this SKU - don't show in to-order-analysis
+                }
+                
                 $parent = $toOrder->parent ?? $product->parent ?? '';
                 $supplierName = '';
 
@@ -314,7 +326,7 @@ class ToOrderAnalysisController extends Controller
                     'SKU'             => $sheetSku,
                     'approved_qty'    => $approvedQty,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
-                    'Clink'           => $forecast->clink ?? '',
+                    'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
                     'Supplier'        => $toOrder->supplier_name ?? $supplierName ?? '',
                     'RFQ Form Link'   => $toOrder->rfq_form_link ?? '',
                     'sheet_link'      => $toOrder->sheet_link ?? '',

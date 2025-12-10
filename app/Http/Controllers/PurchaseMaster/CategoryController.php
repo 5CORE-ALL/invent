@@ -37,6 +37,13 @@ class CategoryController extends Controller
         $validator = Validator::make($data, $rule);
 
         if ($validator->fails()) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
             return redirect()->back()->withErrors($validator)->withInput();
         }
 
@@ -47,32 +54,30 @@ class CategoryController extends Controller
             $category_obj = new Category;
         }
 
-        $category_obj->name = $inputs['category_name'];
-        $category_obj->status = isset($inputs['status']) ? $inputs['status'] : 'inactive';
+        $category_obj->name = trim($inputs['category_name']);
+        $category_obj->status = !empty($inputs['status']) ? $inputs['status'] : 'inactive';
 
-        $fields = [];
-        if (!empty($inputs['field_name']) && !empty($inputs['field_label'])) {
-            foreach ($inputs['field_name'] as $key => $name) {
-                $label = $inputs['field_label'][$key] ?? null;
-                $type  = $inputs['field_type'][$key] ?? 'text';
-
-                if (!empty($name) && !empty($label)) {
-                    $fields[] = [
-                        'name'  => $name,
-                        'label' => $label,
-                        'type'  => $type,
-                    ];
-                }
-            }
+        // Generate code if not exists
+        if (empty($category_obj->code)) {
+            $category_obj->code = strtoupper(Str::slug($category_obj->name, '_'));
         }
-        $category_obj->fields = $fields;
+        
         $category_obj->save();
 
         $message = !empty($inputs['category_id']) 
             ? 'Successfully updated category.' 
             : 'Successfully created category.';
 
-        return redirect()->back()->with('status', $message);
+        // Return JSON response for AJAX requests
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'category' => $category_obj
+            ]);
+        }
+
+        return redirect()->back()->with('flash_message', $message);
     }
 
     public function destroy($id)

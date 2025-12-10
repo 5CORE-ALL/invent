@@ -104,7 +104,7 @@ class Ebay3UtilizedAdsController extends Controller
             ->get();
 
         $result = [];
-        $matchedCampaignIds = []; 
+        $campaignMap = []; // Group by campaign_id to avoid duplicates
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
@@ -122,6 +122,11 @@ class Ebay3UtilizedAdsController extends Controller
                 }
             }
 
+            // Skip if NR is NRA
+            if ($nrValue == 'NRA') {
+                continue;
+            }
+
             $matchedReports = $reports->filter(function ($item) use ($sku) {
                 $campaignSku = strtoupper(trim($item->campaign_name ?? ''));
                 return $campaignSku === $sku;
@@ -131,41 +136,70 @@ class Ebay3UtilizedAdsController extends Controller
                 continue;
             }
 
+            // Group reports by campaign_id to combine L7, L1, L30 data
             foreach ($matchedReports as $campaign) {
-                $matchedCampaignIds[] = $campaign->id;
-
-                $row = [];
-                $row['parent'] = $parent;
-                $row['sku'] = $pm->sku;
-                $row['report_range'] = $campaign->report_range;
-                $row['campaign_id'] = $campaign->campaign_id ?? '';
-                $row['campaignName'] = $campaign->campaign_name ?? '';
-                $row['campaignBudgetAmount'] = $campaign->campaignBudgetAmount ?? 0;
-                $row['INV'] = $shopify->inv ?? 0;
-                $row['L30'] = $shopify->quantity ?? 0;
-
-                $adFees = (float) str_replace('USD ', '', $campaign->cpc_ad_fees_payout_currency ?? 0);
-                $sales  = (float) str_replace('USD ', '', $campaign->cpc_sale_amount_payout_currency ?? 0);
-                $row['l7_spend'] = (float) str_replace('USD ', '', $campaign->report_range == 'L7' ? $campaign->cpc_ad_fees_payout_currency ?? 0 : 0);
-                $row['l7_cpc'] = (float) str_replace('USD ', '', $campaign->report_range == 'L7' ? $campaign->cost_per_click ?? 0 : 0);
-                $row['l1_spend'] = (float) str_replace('USD ', '', $campaign->report_range == 'L1' ? $campaign->cpc_ad_fees_payout_currency ?? 0 : 0);
-                $row['l1_cpc'] = (float) str_replace('USD ', '', $campaign->report_range == 'L1' ? $campaign->cost_per_click ?? 0 : 0);
-
-                $acos = $sales > 0 ? ($adFees / $sales) * 100 : 0;
-                if ($adFees > 0 && $sales == 0) {
-                    $row['acos'] = 100;
-                } else {
-                    $row['acos'] = round($acos, 2);
+                $campaignId = $campaign->campaign_id ?? '';
+                
+                if (empty($campaignId)) {
+                    continue;
                 }
 
-                $row['adFees'] = $adFees;
-                $row['sales'] = $sales;
-                $row['NR'] = $nrValue;
+                // Create or get existing row for this campaign
+                if (!isset($campaignMap[$campaignId])) {
+                    $campaignMap[$campaignId] = [
+                        'parent' => $parent,
+                        'sku' => $pm->sku,
+                        'campaign_id' => $campaignId,
+                        'campaignName' => $campaign->campaign_name ?? '',
+                        'campaignBudgetAmount' => $campaign->campaignBudgetAmount ?? 0,
+                        'campaignStatus' => $campaign->campaignStatus ?? '',
+                        'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                        'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
+                        'l7_spend' => 0,
+                        'l7_cpc' => 0,
+                        'l1_spend' => 0,
+                        'l1_cpc' => 0,
+                        'acos' => 0,
+                        'adFees' => 0,
+                        'sales' => 0,
+                        'NR' => $nrValue,
+                    ];
+                }
 
-                if ($row['NR'] != 'NRA') {
-                    $result[] = (object) $row;
+                $reportRange = $campaign->report_range ?? '';
+                $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
+                $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
+                $cpc = (float) str_replace(['USD ', ','], '', $campaign->cost_per_click ?? '0');
+
+                // Set L7 data
+                if ($reportRange == 'L7') {
+                    $campaignMap[$campaignId]['l7_spend'] = $adFees;
+                    $campaignMap[$campaignId]['l7_cpc'] = $cpc;
+                }
+
+                // Set L1 data
+                if ($reportRange == 'L1') {
+                    $campaignMap[$campaignId]['l1_spend'] = $adFees;
+                    $campaignMap[$campaignId]['l1_cpc'] = $cpc;
+                }
+
+                // Calculate ACOS from L30 data (or use the latest available)
+                if ($reportRange == 'L30') {
+                    $campaignMap[$campaignId]['adFees'] = $adFees;
+                    $campaignMap[$campaignId]['sales'] = $sales;
+                    
+                    if ($sales > 0) {
+                        $campaignMap[$campaignId]['acos'] = round(($adFees / $sales) * 100, 2);
+                    } else if ($adFees > 0 && $sales == 0) {
+                        $campaignMap[$campaignId]['acos'] = 100;
+                    }
                 }
             }
+        }
+
+        // Convert map to array
+        foreach ($campaignMap as $campaignId => $row) {
+            $result[] = (object) $row;
         }
 
         return response()->json([

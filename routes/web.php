@@ -670,6 +670,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/supplier-ledger/get-balance', 'getSupplierBalance')->name('supplier.ledger.get-balance');
         Route::get('/supplier-ledger/list', 'fetchSupplierLedgerData');
         Route::post('/advance-payments/save', 'saveAdvancePayments')->name('advance.payments.save');
+        Route::put('/advance-payments/update', 'updateAdvancePayments')->name('advance.payments.update');
         Route::get('/advance-and-payments/data', 'getAdvancePaymentsData');
         Route::post('/advance-payments/delete', 'deleteAdvancePayments');
         Route::post('/supplier-ledger/delete', 'deleteSupplierLedger');

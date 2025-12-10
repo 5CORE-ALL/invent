@@ -23,6 +23,90 @@
         background: #2563eb;
         color: white;
     }
+    
+    /* Remarks tooltip styling */
+    .remarks-tooltip {
+        position: relative;
+        cursor: help;
+        display: inline-block;
+    }
+    
+    .remarks-tooltip:hover::after {
+        content: attr(data-remarks);
+        position: fixed;
+        bottom: auto;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: #333;
+        color: #fff;
+        padding: 12px 16px;
+        border-radius: 6px;
+        white-space: pre-wrap;
+        max-width: 400px;
+        min-width: 200px;
+        z-index: 99999;
+        font-size: 13px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        word-wrap: break-word;
+        pointer-events: none;
+        line-height: 1.5;
+    }
+    
+    .remarks-tooltip:hover::before {
+        content: '';
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        border: 8px solid transparent;
+        border-top-color: #333;
+        z-index: 99998;
+        margin-top: -180px;
+        pointer-events: none;
+    }
+    
+    /* Alternative: Simple tooltip that appears above */
+    .remarks-tooltip-simple {
+        position: relative;
+        cursor: help;
+        display: inline-block;
+    }
+    
+    .remarks-tooltip-simple:hover::after {
+        content: attr(data-remarks);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #1f2937;
+        color: #fff;
+        padding: 10px 14px;
+        border-radius: 6px;
+        white-space: pre-wrap;
+        max-width: 350px;
+        min-width: 200px;
+        z-index: 10000;
+        font-size: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        margin-bottom: 8px;
+        word-wrap: break-word;
+        pointer-events: none;
+        line-height: 1.5;
+        text-align: left;
+    }
+    
+    .remarks-tooltip-simple:hover::before {
+        content: '';
+        position: absolute;
+        bottom: 92%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-top-color: #1f2937;
+        z-index: 10001;
+        pointer-events: none;
+    }
 </style>
 @endsection
 @section('content')
@@ -149,6 +233,98 @@
     </div>
 </div>
 
+<!-- Edit Payment Modal -->
+<div class="modal fade" id="editPaymentModal" tabindex="-1" aria-labelledby="editPaymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-warning text-white">
+                <h5 class="modal-title fw-bold" id="editPaymentModalLabel">
+                    <i class="fas fa-edit me-2"></i> Edit Payment Voucher
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <form method="POST" action="{{ route('advance.payments.update') }}" enctype="multipart/form-data" autocomplete="off" id="editPaymentForm">
+                @csrf
+                @method('PUT')
+                <input type="hidden" name="payment_id" id="edit_payment_id">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        {{-- Voucher Number --}}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Voucher Number</label>
+                            <input type="text" class="form-control" name="vo_number" id="edit_vo_number" readonly>
+                        </div>
+
+                        {{-- Supplier --}}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Supplier <span class="text-danger">*</span></label>
+                            <select class="form-select" name="supplier_id" id="edit_supplier_id" required>
+                                <option value="" disabled>Select Supplier</option>
+                                @foreach($suppliers as $supplier)
+                                    <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        {{-- Purchase Contract --}}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Purchase Contract <span class="text-danger">*</span></label>
+                            <select class="form-select" name="purchase_contract_id" id="edit_purchase_contract_id" required>
+                                <option value="" disabled>Select Purchase Contract</option>
+                                @foreach($purchaseOrders as $order)
+                                    <option value="{{ $order->id }}" data-amount="{{ $order->total_amount }}" data-advance="{{ $order->advance_amount }}">{{ $order->po_number }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        {{-- Total Amount --}}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Total Amount</label>
+                            <input type="number" name="amount" id="edit_amount" class="form-control" readonly>
+                        </div>
+
+                        {{-- Advance Amount --}}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Advance Amount</label>
+                            <input type="number" name="advance_amount" id="edit_advance_amount" class="form-control" readonly>
+                        </div>
+
+                        {{-- Balance (Auto calc) --}}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Balance</label>
+                            <input type="number" id="edit_balance" class="form-control" readonly>
+                        </div>
+
+                        {{-- Payment Image --}}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Payment Image</label>
+                            <input type="file" name="image" id="edit_image" class="form-control" accept="image/*">
+                            <div id="edit_image_preview" class="mt-2"></div>
+                        </div>
+
+                        {{-- Remarks --}}
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Remarks</label>
+                            <textarea name="remarks" id="edit_remarks" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer bg-white">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i> Close
+                    </button>
+                    <button type="submit" class="btn btn-warning" id="edit_submit-btn">
+                        <i class="fas fa-save me-1"></i> Update
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+</div>
+
 <div id="image-preview-popup" 
      style="display:none; position:absolute; z-index:99999; border:1px solid #ccc; background:#fff; padding:5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
     <img src="" style="height:150px;" id="preview-popup-img">
@@ -160,7 +336,7 @@
     <script>
         document.addEventListener("DOMContentLoaded", function() {
 
-            const table = new Tabulator("#advance-payment-table", {
+            let table = new Tabulator("#advance-payment-table", {
                 ajaxURL: "/advance-and-payments/data",
                 ajaxConfig: "GET",
                 layout: "fitColumns",
@@ -203,7 +379,63 @@
                                         data-preview-url="${url}">`;
                         }
                     },
-                    { title: "Remarks", field:"remarks", hozAlign: "center" },
+                    { 
+                        title: "Remarks", 
+                        field:"remarks", 
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const remarks = cell.getValue();
+                            if (!remarks || remarks.trim() === '') {
+                                return '<span class="text-muted">-</span>';
+                            }
+                            // Escape HTML and special characters for tooltip
+                            const escapedRemarks = remarks
+                                .replace(/&/g, '&amp;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;')
+                                .replace(/"/g, '&quot;')
+                                .replace(/'/g, '&#39;')
+                                .replace(/\n/g, '<br>');
+                            
+                            // Truncate if too long for display
+                            const displayText = remarks.length > 30 ? remarks.substring(0, 30) + '...' : remarks;
+                            const escapedDisplayText = displayText
+                                .replace(/&/g, '&amp;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;')
+                                .replace(/"/g, '&quot;')
+                                .replace(/'/g, '&#39;');
+                            
+                            return `<span class="remarks-tooltip-simple" 
+                                        data-remarks="${escapedRemarks}" 
+                                        title="${escapedRemarks}"
+                                        style="cursor: help; text-decoration: underline dotted;">
+                                        ${escapedDisplayText}
+                                    </span>`;
+                        }
+                    },
+                    {
+                        title: "Actions",
+                        field: "actions",
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            return `<button class="btn btn-sm btn-primary edit-payment-btn" 
+                                        data-id="${rowData.id}"
+                                        data-vo-number="${rowData.vo_number}"
+                                        data-supplier-id="${rowData.supplier_id || ''}"
+                                        data-purchase-contract-id="${rowData.purchase_contract_id || ''}"
+                                        data-amount="${rowData.amount || ''}"
+                                        data-advance-amount="${rowData.advance_amount || ''}"
+                                        data-remarks="${(rowData.remarks || '').replace(/"/g, '&quot;')}"
+                                        data-image="${rowData.image || ''}"
+                                        title="Edit">
+                                        <i class="fas fa-edit"></i>
+                                    </button>`;
+                        },
+                        width: 100
+                    },
                 ]
             });
 
@@ -310,6 +542,82 @@
                     }
                 });
             }
+
+            // Handle edit button click
+            $(document).on('click', '.edit-payment-btn', function() {
+                const btn = $(this);
+                const paymentId = btn.data('id');
+                const voNumber = btn.data('vo-number');
+                const supplierId = btn.data('supplier-id');
+                const purchaseContractId = btn.data('purchase-contract-id');
+                const amount = btn.data('amount');
+                const advanceAmount = btn.data('advance-amount');
+                const remarks = btn.data('remarks');
+                const image = btn.data('image');
+
+                // Populate edit modal
+                $('#edit_payment_id').val(paymentId);
+                $('#edit_vo_number').val(voNumber);
+                $('#edit_supplier_id').val(supplierId).trigger('change');
+                $('#edit_purchase_contract_id').val(purchaseContractId).trigger('change');
+                $('#edit_amount').val(amount);
+                $('#edit_advance_amount').val(advanceAmount);
+                $('#edit_balance').val((parseFloat(amount) || 0) - (parseFloat(advanceAmount) || 0));
+                $('#edit_remarks').val(remarks || '');
+
+                // Show image preview if exists
+                const imagePreview = $('#edit_image_preview');
+                if (image) {
+                    imagePreview.html(`<img src="${image}" style="max-height: 100px; border: 1px solid #ddd; border-radius: 4px;" alt="Current Image">`);
+                } else {
+                    imagePreview.html('');
+                }
+
+                // Open edit modal
+                $('#editPaymentModal').modal('show');
+            });
+
+            // Handle purchase contract change in edit modal
+            $('#edit_purchase_contract_id').on('change', function() {
+                const selectedOption = $(this).find('option:selected');
+                const amount = parseFloat(selectedOption.data('amount')) || 0;
+                const advance = parseFloat(selectedOption.data('advance')) || 0;
+                const balance = amount - advance;
+
+                $('#edit_amount').val(amount);
+                $('#edit_advance_amount').val(advance);
+                $('#edit_balance').val(balance);
+            });
+
+            // Handle edit form submission
+            $('#editPaymentForm').on('submit', function(e) {
+                e.preventDefault();
+                const form = $(this);
+                const formData = new FormData(form[0]);
+
+                $.ajax({
+                    url: form.attr('action'),
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        $('#editPaymentModal').modal('hide');
+                        // Refresh table data
+                        table.replaceData("/advance-and-payments/data");
+                        // Show success message
+                        alert('Payment updated successfully!');
+                    },
+                    error: function(xhr) {
+                        console.error('Error updating payment:', xhr.responseText);
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            alert('Error: ' + xhr.responseJSON.message);
+                        } else {
+                            alert('Error updating payment. Please try again.');
+                        }
+                    }
+                });
+            });
 
         });
     </script>
