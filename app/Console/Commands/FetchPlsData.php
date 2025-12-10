@@ -31,6 +31,13 @@ class FetchPlsData extends Command
         $password = env('PROLIGHTSOUNDS_SHOPIFY_PASSWORD');
         $version  = "2025-07";
 
+        // Validate credentials
+        if (empty($shopUrl) || empty($apiKey) || empty($password)) {
+            $this->error("ProLightSounds Shopify credentials not configured in .env file");
+            Log::error("ProLightSounds Shopify credentials missing: PROLIGHTSOUNDS_SHOPIFY_DOMAIN, PROLIGHTSOUNDS_SHOPIFY_API_KEY, or PROLIGHTSOUNDS_SHOPIFY_PASSWORD");
+            return 1;
+        }
+
         // --- Date ranges ---
         $now = Carbon::now('America/New_York');
 

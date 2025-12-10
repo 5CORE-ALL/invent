@@ -650,7 +650,22 @@ class TemuController extends Controller
             $chunkRows = array_slice($rows, $startRow, $endRow - $startRow, true);
             
             $imported = 0;
+            $skipped = 0;
             $errors = [];
+
+            // Get all order IDs from the current chunk to check for duplicates
+            $orderIdsToCheck = [];
+            foreach ($chunkRows as $row) {
+                if (!empty($row[0])) {
+                    $orderIdsToCheck[] = $row[0];
+                }
+            }
+
+            // Check which order IDs already exist in database
+            $existingOrderIds = TemuDailyData::whereIn('order_id', $orderIdsToCheck)
+                ->pluck('order_id')
+                ->toArray();
+            $existingOrderIds = array_flip($existingOrderIds);
 
             DB::beginTransaction();
             try {
@@ -661,6 +676,12 @@ class TemuController extends Controller
 
                     $rowData = array_pad(array_slice($row, 0, count($headers)), count($headers), null);
                     $data = array_combine($headers, $rowData);
+
+                    // Skip if order_id already exists in database
+                    if (isset($existingOrderIds[$data['order_id']])) {
+                        $skipped++;
+                        continue;
+                    }
 
                     // Map and insert data
                     TemuDailyData::create([
@@ -725,6 +746,7 @@ class TemuController extends Controller
                 'chunk' => $chunk,
                 'totalChunks' => $totalChunks,
                 'imported' => $imported,
+                'skipped' => $skipped,
                 'progress' => round((($chunk + 1) / $totalChunks) * 100, 2)
             ]);
         } catch (\Exception $e) {
