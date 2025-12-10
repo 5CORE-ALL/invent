@@ -125,6 +125,42 @@
         .char-counter.error {
             color: #dc3545;
         }
+
+        .platform-selector-modal .platform-item {
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .platform-selector-modal .platform-item:hover {
+            border-color: #2c6ed5;
+            background-color: #f8f9fa;
+        }
+
+        .platform-selector-modal .platform-item.selected {
+            border-color: #198754;
+            background-color: #d1e7dd;
+        }
+
+        .platform-selector-modal .form-check-input:checked {
+            background-color: #198754;
+            border-color: #198754;
+        }
+
+        .platform-icon {
+            font-size: 20px;
+            margin-right: 10px;
+        }
+
+        .platform-badge {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin-left: 10px;
+        }
     </style>
 @endsection
 
@@ -152,7 +188,7 @@
                                 <i class="fas fa-upload"></i> Import
                             </button>
                             <button id="updateAmazonBtn" class="btn btn-warning ms-2" style="display:none;">
-                                <i class="fas fa-sync"></i> Update to Amazon & Shopify (<span id="selectedCount">0</span>)
+                                <i class="fas fa-sync"></i> Update Titles (<span id="selectedCount">0</span> selected)
                             </button>
                             <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display: none;">
                         </div>
@@ -263,6 +299,149 @@
             </div>
         </div>
     </div>
+
+    <!-- Platform Selection Modal -->
+    <div class="modal fade" id="platformModal" tabindex="-1" aria-labelledby="platformModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content platform-selector-modal">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title" id="platformModalLabel">
+                        <i class="fas fa-globe me-2"></i>Select Platforms to Update (<span id="platformSkuCount">0</span> SKUs)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> Select which platforms you want to update. Each platform will update its corresponding title field.
+                    </div>
+
+                    <div class="row">
+                        <!-- Amazon -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('amazon')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="amazon" id="platform_amazon">
+                                    <label class="form-check-label w-100" for="platform_amazon">
+                                        <i class="fab fa-amazon platform-icon text-warning"></i>
+                                        <strong>Amazon</strong>
+                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Shopify -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('shopify')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="shopify" id="platform_shopify">
+                                    <label class="form-check-label w-100" for="platform_shopify">
+                                        <i class="fab fa-shopify platform-icon text-success"></i>
+                                        <strong>Shopify</strong>
+                                        <span class="badge bg-success platform-badge">Title 100</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- eBay 1 -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('ebay1')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="ebay1" id="platform_ebay1">
+                                    <label class="form-check-label w-100" for="platform_ebay1">
+                                        <i class="fas fa-gavel platform-icon text-info"></i>
+                                        <strong>eBay 1</strong>
+                                        <span class="badge bg-info platform-badge">Title 80</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- eBay 2 -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('ebay2')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="ebay2" id="platform_ebay2">
+                                    <label class="form-check-label w-100" for="platform_ebay2">
+                                        <i class="fas fa-gavel platform-icon text-info"></i>
+                                        <strong>eBay 2</strong>
+                                        <span class="badge bg-info platform-badge">Title 80</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- eBay 3 -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('ebay3')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="ebay3" id="platform_ebay3">
+                                    <label class="form-check-label w-100" for="platform_ebay3">
+                                        <i class="fas fa-gavel platform-icon text-info"></i>
+                                        <strong>eBay 3</strong>
+                                        <span class="badge bg-info platform-badge">Title 80</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Walmart -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('walmart')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="walmart" id="platform_walmart">
+                                    <label class="form-check-label w-100" for="platform_walmart">
+                                        <i class="fas fa-store platform-icon text-primary"></i>
+                                        <strong>Walmart</strong>
+                                        <span class="badge bg-info platform-badge">Title 80</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Temu -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('temu')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="temu" id="platform_temu">
+                                    <label class="form-check-label w-100" for="platform_temu">
+                                        <i class="fas fa-shopping-bag platform-icon text-danger"></i>
+                                        <strong>Temu</strong>
+                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Doba -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('doba')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="doba" id="platform_doba">
+                                    <label class="form-check-label w-100" for="platform_doba">
+                                        <i class="fas fa-box platform-icon text-secondary"></i>
+                                        <strong>Doba</strong>
+                                        <span class="badge bg-success platform-badge">Title 100</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning mt-3">
+                        <i class="fas fa-exclamation-triangle"></i> <strong>Note:</strong> Updates will respect platform rate limits. This may take several seconds per product.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="confirmUpdateBtn">
+                        <i class="fas fa-cloud-upload-alt"></i> Update Selected Platforms
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -272,13 +451,17 @@
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         let tableData = [];
         let titleModal;
+        let platformModal;
+        let selectedSkusForUpdate = [];
 
         document.addEventListener('DOMContentLoaded', function() {
             titleModal = new bootstrap.Modal(document.getElementById('titleModal'));
+            platformModal = new bootstrap.Modal(document.getElementById('platformModal'));
             loadTitleData();
             setupSearchHandlers();
             setupModalHandlers();
             setupButtonHandlers();
+            setupPlatformModalHandlers();
         });
 
         function setupButtonHandlers() {
@@ -305,9 +488,156 @@
                 }
             });
 
-            // Update Amazon Button
+            // Update Titles Button - opens platform selection modal
             document.getElementById('updateAmazonBtn').addEventListener('click', function() {
-                updateSelectedToAmazon();
+                openPlatformSelectionModal();
+            });
+        }
+
+        function setupPlatformModalHandlers() {
+            // Confirm Update Button
+            document.getElementById('confirmUpdateBtn').addEventListener('click', function() {
+                updateSelectedPlatforms();
+            });
+        }
+
+        function togglePlatform(platformId) {
+            const checkbox = document.getElementById('platform_' + platformId);
+            const platformItem = checkbox.closest('.platform-item');
+            
+            checkbox.checked = !checkbox.checked;
+            
+            if (checkbox.checked) {
+                platformItem.classList.add('selected');
+            } else {
+                platformItem.classList.remove('selected');
+            }
+        }
+
+        function openPlatformSelectionModal() {
+            const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+            selectedSkusForUpdate = Array.from(checkedBoxes).map(cb => cb.getAttribute('data-sku'));
+
+            if (selectedSkusForUpdate.length === 0) {
+                alert('Please select at least one product');
+                return;
+            }
+
+            // Update SKU count in modal
+            document.getElementById('platformSkuCount').textContent = selectedSkusForUpdate.length;
+
+            // Reset all platform selections
+            document.querySelectorAll('.platform-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            document.querySelectorAll('[id^="platform_"]').forEach(cb => {
+                cb.checked = false;
+            });
+
+            // Show the platform selection modal
+            platformModal.show();
+        }
+
+        function updateSelectedPlatforms() {
+            // Collect selected platforms
+            const platforms = [];
+            if (document.getElementById('platform_amazon').checked) platforms.push('amazon');
+            if (document.getElementById('platform_shopify').checked) platforms.push('shopify');
+            if (document.getElementById('platform_ebay1').checked) platforms.push('ebay1');
+            if (document.getElementById('platform_ebay2').checked) platforms.push('ebay2');
+            if (document.getElementById('platform_ebay3').checked) platforms.push('ebay3');
+            if (document.getElementById('platform_walmart').checked) platforms.push('walmart');
+            if (document.getElementById('platform_temu').checked) platforms.push('temu');
+            if (document.getElementById('platform_doba').checked) platforms.push('doba');
+
+            if (platforms.length === 0) {
+                alert('Please select at least one platform to update');
+                return;
+            }
+
+            // Platform display names
+            const platformNames = {
+                'amazon': 'Amazon (Title 150)',
+                'shopify': 'Shopify (Title 100)',
+                'ebay1': 'eBay 1 (Title 80)',
+                'ebay2': 'eBay 2 (Title 80)',
+                'ebay3': 'eBay 3 (Title 80)',
+                'walmart': 'Walmart (Title 80)',
+                'temu': 'Temu (Title 150)',
+                'doba': 'Doba (Title 100)'
+            };
+
+            const platformList = platforms.map(p => platformNames[p]).join('\n');
+            const confirmMsg = 'Update ' + selectedSkusForUpdate.length + ' product(s) to:\n\n' + platformList + '\n\nThis may take several seconds. Continue?';
+
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            // Hide platform modal and show processing
+            platformModal.hide();
+
+            const updateBtn = document.getElementById('updateAmazonBtn');
+            updateBtn.disabled = true;
+            updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+
+            // Send to backend
+            fetch('/title-master/update-platforms', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                body: JSON.stringify({ 
+                    skus: selectedSkusForUpdate,
+                    platforms: platforms
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    let message = 'Update Completed!\n\n';
+                    
+                    // Show results by platform
+                    if (data.results) {
+                        for (const [platform, result] of Object.entries(data.results)) {
+                            const displayName = platformNames[platform] || platform.toUpperCase();
+                            message += displayName + ': ';
+                            message += 'Success: ' + result.success + ', Failed: ' + result.failed + '\n';
+                        }
+                    }
+                    
+                    message += '\nTotal Success: ' + data.total_success;
+                    message += '\nTotal Failed: ' + data.total_failed;
+                    
+                    if (data.message && data.message.trim() !== '') {
+                        message += '\n\nDetails:\n' + data.message;
+                    }
+                    
+                    alert(message);
+                    
+                    // Uncheck all checkboxes
+                    document.querySelectorAll('.row-checkbox:checked').forEach(cb => cb.checked = false);
+                    document.getElementById('selectAll').checked = false;
+                    updateSelectedCount();
+                    
+                    // Reload data
+                    loadTitleData();
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to update platforms'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error updating platforms: ' + error.message);
+            })
+            .finally(() => {
+                updateBtn.disabled = false;
+                const count = document.querySelectorAll('.row-checkbox:checked').length;
+                updateBtn.innerHTML = '<i class="fas fa-sync"></i> Update Titles (<span id="selectedCount">' + count + '</span> selected)';
+                if (count === 0) {
+                    updateBtn.style.display = 'none';
+                }
             });
         }
 
@@ -336,70 +666,6 @@
             if (updateBtn) {
                 updateBtn.style.display = count > 0 ? 'inline-block' : 'none';
             }
-        }
-
-        function updateSelectedToAmazon() {
-            const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
-            const skus = Array.from(checkedBoxes).map(cb => cb.getAttribute('data-sku'));
-
-            if (skus.length === 0) {
-                alert('Please select at least one product');
-                return;
-            }
-
-            if (!confirm('Update ' + skus.length + ' product title(s) to Amazon Seller Central?\n\nThis will update the product titles on Amazon.')) {
-                return;
-            }
-
-            const updateBtn = document.getElementById('updateAmazonBtn');
-            updateBtn.disabled = true;
-            updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
-
-            fetch('/title-master/update-amazon', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken
-                },
-                body: JSON.stringify({ skus: skus })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    let message = 'Update Completed!\n\n';
-                    message += 'Amazon & Shopify Update:\n';
-                    message += 'Success: ' + data.success_count + '\n';
-                    message += 'Failed: ' + data.error_count + '\n';
-                    
-                    if (data.message && data.message.trim() !== '') {
-                        message += '\nDetails:\n' + data.message;
-                    }
-                    
-                    alert(message);
-                    
-                    // Uncheck all checkboxes
-                    document.querySelectorAll('.row-checkbox:checked').forEach(cb => cb.checked = false);
-                    document.getElementById('selectAll').checked = false;
-                    updateSelectedCount();
-                    
-                    // Reload data to show updated sync status
-                    loadTitleData();
-                } else {
-                    alert('Error: ' + (data.message || 'Failed to update titles'));
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error updating to Amazon: ' + error.message);
-            })
-            .finally(() => {
-                updateBtn.disabled = false;
-                const count = document.querySelectorAll('.row-checkbox:checked').length;
-                updateBtn.innerHTML = '<i class="fas fa-sync"></i> Update to Amazon & Shopify (<span id="selectedCount">' + count + '</span>)';
-                if (count === 0) {
-                    updateBtn.style.display = 'none';
-                }
-            });
         }
 
         function setupModalHandlers() {

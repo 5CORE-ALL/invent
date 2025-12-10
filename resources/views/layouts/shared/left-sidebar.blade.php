@@ -301,6 +301,9 @@
                             <a href="{{ route('title.master') }}">Title Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('videos.master') }}">Videos</a>
+                        </li>
+                        <li>
                             <a href="{{ route('bullet.points') }}">Bullet Points</a>
                         </li>
                         <li>
