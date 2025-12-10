@@ -28,7 +28,14 @@ class ForecastAnalysisController extends Controller
 
     private function buildForecastAnalysisData()
     {
-        $normalizeSku = fn($sku) => strtoupper(trim($sku));
+        // Improved normalization to handle multiple spaces and hidden whitespace
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse multiple spaces to single space
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace characters
+            return trim($sku);
+        };
 
         $jungleScoutData = JungleScoutProductData::query()
             ->get()
@@ -56,7 +63,10 @@ class ForecastAnalysisController extends Controller
 
         $productListData = DB::table('product_master')->whereNull('deleted_at')->get();
 
-        $shopifyData = ShopifySku::all()->keyBy(fn($item) => $normalizeSku($item->sku));
+        // Load all shopify data and normalize SKUs for matching
+        $shopifyData = ShopifySku::all()->keyBy(function($item) use ($normalizeSku) {
+            return $normalizeSku($item->sku);
+        });
 
 
         $supplierRows = Supplier::where('type', 'Supplier')->get();
@@ -143,15 +153,28 @@ class ForecastAnalysisController extends Controller
             $item->{'GW (KG)'} = is_numeric($values['wt_act'] ?? null) ? round($values['wt_act'] * 0.45, 2) : '';
 
             $shopify = $shopifyData[$sheetSku] ?? null;
-            $imageFromShopify = $shopify->image_src ?? null;
+            
+            // If exact match fails, try to find by removing all spaces (fallback)
+            if (!$shopify && !empty($sheetSku)) {
+                $skuNoSpaces = str_replace(' ', '', $sheetSku);
+                foreach ($shopifyData as $key => $value) {
+                    if (str_replace(' ', '', $key) === $skuNoSpaces) {
+                        $shopify = $value;
+                        break;
+                    }
+                }
+            }
+            
+            $imageFromShopify = $shopify ? ($shopify->image_src ?? null) : null;
             $imageFromProductMaster = $values['image_path'] ?? null;
             $item->Image = $imageFromShopify ?: $imageFromProductMaster;
 
-            $item->INV = $shopify->inv ?? 0;
-            $item->L30 = $shopify->quantity ?? 0;
+            // Safely get inventory - check if shopify exists first
+            $item->INV = ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0;
+            $item->L30 = ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0;
             
             // Calculate shopifyb2c_price and inv_value
-            $shopifyb2c_price = $shopify->price ?? 0;
+            $shopifyb2c_price = ($shopify && isset($shopify->price)) ? (float)$shopify->price : 0;
             $item->shopifyb2c_price = $shopifyb2c_price;
             $item->inv_value = $item->INV * $shopifyb2c_price;
             
@@ -442,7 +465,15 @@ class ForecastAnalysisController extends Controller
 
     public function invetoryStagesData(){
         try {
-            $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/',' ', str_replace("\xc2\xa0",' ',$sku))));
+            // Improved normalization to handle multiple spaces and hidden whitespace
+            $normalizeSku = function ($sku) {
+                if (empty($sku)) return '';
+                $sku = str_replace("\xc2\xa0", ' ', $sku); // Replace non-breaking space
+                $sku = strtoupper(trim($sku));
+                $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse multiple spaces to single space
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace characters
+                return trim($sku);
+            };
 
             $jungleScoutData = JungleScoutProductData::query()
                 ->get()
@@ -533,15 +564,28 @@ class ForecastAnalysisController extends Controller
                 // Image
                 $normalizedSku = $normalizeSku($prodData->sku);
                 $shopify = $shopifyData[$normalizedSku] ?? null;
-                $imageFromShopify = $shopify->image_src ?? null;
+                
+                // If exact match fails, try to find by removing all spaces (fallback)
+                if (!$shopify && !empty($normalizedSku)) {
+                    $skuNoSpaces = str_replace(' ', '', $normalizedSku);
+                    foreach ($shopifyData as $key => $value) {
+                        if (str_replace(' ', '', $key) === $skuNoSpaces) {
+                            $shopify = $value;
+                            break;
+                        }
+                    }
+                }
+                
+                $imageFromShopify = $shopify ? ($shopify->image_src ?? null) : null;
                 $imageFromProductMaster = $values['image_path'] ?? null;
                 $item->Image = $imageFromShopify ?: $imageFromProductMaster;
 
-                $item->INV = $shopify->inv ?? 0;
-                $item->L30 = $shopify->quantity ?? 0;
+                // Safely get inventory - check if shopify exists first
+                $item->INV = ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0;
+                $item->L30 = ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0;
                 
                 // Calculate shopifyb2c_price and inv_value
-                $shopifyb2c_price = $shopify->price ?? 0;
+                $shopifyb2c_price = ($shopify && isset($shopify->price)) ? (float)$shopify->price : 0;
                 $item->shopifyb2c_price = $shopifyb2c_price;
                 $item->inv_value = $item->INV * $shopifyb2c_price;
                 
