@@ -67,10 +67,10 @@ class ListingEbayController extends Controller
             if (isset($ebayDataView[$childSku])) {
                 $ebayData = $ebayDataView[$childSku]->value;
                 
-                // Read NRL field - "REQ" means RL, "NRL" means NRL
+                // Read NRL field - "REQ" or "NRL"
                 $nrlValue = $ebayData['NRL'] ?? null;
                 if ($nrlValue === 'NRL') {
-                    $nr_req = 'NR';
+                    $nr_req = 'NRL';
                 } else if ($nrlValue === 'REQ') {
                     $nr_req = 'REQ';
                 }
@@ -124,8 +124,8 @@ class ListingEbayController extends Controller
 
         // Handle nr_req - save as NRL field in ebay_data_view
         if ($request->has('nr_req')) {
-            // Map: 'NR' -> 'NRL', 'REQ' -> 'REQ'
-            $existing['NRL'] = ($validated['nr_req'] === 'NR') ? 'NRL' : 'REQ';
+            // Map: 'NRL' -> 'NRL', 'REQ' -> 'REQ'
+            $existing['NRL'] = ($validated['nr_req'] === 'NRL') ? 'NRL' : 'REQ';
         }
 
         // Handle listed field - save as Listed (capitalized) to match the JSON structure
@@ -182,7 +182,7 @@ class ListingEbayController extends Controller
             $nrlValue = $status['NRL'] ?? null;
             $nrReq = 'REQ'; // Default
             if ($nrlValue === 'NRL') {
-                $nrReq = 'NR';
+                $nrReq = 'NRL';
             } else if ($nrlValue === 'REQ') {
                 $nrReq = 'REQ';
             }
@@ -322,7 +322,7 @@ class ListingEbayController extends Controller
 
                     // Handle nr_req - save as NRL field
                     if (array_key_exists('nr_req', $rowData) && $rowData['nr_req'] !== '') {
-                        $existing['NRL'] = (trim($rowData['nr_req']) === 'NR') ? 'NRL' : 'REQ';
+                        $existing['NRL'] = (trim($rowData['nr_req']) === 'NRL') ? 'NRL' : 'REQ';
                     }
 
                     // Handle listed field
@@ -404,7 +404,7 @@ class ListingEbayController extends Controller
                 $nrlValue = $ebayData->value['NRL'] ?? null;
                 $nr_req = '';
                 if ($nrlValue === 'NRL') {
-                    $nr_req = 'NR';
+                    $nr_req = 'NRL';
                 } else if ($nrlValue === 'REQ') {
                     $nr_req = 'REQ';
                 }
