@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use App\Services\GoogleAdsSbidService;
 use App\Models\ProductMaster;
 use App\Models\GoogleAdsCampaign;
@@ -164,36 +163,24 @@ class UpdateSerpBudgetCronCommand extends Command
             
             // Get current budget
             $currentBudget = $matchedCampaign->budget_amount_micros ? $matchedCampaign->budget_amount_micros / 1000000 : 0;
-            
-            if ($currentBudget <= 0) {
-                $this->line("Skipping campaign {$campaignId} (SKU: {$pm->sku}) - Invalid budget");
-                continue;
-            }
 
-            // Determine budget multiplier based on ACOS
-            // ACOS < 10% → multiplier 5
-            // ACOS 10-20% → multiplier 4
-            // ACOS 20-30% → multiplier 3
-            // ACOS 30-40% → multiplier 2
-            // ACOS > 40% → multiplier 1
-            $multiplier = 1;
+            // Determine budget value based on ACOS
+            // ACOS < 10% → budget = 5
+            // ACOS 10%-20% → budget = 4
+            // ACOS 20%-30% → budget = 3
+            // ACOS 30%-40% → budget = 2
+            // ACOS > 40% → budget = 1
+            $newBudget = 1;
             if ($acos < 10) {
-                $multiplier = 5;
+                $newBudget = 5;
             } elseif ($acos >= 10 && $acos < 20) {
-                $multiplier = 4;
+                $newBudget = 4;
             } elseif ($acos >= 20 && $acos < 30) {
-                $multiplier = 3;
+                $newBudget = 3;
             } elseif ($acos >= 30 && $acos < 40) {
-                $multiplier = 2;
+                $newBudget = 2;
             } else {
-                $multiplier = 1;
-            }
-            
-            $newBudget = $currentBudget * $multiplier;
-            
-            // Only update if budget changed
-            if (abs($newBudget - $currentBudget) < 0.01) {
-                continue; // Budget unchanged
+                $newBudget = 1;
             }
             
             if (!isset($campaignUpdates[$budgetId])) {
@@ -201,26 +188,15 @@ class UpdateSerpBudgetCronCommand extends Command
                     $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
                     $this->sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
                     $campaignUpdates[$budgetId] = true;
-                    $this->info("Updated SERP campaign {$campaignId} (SKU: {$pm->sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%, Multiplier={$multiplier})");
+                    $this->info("Updated SERP campaign {$campaignId} (SKU: {$pm->sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%)");
                 } catch (\Exception $e) {
                     $this->error("Failed to update SERP campaign budget {$campaignId}: " . $e->getMessage());
-                    Log::error("SERP Budget Update Failed", [
-                        'campaign_id' => $campaignId,
-                        'budget_id' => $budgetId,
-                        'sku' => $pm->sku,
-                        'current_budget' => $currentBudget,
-                        'new_budget' => $newBudget,
-                        'acos' => $acos,
-                        'multiplier' => $multiplier,
-                        'error' => $e->getMessage()
-                    ]);
                 }
             }
         }
 
         $processedCount = count($campaignUpdates);
         $this->info("Done. Processed: {$processedCount} unique SERP campaign budgets.");
-        Log::info('SERP Budget Cron Run', ['processed' => $processedCount]);
 
         return 0;
     }
