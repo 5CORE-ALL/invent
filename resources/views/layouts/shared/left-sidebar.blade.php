@@ -2850,6 +2850,7 @@
                                         <a href="{{ url('sheinAnalysis') }}">Shein
                                             Analytics</a>
                                     </li>
+                                    <li><a href="{{ url('shein-tabulator') }}">Shein Daily Data</a></li>
                                     <li><a href="{{ route('zero.shein') }}">Shein 0 view</a></li>
                                     <li><a href="{{ route('listing.shein') }}">Listing Shein</a></li>
                                 </ul>

@@ -11,10 +11,14 @@ use App\Models\WalmartDataView;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\SheinDataView;
+use App\Models\SheinDailyData;
 use App\Models\ShopifySku;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 class SheinController extends Controller
 {
     protected $apiController;
@@ -410,5 +414,316 @@ class SheinController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    /**
+     * Upload Shein daily data file in chunks
+     */
+    public function uploadDailyDataChunk(Request $request)
+    {
+        try {
+            $request->validate([
+                'file' => 'required|file|mimes:xlsx,xls,csv,txt',
+                'chunk' => 'required|integer|min:0',
+                'totalChunks' => 'required|integer|min:1',
+            ]);
+
+            $file = $request->file('file');
+            $chunk = $request->input('chunk');
+            $totalChunks = $request->input('totalChunks');
+            $uploadId = $request->input('uploadId', uniqid('shein_upload_'));
+
+            // Store the file temporarily
+            $tempPath = storage_path('app/temp');
+            if (!file_exists($tempPath)) {
+                mkdir($tempPath, 0755, true);
+            }
+
+            $fileName = $uploadId . '_' . $file->getClientOriginalName();
+            $filePath = $tempPath . '/' . $fileName;
+
+            // Move uploaded file on first chunk
+            if ($chunk == 0) {
+                $file->move($tempPath, $fileName);
+                
+                // Truncate the table on first chunk
+                DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+                SheinDailyData::truncate();
+                DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+                
+                Log::info('Shein daily data table truncated before import');
+            }
+
+            // Load and process the spreadsheet
+            $spreadsheet = IOFactory::load($filePath);
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            // Skip first two rows (headers)
+            unset($rows[0]); // First header row
+            unset($rows[1]); // Second header row with actual column names
+
+            $totalRows = count($rows);
+            $chunkSize = ceil($totalRows / $totalChunks);
+            $startRow = $chunk * $chunkSize;
+            $endRow = min(($chunk + 1) * $chunkSize, $totalRows);
+
+            // Process only this chunk's rows
+            $chunkRows = array_slice($rows, $startRow, $endRow - $startRow, true);
+            
+            $imported = 0;
+            $skipped = 0;
+
+            DB::beginTransaction();
+            try {
+                foreach ($chunkRows as $index => $row) {
+                    if (empty($row[1])) { // Skip if order_number is empty
+                        $skipped++;
+                        continue;
+                    }
+
+                    // Map row data to database columns
+                    $insertData = [
+                        'order_type' => isset($row[0]) && $row[0] !== '' ? trim($row[0]) : null,
+                        'order_number' => isset($row[1]) && $row[1] !== '' ? trim($row[1]) : null,
+                        'exchange_order' => isset($row[2]) && $row[2] !== '' ? trim($row[2]) : null,
+                        'order_status' => isset($row[3]) && $row[3] !== '' ? trim($row[3]) : null,
+                        'shipment_mode' => isset($row[4]) && $row[4] !== '' ? trim($row[4]) : null,
+                        'urged_or_not' => isset($row[5]) && $row[5] !== '' ? trim($row[5]) : null,
+                        'is_it_lost' => isset($row[6]) && $row[6] !== '' ? trim($row[6]) : null,
+                        'whether_to_stay' => isset($row[7]) && $row[7] !== '' ? trim($row[7]) : null,
+                        'order_issue' => isset($row[8]) && $row[8] !== '' ? trim($row[8]) : null,
+                        'product_name' => isset($row[9]) && $row[9] !== '' ? trim($row[9]) : null,
+                        'product_description' => isset($row[10]) && $row[10] !== '' ? trim($row[10]) : null,
+                        'specification' => isset($row[11]) && $row[11] !== '' ? trim($row[11]) : null,
+                        'seller_sku' => isset($row[12]) && $row[12] !== '' ? trim($row[12]) : null,
+                        'shein_sku' => isset($row[13]) && $row[13] !== '' ? trim($row[13]) : null,
+                        'skc' => isset($row[14]) && $row[14] !== '' ? trim($row[14]) : null,
+                        'item_id' => isset($row[15]) && $row[15] !== '' ? trim($row[15]) : null,
+                        'product_status' => isset($row[16]) && $row[16] !== '' ? trim($row[16]) : null,
+                        'inventory_id' => isset($row[17]) && $row[17] !== '' ? trim($row[17]) : null,
+                        'exchange_id' => isset($row[18]) && $row[18] !== '' ? trim($row[18]) : null,
+                        'reason_for_replacement' => isset($row[19]) && $row[19] !== '' ? trim($row[19]) : null,
+                        'product_id_to_be_exchanged' => isset($row[20]) && $row[20] !== '' ? trim($row[20]) : null,
+                        'locked_or_not' => isset($row[21]) && $row[21] !== '' ? trim($row[21]) : null,
+                        'order_processed_on' => isset($row[22]) ? $this->parseDate($row[22]) : null,
+                        'collection_deadline' => isset($row[23]) ? $this->parseDate($row[23]) : null,
+                        'delivery_deadline' => isset($row[24]) ? $this->parseDate($row[24]) : null,
+                        'delivery_time' => isset($row[25]) ? $this->parseDate($row[25]) : null,
+                        'tracking_number' => isset($row[26]) && $row[26] !== '' ? trim($row[26]) : null,
+                        'sellers_package' => isset($row[27]) && $row[27] !== '' ? trim($row[27]) : null,
+                        'seller_currency' => isset($row[28]) && $row[28] !== '' ? trim($row[28]) : null,
+                        'product_price' => isset($row[29]) ? $this->sanitizePrice($row[29]) : null,
+                        'coupon_discount' => isset($row[30]) ? $this->sanitizePrice($row[30]) : null,
+                        'store_campaign_discount' => isset($row[31]) ? $this->sanitizePrice($row[31]) : null,
+                        'commission' => isset($row[32]) ? $this->sanitizePrice($row[32]) : null,
+                        'estimated_merchandise_revenue' => isset($row[33]) ? $this->sanitizePrice($row[33]) : null,
+                        'consumption_tax' => isset($row[34]) ? $this->sanitizePrice($row[34]) : null,
+                        'province' => isset($row[35]) && $row[35] !== '' ? trim($row[35]) : null,
+                        'city' => isset($row[36]) && $row[36] !== '' ? trim($row[36]) : null,
+                        'quantity' => 1, // Default quantity is 1
+                    ];
+
+                    SheinDailyData::create($insertData);
+                    $imported++;
+                }
+
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            // Clean up temp file on last chunk
+            if ($chunk == $totalChunks - 1) {
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Chunk $chunk processed successfully",
+                'chunk' => $chunk,
+                'totalChunks' => $totalChunks,
+                'imported' => $imported,
+                'skipped' => $skipped,
+                'progress' => round((($chunk + 1) / $totalChunks) * 100, 2)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error uploading Shein daily data chunk: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Sanitize price values
+     */
+    private function sanitizePrice($value)
+    {
+        if (empty($value) || $value === '?') {
+            return null;
+        }
+
+        // Remove currency symbols, commas, and whitespace
+        $cleaned = preg_replace('/[USD$,\s]/', '', $value);
+        
+        return is_numeric($cleaned) ? (float)$cleaned : null;
+    }
+
+    /**
+     * Parse date string to Carbon instance
+     */
+    private function parseDate($dateString)
+    {
+        if (empty($dateString) || $dateString === null || $dateString === '') {
+            return null;
+        }
+
+        try {
+            // Handle Excel numeric dates
+            if (is_numeric($dateString)) {
+                $baseDate = Carbon::create(1899, 12, 30);
+                return $baseDate->addDays((int)$dateString);
+            }
+
+            // Try common date formats
+            $formats = [
+                'Y-F-d H:i',       // 2025-December-10 07:31
+                'Y-M-d H:i',       // 2025-Dec-10 07:31
+                'm/d/Y H:i',
+                'd/m/Y H:i',
+                'Y-m-d H:i:s',
+                'Y-m-d',
+                'm/d/Y',
+                'd/m/Y',
+            ];
+
+            foreach ($formats as $format) {
+                try {
+                    $parsed = Carbon::createFromFormat($format, trim($dateString));
+                    if ($parsed) {
+                        return $parsed;
+                    }
+                } catch (\Exception $e) {
+                    continue;
+                }
+            }
+
+            // Try general parsing as last resort
+            return Carbon::parse($dateString);
+        } catch (\Exception $e) {
+            Log::warning("Failed to parse date: {$dateString}");
+            return null;
+        }
+    }
+
+    /**
+     * Get daily data for Shein tabulator view
+     */
+    public function getDailyData(Request $request)
+    {
+        try {
+            // Get all Shein daily data
+            $data = SheinDailyData::orderBy('order_processed_on', 'desc')->get();
+            
+            // Get unique SKUs
+            $skus = $data->pluck('seller_sku')->unique()->filter()->values()->toArray();
+            
+            // Fetch ProductMaster data for all SKUs
+            $productMasters = ProductMaster::whereIn('sku', $skus)
+                ->get()
+                ->keyBy('sku');
+            
+            // Enhance data with LP and Ship from ProductMaster
+            $data = $data->map(function($item) use ($productMasters) {
+                $sku = $item->seller_sku;
+                
+                // Fetch from ProductMaster
+                if ($sku && isset($productMasters[$sku])) {
+                    $pm = $productMasters[$sku];
+                    $values = is_array($pm->Values) 
+                        ? $pm->Values 
+                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    
+                    // Get LP
+                    $lp = 0;
+                    foreach ($values as $k => $v) {
+                        if (strtolower($k) === "lp") {
+                            $lp = floatval($v);
+                            break;
+                        }
+                    }
+                    if ($lp === 0 && isset($pm->lp)) {
+                        $lp = floatval($pm->lp);
+                    }
+                    $item->lp = $lp;
+                    
+                    // Get Ship
+                    $ship = isset($values["ship"]) 
+                        ? floatval($values["ship"]) 
+                        : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                    $item->ship = $ship;
+                } else {
+                    $item->lp = 0;
+                    $item->ship = 0;
+                }
+                
+                // Commission from CSV is already stored in item->commission (for display only)
+                // PFT calculation uses 0.89 multiplier in frontend
+                
+                return $item;
+            });
+            
+            return response()->json($data);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Shein daily data: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Show Shein tabulator view
+     */
+    public function sheinTabulatorView()
+    {
+        return view('market-places.shein_tabulator_view');
+    }
+
+    /**
+     * Save column visibility preferences
+     */
+    public function saveSheinColumnVisibility(Request $request)
+    {
+        try {
+            $visibility = $request->input('visibility', []);
+            $userId = auth()->id() ?? 'guest';
+            
+            cache()->put("shein_column_visibility_{$userId}", $visibility, now()->addYear());
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Column visibility saved'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get column visibility preferences
+     */
+    public function getSheinColumnVisibility()
+    {
+        $userId = auth()->id() ?? 'guest';
+        $visibility = cache()->get("shein_column_visibility_{$userId}", []);
+        
+        return response()->json($visibility);
     }
 }

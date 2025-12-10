@@ -11,7 +11,6 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAppscenicControll
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAutoDSController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingBestbuyUSAController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingBusiness5CoreController;
-use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingDHGateController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingDobaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayThreeController;
@@ -68,6 +67,7 @@ use App\Models\PLSProduct;
 use App\Models\ProductMaster;
 use App\Models\ReverbProduct;
 use App\Models\SheinSheetData;
+use App\Models\SheinDailyData;
 use App\Models\ShopifySku;
 use App\Models\TemuDailyData;
 use App\Models\TemuMetric;
@@ -1993,40 +1993,53 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $query = SheinSheetData::where('sku', 'not like', '%Parent%');
+        // Query SheinDailyData instead of SheinSheetData
+        $query = SheinDailyData::whereNotNull('seller_sku')
+            ->where('seller_sku', '!=', '')
+            ->where('seller_sku', 'not like', '%Parent%')
+            ->where(function($q) {
+                $q->whereNull('order_status')
+                  ->orWhere('order_status', 'not like', '%refund%')
+                  ->where('order_status', 'not like', '%returned%')
+                  ->where('order_status', 'not like', '%cancelled%');
+            });
 
-        $l30Orders = $query->sum('shopify_sheinl30');
-        $l60Orders = $query->sum('shopify_sheinl60');
+        // Get all data (treat all as L30 for now)
+        $allData = $query->get();
+        
+        // For now, treat all data as L30 (current period)
+        $l30Orders = $allData->count();
+        $l30Sales = $allData->sum(function($item) {
+            return ($item->quantity ?? 1) * ($item->product_price ?? 0);
+        });
 
-        $l30Sales  = (clone $query)->selectRaw('SUM(shopify_sheinl30 * shopify_price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(shopify_sheinl60 * shopify_price) as total')->value('total') ?? 0;
+        // L60 will be 0 until we have historical data with proper dates
+        $l60Orders = 0;
+        $l60Sales = 0;
+        
+        $l30Data = $allData;
+        $l60Data = collect();
 
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
-
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Shein')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
 
         // Load product masters (lp, ship) keyed by SKU
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'shopify_price', 'shopify_sheinl30','shopify_sheinl60']);
+        // Calculate total profit using 0.89 multiplier (like Temu uses 0.87)
         $totalProfit  = 0;
         $totalProfitL60  = 0;
         $totalCogs       = 0;
         $totalCogsL60    = 0;
 
+        // Process L30 data
+        foreach ($l30Data as $row) {
+            $sku       = strtoupper($row->seller_sku);
+            $price     = (float) $row->product_price;
+            $units     = (int) ($row->quantity ?? 1);
 
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->shopify_price;
-            $unitsL30  = (int) $row->shopify_sheinl30;
-            $unitsL60  = (int) $row->shopify_sheinl60;
-
-            $soldAmount = $unitsL30 * $price;
+            $soldAmount = $units * $price;
             if ($soldAmount <= 0) {
                 continue;
             }
@@ -2044,37 +2057,49 @@ class ChannelMasterController extends Controller
                 $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
             }
 
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
+            // Profit per unit: (Price * 0.89 - LP - Ship)
+            $profitPerUnit = ($price * 0.89) - $lp - $ship;
+            $profitTotal   = $profitPerUnit * $units;
 
             $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
+            $totalCogs    += ($units * $lp);
         }
 
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
+        // Process L60 data (empty for now)
+        foreach ($l60Data as $row) {
+            $sku       = strtoupper($row->seller_sku);
+            $price     = (float) $row->product_price;
+            $units     = (int) ($row->quantity ?? 1);
 
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+            $soldAmount = $units * $price;
+            if ($soldAmount <= 0) {
+                continue;
+            }
 
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
+            $lp   = 0;
+            $ship = 0;
+
+            if (isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
+                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+            }
+
+            // Profit per unit: (Price * 0.89 - LP - Ship)
+            $profitPerUnit = ($price * 0.89) - $lp - $ship;
+            $profitTotal   = $profitPerUnit * $units;
+
+            $totalProfitL60 += $profitTotal;
+            $totalCogsL60    += ($units * $lp);
         }
 
         // Use L30 Sales for denominator
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
 
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
@@ -2102,7 +2127,7 @@ class ChannelMasterController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => 'wayfair channel data fetched successfully',
+            'message' => 'Shein channel data fetched successfully',
             'data' => $result,
         ]);
     }
@@ -3518,18 +3543,11 @@ class ChannelMasterController extends Controller
                 case 'Yamibuy':
                     return app(ListingYamibuyController::class)->getNrReqCount()['Listed'] ?? 0;
 
-                case 'dhgate':
-                    return app(ListingDHGateController::class)->getNrReqCount()['Listed'] ?? 0;
-
                 case 'bestbuy usa':
                     return app(ListingBestbuyUSAController::class)->getNrReqCount()['Listed'] ?? 0;
 
                 case 'sw gear exchange':
                     return app(ListingSWGearExchangeController::class)->getNrReqCount()['Listed'] ?? 0;
-
-                case 'dhgate':
-                    return app(ListingDHGateController::class)->getNrReqCount()['Listed'] ?? 0;
-  
 
                 default:
                     return 0;
