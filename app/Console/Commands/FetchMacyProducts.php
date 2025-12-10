@@ -410,26 +410,33 @@ class FetchMacyProducts extends Command
                     $l30 = $skuSales[$channelName][$sku]['l30'] ?? 0;
 
                     $updates[] = [
-                        'sku' => DB::connection()->getPdo()->quote($originalSku),
+                        'sku' => $originalSku,
                         'price' => $price,
                         'm_l30' => $l30,
-                        'updated_at' => "'" . now()->toDateTimeString() . "'"
                     ];
                 }
 
                 // Execute batch update using INSERT ON DUPLICATE KEY UPDATE
                 if (!empty($updates)) {
                     try {
+                        $now = now()->toDateTimeString();
                         $values = [];
+                        $bindings = [];
+                        
                         foreach ($updates as $update) {
-                            $values[] = "({$update['sku']}, {$update['price']}, {$update['m_l30']}, {$update['updated_at']}, {$update['updated_at']})";
+                            $values[] = "(?, ?, ?, ?, ?)";
+                            $bindings[] = $update['sku'];
+                            $bindings[] = $update['price'];
+                            $bindings[] = $update['m_l30'];
+                            $bindings[] = $now;
+                            $bindings[] = $now;
                         }
                         
                         $sql = "INSERT INTO {$tableName} (sku, price, m_l30, created_at, updated_at) VALUES " 
                              . implode(', ', $values)
                              . " ON DUPLICATE KEY UPDATE price = VALUES(price), m_l30 = VALUES(m_l30), updated_at = VALUES(updated_at)";
                         
-                        DB::connection()->getPdo()->exec($sql);
+                        DB::statement($sql, $bindings);
                         $totalProcessed += count($updates);
                         
                     } catch (\Exception $e) {
