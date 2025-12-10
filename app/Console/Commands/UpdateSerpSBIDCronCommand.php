@@ -198,8 +198,6 @@ class UpdateSerpSBIDCronCommand extends Command
                 // Under Utilized - increase bid by 10%
                 if ($cpc_L1 === 0.0 && $cpc_L7 === 0.0) {
                     $sbid = 0.75;
-                } else if ($cpc_L1 > $cpc_L7) {
-                    $sbid = floor($cpc_L1 * 1.10 * 100) / 100;
                 } else {
                     $sbid = floor($cpc_L7 * 1.10 * 100) / 100;
                 }
