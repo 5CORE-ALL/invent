@@ -3,8 +3,6 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use App\Services\GoogleAdsSbidService;
 use App\Models\ProductMaster;
 use App\Models\GoogleAdsCampaign;
@@ -94,7 +92,6 @@ class UpdateSBIDCronCommand extends Command
             // Fixed: Use original SKU for shopifyData lookup (not uppercase)
             $shopify = $shopifyData[$pm->sku] ?? null;
             if ($shopify && $shopify->inv <= 0) {
-                $this->line("Skipping SKU {$pm->sku} - Zero inventory (inv: {$shopify->inv})");
                 continue;
             }
 
@@ -192,20 +189,12 @@ class UpdateSBIDCronCommand extends Command
                     $this->info("Updated campaign {$campaignId} (SKU: {$pm->sku}): SBID=\${$sbid}, UB7={$ub7}%");
                 } catch (\Exception $e) {
                     $this->error("Failed to update campaign {$campaignId}: " . $e->getMessage());
-                    Log::error("SBID Update Failed", [
-                        'campaign_id' => $campaignId,
-                        'sku' => $pm->sku,
-                        'sbid' => $sbid,
-                        'ub7' => $ub7,
-                        'error' => $e->getMessage()
-                    ]);
                 }
             }
         }
 
         $processedCount = count($campaignUpdates);
         $this->info("Done. Processed: {$processedCount} unique campaigns.");
-        Log::info('SBID Cron Run', ['processed' => $processedCount]);
 
         return 0;
     }

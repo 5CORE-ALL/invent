@@ -93,7 +93,6 @@ class UpdateSerpSBIDCronCommand extends Command
             // Fixed: Use original SKU for shopifyData lookup (not uppercase)
             $shopify = $shopifyData[$pm->sku] ?? null;
             if ($shopify && $shopify->inv <= 0) {
-                $this->line("Skipping SKU {$pm->sku} - Zero inventory (inv: {$shopify->inv})");
                 continue;
             }
 
