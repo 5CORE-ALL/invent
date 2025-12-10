@@ -69,6 +69,7 @@ use App\Models\ProductMaster;
 use App\Models\ReverbProduct;
 use App\Models\SheinSheetData;
 use App\Models\ShopifySku;
+use App\Models\TemuDailyData;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
@@ -1132,17 +1133,31 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $query = TemuMetric::where('sku', 'not like', '%Parent%');
+        // Query TemuDailyData instead of TemuMetric
+        $query = TemuDailyData::whereNotNull('contribution_sku')
+            ->where('contribution_sku', '!=', '')
+            ->where('contribution_sku', 'not like', '%Parent%');
 
-        $l30Orders = $query->sum('quantity_purchased_l30');
-        $l60Orders = $query->sum('quantity_purchased_l60');
+        // Get all data (since purchase_date is null, we'll use all available data for L30)
+        // In the future, when purchase_date is populated, this can be filtered by date ranges
+        $allData = $query->get();
+        
+        // For now, treat all data as L30 (current period)
+        $l30Orders = $allData->sum('quantity_purchased');
+        $l30Sales = $allData->sum(function($item) {
+            return $item->quantity_purchased * ($item->base_price_total ?? 0);
+        });
 
-        $l30Sales  = (clone $query)->selectRaw('SUM(quantity_purchased_l30 * temu_sheet_price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(quantity_purchased_l60 * temu_sheet_price) as total')->value('total') ?? 0;
+        // L60 will be 0 until we have historical data with proper dates
+        $l60Orders = 0;
+        $l60Sales = 0;
+        
+        $l30Data = $allData;
+        $l60Data = collect();
 
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
 
-        // Get eBay marketing percentage
+        // Get Temu marketing percentage
         $percentage = ChannelMaster::where('channel', 'Temu')->value('channel_percentage') ?? 100;
         $percentage = $percentage / 100; // convert % to fraction
 
@@ -1151,20 +1166,19 @@ class ChannelMasterController extends Controller
             return strtoupper($item->sku);
         });
 
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'temu_sheet_price', 'quantity_purchased_l30','quantity_purchased_l60']);
+        // Calculate total profit for L30 and L60
         $totalProfit  = 0;
         $totalProfitL60  = 0;
         $totalCogs       = 0;
         $totalCogsL60    = 0;
 
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->temu_sheet_price;
-            $unitsL30  = (int) $row->quantity_purchased_l30;
-            $unitsL60  = (int) $row->quantity_purchased_l60;
+        // Process L30 data
+        foreach ($l30Data as $row) {
+            $sku       = strtoupper($row->contribution_sku);
+            $price     = (float) $row->base_price_total;
+            $units     = (int) $row->quantity_purchased;
 
-            $soldAmount = $unitsL30 * $price;
+            $soldAmount = $units * $price;
             if ($soldAmount <= 0) {
                 continue;
             }
@@ -1180,40 +1194,59 @@ class ChannelMasterController extends Controller
 
                 $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
                 $ship = isset($values['temu_ship']) ? (float) $values['temu_ship'] : ($pm->temu_ship ?? 0);
-
             }
 
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
+            // Calculate FB Price (matching Temu tabulator logic)
+            $total = $price * $units;
+            $fbPrice = ($total < 27) ? ($price + 2.99) : $price;
+
+            // Profit per unit: (FB Price * percentage) - LP - Ship
+            $profitPerUnit = ($fbPrice * $percentage) - $lp - $ship;
+            $profitTotal   = $profitPerUnit * $units;
 
             $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
+            $totalCogs    += ($units * $lp);
         }
 
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
+        // Process L60 data
+        foreach ($l60Data as $row) {
+            $sku       = strtoupper($row->contribution_sku);
+            $price     = (float) $row->base_price_total;
+            $units     = (int) $row->quantity_purchased;
 
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+            $soldAmount = $units * $price;
+            if ($soldAmount <= 0) {
+                continue;
+            }
 
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
+            $lp   = 0;
+            $ship = 0;
+
+            if (isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
+                $ship = isset($values['temu_ship']) ? (float) $values['temu_ship'] : ($pm->temu_ship ?? 0);
+            }
+
+            // Calculate FB Price (matching Temu tabulator logic)
+            $total = $price * $units;
+            $fbPrice = ($total < 27) ? ($price + 2.99) : $price;
+
+            // Profit per unit: (FB Price * percentage) - LP - Ship
+            $profitPerUnit = ($fbPrice * $percentage) - $lp - $ship;
+            $profitTotal   = $profitPerUnit * $units;
+
+            $totalProfitL60 += $profitTotal;
+            $totalCogsL60    += ($units * $lp);
         }
 
         // Use L30 Sales for denominator
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60       = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
 
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
@@ -1241,7 +1274,7 @@ class ChannelMasterController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => 'Doba channel data fetched successfully',
+            'message' => 'Temu channel data fetched successfully',
             'data' => $result,
         ]);
     }
