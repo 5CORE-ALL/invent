@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\FbaTable;
@@ -68,7 +67,9 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
         $this->info("Found " . $amazonSpCampaignReportsL30->count() . " keyword campaigns in L30 range");
 
         $campaignUpdates = [];
-        $processedCount = 0;
+        $campaignIdsToUpdate = [];
+        $budgetsToUpdate = [];
+        $updateDetails = [];
 
         foreach ($fbaData as $fba) {
             $sellerSku = $fba->seller_sku;
@@ -80,8 +81,8 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
 
             $shopify = $shopifyData[$baseSkuUpper] ?? null;
             
-            // Skip if zero inventory
-            if ($shopify && ($shopify->inv ?? 0) <= 0) {
+            // Skip if zero inventory (use FBA table's quantity_available)
+            if (($fba->quantity_available ?? 0) <= 0) {
                 continue;
             }
 
@@ -106,8 +107,8 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
             $campaignId = $matchedCampaign->campaign_id ?? '';
             $currentBudget = floatval($matchedCampaign->campaignBudgetAmount ?? 0);
 
-            if (empty($campaignId) || $currentBudget <= 0) {
-                $this->line("Skipping campaign (SKU: {$sellerSku}) - Invalid campaign ID or budget");
+            if (empty($campaignId)) {
+                $this->line("Skipping campaign (SKU: {$sellerSku}) - Invalid campaign ID");
                 continue;
             }
 
@@ -122,70 +123,59 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
                 $acos = 100;
             }
 
-            // Determine budget multiplier based on ACOS
-            // ACOS < 10% → multiplier 5
-            // ACOS 10-20% → multiplier 4
-            // ACOS 20-30% → multiplier 3
-            // ACOS 30-40% → multiplier 2
-            // ACOS > 40% → multiplier 1
-            $multiplier = 1;
+            // Determine budget value based on ACOS
+            // ACOS < 10% → budget = 5
+            // ACOS 10%-20% → budget = 4
+            // ACOS 20%-30% → budget = 3
+            // ACOS 30%-40% → budget = 2
+            // ACOS > 40% → budget = 1
+            $newBudget = 1;
             if ($acos < 10) {
-                $multiplier = 5;
+                $newBudget = 5;
             } elseif ($acos >= 10 && $acos < 20) {
-                $multiplier = 4;
+                $newBudget = 4;
             } elseif ($acos >= 20 && $acos < 30) {
-                $multiplier = 3;
+                $newBudget = 3;
             } elseif ($acos >= 30 && $acos < 40) {
-                $multiplier = 2;
+                $newBudget = 2;
             } else {
-                $multiplier = 1;
-            }
-
-            $newBudget = $currentBudget * $multiplier;
-
-            // Only update if budget changed significantly
-            if (abs($newBudget - $currentBudget) < 0.01) {
-                continue; // Budget unchanged
+                $newBudget = 1;
             }
 
             // Avoid duplicate updates for same campaign
             if (!isset($campaignUpdates[$campaignId])) {
-                try {
-                    $result = $this->acosController->updateAutoAmazonCampaignBgt([$campaignId], [$newBudget]);
-                    
-                    if (isset($result['status']) && $result['status'] == 200) {
-                        $campaignUpdates[$campaignId] = true;
-                        $processedCount++;
-                        $this->info("Updated FBA KW campaign {$campaignId} (SKU: {$sellerSku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%, Multiplier={$multiplier})");
-                    } else {
-                        $this->error("Failed to update FBA KW campaign budget {$campaignId}: " . ($result['error'] ?? 'Unknown error'));
-                        Log::error("FBA KW Budget Update Failed", [
-                            'campaign_id' => $campaignId,
-                            'sku' => $sellerSku,
-                            'current_budget' => $currentBudget,
-                            'new_budget' => $newBudget,
-                            'acos' => $acos,
-                            'multiplier' => $multiplier,
-                            'error' => $result['error'] ?? 'Unknown error'
-                        ]);
-                    }
-                } catch (\Exception $e) {
-                    $this->error("Failed to update FBA KW campaign budget {$campaignId}: " . $e->getMessage());
-                    Log::error("FBA KW Budget Update Exception", [
-                        'campaign_id' => $campaignId,
-                        'sku' => $sellerSku,
-                        'current_budget' => $currentBudget,
-                        'new_budget' => $newBudget,
-                        'acos' => $acos,
-                        'multiplier' => $multiplier,
-                        'error' => $e->getMessage()
-                    ]);
-                }
+                $campaignUpdates[$campaignId] = true;
+                $campaignIdsToUpdate[] = $campaignId;
+                $budgetsToUpdate[] = $newBudget;
+                $updateDetails[] = [
+                    'campaign_id' => $campaignId,
+                    'campaign_name' => $matchedCampaign->campaignName ?? '',
+                    'old_budget' => $currentBudget,
+                    'new_budget' => $newBudget
+                ];
             }
         }
 
-        $this->info("Done. Processed: {$processedCount} unique FBA keyword campaign budgets.");
-        Log::info('FBA KW Budget Cron Run', ['processed' => $processedCount]);
+        // Batch update all campaigns in one call
+        if (!empty($campaignIdsToUpdate)) {
+            try {
+                $result = $this->acosController->updateAutoAmazonCampaignBgt($campaignIdsToUpdate, $budgetsToUpdate);
+                
+                if (isset($result['status']) && $result['status'] == 200) {
+                    $processedCount = count($campaignIdsToUpdate);
+                    foreach ($updateDetails as $detail) {
+                        $this->info("Updated FBA KW campaign {$detail['campaign_id']}: Budget=\${$detail['old_budget']} → \${$detail['new_budget']}");
+                    }
+                    $this->info("Done. Processed: {$processedCount} unique FBA keyword campaign budgets in batch.");
+                } else {
+                    $this->error("Failed to update FBA KW campaign budgets: " . ($result['error'] ?? 'Unknown error'));
+                }
+            } catch (\Exception $e) {
+                $this->error("Failed to update FBA KW campaign budgets: " . $e->getMessage());
+            }
+        } else {
+            $this->info("No campaigns to update.");
+        }
 
         return 0;
     }

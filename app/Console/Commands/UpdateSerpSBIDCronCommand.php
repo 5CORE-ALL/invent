@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use App\Services\GoogleAdsSbidService;
 use App\Models\ProductMaster;
 use App\Models\GoogleAdsCampaign;
@@ -217,20 +216,12 @@ class UpdateSerpSBIDCronCommand extends Command
                     $this->info("Updated SERP campaign {$campaignId} (SKU: {$pm->sku}): SBID=\${$sbid}, UB7={$ub7}%");
                 } catch (\Exception $e) {
                     $this->error("Failed to update SERP campaign {$campaignId}: " . $e->getMessage());
-                    Log::error("SERP SBID Update Failed", [
-                        'campaign_id' => $campaignId,
-                        'sku' => $pm->sku,
-                        'sbid' => $sbid,
-                        'ub7' => $ub7,
-                        'error' => $e->getMessage()
-                    ]);
                 }
             }
         }
 
         $processedCount = count($campaignUpdates);
         $this->info("Done. Processed: {$processedCount} unique SERP campaigns.");
-        Log::info('SERP SBID Cron Run', ['processed' => $processedCount]);
 
         return 0;
     }
