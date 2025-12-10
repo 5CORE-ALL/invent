@@ -105,9 +105,12 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                     </div>
                 </div>
             </div>
@@ -346,6 +349,26 @@
                     }
                 },
                 {
+                    title: "COGS",
+                    field: "cogs",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 120,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    },
+                    mutator: function(value, data, type, params, component) {
+                        const quantity = parseInt(data.quantity_purchased) || 0;
+                        const lp = parseFloat(data.lp) || 0;
+                        const cogs = quantity * lp;
+                        return cogs.toFixed(2);
+                    }
+                },
+                {
                     title: "Temu Ship",
                     field: "temu_ship",
                     hozAlign: "right",
@@ -485,6 +508,7 @@
             let totalL30Sales = 0;
             let totalWeightedPrice = 0;
             let totalQuantityForPrice = 0;
+            let totalCogs = 0;
 
             data.forEach(row => {
                 // Skip parent rows (like eBay does)
@@ -528,14 +552,26 @@
                 // Calculate L30 Sales: Quantity * FB Prc
                 const l30Sales = quantity * calculatedFbPrice;
                 totalL30Sales += l30Sales;
+                
+                // Calculate COGS: Quantity * LP
+                const cogs = quantity * lp;
+                totalCogs += cogs;
             });
 
             // Calculate average price (weighted by quantity, like eBay)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
 
+            // Calculate PFT Percentage: (PFT Total / Total Revenue) * 100
+            const pftPercentage = totalRevenue > 0 ? (totalPft / totalRevenue) * 100 : 0;
+            
+            // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
+            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
+            $('#pft-percentage-badge').text('PFT %: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
             $('#pft-total-badge').text('PFT Total: $' + totalPft.toFixed(2));
             
@@ -548,6 +584,7 @@
             }
             
             $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
+            $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
         }
 
         // Build Column Visibility Dropdown
