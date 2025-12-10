@@ -58,11 +58,9 @@ class TemuController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        // Get percentage from cache or database
-        $percentage = Cache::remember('temu_marketplace_percentage', now()->addDays(30), function () {
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            return $marketplaceData ? $marketplaceData->percentage : 100;
-        });
+        // Get percentage from ChannelMaster
+        $marketplaceData = ChannelMaster::where('channel', 'Temu')->first();
+        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 100;
 
         return view('market-places.temu-cvr', [
             'mode' => $mode,
@@ -256,9 +254,9 @@ class TemuController extends Controller
                 $value = $request->input('percent');
             }
 
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            $percent = $marketplaceData ? $marketplaceData->percentage : 100;
-            $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 100;
+            $channelData = ChannelMaster::where('channel', 'Temu')->first();
+            $percent = $channelData ? $channelData->channel_percentage : 100;
+            $adUpdates = $channelData ? $channelData->ad_updates : 100;
 
             if ($type === 'percentage') {
                 if (!is_numeric($value) || $value < 0 || $value > 100) {
@@ -281,25 +279,21 @@ class TemuController extends Controller
             }
 
             // Update database
-            $marketplace = MarketplacePercentage::updateOrCreate(
-                ['marketplace' => 'Temu'],
+            $channel = ChannelMaster::updateOrCreate(
+                ['channel' => 'Temu'],
                 [
-                    'percentage' => $percent,
+                    'channel_percentage' => $percent,
                     'ad_updates' => $adUpdates
                 ]
             );
-
-            // Store in cache
-            Cache::put('temu_marketplace_percentage', $percent, now()->addDays(30));
-            Cache::put('temu_marketplace_ad_updates', $adUpdates, now()->addDays(30));
 
             return response()->json([
                 'status' => 200,
                 'message' => ucfirst($type) . ' updated successfully',
                 'data' => [
-                    'marketplace' => 'Temu',
-                    'percentage' => $marketplace->percentage,
-                    'ad_updates' => $marketplace->ad_updates
+                    'channel' => 'Temu',
+                    'percentage' => $channel->channel_percentage,
+                    'ad_updates' => $channel->ad_updates
                 ]
             ]);
         } catch (\Exception $e) {
@@ -411,11 +405,9 @@ class TemuController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        // Get percentage from cache or database
-        $percentage = Cache::remember('temu_marketplace_percentage', now()->addDays(30), function () {
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            return $marketplaceData ? $marketplaceData->percentage : 100;
-        });
+        // Get percentage from ChannelMaster
+        $marketplaceData = ChannelMaster::where('channel', 'Temu')->first();
+        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 100;
 
         return view('market-places.temu_pricing_inc', [
             'mode' => $mode,
@@ -429,11 +421,9 @@ class TemuController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        // Get percentage from cache or database
-        $percentage = Cache::remember('temu_marketplace_percentage', now()->addDays(30), function () {
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            return $marketplaceData ? $marketplaceData->percentage : 100;
-        });
+        // Get percentage from ChannelMaster
+        $marketplaceData = ChannelMaster::where('channel', 'Temu')->first();
+        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 100;
 
         return view('market-places.temu_pricing_dsc', [
             'mode' => $mode,
@@ -642,9 +632,23 @@ class TemuController extends Controller
             $rows = $sheet->toArray();
 
             // Get headers from first row
-            $headers = array_map(function ($header) {
-                return $this->normalizeHeader($header);
-            }, $rows[0]);
+            $rawHeaders = $rows[0];
+            $headers = [];
+            $headerMapping = [];
+            
+            foreach ($rawHeaders as $index => $header) {
+                $normalized = $this->normalizeHeader($header);
+                $headers[] = $normalized;
+                $headerMapping[$index] = [
+                    'raw' => $header,
+                    'normalized' => $normalized
+                ];
+            }
+
+            // Log headers for debugging on first chunk
+            if ($chunk == 0) {
+                Log::info('Temu Upload - Header Mapping:', $headerMapping);
+            }
 
             unset($rows[0]); // Remove header row
 
@@ -664,53 +668,82 @@ class TemuController extends Controller
             try {
                 foreach ($chunkRows as $index => $row) {
                     if (empty($row[0])) { // Skip if order_id is empty
+                        $skipped++;
                         continue;
                     }
 
+                    // Ensure row has same number of elements as headers
                     $rowData = array_pad(array_slice($row, 0, count($headers)), count($headers), null);
                     $data = array_combine($headers, $rowData);
 
-                    // Insert all data without skipping (table was truncated on first chunk)
-                    TemuDailyData::create([
-                        'order_id' => $data['order_id'] ?? null,
-                        'order_status' => $data['order_status'] ?? null,
-                        'fulfillment_mode' => $data['fulfillment_mode'] ?? null,
-                        'logistics_service_suggestion' => $data['logistics_service_suggestion'] ?? null,
-                        'order_item_id' => $data['order_item_id'] ?? null,
-                        'order_item_status' => $data['order_item_status'] ?? null,
-                        'product_name_by_customer_order' => $data['product_name_by_customer_order'] ?? null,
-                        'product_name' => $data['product_name'] ?? null,
-                        'variation' => $data['variation'] ?? null,
-                        'contribution_sku' => $data['contribution_sku'] ?? null,
-                        'sku_id' => $data['sku_id'] ?? null,
-                        'quantity_purchased' => $data['quantity_purchased'] ?? null,
-                        'quantity_shipped' => $data['quantity_shipped'] ?? null,
-                        'quantity_to_ship' => $data['quantity_to_ship'] ?? null,
-                        'recipient_name' => $data['recipient_name'] ?? null,
-                        'recipient_first_name' => $data['recipient_first_name'] ?? null,
-                        'recipient_last_name' => $data['recipient_last_name'] ?? null,
-                        'recipient_phone_number' => $data['recipient_phone_number'] ?? null,
-                        'ship_address_1' => $data['ship_address_1'] ?? null,
-                        'ship_address_2' => $data['ship_address_2'] ?? null,
-                        'ship_address_3' => $data['ship_address_3'] ?? null,
-                        'district' => $data['district'] ?? null,
-                        'ship_city' => $data['ship_city'] ?? null,
-                        'ship_state' => $data['ship_state'] ?? null,
-                        'ship_postal_code' => $data['ship_postal_code'] ?? null,
-                        'ship_country' => $data['ship_country'] ?? null,
-                        'purchase_date' => $this->parseDate($data['purchase_date'] ?? null),
-                        'latest_shipping_time' => $this->parseDate($data['latest_shipping_time'] ?? null),
-                        'latest_delivery_time' => $this->parseDate($data['latest_delivery_time'] ?? null),
-                        'iphone_serial_number' => $data['iphone_serial_number'] ?? null,
-                        'virtual_email' => $data['virtual_email'] ?? null,
-                        'activity_goods_base_price' => $this->sanitizePrice($data['activity_goods_base_price'] ?? null),
-                        'base_price_total' => $this->sanitizePrice($data['base_price_total'] ?? null),
-                        'tracking_number' => $data['tracking_number'] ?? null,
-                        'carrier' => $data['carrier'] ?? null,
-                        'order_settlement_status' => $data['order_settlement_status'] ?? null,
-                        'keep_proof_of_shipment_before_delivery' => $data['keep_proof_of_shipment_before_delivery'] ?? null,
-                    ]);
+                    // Log first row of first chunk for debugging
+                    if ($chunk == 0 && $imported == 0) {
+                        Log::info('Temu Upload - First Row Complete Data:', $data);
+                        Log::info('Temu Upload - Sample Fields:', [
+                            'order_id' => $data['order_id'] ?? 'MISSING',
+                            'purchase_date_raw' => $data['purchase_date'] ?? 'MISSING',
+                            'contribution_sku' => $data['contribution_sku'] ?? 'MISSING',
+                            'recipient_name' => $data['recipient_name'] ?? 'MISSING',
+                            'ship_address_1' => $data['ship_address_1'] ?? 'MISSING',
+                            'ship_city' => $data['ship_city'] ?? 'MISSING',
+                            'tracking_number' => $data['tracking_number'] ?? 'MISSING',
+                        ]);
+                    }
 
+                    // Clean and prepare data - use isset and check for actual content
+                    $insertData = [
+                        'order_id' => isset($data['order_id']) && $data['order_id'] !== '' ? trim($data['order_id']) : null,
+                        'order_status' => isset($data['order_status']) && $data['order_status'] !== '' ? trim($data['order_status']) : null,
+                        'fulfillment_mode' => isset($data['fulfillment_mode']) && $data['fulfillment_mode'] !== '' ? trim($data['fulfillment_mode']) : null,
+                        'logistics_service_suggestion' => isset($data['logistics_service_suggestion']) && $data['logistics_service_suggestion'] !== '' ? trim($data['logistics_service_suggestion']) : null,
+                        'order_item_id' => isset($data['order_item_id']) && $data['order_item_id'] !== '' ? trim($data['order_item_id']) : null,
+                        'order_item_status' => isset($data['order_item_status']) && $data['order_item_status'] !== '' ? trim($data['order_item_status']) : null,
+                        'product_name_by_customer_order' => isset($data['product_name_by_customer_order']) && $data['product_name_by_customer_order'] !== '' ? trim($data['product_name_by_customer_order']) : null,
+                        'product_name' => isset($data['product_name']) && $data['product_name'] !== '' ? trim($data['product_name']) : null,
+                        'variation' => isset($data['variation']) && $data['variation'] !== '' ? trim($data['variation']) : null,
+                        'contribution_sku' => isset($data['contribution_sku']) && $data['contribution_sku'] !== '' ? trim($data['contribution_sku']) : null,
+                        'sku_id' => isset($data['sku_id']) && $data['sku_id'] !== '' ? trim($data['sku_id']) : null,
+                        'quantity_purchased' => isset($data['quantity_purchased']) && $data['quantity_purchased'] !== '' ? (int)$data['quantity_purchased'] : null,
+                        'quantity_shipped' => isset($data['quantity_shipped']) && $data['quantity_shipped'] !== '' ? (int)$data['quantity_shipped'] : null,
+                        'quantity_to_ship' => isset($data['quantity_to_ship']) && $data['quantity_to_ship'] !== '' ? (int)$data['quantity_to_ship'] : null,
+                        'recipient_name' => isset($data['recipient_name']) && $data['recipient_name'] !== '' ? trim($data['recipient_name']) : null,
+                        'recipient_first_name' => isset($data['recipient_first_name']) && $data['recipient_first_name'] !== '' ? trim($data['recipient_first_name']) : null,
+                        'recipient_last_name' => isset($data['recipient_last_name']) && $data['recipient_last_name'] !== '' ? trim($data['recipient_last_name']) : null,
+                        'recipient_phone_number' => isset($data['recipient_phone_number']) && $data['recipient_phone_number'] !== '' ? trim($data['recipient_phone_number']) : null,
+                        'ship_address_1' => isset($data['ship_address_1']) && $data['ship_address_1'] !== '' ? trim($data['ship_address_1']) : null,
+                        'ship_address_2' => isset($data['ship_address_2']) && $data['ship_address_2'] !== '' ? trim($data['ship_address_2']) : null,
+                        'ship_address_3' => isset($data['ship_address_3']) && $data['ship_address_3'] !== '' ? trim($data['ship_address_3']) : null,
+                        'district' => isset($data['district']) && $data['district'] !== '' ? trim($data['district']) : null,
+                        'ship_city' => isset($data['ship_city']) && $data['ship_city'] !== '' ? trim($data['ship_city']) : null,
+                        'ship_state' => isset($data['ship_state']) && $data['ship_state'] !== '' ? trim($data['ship_state']) : null,
+                        'ship_postal_code' => isset($data['ship_postal_code']) && $data['ship_postal_code'] !== '' ? trim($data['ship_postal_code']) : null,
+                        'ship_country' => isset($data['ship_country']) && $data['ship_country'] !== '' ? trim($data['ship_country']) : null,
+                        'purchase_date' => isset($data['purchase_date']) ? $this->parseDate($data['purchase_date']) : null,
+                        'latest_shipping_time' => isset($data['latest_shipping_time']) ? $this->parseDate($data['latest_shipping_time']) : null,
+                        'latest_delivery_time' => isset($data['latest_delivery_time']) ? $this->parseDate($data['latest_delivery_time']) : null,
+                        'iphone_serial_number' => isset($data['iphone_serial_number']) && $data['iphone_serial_number'] !== '' ? trim($data['iphone_serial_number']) : null,
+                        'virtual_email' => isset($data['virtual_email']) && $data['virtual_email'] !== '' ? trim($data['virtual_email']) : null,
+                        'activity_goods_base_price' => isset($data['activity_goods_base_price']) ? $this->sanitizePrice($data['activity_goods_base_price']) : null,
+                        'base_price_total' => isset($data['base_price_total']) ? $this->sanitizePrice($data['base_price_total']) : null,
+                        'tracking_number' => isset($data['tracking_number']) && $data['tracking_number'] !== '' ? trim($data['tracking_number']) : null,
+                        'carrier' => isset($data['carrier']) && $data['carrier'] !== '' ? trim($data['carrier']) : null,
+                        'order_settlement_status' => isset($data['order_settlement_status']) && $data['order_settlement_status'] !== '' ? trim($data['order_settlement_status']) : null,
+                        'keep_proof_of_shipment_before_delivery' => isset($data['keep_proof_of_shipment_before_delivery']) && $data['keep_proof_of_shipment_before_delivery'] !== '' ? trim($data['keep_proof_of_shipment_before_delivery']) : null,
+                    ];
+
+                    // Log parsed date for first row
+                    if ($chunk == 0 && $imported == 0) {
+                        Log::info('Temu Upload - About to insert data:', [
+                            'order_id' => $insertData['order_id'],
+                            'purchase_date' => $insertData['purchase_date'],
+                            'recipient_name' => $insertData['recipient_name'],
+                            'ship_address_1' => $insertData['ship_address_1'],
+                            'ship_city' => $insertData['ship_city'],
+                            'tracking_number' => $insertData['tracking_number'],
+                        ]);
+                    }
+
+                    TemuDailyData::create($insertData);
                     $imported++;
                 }
 
@@ -747,44 +780,72 @@ class TemuController extends Controller
 
     private function normalizeHeader($header)
     {
-        // Convert header to snake_case
-        $header = strtolower(trim($header));
-        $header = preg_replace('/[^a-z0-9_]/', '_', $header);
-        $header = preg_replace('/_+/', '_', $header);
-        $header = trim($header, '_');
+        // Store original for logging
+        $original = $header;
         
-        // Map specific headers
+        // Convert header to snake_case
+        $headerLower = strtolower(trim($header));
+        
+        // Remove special characters and convert to underscores
+        $headerNormalized = preg_replace('/[^a-z0-9_]/', '_', $headerLower);
+        $headerNormalized = preg_replace('/_+/', '_', $headerNormalized);
+        $headerNormalized = trim($headerNormalized, '_');
+        
+        // Map specific headers (including common variations)
         $mapping = [
+            // Order fields
             'order_id' => 'order_id',
             'order_status' => 'order_status',
             'fulfillment_mode' => 'fulfillment_mode',
             'logistics_service_suggestion' => 'logistics_service_suggestion',
+            
+            // Order item fields
             'order_item_id' => 'order_item_id',
             'order_item_status' => 'order_item_status',
+            
+            // Product fields
             'product_name_by_customer_order' => 'product_name_by_customer_order',
             'product_name' => 'product_name',
             'variation' => 'variation',
+            
+            // SKU fields
             'contribution_sku' => 'contribution_sku',
             'sku_id' => 'sku_id',
+            
+            // Quantity fields
             'quantity_purchased' => 'quantity_purchased',
             'quantity_shipped' => 'quantity_shipped',
             'quantity_to_ship' => 'quantity_to_ship',
+            
+            // Recipient fields
             'recipient_name' => 'recipient_name',
             'recipient_first_name' => 'recipient_first_name',
             'recipient_last_name' => 'recipient_last_name',
             'recipient_phone_number' => 'recipient_phone_number',
+            
+            // Address fields
             'ship_address_1' => 'ship_address_1',
             'ship_address_2' => 'ship_address_2',
             'ship_address_3' => 'ship_address_3',
             'district' => 'district',
             'ship_city' => 'ship_city',
             'ship_state' => 'ship_state',
-            'ship_postal_code_must_be_shipped_to_the_following_zip_code_' => 'ship_postal_code',
             'ship_postal_code' => 'ship_postal_code',
+            'ship_postal_code_must_be_shipped_to_the_following_zip_code_' => 'ship_postal_code',
             'ship_country' => 'ship_country',
+            
+            // Date fields (including UTC variations)
             'purchase_date' => 'purchase_date',
+            'purchase_date_utc_0_' => 'purchase_date',
+            'purchase_date_utc_8_' => 'purchase_date',
             'latest_shipping_time' => 'latest_shipping_time',
+            'latest_shipping_time_utc_0_' => 'latest_shipping_time',
+            'latest_shipping_time_utc_8_' => 'latest_shipping_time',
             'latest_delivery_time' => 'latest_delivery_time',
+            'latest_delivery_time_utc_0_' => 'latest_delivery_time',
+            'latest_delivery_time_utc_8_' => 'latest_delivery_time',
+            
+            // Other fields
             'iphone_serial_number' => 'iphone_serial_number',
             'virtual_email' => 'virtual_email',
             'activity_goods_base_price' => 'activity_goods_base_price',
@@ -795,7 +856,14 @@ class TemuController extends Controller
             'keep_proof_of_shipment_before_delivery' => 'keep_proof_of_shipment_before_delivery',
         ];
 
-        return $mapping[$header] ?? $header;
+        $result = $mapping[$headerNormalized] ?? $headerNormalized;
+        
+        // Log if header is not in mapping (for debugging new CSV formats)
+        if (!isset($mapping[$headerNormalized])) {
+            Log::info("Temu Upload - Header normalized: '$original' -> '$headerNormalized' -> '$result'");
+        }
+        
+        return $result;
     }
 
     /**
@@ -816,32 +884,59 @@ class TemuController extends Controller
 
     private function parseDate($dateString)
     {
-        if (empty($dateString)) {
+        if (empty($dateString) || $dateString === null || $dateString === '') {
             return null;
         }
 
         try {
-            // Try parsing various date formats
+            // Clean up the date string - remove timezone info like IST(UTC+5)
+            $dateString = trim($dateString);
+            $dateString = preg_replace('/\s+IST\(UTC[+-]\d+\)\s*$/', '', $dateString);
+            $dateString = preg_replace('/\s+UTC[+-]\d+\s*$/', '', $dateString);
+            $dateString = trim($dateString);
+            
+            // Check if it's an Excel numeric date (like 45321.5)
+            if (is_numeric($dateString)) {
+                // Excel dates are days since 1900-01-01
+                $excelEpoch = Carbon::create(1900, 1, 1)->subDays(2); // Excel has a bug, needs -2 adjustment
+                return $excelEpoch->copy()->addDays($dateString);
+            }
+
+            // Try parsing various date formats (including Temu format: Dec 9, 2025, 4:20 am)
             $formats = [
+                'M j, Y, g:i a',      // Dec 9, 2025, 4:20 am (Temu format)
+                'M d, Y, g:i a',      // Dec 09, 2025, 4:20 am
+                'M j, Y g:i a',       // Dec 9, 2025 4:20 am
                 'Y-m-d H:i:s',
                 'Y-m-d',
                 'm/d/Y H:i:s',
                 'm/d/Y',
                 'd/m/Y H:i:s',
                 'd/m/Y',
+                'M d, Y H:i:s',
+                'M d, Y',
+                'Y/m/d H:i:s',
+                'Y/m/d',
+                'd-m-Y H:i:s',
+                'd-m-Y',
             ];
 
             foreach ($formats as $format) {
-                $date = Carbon::createFromFormat($format, $dateString);
-                if ($date !== false) {
-                    return $date;
+                try {
+                    $date = Carbon::createFromFormat($format, trim($dateString));
+                    if ($date !== false && !$date->hasErrors()) {
+                        return $date;
+                    }
+                } catch (\Exception $e) {
+                    continue;
                 }
             }
 
             // If all else fails, try Carbon's parse method
-            return Carbon::parse($dateString);
+            $parsed = Carbon::parse($dateString);
+            return $parsed;
         } catch (\Exception $e) {
-            Log::warning("Could not parse date: $dateString");
+            Log::warning("Could not parse date: '$dateString' - Error: " . $e->getMessage());
             return null;
         }
     }
