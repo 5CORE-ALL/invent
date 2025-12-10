@@ -107,8 +107,11 @@ class ProductMasterController extends Controller
             ->orderBy('sku', 'asc')
             ->get();
 
-        // Fetch all shopify SKUs and key by SKU for fast lookup
-        $shopifySkus = ShopifySku::all()->keyBy('sku');
+        // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
+        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+            // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
+            return str_replace("\u{00a0}", ' ', $item->sku);
+        });
 
         // Prepare data in the same format as your sheet (flatten Values)
         $result = [];
@@ -158,11 +161,11 @@ class ProductMasterController extends Controller
             }
 
             // Add Shopify inv and quantity if available
-            // $row['shopify_inv'] = $shopifySkus[$product->sku]->inv ?? null;
-            // $row['shopify_quantity'] = $shopifySkus[$product->sku]->quantity ?? null;
-
-            if (isset($shopifySkus[$product->sku])) {
-                $shopifyData = $shopifySkus[$product->sku];
+            // Normalize the product SKU for lookup
+            $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
+            
+            if (isset($shopifySkus[$normalizedSku])) {
+                $shopifyData = $shopifySkus[$normalizedSku];
                 $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
                 $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
@@ -173,7 +176,7 @@ class ProductMasterController extends Controller
             }
 
 
-            $shopifyImage = $shopifySkus[$product->sku]->image_src ?? null;
+            $shopifyImage = $shopifySkus[$normalizedSku]->image_src ?? null;
             // image_path is inside $row (from Values JSON)
             $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
             if ($shopifyImage) {
@@ -220,8 +223,11 @@ class ProductMasterController extends Controller
         ], 404);
     }
 
-    // Shopify data
-    $shopifySku = ShopifySku::where('sku', $sku)->first();
+    // Shopify data - normalize SKU for lookup
+    $normalizedSku = str_replace("\u{00a0}", ' ', $sku);
+    $shopifySku = ShopifySku::where('sku', $normalizedSku)
+        ->orWhere('sku', str_replace(' ', "\u{00a0}", $sku))
+        ->first();
 
     // Build response
     $row = [
