@@ -1006,32 +1006,31 @@
             border-color: #dae0e5;
         }
 
-        .nr-req-dropdown {
-            width: 100%;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            text-align: center;
-            color: white;
-            border: none;
-            cursor: pointer;
+        /* ========== NR SELECT DROPDOWN ========== */
+        .nr-select {
+            font-weight: 500;
         }
 
-        .nr-req-dropdown .req-option {
-            background-color: #28a745;
-            /* Green */
-            color: white;
+        .nr-select option[value="NRL"] {
+            background-color: #dc3545 !important;
+            color: #ffffff !important;
         }
 
-        .nr-req-dropdown .nr-option {
-            background-color: #dc3545;
-            /* Red */
-            color: white;
+        .nr-select option[value="REQ"] {
+            background-color: #28a745 !important;
+            color: #ffffff !important;
         }
 
-        .nr-req-dropdown option {
-            padding: 4px 8px;
-            font-weight: bold;
+        /* When NRL is selected, the select itself should be red */
+        .nr-select[data-value="NRL"] {
+            background-color: #dc3545 !important;
+            color: #ffffff !important;
+        }
+
+        /* When REQ is selected, the select itself should be green */
+        .nr-select[data-value="REQ"] {
+            background-color: #28a745 !important;
+            color: #ffffff !important;
         }
 
         .listed-dropdown {
@@ -1086,7 +1085,7 @@
                                     <option value="parent">Parent</option>
                                 </select>
                             </div>
-                            <div class="form-group col-md-4">
+                            <div class="form-group col-md-4">   
                                 <label for="combined-filter" class="mr-2">Show:</label>
                                 <select id="combined-filter" class="form-control form-control-sm">
                                     <option value="all">All SKUs</option>
@@ -1107,7 +1106,7 @@
                                 <select id="nr-req-filter" class="form-control form-control-sm">
                                     <option value="all">All</option>
                                     <option value="REQ">RL</option>
-                                    <option value="NR">NRL</option>
+                                    <option value="NRL">NRL</option>
                                 </select>
                             </div>
                         </div>
@@ -1660,19 +1659,18 @@
 
                         // NR/REQ dropdown only for non-parent rows
                         if (!item.sku.includes('PARENT')) {
-                            const $dropdown = $('<select>')
-                                .addClass('nr-req-dropdown form-control form-control-sm')
-                                .append('<option value="REQ" class="req-option">RL</option>')
-                                .append('<option value="NR" class="nr-option">NRL</option>');
+                            const currentNR = item.nr_req ? item.nr_req : "REQ";
+                            
+                            // Determine colors based on current value
+                            const bgColor = currentNR === 'NRL' ? '#dc3545' : '#28a745';
+                            const textColor = '#ffffff';
 
-                            const initialValue = item.nr_req || 'REQ';
-                            $dropdown.val(initialValue);
-
-                            if (initialValue === 'REQ') {
-                                $dropdown.css('background-color', '#28a745').css('color', 'black');
-                            } else if (initialValue === 'NR') {
-                                $dropdown.css('background-color', '#dc3545').css('color', 'black');
-                            }
+                            const $dropdown = $(`
+                                <select class="form-select form-select-sm nr-select" data-value="${currentNR}" style="min-width: 100px; background-color: ${bgColor} !important; color: ${textColor} !important;">
+                                    <option value="NRL" style="background-color: #dc3545; color: #ffffff;" ${currentNR === 'NRL' ? 'selected' : ''}>NRL</option>
+                                    <option value="REQ" style="background-color: #28a745; color: #ffffff;" ${currentNR === 'REQ' ? 'selected' : ''}>RL</option>
+                                </select>
+                            `);
 
                             $row.append($('<td>').append($dropdown));
                         } else {
@@ -2205,10 +2203,10 @@
                         });
 
                         // Save NR/REQ or Listed/Pending when dropdown changes
-                        $(document).on('change', '.nr-req-dropdown, .listed-dropdown', function() {
+                        $(document).on('change', '.nr-select, .listed-dropdown', function() {
                             const $row = $(this).closest('tr');
                             const sku = $row.find('td').eq(1).text().trim();
-                            const nr_req = $row.find('.nr-req-dropdown').val() || 'REQ';
+                            const nr_req = $row.find('.nr-select').val() || 'REQ';
                             const listed = $row.find('.listed-dropdown').val() || 'Pending';
 
                             // Optionally, get current links if you want to save them too
@@ -2219,16 +2217,19 @@
                         });
 
                         // Handle nr_req dropdown color change
-                        $(document).on('change', '.nr-req-dropdown', function() {
+                        $(document).on('change', '.nr-select', function() {
                             const nr_req = $(this).val();
                             const $row = $(this).closest('tr');
                             const $listedDropdown = $row.find('.listed-dropdown');
+                            const bgColor = nr_req === 'NRL' ? '#dc3545' : '#28a745';
+                            const textColor = '#ffffff';
 
-                            if (nr_req === 'REQ') {
-                                $(this).css('background-color', '#28a745').css('color', 'black');
-                            } else if (nr_req === 'NR') {
-                                $(this).css('background-color', '#dc3545').css('color', 'black');
-                                // Automatically set listed to NRL when NR is selected
+                            // Update select styling
+                            $(this).attr('data-value', nr_req);
+                            $(this).css('background-color', bgColor).css('color', textColor);
+
+                            if (nr_req === 'NRL') {
+                                // Automatically set listed to NRL when NRL is selected
                                 $listedDropdown.val('NRL');
                                 $listedDropdown.css('background-color', '#6c757d').css('color', 'white');
                             }
