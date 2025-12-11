@@ -869,6 +869,57 @@ class FbaDataController extends Controller
             'Width' => $width,
             'Height' => $height,
             'Shipment_Track_Status' => $manual ? ($manual->data['shipment_track_status'] ?? '') : '',
+            // Count missing fields and list them for display in FBA SKU column
+            // Only counts EDITABLE columns (fields that users can edit in the table)
+            'Missing_Fields_Data' => (function() use ($manual, $fba, $length, $width, $height, $dispatchDate, $S_PRICE) {
+                $missingFields = [];
+                $fieldLabels = [
+                    'Length' => 'L CTN',
+                    'Width' => 'W CTN',
+                    'Height' => 'H CTN',
+                    'Quantity_in_each_box' => 'Qty CTN',
+                    'GW_CTN' => 'GW CTN',
+                    'Shipping_Amount' => 'CTN cost',
+                    'S_Price' => 'S Price',
+                    'Inbound_Quantity' => 'Inbound',
+                    'Total_quantity_sent' => 'Sent QTY',
+                    'UPC_Codes' => 'UPC Codes',
+                    'Barcode' => 'Barcode',
+                    'Dispatch_Date' => 'D Date',
+                    'FBA_Fee_Manual' => 'FBA Fee Manual'
+                ];
+                
+                // === CTN Fields (editable, hidden by Send Cost toggle) ===
+                if (empty(trim($length ?? ''))) $missingFields[] = $fieldLabels['Length'];
+                if (empty(trim($width ?? ''))) $missingFields[] = $fieldLabels['Width'];
+                if (empty(trim($height ?? ''))) $missingFields[] = $fieldLabels['Height'];
+                $qtyInBox = $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0;
+                if (empty($qtyInBox) || $qtyInBox == 0) $missingFields[] = $fieldLabels['Quantity_in_each_box'];
+                $gwCtn = $manual ? ($manual->data['gw_ctn'] ?? 0) : 0;
+                if (empty($gwCtn) || $gwCtn == 0) $missingFields[] = $fieldLabels['GW_CTN'];
+                $shippingAmount = $manual ? ($manual->data['shipping_amount'] ?? 0) : 0;
+                if (empty($shippingAmount) || $shippingAmount == 0) $missingFields[] = $fieldLabels['Shipping_Amount'];
+                
+                // === PFT Toggle Hidden Columns (editable) ===
+                if (empty($S_PRICE) || $S_PRICE == 0) $missingFields[] = $fieldLabels['S_Price'];
+                
+                // === Other Editable Fields ===
+                $inboundQty = $manual ? ($manual->data['inbound_quantity'] ?? 0) : 0;
+                if (empty($inboundQty) || $inboundQty == 0) $missingFields[] = $fieldLabels['Inbound_Quantity'];
+                $totalQtySent = $manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0;
+                if (empty($totalQtySent) || $totalQtySent == 0) $missingFields[] = $fieldLabels['Total_quantity_sent'];
+                if (empty(trim($manual ? ($manual->data['upc_codes'] ?? '') : ''))) $missingFields[] = $fieldLabels['UPC_Codes'];
+                if (empty(trim($manual ? ($manual->data['barcode'] ?? '') : ''))) $missingFields[] = $fieldLabels['Barcode'];
+                $dispatchDateValue = $dispatchDate ? $dispatchDate->dispatch_date : ($manual ? ($manual->data['dispatch_date'] ?? '') : '');
+                if (empty(trim($dispatchDateValue))) $missingFields[] = $fieldLabels['Dispatch_Date'];
+                $fbaFeeManual = $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0;
+                if (empty($fbaFeeManual) || $fbaFeeManual == 0) $missingFields[] = $fieldLabels['FBA_Fee_Manual'];
+                
+                return [
+                    'count' => count($missingFields),
+                    'fields' => $missingFields
+                ];
+            })(),
             'MSL' => max(
                 ($monthlySales ? ($monthlySales->jan ?? 0) : 0),
                 ($monthlySales ? ($monthlySales->feb ?? 0) : 0),
@@ -1022,6 +1073,7 @@ class FbaDataController extends Controller
             'Length' => '',
             'Width' => '',
             'Height' => '',
+            'Missing_Fields_Data' => ['count' => 0, 'fields' => []], // Parent rows don't show missing count
             'MSL' => $children->sum('MSL'),
             'Sugg_Send' => $children->sum('Sugg_Send'),
             'SEND' => '',

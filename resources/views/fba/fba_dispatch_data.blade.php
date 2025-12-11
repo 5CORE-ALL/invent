@@ -30,6 +30,17 @@
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
+        
+        /* Ensure missing fields modal is visible */
+        #missingFieldsModal {
+            z-index: 1060 !important;
+        }
+        #missingFieldsModal .modal-dialog {
+            z-index: 1061 !important;
+        }
+        .modal-backdrop {
+            z-index: 1059 !important;
+        }
     </style>
 @endsection
 @section('script')
@@ -217,23 +228,44 @@
                 </div>
             </div>
         </div>
-        <!-- Monthly Sales Modal (Jan-Dec) -->
-        <div class="modal fade" id="monthlySalesModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-centered" style="max-width:900px;">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Monthly Sales for <span id="monthlyModalSku"></span></h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body" id="monthlySalesModalBody" style="min-width:300px; overflow-x:auto;">
-                        <!-- Content populated by JS -->
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    </div>
+    <!-- Monthly Sales Modal (Jan-Dec) -->
+    <div class="modal fade" id="monthlySalesModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered" style="max-width:900px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Monthly Sales for <span id="monthlyModalSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="monthlySalesModalBody" style="min-width:300px; overflow-x:auto;">
+                    <!-- Content populated by JS -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Missing Fields Modal -->
+    <div class="modal fade" id="missingFieldsModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Missing Fields for <span id="missingFieldsSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2"><strong>Please fill the following fields:</strong></p>
+                    <ul id="missingFieldsList" class="list-group list-group-flush">
+                        <!-- Fields will be populated by JS -->
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
     @endsection
 
     @section('script-bottom')
@@ -528,9 +560,14 @@
                             frozen: true,
                             formatter: function(cell) {
                                 const fbaSku = cell.getValue();
-                                const sku = cell.getRow().getData().SKU;
-                                const ratings = cell.getRow().getData().Ratings;
-                                if (!fbaSku || cell.getRow().getData().is_parent) return fbaSku;
+                                const rowData = cell.getRow().getData();
+                                const sku = rowData.SKU;
+                                const ratings = rowData.Ratings;
+                                const missingData = rowData.Missing_Fields_Data || {count: 0, fields: []};
+                                const missingCount = missingData.count || 0;
+                                const missingFields = missingData.fields || [];
+                                
+                                if (!fbaSku || rowData.is_parent) return fbaSku;
 
                                 let ratingDisplay = '';
                                 if (ratings && ratings > 0) {
@@ -538,7 +575,17 @@
                                         ` <i class="fa fa-star" style="color: orange;"></i> ${ratings}`;
                                 }
 
-                                return `${fbaSku}${ratingDisplay} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                                let missingDisplay = '';
+                                if (missingCount > 0) {
+                                    const missingFieldsJson = JSON.stringify(missingFields).replace(/'/g, "&#39;");
+                                    missingDisplay = ` <span class="missing-fields-count" 
+                                        style="color: #dc3545; font-size: 8px; font-weight: bold; vertical-align: super; cursor: pointer; text-decoration: underline;" 
+                                        data-fields='${missingFieldsJson}'
+                                        data-sku="${sku}"
+                                        title="Click to view missing fields">${missingCount}</span>`;
+                                }
+
+                                return `${fbaSku}${ratingDisplay}${missingDisplay} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
                             }
                         },
 
@@ -1695,6 +1742,47 @@
                 $('#lmpModal').appendTo('body').modal('show');
                 console.log('Modal shown');
             }
+
+            // Missing Fields Modal Handler
+            $(document).on('click', '.missing-fields-count', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                let fields = [];
+                try {
+                    const fieldsData = $(this).attr('data-fields');
+                    if (fieldsData) {
+                        fields = JSON.parse(fieldsData.replace(/&#39;/g, "'"));
+                    }
+                } catch (err) {
+                    console.error('Error parsing missing fields:', err);
+                }
+                
+                const sku = $(this).data('sku') || '';
+                
+                console.log('Missing fields clicked, SKU:', sku, 'Fields:', fields);
+                
+                $('#missingFieldsSku').text(sku);
+                const fieldsList = $('#missingFieldsList');
+                fieldsList.empty();
+                
+                if (fields.length === 0) {
+                    fieldsList.append('<li class="list-group-item text-success"><i class="fa fa-check-circle"></i> All fields are filled!</li>');
+                } else {
+                    fields.forEach(function(field) {
+                        fieldsList.append(`<li class="list-group-item"><i class="fa fa-exclamation-circle text-danger"></i> ${field}</li>`);
+                    });
+                }
+                
+                // Use the same pattern as other modals in this file
+                const modal = $('#missingFieldsModal');
+                modal.appendTo('body');
+                
+                // Show modal using Bootstrap/jQuery modal
+                modal.modal('show');
+                
+                console.log('Modal shown, fields count:', fields.length);
+            });
 
             // Monthly sales modal handler (twelve-month breakdown)
             $(document).on('click', '.monthly-eye', function(e) {
