@@ -3020,7 +3020,7 @@
 
                     // If ov_dil is greater than 100%, set sbid to 0
                     if (item.ov_dil > 1) {
-                        sbidValue = 0;
+                        sbidValue = 2;
                     }
 
                     $row.append($('<td data-field="sbid">').html(

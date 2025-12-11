@@ -662,17 +662,17 @@
                 }
             }
 
-            function saveColumnWidths() {
-                const widths = {};
-                document.querySelectorAll('.wide-table thead th').forEach(th => {
-                    const col = th.getAttribute('data-column');
-                    widths[col] = th.offsetWidth;
-                });
-                localStorage.setItem('columnWidths', JSON.stringify(widths));
-            }
+        function saveColumnWidths() {
+            const widths = {};
+            document.querySelectorAll('.wide-table thead th').forEach(th => {
+                const col = th.getAttribute('data-column');
+                widths[col] = th.offsetWidth;
+            });
+            localStorage.setItem('columnWidths_mfrg', JSON.stringify(widths));
+        }
 
-            function restoreColumnWidths() {
-                const widths = JSON.parse(localStorage.getItem('columnWidths') || '{}');
+        function restoreColumnWidths() {
+            const widths = JSON.parse(localStorage.getItem('columnWidths_mfrg') || '{}');
                 Object.keys(widths).forEach(col => {
                     const th = document.querySelector(`.wide-table thead th[data-column="${col}"]`);
                     if (th) {
@@ -724,11 +724,11 @@
             });
 
             function saveHiddenColumns(hidden) {
-                localStorage.setItem('hiddenColumns', JSON.stringify(hidden));
+                localStorage.setItem('hiddenColumns_mfrg', JSON.stringify(hidden));
             }
 
             function getHiddenColumns() {
-                return JSON.parse(localStorage.getItem('hiddenColumns') || '[]');
+                return JSON.parse(localStorage.getItem('hiddenColumns_mfrg') || '[]');
             }
 
             const hiddenColumns = getHiddenColumns();

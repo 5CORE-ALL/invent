@@ -175,7 +175,7 @@ class UpdateEbayTwoSuggestedBid extends Command
                         
                         // If ov_dil is greater than 100%, set newBid to 0
                         if ($ov_dil > 1) {
-                            $newBid = 0;
+                            $newBid = 2;
                         }
                         
                         $listing->new_bid = $newBid;

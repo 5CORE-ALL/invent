@@ -381,11 +381,11 @@
                 const col = th.getAttribute('data-column');
                 widths[col] = th.offsetWidth;
             });
-            localStorage.setItem('columnWidths', JSON.stringify(widths));
+            localStorage.setItem('columnWidths_readyToShip', JSON.stringify(widths));
         }
 
         function restoreColumnWidths() {
-            const widths = JSON.parse(localStorage.getItem('columnWidths') || '{}');
+            const widths = JSON.parse(localStorage.getItem('columnWidths_readyToShip') || '{}');
             Object.keys(widths).forEach(columnIndex => {
                 const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
                 if (th) {
@@ -814,11 +814,11 @@
         }
 
         function saveHiddenColumns(hidden) {
-            localStorage.setItem('hiddenColumns', JSON.stringify(hidden));
+            localStorage.setItem('hiddenColumns_readyToShip', JSON.stringify(hidden));
         }
 
         function getHiddenColumns() {
-            return JSON.parse(localStorage.getItem('hiddenColumns') || '[]');
+            return JSON.parse(localStorage.getItem('hiddenColumns_readyToShip') || '[]');
         }
 
         setupSupplierSelect();
