@@ -498,12 +498,8 @@
                             var acos = Math.floor(parseFloat(row.acos_L30 || 0));
                             var sbgt;
                             if (acos < 10) {
-                                sbgt = 5;
-                            } else if (acos < 20) {
-                                sbgt = 4;
-                            } else if (acos < 30) {
                                 sbgt = 3;
-                            } else if (acos < 40) {
+                            } else if (acos < 20) {
                                 sbgt = 2;
                             } else {
                                 sbgt = 1;
