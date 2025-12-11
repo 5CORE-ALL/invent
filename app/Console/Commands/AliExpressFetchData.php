@@ -13,6 +13,7 @@ class AliExpressFetchData extends Command
      */
     protected $signature = 'app:ali-express-fetch-data';
 
+    
     /**
      * The console command description.
      *
