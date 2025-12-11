@@ -2274,7 +2274,11 @@
                             title: "Send <br> Cost",
                             field: "Send_Cost",
                             hozAlign: "center",
-                            editor: "input"
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue());
+                                if (isNaN(value)) return '';
+                                return value.toFixed(2);
+                            }
                         },
                         {
                             title: "Comm %",
@@ -2430,7 +2434,7 @@
                     if (field === 'Barcode' || field === 'Done' || field === 'Listed' || field === 'Live' ||
                         field === 'Dispatch_Date' || field === 'Weight' || field ===
                         'Quantity_in_each_box' ||
-                        field === 'Total_quantity_sent' || field === 'Send_Cost' ||
+                        field === 'Total_quantity_sent' ||
                         field === 'Commission_Percentage' || field === 'Ratings' || field === 'TCOS_Percentage' ||
                         field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===

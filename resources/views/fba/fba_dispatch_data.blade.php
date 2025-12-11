@@ -1035,7 +1035,11 @@
                             title: "Send Cost",
                             field: "Send_Cost",
                             hozAlign: "center",
-                            editor: "input"
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue());
+                                if (isNaN(value)) return '';
+                                return value.toFixed(2);
+                            }
                         },
 
 
@@ -1270,7 +1274,7 @@
                     if (field === 'Barcode' || field === 'Done' || field === 'Listed' || field === 'Live' ||
                         field === 'Dispatch_Date' || field === 'Weight' || field === 'WH_ACT' || field ===
                         'Quantity_in_each_box' || field === 'GW_CTN' ||
-                        field === 'Total_quantity_sent' || field === 'Send_Cost' || field ===
+                        field === 'Total_quantity_sent' || field ===
                         'IN_Charges' ||
                         field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field ===

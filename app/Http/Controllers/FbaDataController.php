@@ -707,10 +707,19 @@ class FbaDataController extends Controller
          
          // Keep enhanced calculations for other metrics (GPFT, GROI, etc.)
          $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
+         // Calculate Send_Cost using formula: CTN Cost / QTY CTN
+         $calculatedSendCost = 0;
+         if ($manual) {
+            $shippingAmount = floatval($manual->data['shipping_amount'] ?? 0);
+            $quantityInBox = floatval($manual->data['quantity_in_each_box'] ?? 0);
+            if ($quantityInBox > 0) {
+               $calculatedSendCost = round($shippingAmount / $quantityInBox, 2);
+            }
+         }
          $FBA_SHIP = $this->fbaManualDataService->calculateFbaShipCalculation(
             $fba->seller_sku,
             $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-            $manual ? ($manual->data['send_cost'] ?? 0) : 0
+            $calculatedSendCost
          );
 
          // ✅ Validate s_price from database - prevent 0 values from being used
@@ -836,7 +845,15 @@ class FbaDataController extends Controller
             'Sent_By' => $manual ? ($manual->data['sent_by'] ?? '') : '',
             'Quantity_in_each_box' => $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0,
             'GW_CTN' => $manual ? ($manual->data['gw_ctn'] ?? 0) : 0,
-            'Send_Cost' => $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+            // Calculate Send_Cost using formula: CTN Cost / QTY CTN = Sent Cost
+            'Send_Cost' => (function() use ($manual) {
+                $shippingAmount = $manual ? floatval($manual->data['shipping_amount'] ?? 0) : 0;
+                $quantityInBox = $manual ? floatval($manual->data['quantity_in_each_box'] ?? 0) : 0;
+                if ($quantityInBox > 0) {
+                    return round($shippingAmount / $quantityInBox, 2);
+                }
+                return 0;
+            })(),
             'IN_Charges' => $manual ? ($manual->data['in_charges'] ?? 0) : 0,
             'Commission_Percentage' => $manual ? ($manual->data['commission_percentage'] ?? 0) : 0,
             'Ratings' => $manual ? ($manual->data['ratings'] ?? 0) : 0,
@@ -891,7 +908,15 @@ class FbaDataController extends Controller
             'FBA_Ship_Calculation' => $this->fbaManualDataService->calculateFbaShipCalculation(
                $fba->seller_sku,
                $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-               $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+               // Use calculated Send_Cost: CTN Cost / QTY CTN
+               (function() use ($manual) {
+                   $shippingAmount = $manual ? floatval($manual->data['shipping_amount'] ?? 0) : 0;
+                   $quantityInBox = $manual ? floatval($manual->data['quantity_in_each_box'] ?? 0) : 0;
+                   if ($quantityInBox > 0) {
+                       return round($shippingAmount / $quantityInBox, 2);
+                   }
+                   return 0;
+               })(),
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
 
@@ -1150,9 +1175,18 @@ class FbaDataController extends Controller
          $data['dimensions'] = trim($length . 'x' . $width . 'x' . $height, 'x');
       }
 
-      // Extract only 3 fields
+      // Extract fields
       $FBA_FEE_MANUAL = floatval($data['fba_fee_manual'] ?? 0);
-      $SEND_COST = floatval($data['send_cost'] ?? 0);
+      
+      // Calculate Send_Cost using formula: CTN Cost / QTY CTN = Sent Cost
+      $shippingAmount = floatval($data['shipping_amount'] ?? 0);
+      $quantityInBox = floatval($data['quantity_in_each_box'] ?? 0);
+      $SEND_COST = 0;
+      if ($quantityInBox > 0) {
+         $SEND_COST = round($shippingAmount / $quantityInBox, 2);
+      }
+      // Update send_cost in data (for backward compatibility, but it's now calculated)
+      $data['send_cost'] = $SEND_COST;
 
       // Calculate FBA_SHIP (Fulfillment_Fee + FBA_Fee_Manual + Send_Cost)
       $FBA_SHIP = $fulfillmentFee + $FBA_FEE_MANUAL + $SEND_COST;
