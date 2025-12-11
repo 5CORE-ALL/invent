@@ -322,10 +322,30 @@ class ForecastAnalysisController extends Controller
         $column = trim($request->input('column'));
         $value = $request->input('value');
 
+        // Handle MOQ updates separately - save to ProductMaster
+        if (strtoupper($column) === 'MOQ') {
+            $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
+            
+            if (!$product) {
+                return response()->json(['success' => false, 'message' => 'Product not found']);
+            }
+
+            // Get current Values or initialize empty array
+            $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values, true) ?? []);
+            
+            // Update MOQ value
+            $values['moq'] = $value;
+            
+            // Save back to ProductMaster
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json(['success' => true, 'message' => 'MOQ updated successfully']);
+        }
+
         $columnMap = [
             'S-MSL' => 's_msl',
             'Approved QTY' => 'approved_qty',
-            'MOQ' => 'approved_qty',
             'NR' => 'nr',
             'REQ' => 'req',
             'Hide' => 'hide',

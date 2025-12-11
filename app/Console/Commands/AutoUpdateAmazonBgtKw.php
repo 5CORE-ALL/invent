@@ -36,11 +36,54 @@ class AutoUpdateAmazonBgtKw extends Command
             return 0;
         }
 
-        $campaignIds = collect($campaigns)->pluck('campaign_id')->toArray();
-        $newBgts = collect($campaigns)->pluck('sbgt')->toArray();
+        // Filter out campaigns with empty/null campaign_id or invalid sbgt
+        $validCampaigns = collect($campaigns)->filter(function ($campaign) {
+            return !empty($campaign->campaign_id) && isset($campaign->sbgt) && $campaign->sbgt > 0;
+        })->values();
 
-        $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
-        $this->info("Update Result: " . json_encode($result));
+        if ($validCampaigns->isEmpty()) {
+            $this->warn("No valid campaigns found (all have empty campaign_id or invalid budget).");
+            return 0;
+        }
+
+        $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
+        $newBgts = $validCampaigns->pluck('sbgt')->toArray();
+
+        // Ensure both arrays have the same length
+        if (count($campaignIds) !== count($newBgts)) {
+            $this->error("Error: Campaign IDs and budgets arrays have different lengths!");
+            return 1;
+        }
+
+        try {
+            $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
+            
+            // Show only campaign name and new budget for valid campaigns
+            $simplifiedResult = $validCampaigns->map(function ($campaign) {
+                return [
+                    'campaignName' => $campaign->campaignName ?? '',
+                    'newBudget' => $campaign->sbgt ?? 0
+                ];
+            })->toArray();
+            
+            $this->info("Update Result: " . json_encode($simplifiedResult));
+            
+            if (isset($result['status']) && $result['status'] !== 200) {
+                $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
+                Log::error("Amazon budget update failed", ['result' => $result]);
+                return 1;
+            }
+            
+            $this->info("Successfully updated " . count($campaignIds) . " campaign budgets.");
+            
+        } catch (\Exception $e) {
+            $this->error("Error updating campaign budgets: " . $e->getMessage());
+            Log::error("Amazon budget update exception", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return 1;
+        }
 
     }
 
