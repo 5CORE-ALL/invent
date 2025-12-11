@@ -59,6 +59,7 @@ class Kernel extends ConsoleKernel
         FetchGoogleAdsCampaigns::class,
         \App\Console\Commands\SyncMetaAllAds::class,
         \App\Console\Commands\SyncFbaShipmentStatus::class,
+        \App\Console\Commands\StoreAmazonUtilizationCounts::class,
 
     ];
 
@@ -324,6 +325,11 @@ class Kernel extends ConsoleKernel
         // SERP (SEARCH) Budget Update - based on ACOS (L30 data)
         $schedule->command('budget:update-serp')
             ->dailyAt('00:04') 
+            ->timezone('Asia/Kolkata');
+        
+        // Store Amazon Utilization Counts - Daily
+        $schedule->command('amazon:store-utilization-counts')
+            ->dailyAt('00:10') 
             ->timezone('Asia/Kolkata');
         
         // Amazon FBA Keyword Budget Update - based on ACOS (L30 data)

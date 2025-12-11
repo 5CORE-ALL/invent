@@ -2068,6 +2068,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(AmazonSpBudgetController::class)->group(function () {
         Route::get('/amazon-sp/amz-utilized-bgt-kw', 'amzUtilizedBgtKw')->name('amazon-sp.amz-utilized-bgt-kw');
         Route::get('/amazon-sp/get-amz-utilized-bgt-kw', 'getAmzUtilizedBgtKw');
+        Route::get('/amazon-sp/get-utilization-chart-data', 'getAmazonUtilizationChartData');
+        Route::get('/amazon-sp/get-utilization-counts', 'getAmazonUtilizationCounts');
         Route::post('/update-amazon-sp-bid-price', 'updateAmazonSpBidPrice');
         Route::put('/update-keywords-bid-price', 'updateCampaignKeywordsBid');
 

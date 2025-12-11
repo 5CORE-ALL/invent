@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\AmazonSbCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use AWS\CRT\Log;
@@ -518,6 +519,569 @@ class AmazonSpBudgetController extends Controller
         return view('campaign.amz-utilized-bgt-kw');
     }
 
+
+    public function getAmazonUtilizationCounts(Request $request)
+    {
+        try {
+            $campaignType = $request->get('type', 'KW'); // Default to KW, can be 'PT' or 'HL'
+            $pageType = $request->get('page', ''); // Can be 'under', 'over', 'correctly' to match table counts
+            
+            $today = now()->format('Y-m-d');
+            $skuKey = 'AMAZON_UTILIZATION_' . $campaignType . '_' . $today;
+            
+            $record = AmazonDataView::where('sku', $skuKey)->first();
+            
+            // If this is an "under-utilized" page, always calculate total campaigns to match table
+            // regardless of whether we have stored data or not
+            if ($pageType === 'under' && $campaignType === 'PT') {
+                // For PT, call the actual controller method to get exact table data count
+                // This is the most reliable way to ensure the count matches the table
+                try {
+                    $underUtilizedController = new \App\Http\Controllers\Campaigns\AmzUnderUtilizedBgtController();
+                    $tableDataResponse = $underUtilizedController->getAmzUnderUtilizedBgtPt();
+                    $tableDataContent = $tableDataResponse->getContent();
+                    $tableDataArray = json_decode($tableDataContent, true);
+                    
+                    // Count the actual data returned (after unique filter is applied)
+                    $totalCount = isset($tableDataArray['data']) && is_array($tableDataArray['data']) 
+                        ? count($tableDataArray['data']) 
+                        : $this->getTotalCampaignsCountForPt();
+                } catch (\Exception $e) {
+                    // Fallback to calculation method if controller call fails
+                    FacadesLog::warning('Failed to get count from controller: ' . $e->getMessage());
+                    $totalCount = $this->getTotalCampaignsCountForPt();
+                }
+                
+                if ($record) {
+                    $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
+                    return response()->json([
+                        'over_utilized' => $value['over_utilized'] ?? 0,
+                        'under_utilized' => $totalCount, // Return total campaigns to match table
+                        'correctly_utilized' => $value['correctly_utilized'] ?? 0,
+                        'status' => 200,
+                    ]);
+                } else {
+                    // If no record, still return the total count
+                    return response()->json([
+                        'over_utilized' => 0,
+                        'under_utilized' => $totalCount, // Return total campaigns to match table
+                        'correctly_utilized' => 0,
+                        'status' => 200,
+                    ]);
+                }
+            }
+            
+            // If this is an "under-utilized" page for HL, always calculate total campaigns to match table
+            if ($pageType === 'under' && $campaignType === 'HL') {
+                // For HL, call the actual controller method to get exact table data count
+                // This ensures the count matches exactly what's shown in the table
+                try {
+                    $sbBudgetController = new \App\Http\Controllers\Campaigns\AmazonSbBudgetController();
+                    $tableDataResponse = $sbBudgetController->getAmzUnderUtilizedBgtHl();
+                    $tableDataContent = $tableDataResponse->getContent();
+                    $tableDataArray = json_decode($tableDataContent, true);
+                    
+                    // Count the actual data returned (after unique filter is applied)
+                    // This should match the table's total campaigns count
+                    $totalCount = isset($tableDataArray['data']) && is_array($tableDataArray['data']) 
+                        ? count($tableDataArray['data']) 
+                        : 0;
+                    
+                    // Log for debugging if needed
+                    FacadesLog::info("HL under-utilized count from table: {$totalCount}");
+                } catch (\Exception $e) {
+                    // Fallback to calculation method if controller call fails
+                    FacadesLog::error('Failed to get HL count from controller: ' . $e->getMessage());
+                    $totalCount = 0;
+                }
+                
+                // Always return the table count, regardless of stored data
+                if ($record) {
+                    $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
+                    return response()->json([
+                        'over_utilized' => $value['over_utilized'] ?? 0,
+                        'under_utilized' => $totalCount, // Return total campaigns to match table (26)
+                        'correctly_utilized' => $value['correctly_utilized'] ?? 0,
+                        'status' => 200,
+                    ]);
+                } else {
+                    // If no record, still return the total count from table
+                    return response()->json([
+                        'over_utilized' => 0,
+                        'under_utilized' => $totalCount, // Return total campaigns to match table (26)
+                        'correctly_utilized' => 0,
+                        'status' => 200,
+                    ]);
+                }
+            }
+        
+        // For PT campaigns, always get under count from actual table data to ensure accuracy
+        // This ensures the count matches the under-utilized table regardless of which page is viewing it
+        if ($campaignType === 'PT') {
+            try {
+                $underUtilizedController = new \App\Http\Controllers\Campaigns\AmzUnderUtilizedBgtController();
+                $tableDataResponse = $underUtilizedController->getAmzUnderUtilizedBgtPt();
+                $tableDataContent = $tableDataResponse->getContent();
+                $tableDataArray = json_decode($tableDataContent, true);
+                
+                // Count the actual data returned (after unique filter and UB7 < 70 filter is applied)
+                $underCountFromTable = isset($tableDataArray['data']) && is_array($tableDataArray['data']) 
+                    ? count($tableDataArray['data']) 
+                    : ($this->getTotalCampaignsCountForPt() ?? 0);
+            } catch (\Exception $e) {
+                FacadesLog::warning('Failed to get PT under count from controller: ' . $e->getMessage());
+                $underCountFromTable = 0;
+            }
+        }
+        
+        // For KW campaigns, always get over count from actual table data to ensure accuracy
+        // This ensures the count matches the over-utilized table regardless of which page is viewing it
+        if ($campaignType === 'KW') {
+            try {
+                $sbBudgetController = new \App\Http\Controllers\Campaigns\AmazonSpBudgetController();
+                $tableDataResponse = $sbBudgetController->getAmzUtilizedBgtKw();
+                $tableDataContent = $tableDataResponse->getContent();
+                $tableDataArray = json_decode($tableDataContent, true);
+                
+                // Count the actual data returned (after UB7 > 90 && UB1 > 90 filter is applied)
+                $overCountFromTable = isset($tableDataArray['data']) && is_array($tableDataArray['data']) 
+                    ? count($tableDataArray['data']) 
+                    : 0;
+            } catch (\Exception $e) {
+                FacadesLog::warning('Failed to get KW over count from controller: ' . $e->getMessage());
+                $overCountFromTable = 0;
+            }
+        }
+        
+        if ($record) {
+            $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
+            return response()->json([
+                'over_utilized' => ($campaignType === 'KW') ? $overCountFromTable : ($value['over_utilized'] ?? 0), // Use table count for KW
+                'under_utilized' => ($campaignType === 'PT') ? $underCountFromTable : ($value['under_utilized'] ?? 0), // Use table count for PT
+                'correctly_utilized' => $value['correctly_utilized'] ?? 0,
+                'status' => 200,
+            ]);
+        }
+
+        // If no data for today, calculate from current data
+        $productMasters = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+
+        // Get NRA values to filter out NRA campaigns (same as in getAmzUnderUtilizedBgtKw)
+        $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+
+        // Handle HL campaigns differently (use AmazonSbCampaignReport)
+        if ($campaignType === 'HL') {
+            $amazonSbCampaignReportsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', 'L7')
+                ->where(function ($q) use ($skus) {
+                    foreach ($skus as $sku) {
+                        $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                    }
+                })
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
+
+            $amazonSbCampaignReportsL1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', 'L1')
+                ->where(function ($q) use ($skus) {
+                    foreach ($skus as $sku) {
+                        $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                    }
+                })
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
+        } else {
+            // For KW and PT, use AmazonSpCampaignReport
+            $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', 'L7')
+                ->where(function ($q) use ($skus) {
+                    foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                })
+                ->where('campaignStatus', '!=', 'ARCHIVED');
+
+            $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', 'L1')
+                ->where(function ($q) use ($skus) {
+                    foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                })
+                ->where('campaignStatus', '!=', 'ARCHIVED');
+
+            // Filter by campaign type
+            if ($campaignType === 'PT') {
+                $amazonSpCampaignReportsL7->where(function($q) {
+                    $q->where('campaignName', 'LIKE', '% PT')
+                      ->orWhere('campaignName', 'LIKE', '% PT.');
+                });
+                $amazonSpCampaignReportsL1->where(function($q) {
+                    $q->where('campaignName', 'LIKE', '% PT')
+                      ->orWhere('campaignName', 'LIKE', '% PT.');
+                });
+            } else {
+                $amazonSpCampaignReportsL7->where('campaignName', 'NOT LIKE', '%PT')
+                                          ->where('campaignName', 'NOT LIKE', '%PT.');
+                $amazonSpCampaignReportsL1->where('campaignName', 'NOT LIKE', '%PT')
+                                          ->where('campaignName', 'NOT LIKE', '%PT.');
+            }
+
+            $amazonSpCampaignReportsL7 = $amazonSpCampaignReportsL7->get();
+            $amazonSpCampaignReportsL1 = $amazonSpCampaignReportsL1->get();
+        }
+
+        $overUtilizedCount = 0;
+        $underUtilizedCount = 0;
+        $correctlyUtilizedCount = 0;
+        
+        // For PT campaigns, we need to track unique SKUs (same as getAmzUnderUtilizedBgtPt)
+        $processedSkus = [];
+
+        foreach ($productMasters as $pm) {
+            $sku = strtoupper(trim($pm->sku));
+            
+            // For PT campaigns, apply unique SKU filter (same as getAmzUnderUtilizedBgtPt line 637)
+            if ($campaignType === 'PT' && in_array($sku, $processedSkus)) {
+                continue;
+            }
+
+            // Check NRA filter (same as in getAmzUnderUtilizedBgtKw/getAmzUnderUtilizedBgtPt)
+            $nra = '';
+            if (isset($nrValues[$pm->sku])) {
+                $raw = $nrValues[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $nra = $raw['NRA'] ?? '';
+                }
+            }
+            
+            // Skip if NRA === 'NRA' (same filter as in getAmzUnderUtilizedBgtKw/getAmzUnderUtilizedBgtPt)
+            if ($nra === 'NRA') {
+                continue;
+            }
+
+            if ($campaignType === 'HL') {
+                // HL campaigns matching logic (SKU or SKU + ' HEAD')
+                $matchedCampaignL7 = $amazonSbCampaignReportsL7->first(function ($item) use ($sku) {
+                    $cleanName = strtoupper(trim($item->campaignName));
+                    $expected1 = $sku;
+                    $expected2 = $sku . ' HEAD';
+                    return ($cleanName === $expected1 || $cleanName === $expected2);
+                });
+
+                $matchedCampaignL1 = $amazonSbCampaignReportsL1->first(function ($item) use ($sku) {
+                    $cleanName = strtoupper(trim($item->campaignName));
+                    $expected1 = $sku;
+                    $expected2 = $sku . ' HEAD';
+                    return ($cleanName === $expected1 || $cleanName === $expected2);
+                });
+
+                if (!$matchedCampaignL7 && !$matchedCampaignL1) {
+                    continue;
+                }
+
+                $campaignName = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+                if ($campaignName === '') {
+                    continue;
+                }
+
+                $budget = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
+                $l7_spend = $matchedCampaignL7->cost ?? 0;
+                $l1_spend = $matchedCampaignL1->cost ?? 0;
+            } else {
+                // KW and PT campaigns matching logic
+                $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku, $campaignType) {
+                    $campaignName = strtoupper(trim($item->campaignName));
+                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                    
+                    if ($campaignType === 'PT') {
+                        $ptSuffix = $cleanSku . ' PT';
+                        $ptSuffixDot = $cleanSku . ' PT.';
+                        return (substr($campaignName, -strlen($ptSuffix)) === $ptSuffix || substr($campaignName, -strlen($ptSuffixDot)) === $ptSuffixDot);
+                    } else {
+                        $cleanName = strtoupper(trim(rtrim($campaignName, '.')));
+                        return $cleanName === $cleanSku;
+                    }
+                });
+
+                $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku, $campaignType) {
+                    $campaignName = strtoupper(trim($item->campaignName));
+                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                    
+                    if ($campaignType === 'PT') {
+                        $ptSuffix = $cleanSku . ' PT';
+                        $ptSuffixDot = $cleanSku . ' PT.';
+                        return (substr($campaignName, -strlen($ptSuffix)) === $ptSuffix || substr($campaignName, -strlen($ptSuffixDot)) === $ptSuffixDot);
+                    } else {
+                        $cleanName = strtoupper(trim(rtrim($campaignName, '.')));
+                        return $cleanName === $cleanSku;
+                    }
+                });
+
+                if (!$matchedCampaignL7 && !$matchedCampaignL1) {
+                    continue;
+                }
+
+                // Also check if campaignName is not empty (same filter as in getAmzUnderUtilizedBgtKw/getAmzUnderUtilizedBgtPt)
+                $campaignName = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+                if ($campaignName === '') {
+                    continue;
+                }
+
+                $budget = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
+                $l7_spend = $matchedCampaignL7->spend ?? 0;
+                $l1_spend = $matchedCampaignL1->spend ?? 0;
+            }
+
+            $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+            $ub1 = $budget > 0 ? ($l1_spend / ($budget * 1)) * 100 : 0;
+            
+            // For PT campaigns, mark SKU as processed (unique filter)
+            // This must happen AFTER we've verified the campaign exists and passes all filters
+            // but BEFORE we categorize by utilization, so we count all campaigns in the table
+            if ($campaignType === 'PT') {
+                $processedSkus[] = $sku;
+            }
+
+            // Categorize based on utilization
+            if ($ub7 > 90 && $ub1 > 90) {
+                $overUtilizedCount++;
+            } elseif ($ub7 < 70) {
+                $underUtilizedCount++;
+            } elseif ($ub7 >= 70 && $ub7 <= 90) {
+                $correctlyUtilizedCount++;
+            }
+        }
+
+        // If this is an "under-utilized" page, return total campaigns count to match table
+        if ($pageType === 'under') {
+            $totalCount = $overUtilizedCount + $underUtilizedCount + $correctlyUtilizedCount;
+            return response()->json([
+                'over_utilized' => $overUtilizedCount,
+                'under_utilized' => $totalCount, // Return total campaigns to match table
+                'correctly_utilized' => $correctlyUtilizedCount,
+                'status' => 200,
+            ]);
+        }
+        
+        return response()->json([
+            'over_utilized' => $overUtilizedCount,
+            'under_utilized' => $underUtilizedCount,
+            'correctly_utilized' => $correctlyUtilizedCount,
+            'status' => 200,
+        ]);
+        } catch (\Exception $e) {
+            FacadesLog::error('Error in getAmazonUtilizationCounts: ' . $e->getMessage());
+            return response()->json([
+                'over_utilized' => 0,
+                'under_utilized' => 0,
+                'correctly_utilized' => 0,
+                'status' => 500,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    private function getTotalCampaignsCountForPt()
+    {
+        // Use EXACT same logic as getAmzUnderUtilizedBgtPt - replicate the entire method logic
+        $productMasters = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+
+        // Get ALL campaigns first (same as getAmzUnderUtilizedBgtPt - no filtering by campaign name)
+        $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L7')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
+        $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L1')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
+        $result = [];
+
+        foreach ($productMasters as $pm) {
+            $sku = strtoupper(trim($pm->sku));
+
+            // Exact same matching logic as getAmzUnderUtilizedBgtPt (lines 545-557)
+            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.');
+            });
+
+            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.');
+            });
+
+            // Get campaignName same way as getAmzUnderUtilizedBgtPt line 567
+            // This is done BEFORE the filter check, just like in the original method
+            $campaignName = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+
+            // Check NRA filter - same as getAmzUnderUtilizedBgtPt lines 616-630
+            $nra = '';
+            if (isset($nrValues[$pm->sku])) {
+                $raw = $nrValues[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $nra = $raw['NRA'] ?? '';
+                }
+            }
+
+            // Same filter as getAmzUnderUtilizedBgtPt line 632
+            // This must match exactly: if($row['NRA'] !== 'NRA' && $row['campaignName'] !== '')
+            if($nra !== 'NRA' && $campaignName !== ''){
+                // Store as object with sku property, same structure as original method
+                $result[] = (object)['sku' => $pm->sku];
+            }
+        }
+
+        // Apply unique('sku') filter (same as getAmzUnderUtilizedBgtPt line 637)
+        // The original uses: $uniqueResult = collect($result)->unique('sku')->values()->all();
+        $uniqueResult = collect($result)->unique('sku')->values()->all();
+        return count($uniqueResult);
+    }
+    
+    private function getTotalCampaignsCount($campaignType)
+    {
+        // Use EXACT same logic as getAmzUnderUtilizedBgtPt for PT campaigns
+        if ($campaignType === 'PT') {
+            return $this->getTotalCampaignsCountForPt();
+        }
+        
+        // For KW campaigns, use the existing logic
+        $productMasters = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+
+        $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L7')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+            })
+            ->where('campaignName', 'NOT LIKE', '%PT')
+            ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
+        $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L1')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+            })
+            ->where('campaignName', 'NOT LIKE', '%PT')
+            ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+
+        $totalCount = 0;
+
+        foreach ($productMasters as $pm) {
+            $sku = strtoupper(trim($pm->sku));
+
+            $nra = '';
+            if (isset($nrValues[$pm->sku])) {
+                $raw = $nrValues[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $nra = $raw['NRA'] ?? '';
+                }
+            }
+            
+            if ($nra === 'NRA') {
+                continue;
+            }
+
+            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
+                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                return $campaignName === $cleanSku;
+            });
+
+            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
+                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                return $campaignName === $cleanSku;
+            });
+
+            if (!$matchedCampaignL7 && !$matchedCampaignL1) {
+                continue;
+            }
+
+            $campaignName = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+            if ($campaignName === '') {
+                continue;
+            }
+
+            $totalCount++;
+        }
+
+        return $totalCount;
+    }
+
+    public function getAmazonUtilizationChartData(Request $request)
+    {
+        $campaignType = $request->get('type', 'KW'); // Default to KW, can be 'PT' or 'HL'
+        
+        // For backward compatibility, if type is KW and no data found, try old format
+        $data = AmazonDataView::where('sku', 'LIKE', 'AMAZON_UTILIZATION_' . $campaignType . '_%')
+            ->orderBy('sku', 'desc')
+            ->limit(30)
+            ->get();
+            
+        // If no data found for PT, KW, or HL with type prefix, try old format (for KW only)
+        if ($data->isEmpty() && $campaignType === 'KW') {
+            $data = AmazonDataView::where('sku', 'LIKE', 'AMAZON_UTILIZATION_%')
+                ->where('sku', 'NOT LIKE', 'AMAZON_UTILIZATION_PT_%')
+                ->where('sku', 'NOT LIKE', 'AMAZON_UTILIZATION_KW_%')
+                ->where('sku', 'NOT LIKE', 'AMAZON_UTILIZATION_HL_%')
+                ->orderBy('sku', 'desc')
+                ->limit(30)
+                ->get();
+        }
+        
+        $data = $data->map(function ($item) use ($campaignType) {
+                $value = is_array($item->value) ? $item->value : json_decode($item->value, true);
+                
+                // Handle both old format (AMAZON_UTILIZATION_YYYY-MM-DD) and new format (AMAZON_UTILIZATION_TYPE_YYYY-MM-DD)
+                $date = str_replace('AMAZON_UTILIZATION_' . $campaignType . '_', '', $item->sku);
+                $date = str_replace('AMAZON_UTILIZATION_', '', $date);
+                
+                return [
+                    'date' => $date,
+                    'over_utilized' => $value['over_utilized'] ?? 0,
+                    'under_utilized' => $value['under_utilized'] ?? 0,
+                    'correctly_utilized' => $value['correctly_utilized'] ?? 0,
+                ];
+            })
+            ->reverse()
+            ->values();
+
+        return response()->json([
+            'message' => 'Data fetched successfully',
+            'data' => $data,
+            'status' => 200,
+        ]);
+    }
+
     function getAmzUtilizedBgtKw()
     {
         $productMasters = ProductMaster::orderBy('parent', 'asc')
@@ -679,7 +1243,17 @@ class AmazonSpBudgetController extends Controller
                 }
             }
 
-            $result[] = (object) $row;
+            // Calculate UB7 and UB1 for filtering (same as frontend filter at line 776)
+            $budget = $row['campaignBudgetAmount'] ?? 0;
+            $l7_spend = $row['l7_spend'] ?? 0;
+            $l1_spend = $row['l1_spend'] ?? 0;
+            $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+            $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+            
+            // Only include campaigns where UB7 > 90 && UB1 > 90 (over-utilized) - same as frontend filter
+            if($ub7 > 90 && $ub1 > 90){
+                $result[] = (object) $row;
+            }
         }
 
         return response()->json([
@@ -762,18 +1336,16 @@ class AmazonSpBudgetController extends Controller
 
             $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
                 $cleanName = strtoupper(trim($item->campaignName));
-
-                return (
-                    (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
-                );
+                $ptSuffix = $sku . ' PT';
+                $ptSuffixDot = $sku . ' PT.';
+                return ($cleanName === $ptSuffix || $cleanName === $ptSuffixDot);
             });
 
             $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
                 $cleanName = strtoupper(trim($item->campaignName));
-
-                return (
-                    (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
-                );
+                $ptSuffix = $sku . ' PT';
+                $ptSuffixDot = $sku . ' PT.';
+                return ($cleanName === $ptSuffix || $cleanName === $ptSuffixDot);
             });
 
             $row = [];
@@ -798,7 +1370,7 @@ class AmazonSpBudgetController extends Controller
                 $cleanName = strtoupper(trim($item->campaignName));
 
                 return (
-                    (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
+                    (substr($cleanName, -strlen($sku . ' PT')) === ($sku . ' PT') || substr($cleanName, -strlen($sku . ' PT.')) === ($sku . ' PT.'))
                 );
             });
 
@@ -806,7 +1378,7 @@ class AmazonSpBudgetController extends Controller
                 $cleanName = strtoupper(trim($item->campaignName));
 
                 return (
-                    (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
+                    (substr($cleanName, -strlen($sku . ' PT')) === ($sku . ' PT') || substr($cleanName, -strlen($sku . ' PT.')) === ($sku . ' PT.'))
                 );
             });
             

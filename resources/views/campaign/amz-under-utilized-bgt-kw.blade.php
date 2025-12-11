@@ -134,47 +134,8 @@
         'sub_title' => 'Amazon - Budget',
     ])
     <div class="row">
-        <!-- Count Cards -->
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%);">
-                <div class="card-body text-center text-white">
-                    <h5 class="card-title mb-2">Over Utilized</h5>
-                    <h2 class="mb-0 fw-bold" id="over-utilized-count">0</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #ff2727 0%, #ff6b6b 100%);">
-                <div class="card-body text-center text-white">
-                    <h5 class="card-title mb-2">Under Utilized</h5>
-                    <h2 class="mb-0 fw-bold" id="under-utilized-count">0</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%);">
-                <div class="card-body text-center text-white">
-                    <h5 class="card-title mb-2">Correctly Utilized</h5>
-                    <h2 class="mb-0 fw-bold" id="correctly-utilized-count">0</h2>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mt-3">
         <div class="col-12">
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title mb-3">Utilization Trend (Last 30 Days)</h5>
-                    <canvas id="utilizationChart" height="80"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mt-3">
-        <div class="col-12">
-            <div class="card shadow-sm">
+            <div class="card shadow-none">
                 <div class="card-body py-3">
                     <div class="mb-4">
                         <!-- Title -->
@@ -220,7 +181,28 @@
 
                             <!-- Stats -->
                             <div class="col-md-6">
-                                <div class="d-flex gap-2 justify-content-end">
+                                <div class="d-flex gap-2 justify-content-end align-items-center">
+                                    <!-- Count Cards (Small) -->
+                                    <div class="d-flex gap-2">
+                                        <div class="card shadow-none border-0 utilization-card" data-type="over" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); cursor: pointer; min-width: 100px;">
+                                            <div class="card-body text-center text-white p-2">
+                                                <h6 class="card-title mb-1" style="font-size: 0.75rem;">Over</h6>
+                                                <h5 class="mb-0 fw-bold" id="over-utilized-count" style="font-size: 1.2rem;">0</h5>
+                                            </div>
+                                        </div>
+                                        <div class="card shadow-none border-0 utilization-card" data-type="under" style="background: linear-gradient(135deg, #ff2727 0%, #ff6b6b 100%); cursor: pointer; min-width: 100px;">
+                                            <div class="card-body text-center text-white p-2">
+                                                <h6 class="card-title mb-1" style="font-size: 0.75rem;">Under</h6>
+                                                <h5 class="mb-0 fw-bold" id="under-utilized-count" style="font-size: 1.2rem;">0</h5>
+                                            </div>
+                                        </div>
+                                        <div class="card shadow-none border-0 utilization-card" data-type="correctly" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); cursor: pointer; min-width: 100px;">
+                                            <div class="card-body text-center text-white p-2">
+                                                <h6 class="card-title mb-1" style="font-size: 0.75rem;">Correctly</h6>
+                                                <h5 class="mb-0 fw-bold" id="correctly-utilized-count" style="font-size: 1.2rem;">0</h5>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none">
                                         APR ALL SBID
                                     </button>
@@ -235,6 +217,7 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
 
                         <!-- Search and Controls Row -->
                         <div class="row g-3">
@@ -257,6 +240,27 @@
 
                     <!-- Table Section -->
                     <div id="budget-under-table" class="mt-4"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart Modal -->
+    <div class="modal fade" id="utilizationChartModal" tabindex="-1" aria-labelledby="utilizationChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="utilizationChartModalLabel">
+                        <i class="fa-solid fa-chart-line me-2"></i>
+                        <span id="chart-title">Utilization Trend</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <canvas id="utilizationChart" height="80"></canvas>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -1025,10 +1029,19 @@
 
             document.body.style.zoom = "78%";
 
-            // Load counts and chart
+            // Load counts
             loadUtilizationCounts();
-            loadUtilizationChart();
+
+            // Add click handlers to utilization cards
+            document.querySelectorAll('.utilization-card').forEach(card => {
+                card.addEventListener('click', function() {
+                    const type = this.getAttribute('data-type');
+                    showUtilizationChart(type);
+                });
+            });
         });
+
+        let utilizationChartInstance = null;
 
         function loadUtilizationCounts() {
             fetch('/amazon-sp/get-utilization-counts')
@@ -1043,45 +1056,70 @@
                 .catch(err => console.error('Error loading counts:', err));
         }
 
-        function loadUtilizationChart() {
+        function showUtilizationChart(type) {
+            const chartTitle = document.getElementById('chart-title');
+            const modal = new bootstrap.Modal(document.getElementById('utilizationChartModal'));
+            
+            // Update title based on type
+            const titles = {
+                'over': 'Over Utilized Trend (Last 30 Days)',
+                'under': 'Under Utilized Trend (Last 30 Days)',
+                'correctly': 'Correctly Utilized Trend (Last 30 Days)'
+            };
+            chartTitle.textContent = titles[type] || 'Utilization Trend';
+
+            // Show modal
+            modal.show();
+
             fetch('/amazon-sp/get-utilization-chart-data')
                 .then(res => res.json())
                 .then(data => {
                     if(data.status === 200 && data.data && data.data.length > 0) {
                         const chartData = data.data;
                         const dates = chartData.map(d => d.date);
-                        const overData = chartData.map(d => d.over_utilized);
-                        const underData = chartData.map(d => d.under_utilized);
-                        const correctlyData = chartData.map(d => d.correctly_utilized);
+                        
+                        let dataset = [];
+                        let label = '';
+                        let color = '';
+                        let bgColor = '';
+
+                        if(type === 'over') {
+                            dataset = chartData.map(d => d.over_utilized);
+                            label = 'Over Utilized';
+                            color = '#ff01d0';
+                            bgColor = 'rgba(255, 1, 208, 0.1)';
+                        } else if(type === 'under') {
+                            dataset = chartData.map(d => d.under_utilized);
+                            label = 'Under Utilized';
+                            color = '#ff2727';
+                            bgColor = 'rgba(255, 39, 39, 0.1)';
+                        } else if(type === 'correctly') {
+                            dataset = chartData.map(d => d.correctly_utilized);
+                            label = 'Correctly Utilized';
+                            color = '#28a745';
+                            bgColor = 'rgba(40, 167, 69, 0.1)';
+                        }
 
                         const ctx = document.getElementById('utilizationChart').getContext('2d');
-                        new Chart(ctx, {
+                        
+                        // Destroy existing chart if any
+                        if(utilizationChartInstance) {
+                            utilizationChartInstance.destroy();
+                        }
+
+                        utilizationChartInstance = new Chart(ctx, {
                             type: 'line',
                             data: {
                                 labels: dates,
-                                datasets: [
-                                    {
-                                        label: 'Over Utilized',
-                                        data: overData,
-                                        borderColor: '#ff01d0',
-                                        backgroundColor: 'rgba(255, 1, 208, 0.1)',
-                                        tension: 0.4
-                                    },
-                                    {
-                                        label: 'Under Utilized',
-                                        data: underData,
-                                        borderColor: '#ff2727',
-                                        backgroundColor: 'rgba(255, 39, 39, 0.1)',
-                                        tension: 0.4
-                                    },
-                                    {
-                                        label: 'Correctly Utilized',
-                                        data: correctlyData,
-                                        borderColor: '#28a745',
-                                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
-                                        tension: 0.4
-                                    }
-                                ]
+                                datasets: [{
+                                    label: label,
+                                    data: dataset,
+                                    borderColor: color,
+                                    backgroundColor: bgColor,
+                                    tension: 0.4,
+                                    fill: true,
+                                    borderWidth: 2
+                                }]
                             },
                             options: {
                                 responsive: true,
@@ -1090,11 +1128,18 @@
                                     legend: {
                                         display: true,
                                         position: 'top'
+                                    },
+                                    tooltip: {
+                                        mode: 'index',
+                                        intersect: false
                                     }
                                 },
                                 scales: {
                                     y: {
-                                        beginAtZero: true
+                                        beginAtZero: true,
+                                        ticks: {
+                                            precision: 0
+                                        }
                                     }
                                 }
                             }

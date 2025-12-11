@@ -663,7 +663,13 @@ class AmazonSbBudgetController extends Controller
                 }
             }
             
-            if($row['campaignName'] !== '' ){
+            // Calculate UB7 for filtering (same as frontend filter at line 789)
+            $budget = $row['campaignBudgetAmount'] ?? 0;
+            $l7_spend = $row['l7_spend'] ?? 0;
+            $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+            
+            // Only include campaigns where UB7 < 70 (under-utilized) - same as frontend filter
+            if($row['campaignName'] !== '' && $ub7 < 70){
                 $result[] = (object) $row;
             }
         }

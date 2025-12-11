@@ -1035,7 +1035,7 @@
         let utilizationChartInstance = null;
 
         function loadUtilizationCounts() {
-            fetch('/amazon-sp/get-utilization-counts?type=PT')
+            fetch('/amazon-sp/get-utilization-counts?type=PT&page=under')
                 .then(res => res.json())
                 .then(data => {
                     if(data.status === 200) {
