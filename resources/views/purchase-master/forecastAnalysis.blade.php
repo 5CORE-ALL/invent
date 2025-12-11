@@ -138,7 +138,6 @@
                             <!-- Stage Filter -->
                             <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
                                 <option value="">All Stages</option>
-                                <option value="__blank__">Select Stage</option>
                                 <option value="to_order_analysis">2 Order</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
@@ -778,6 +777,7 @@
 
                         return `<div 
                         class="editable-qty" 
+                        contenteditable="true"
                         data-field="MOQ" 
                         data-original="${value ?? ''}" 
                         data-sku='${sku}' 
