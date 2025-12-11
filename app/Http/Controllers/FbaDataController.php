@@ -901,7 +901,8 @@ class FbaDataController extends Controller
                 if (empty($shippingAmount) || $shippingAmount == 0) $missingFields[] = $fieldLabels['Shipping_Amount'];
                 
                 // === PFT Toggle Hidden Columns (editable) ===
-                if (empty($S_PRICE) || $S_PRICE == 0) $missingFields[] = $fieldLabels['S_Price'];
+                // Note: S_Price is excluded from missing fields count as requested
+                // if (empty($S_PRICE) || $S_PRICE == 0) $missingFields[] = $fieldLabels['S_Price'];
                 
                 // === Other Editable Fields ===
                 $inboundQty = $manual ? ($manual->data['inbound_quantity'] ?? 0) : 0;
