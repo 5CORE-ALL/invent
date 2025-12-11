@@ -21,6 +21,7 @@ return [
     ['value' => 'cost_price_analysis', 'text' => 'Cost Price Analysis', 'group' => 'Product Masters'],
     ['value' => 'movement_analysis', 'text' => 'Movement Analysis', 'group' => 'Product Masters'],
     ['value' => 'forecast_analysis', 'text' => 'Forecast Analysis', 'group' => 'Product Masters'],
+    ['value' => 'approval_required', 'text' => 'Approval Required', 'group' => 'Product Masters'],
     ['value' => 'to_order_analysis', 'text' => 'To Order Analysis', 'group' => 'Product Masters'],
     ['value' => 'in_order_analysis', 'text' => 'In Order Analysis', 'group' => 'Product Masters'],
     ['value' => 'transit_analysis', 'text' => 'Transit Analysis', 'group' => 'Product Masters'],

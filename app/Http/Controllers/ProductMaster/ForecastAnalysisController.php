@@ -315,6 +315,17 @@ class ForecastAnalysisController extends Controller
         ]);
     }
 
+    public function approvalRequired(Request $request)
+    {
+        $mode = $request->query('mode');
+        $demo = $request->query('demo');
+
+        return view('purchase-master.approvalRequired', [
+            'mode' => $mode,
+            'demo' => $demo,
+        ]);
+    }
+
     public function updateForcastSheet(Request $request)
     {        
         $sku = trim($request->input('sku'));

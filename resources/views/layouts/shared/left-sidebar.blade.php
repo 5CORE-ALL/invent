@@ -120,6 +120,9 @@
                             <a href="{{ route('forecast.analysis') }}">Forecast Analysis</a>
                         </li>
                         <li>
+                            <a href="{{ route('approval.required') }}">Approval Required</a>
+                        </li>
+                        <li>
                             <a href="{{ route('to.order.analysis') }}">To Order Analysis</a>
                         </li>
                         <li>
