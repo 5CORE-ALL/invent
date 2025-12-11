@@ -707,10 +707,19 @@ class FbaDataController extends Controller
          
          // Keep enhanced calculations for other metrics (GPFT, GROI, etc.)
          $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
+         // Calculate Send_Cost using formula: CTN Cost / QTY CTN
+         $calculatedSendCost = 0;
+         if ($manual) {
+            $shippingAmount = floatval($manual->data['shipping_amount'] ?? 0);
+            $quantityInBox = floatval($manual->data['quantity_in_each_box'] ?? 0);
+            if ($quantityInBox > 0) {
+               $calculatedSendCost = round($shippingAmount / $quantityInBox, 2);
+            }
+         }
          $FBA_SHIP = $this->fbaManualDataService->calculateFbaShipCalculation(
             $fba->seller_sku,
             $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-            $manual ? ($manual->data['send_cost'] ?? 0) : 0
+            $calculatedSendCost
          );
 
          // ✅ Validate s_price from database - prevent 0 values from being used
@@ -836,7 +845,15 @@ class FbaDataController extends Controller
             'Sent_By' => $manual ? ($manual->data['sent_by'] ?? '') : '',
             'Quantity_in_each_box' => $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0,
             'GW_CTN' => $manual ? ($manual->data['gw_ctn'] ?? 0) : 0,
-            'Send_Cost' => $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+            // Calculate Send_Cost using formula: CTN Cost / QTY CTN = Sent Cost
+            'Send_Cost' => (function() use ($manual) {
+                $shippingAmount = $manual ? floatval($manual->data['shipping_amount'] ?? 0) : 0;
+                $quantityInBox = $manual ? floatval($manual->data['quantity_in_each_box'] ?? 0) : 0;
+                if ($quantityInBox > 0) {
+                    return round($shippingAmount / $quantityInBox, 2);
+                }
+                return 0;
+            })(),
             'IN_Charges' => $manual ? ($manual->data['in_charges'] ?? 0) : 0,
             'Commission_Percentage' => $manual ? ($manual->data['commission_percentage'] ?? 0) : 0,
             'Ratings' => $manual ? ($manual->data['ratings'] ?? 0) : 0,
@@ -852,6 +869,57 @@ class FbaDataController extends Controller
             'Width' => $width,
             'Height' => $height,
             'Shipment_Track_Status' => $manual ? ($manual->data['shipment_track_status'] ?? '') : '',
+            // Count missing fields and list them for display in FBA SKU column
+            // Only counts EDITABLE columns (fields that users can edit in the table)
+            'Missing_Fields_Data' => (function() use ($manual, $fba, $length, $width, $height, $dispatchDate, $S_PRICE) {
+                $missingFields = [];
+                $fieldLabels = [
+                    'Length' => 'L CTN',
+                    'Width' => 'W CTN',
+                    'Height' => 'H CTN',
+                    'Quantity_in_each_box' => 'Qty CTN',
+                    'GW_CTN' => 'GW CTN',
+                    'Shipping_Amount' => 'CTN cost',
+                    'S_Price' => 'S Price',
+                    'Inbound_Quantity' => 'Inbound',
+                    'Total_quantity_sent' => 'Sent QTY',
+                    'UPC_Codes' => 'UPC Codes',
+                    'Barcode' => 'Barcode',
+                    'Dispatch_Date' => 'D Date',
+                    'FBA_Fee_Manual' => 'FBA Fee Manual'
+                ];
+                
+                // === CTN Fields (editable, hidden by Send Cost toggle) ===
+                if (empty(trim($length ?? ''))) $missingFields[] = $fieldLabels['Length'];
+                if (empty(trim($width ?? ''))) $missingFields[] = $fieldLabels['Width'];
+                if (empty(trim($height ?? ''))) $missingFields[] = $fieldLabels['Height'];
+                $qtyInBox = $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0;
+                if (empty($qtyInBox) || $qtyInBox == 0) $missingFields[] = $fieldLabels['Quantity_in_each_box'];
+                $gwCtn = $manual ? ($manual->data['gw_ctn'] ?? 0) : 0;
+                if (empty($gwCtn) || $gwCtn == 0) $missingFields[] = $fieldLabels['GW_CTN'];
+                $shippingAmount = $manual ? ($manual->data['shipping_amount'] ?? 0) : 0;
+                if (empty($shippingAmount) || $shippingAmount == 0) $missingFields[] = $fieldLabels['Shipping_Amount'];
+                
+                // === PFT Toggle Hidden Columns (editable) ===
+                if (empty($S_PRICE) || $S_PRICE == 0) $missingFields[] = $fieldLabels['S_Price'];
+                
+                // === Other Editable Fields ===
+                $inboundQty = $manual ? ($manual->data['inbound_quantity'] ?? 0) : 0;
+                if (empty($inboundQty) || $inboundQty == 0) $missingFields[] = $fieldLabels['Inbound_Quantity'];
+                $totalQtySent = $manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0;
+                if (empty($totalQtySent) || $totalQtySent == 0) $missingFields[] = $fieldLabels['Total_quantity_sent'];
+                if (empty(trim($manual ? ($manual->data['upc_codes'] ?? '') : ''))) $missingFields[] = $fieldLabels['UPC_Codes'];
+                if (empty(trim($manual ? ($manual->data['barcode'] ?? '') : ''))) $missingFields[] = $fieldLabels['Barcode'];
+                $dispatchDateValue = $dispatchDate ? $dispatchDate->dispatch_date : ($manual ? ($manual->data['dispatch_date'] ?? '') : '');
+                if (empty(trim($dispatchDateValue))) $missingFields[] = $fieldLabels['Dispatch_Date'];
+                $fbaFeeManual = $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0;
+                if (empty($fbaFeeManual) || $fbaFeeManual == 0) $missingFields[] = $fieldLabels['FBA_Fee_Manual'];
+                
+                return [
+                    'count' => count($missingFields),
+                    'fields' => $missingFields
+                ];
+            })(),
             'MSL' => max(
                 ($monthlySales ? ($monthlySales->jan ?? 0) : 0),
                 ($monthlySales ? ($monthlySales->feb ?? 0) : 0),
@@ -891,7 +959,15 @@ class FbaDataController extends Controller
             'FBA_Ship_Calculation' => $this->fbaManualDataService->calculateFbaShipCalculation(
                $fba->seller_sku,
                $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-               $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+               // Use calculated Send_Cost: CTN Cost / QTY CTN
+               (function() use ($manual) {
+                   $shippingAmount = $manual ? floatval($manual->data['shipping_amount'] ?? 0) : 0;
+                   $quantityInBox = $manual ? floatval($manual->data['quantity_in_each_box'] ?? 0) : 0;
+                   if ($quantityInBox > 0) {
+                       return round($shippingAmount / $quantityInBox, 2);
+                   }
+                   return 0;
+               })(),
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
 
@@ -997,6 +1073,7 @@ class FbaDataController extends Controller
             'Length' => '',
             'Width' => '',
             'Height' => '',
+            'Missing_Fields_Data' => ['count' => 0, 'fields' => []], // Parent rows don't show missing count
             'MSL' => $children->sum('MSL'),
             'Sugg_Send' => $children->sum('Sugg_Send'),
             'SEND' => '',
@@ -1150,9 +1227,18 @@ class FbaDataController extends Controller
          $data['dimensions'] = trim($length . 'x' . $width . 'x' . $height, 'x');
       }
 
-      // Extract only 3 fields
+      // Extract fields
       $FBA_FEE_MANUAL = floatval($data['fba_fee_manual'] ?? 0);
-      $SEND_COST = floatval($data['send_cost'] ?? 0);
+      
+      // Calculate Send_Cost using formula: CTN Cost / QTY CTN = Sent Cost
+      $shippingAmount = floatval($data['shipping_amount'] ?? 0);
+      $quantityInBox = floatval($data['quantity_in_each_box'] ?? 0);
+      $SEND_COST = 0;
+      if ($quantityInBox > 0) {
+         $SEND_COST = round($shippingAmount / $quantityInBox, 2);
+      }
+      // Update send_cost in data (for backward compatibility, but it's now calculated)
+      $data['send_cost'] = $SEND_COST;
 
       // Calculate FBA_SHIP (Fulfillment_Fee + FBA_Fee_Manual + Send_Cost)
       $FBA_SHIP = $fulfillmentFee + $FBA_FEE_MANUAL + $SEND_COST;
