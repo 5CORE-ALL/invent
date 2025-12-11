@@ -45,8 +45,10 @@
             <div class="col-12">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h4>FBA Dispatch Data</h4>
-                        <div>
+                        <div class="d-flex align-items-center gap-2">
+                            <h4 class="mb-0">FBA Dispatch Data</h4>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
                             <input type="text" id="sku-search" class="form-control form-control-sm me-2"
                                 style="width: 200px; display: inline-block;" placeholder="Search SKU or FBA SKU...">
                             <select id="inventory-filter" class="form-select form-select-sm me-2"
@@ -58,7 +60,7 @@
                             <select id="parent-filter" class="form-select form-select-sm me-2"
                                 style="width: auto; display: inline-block;">
                                 <option value="show">Show Parent</option>
-                                <option value="hide">Hide Parent</option>
+                                <option value="hide" selected>Hide Parent</option>
                             </select>
                             <select id="pft-filter" class="form-select form-select-sm me-2"
                                 style="width: auto; display: inline-block;">
@@ -68,6 +70,21 @@
                                 <option value="15-20">15-20%</option>
                                 <option value="21-49">21-49%</option>
                                 <option value="50+">50%+</option>
+                            </select>
+                            <select id="nrl-fba-filter" class="form-select form-select-sm me-2"
+                                style="width: auto; display: inline-block;">
+                                <option value="all">All Types</option>
+                                <option value="FBA" selected>FBA</option>
+                                <option value="FBM">FBM</option>
+                                <option value="NRL">NRL</option>
+                                <option value="Both">Both</option>
+                            </select>
+                            <select id="sugg-send-filter" class="form-select form-select-sm me-2"
+                                style="width: auto; display: inline-block;">
+                                <option value="all">All Sugg Send</option>
+                                <option value="positive" selected>Positive</option>
+                                <option value="zero">Zero</option>
+                                <option value="negative">Negative</option>
                             </select>
                             <a href="{{ url('/fba-manual-sample') }}" class="btn btn-sm btn-info me-2">
                                 <i class="fa fa-download"></i> Sample Template
@@ -89,6 +106,9 @@
                                 data-bs-target="#importModal">
                                 <i class="fa fa-upload"></i>
                             </button>
+                            <span id="sugg-send-badge" class="badge bg-danger" style="font-size: 14px;">
+                                <i class="fa fa-box"></i> <strong>QTY:</strong> <span id="sugg-send-count">0</span>
+                            </span>
                         </div>
                     </div>
                     <div class="card-body" style="padding: 0;">
@@ -516,8 +536,74 @@
                             }
                         },
 
+                        {
+                            title: "NRL FBA",
+                            field: "NRL_FBA",
+                            hozAlign: "center",
+                            editor: "list",
+                            editorParams: {
+                                values: ["All", "FBA", "FBM", "NRL", "Both"],
+                                autocomplete: true,
+                                allowEmpty: false,
+                                listOnEmpty: true
+                            },
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                // Don't show value for parent rows
+                                if (rowData.is_parent) {
+                                    return '';
+                                }
+                                const value = cell.getValue() || 'FBA';
+                                const colorMap = {
+                                    'All': '#808080',      // Gray
+                                    'FBA': '#28a745',      // Green
+                                    'FBM': '#007bff',      // Blue
+                                    'NRL': '#ffc107',      // Yellow/Orange
+                                    'Both': '#6f42c1'      // Purple
+                                };
+                                const color = colorMap[value] || '#28a745'; // Default to green (FBA) if unknown
+                                return `<span style="color: ${color}; font-weight: 700;">${value}</span>`;
+                            },
+                            cellEdited: function(cell) {
+                                var data = cell.getRow().getData();
+                                var value = cell.getValue();
+                                
+                                // Skip if it's a parent row
+                                if (data.is_parent) {
+                                    cell.setValue('FBA');
+                                    return;
+                                }
+
+                                $.ajax({
+                                    url: '/update-fba-listing-status',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.SKU,
+                                        status: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function(response) {
+                                        console.log('NRL FBA status updated:', response);
+                                        if (response.success) {
+                                            console.log('✅ Saved to database - SKU:', data.SKU, 'Status:', value);
+                                        }
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error updating NRL FBA status:', xhr);
+                                        var errorMsg = 'Failed to update NRL FBA status';
+                                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                                            errorMsg = xhr.responseJSON.message;
+                                        }
+                                        alert(errorMsg);
+                                        // Revert to old value on error
+                                        cell.setValue(cell.getOldValue() || 'All');
+                                    }
+                                });
+                            }
+                        },
+
                           {
-                            title: "Shopify INV",
+                            title: "Main INV",
                             field: "Shopify_INV",
                             hozAlign: "center"
                         },
@@ -552,6 +638,16 @@
                             hozAlign: "center"
                         },
 
+
+                        {
+                            title: "Inbound",
+                            field: "Inbound_Quantity",
+                            hozAlign: "center",
+                            editor: "input"
+                        },
+
+
+
                         {
                             title: "L30 FBA",
                             field: "l30_units",
@@ -577,6 +673,74 @@
                                 return `<span style="color:${color}; font-weight:600;">${formattedValue}</span>`;
                             },
                         },
+
+                        {
+                            title: "MSL",
+                            field: "MSL",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                // Don't show value on parent rows
+                                if (rowData.is_parent) {
+                                    return '';
+                                }
+                                let value = parseFloat(cell.getValue());
+                                if (isNaN(value)) return '';
+
+                                // If value is exactly 0, display 1 (no color)
+                                if (value === 0) {
+                                    return '1';
+                                }
+
+                                const display = Number.isInteger(value) ? value : value.toFixed(0);
+                                return `${display}`;
+                            }
+                        },
+
+                        {
+                            title: "Sugg Send",
+                            field: "Sugg_Send",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                // Don't show value on parent rows
+                                if (rowData.is_parent) {
+                                    return '';
+                                }
+                                let value = parseFloat(cell.getValue());
+                                if (isNaN(value)) return '';
+
+                                const display = Number.isInteger(value) ? value : value.toFixed(0);
+                                
+                                // Color coding: positive = green, else (negative or zero) = red
+                                const bgColor = value > 0 ? '#28a745' : '#dc3545'; // green for positive, red for else
+                                const textColor = '#fff';
+                                return `<span style="background-color:${bgColor}; color:${textColor}; padding:4px 8px; border-radius:3px; font-weight:600;">${display}</span>`;
+                            }
+                        },
+
+                        {
+                            title: "Pft%",
+                            field: "Pft%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = cell.getValue();
+                                return `
+                                    <span>${value || ''}</span>
+                                    <i class="fa fa-info-circle text-primary pft-toggle-btn" 
+                                        style="cursor:pointer; margin-left:8px;" 
+                                        title="Toggle related columns"></i>
+                                `;
+                            }
+                        },
+
+                        {
+                            title: "Sent QTY",
+                            field: "Total_quantity_sent",
+                            hozAlign: "center",
+                            editor: "input"
+                        },
+
 
                          {
                             title: "Views",
@@ -625,11 +789,16 @@
                             title: "D Date",
                             field: "Dispatch_Date",
                             hozAlign: "center",
-                            editor: "input"
+                            editor: "input",
+                            editorParams: {
+                                elementAttributes: {
+                                    type: "date"
+                                }
+                            }
                         },
 
   {
-                            title: "Length",
+                            title: "L CTN",
                             field: "Length",
                             hozAlign: "center",
                             editor: "input",
@@ -654,7 +823,7 @@
                         },
 
                         {
-                            title: "Width",
+                            title: "W CTN",
                             field: "Width",
                             hozAlign: "center",
                             editor: "input",
@@ -679,7 +848,7 @@
                         },
 
                         {
-                            title: "Height",
+                            title: "H CTN",
                             field: "Height",
                             hozAlign: "center",
                             editor: "input",
@@ -705,7 +874,7 @@
 
 
                         {
-                            title: "Q in E box",
+                            title: "Qty CTN",
                             field: "Quantity_in_each_box",
                             hozAlign: "center",
                             editor: "input"
@@ -713,33 +882,14 @@
 
 
                         {
-                            title: "Sent Quantity",
-                            field: "Total_quantity_sent",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-                           {
-                            title: "T Sent C",
+                            title: "CTN cost",
                             field: "Shipping_Amount",
                             hozAlign: "center",
                             editor: "input"
                         },
 
-                            {
-                            title: "W H INV RED",
-                            field: "Warehouse_INV_Reduction",
-                            formatter: "tickCross",
-                            hozAlign: "center",
-                            editor: true,
-                            cellClick: function(e, cell) {
-                                var currentValue = cell.getValue();
-                                cell.setValue(!currentValue);
-                            }
-                        },
-
                         {
-                            title: "Shipment Status",
+                            title: "S status",
                             field: "FBA_Shipment_Status",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -764,52 +914,24 @@
                       
 
                         {
-                            title: "Inbound Quantity",
-                            field: "Inbound_Quantity",
-                            hozAlign: "center",
-                            editor: "input"
-                        },
-
-
-                        {
                             title: "ASIN",
                             field: "ASIN"
                         },
 
 
-                        {
-                            title: "MSL",
-                            field: "MSL",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = parseFloat(cell.getValue());
-                                if (isNaN(value) || value === 0) return value || '';
-                                
-                                const bgColor = value < 0 ? '#ffeb3b' : '#f44336'; // yellow for negative, red for positive
-                                const textColor = value < 0 ? '#000' : '#fff';
-                                return `<span style="background-color:${bgColor}; color:${textColor}; padding:4px 8px; border-radius:3px; font-weight:600;">${value}</span>`;
-                            }
-                        },
+                      
     {
                             title: "FBA Price",
                             field: "FBA_Price",
                             hozAlign: "center",
+                            visible: false,
                             // formatter: "dollar"
                         },
-
-
-                         {
-                                title: "Pft%",
-                                field: "Pft%",
-                                hozAlign: "center",
-                                formatter: function(cell) {
-                                    return cell.getValue();
-                                }
-                            },
                             {
                                 title: "ROI%",
                                 field: "ROI%",
                                 hozAlign: "center",
+                                visible: false,
                                 formatter: function(cell) {
                                     return cell.getValue();
                                 }
@@ -820,6 +942,7 @@
                             title: "S Price",
                             field: "S_Price",
                             hozAlign: "center",
+                            visible: false,
                             editor: "input",
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
@@ -845,6 +968,7 @@
                             title: "SPft%",
                             field: "SPft%",
                             hozAlign: "center",
+                            visible: false,
                             formatter: function(cell) {
                                 return cell.getValue();
                             },
@@ -853,6 +977,7 @@
                             title: "SROI%",
                             field: "SROI%",
                             hozAlign: "center",
+                            visible: false,
                             formatter: function(cell) {
                                 return cell.getValue();
                             },
@@ -863,6 +988,7 @@
                             title: "LMP ",
                             field: "lmp_1",
                             hozAlign: "center",
+                            visible: false,
                             formatter: function(cell) {
                                 const value = cell.getValue();
                                 const rowData = cell.getRow().getData();
@@ -900,6 +1026,18 @@
                             title: "FBA Fee",
                             field: "Fulfillment_Fee",
                             hozAlign: "center"
+                        },
+
+                        {
+                            title: "FBA Fee Manual",
+                            field: "FBA_Fee_Manual",
+                            hozAlign: "center",
+                            editor: "input",
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue());
+                                if (isNaN(value) || value === 0) return '';
+                                return value.toFixed(2);
+                            }
                         },
 
 
@@ -1139,11 +1277,25 @@
                     }
                 });
 
+                // Update badge when data loads
+                table.on('dataLoaded', function() {
+                    updateSuggSendBadge();
+                });
+
+                // Update badge after filtering
+                table.on('dataFiltered', function() {
+                    updateSuggSendBadge();
+                });
+
                 // INV 0 and More than 0 Filter
+                let skuSearch = '';
+                
                 function applyFilters() {
                     const inventoryFilter = $('#inventory-filter').val();
                     const parentFilter = $('#parent-filter').val();
                     const pftFilter = $('#pft-filter').val();
+                    const nrlFbaFilter = $('#nrl-fba-filter').val();
+                    const suggSendFilter = $('#sugg-send-filter').val();
 
                     table.clearFilter(true);
 
@@ -1189,23 +1341,80 @@
                             }
                         });
                     }
+
+                    if (nrlFbaFilter !== 'all') {
+                        table.addFilter('NRL_FBA', '=', nrlFbaFilter);
+                    }
+
+                    if (suggSendFilter !== 'all') {
+                        table.addFilter(function(data) {
+                            const value = parseFloat(data.Sugg_Send);
+                            if (isNaN(value)) return false;
+
+                            switch (suggSendFilter) {
+                                case 'positive':
+                                    return value > 0;
+                                case 'zero':
+                                    return value === 0;
+                                case 'negative':
+                                    return value < 0;
+                                default:
+                                    return true;
+                            }
+                        });
+                    }
+                }
+
+                function updateSuggSendBadge() {
+                    setTimeout(function() {
+                        try {
+                            const allData = table.getData('active');
+                            const positiveCount = allData.filter(row => {
+                                if (row.is_parent) return false;
+                                const value = parseFloat(row.Sugg_Send);
+                                return !isNaN(value) && value > 0;
+                            }).length;
+                            
+                            $('#sugg-send-count').text(positiveCount);
+                        } catch(e) {
+                            console.log('Badge update error:', e);
+                        }
+                    }, 100);
                 }
 
                 $('#sku-search').on('input', function() {
+                    skuSearch = $(this).val().toUpperCase();
                     applyFilters();
+                    updateSuggSendBadge();
                 });
 
                 $('#inventory-filter').on('change', function() {
                     applyFilters();
+                    updateSuggSendBadge();
                 });
 
                 $('#parent-filter').on('change', function() {
                     applyFilters();
+                    updateSuggSendBadge();
                 });
 
                 $('#pft-filter').on('change', function() {
                     applyFilters();
+                    updateSuggSendBadge();
                 });
+
+                $('#nrl-fba-filter').on('change', function() {
+                    applyFilters();
+                    updateSuggSendBadge();
+                });
+
+                $('#sugg-send-filter').on('change', function() {
+                    applyFilters();
+                    updateSuggSendBadge();
+                });
+
+                // Apply filters on initial load (to hide parents by default)
+                applyFilters();
 
                 // AJAX Import Handler
                 $('#importForm').on('submit', function(e) {
@@ -1306,6 +1515,9 @@
                 }
 
                 function applyColumnVisibilityFromServer() {
+                    // Columns that should always be hidden by default (Pft% related columns)
+                    const alwaysHiddenColumns = ["FBA_Price", "ROI%", "S_Price", "SPft%", "SROI%", "lmp_1"];
+                    
                     fetch('/fba-dispatch-column-visibility', {
                             method: 'GET',
                             headers: {
@@ -1316,11 +1528,17 @@
                         .then(savedVisibility => {
                             table.getColumns().forEach(col => {
                                 const def = col.getDefinition();
-                                if (def.field && savedVisibility[def.field] !== undefined) {
-                                    if (savedVisibility[def.field]) {
-                                        col.show();
-                                    } else {
+                                if (def.field) {
+                                    // Force hide Pft% related columns (ignore saved preferences)
+                                    if (alwaysHiddenColumns.includes(def.field)) {
                                         col.hide();
+                                    } else if (savedVisibility[def.field] !== undefined) {
+                                        // Apply saved preferences for other columns
+                                        if (savedVisibility[def.field]) {
+                                            col.show();
+                                        } else {
+                                            col.hide();
+                                        }
                                     }
                                 }
                             });
@@ -1336,8 +1554,15 @@
 
                 // Show All Columns button
                 document.getElementById("show-all-columns-btn").addEventListener("click", function() {
+                    // Columns that should always be hidden (Pft% related columns)
+                    const alwaysHiddenColumns = ["FBA_Price", "ROI%", "S_Price", "SPft%", "SROI%", "lmp_1"];
+                    
                     table.getColumns().forEach(col => {
-                        col.show();
+                        const def = col.getDefinition();
+                        // Don't show Pft% related columns even when "Show All" is clicked
+                        if (def.field && !alwaysHiddenColumns.includes(def.field)) {
+                            col.show();
+                        }
                     });
                     buildColumnDropdown();
                     saveColumnVisibilityToServer();
@@ -1348,6 +1573,29 @@
                     if (e.target.type === 'checkbox') {
                         buildColumnDropdown();
                     }
+                });
+
+                // Pft% Toggle Event Listener
+                $(document).on('click', '.pft-toggle-btn', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    console.log('Pft% toggle clicked, table:', table);
+                    let colsToToggle = ["FBA_Price", "ROI%", "S_Price", "SPft%", "SROI%", "lmp_1"];
+                    
+                    colsToToggle.forEach(colName => {
+                        try {
+                            let col = table.getColumn(colName);
+                            if (col) {
+                                console.log('Toggling column:', colName);
+                                col.toggle();
+                            } else {
+                                console.warn('Column not found:', colName);
+                            }
+                        } catch(err) {
+                            console.error('Error toggling column', colName, err);
+                        }
+                    });
                 });
             });
 
