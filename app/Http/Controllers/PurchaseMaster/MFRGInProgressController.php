@@ -26,6 +26,11 @@ class MFRGInProgressController extends Controller
         $productMaster = DB::table('product_master')->get()
             ->keyBy(fn($item) => strtoupper(trim($item->sku)));
 
+        // Get stage data from forecast_analysis table
+        $forecastData = DB::table('forecast_analysis')
+            ->get()
+            ->keyBy(fn($item) => strtoupper(trim($item->sku)));
+
         // Supplier Table Parent Mapping
         $supplierRows = Supplier::where('type', 'Supplier')->get();
         $supplierMapByParent = [];
@@ -111,6 +116,14 @@ class MFRGInProgressController extends Controller
                 $currencyFromPO = $skuToPriceMap[$sku]['currency'];
             }
 
+            // Get stage from forecast_analysis
+            $stage = '';
+            if (isset($forecastData[$sku])) {
+                $stage = $forecastData[$sku]->stage ?? '';
+            }
+            $row->stage = $stage;
+            $row->order_qty = $row->qty; // Add order_qty field for validation
+
             $row->Image = $image;
             $row->CBM = $cbm;
             $row->price_from_po = $priceFromPO;
@@ -148,6 +161,11 @@ class MFRGInProgressController extends Controller
             ->keyBy(fn($item) => $normalizeSku($item->sku));
 
         $productMaster = DB::table('product_master')
+            ->get()
+            ->keyBy(fn($item) => $normalizeSku($item->sku));
+
+        // Get stage data from forecast_analysis table
+        $forecastData = DB::table('forecast_analysis')
             ->get()
             ->keyBy(fn($item) => $normalizeSku($item->sku));
 
@@ -228,6 +246,14 @@ class MFRGInProgressController extends Controller
                 $currencyFromPO = $skuToPriceMap[$sku]['currency'];
             }
             
+            // Get stage from forecast_analysis
+            $stage = '';
+            if (isset($forecastData[$sku])) {
+                $stage = $forecastData[$sku]->stage ?? '';
+            }
+            $row->stage = $stage;
+            $row->order_qty = $row->qty; // Add order_qty field for validation
+
             $row->Image = $image;
             $row->CBM = $cbm;
             $row->price_from_po = $priceFromPO;

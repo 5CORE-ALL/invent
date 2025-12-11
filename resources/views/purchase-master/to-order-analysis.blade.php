@@ -221,12 +221,9 @@
                             <label class="form-label fw-semibold mb-1 d-block">🎯 Stage</label>
                             <select id="stage-filter" class="form-select form-select-sm" style="min-width: 160px;">
                                 <option value="">All Stages</option>
-                                <option value="rfq sent">RFQ Sent</option>
-                                <option value="analytics">Analytics</option>
-                                <option value="to approve">To Approve</option>
-                                <option value="approved">Approved</option>
-                                <option value="advance">Advance</option>
-                                <option value="mfrg progress">Mfrg Progress</option>
+                                <option value="to_order_analysis" selected>2 Order</option>
+                                <option value="mip">MIP</option>
+                                <option value="r2s">R2S</option>
                             </select>
                         </div>
 
@@ -432,19 +429,10 @@
                                             class="form-control form-control-sm qty-input" 
                                             value="${value}" 
                                             min="0" max="99999" 
-                                            style="width:80px; text-align:center;">
+                                            readonly
+                                            style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed;">
                                     </div>
                                 `;
-
-                            setTimeout(() => {
-                                const input = cell.getElement().querySelector(".qty-input");
-                                if (input) {
-                                    input.addEventListener("change", function () {
-                                        const newValue = this.value;
-                                        saveLinkUpdate(cell, newValue);
-                                    });
-                                }
-                            }, 10);
 
                             return html;
                         }
@@ -607,25 +595,38 @@
                     },
                     {
                         title: "Stage",
-                        field: "Stage",
+                        field: "stage",
+                        accessor: row => row?.["stage"] ?? null,
+                        headerSort: false,
                         formatter: function(cell) {
-                            const value = cell.getValue() || "";
+                            const value = cell.getValue() ?? '';
                             const rowData = cell.getRow().getData();
 
+                            // Determine background color based on value
+                            let bgColor = '#fff';
+                            if (value === 'to_order_analysis') {
+                                bgColor = '#ffc107'; // Yellow
+                            } else if (value === 'mip') {
+                                bgColor = '#0d6efd'; // Blue
+                            } else if (value === 'r2s') {
+                                bgColor = '#198754'; // Green
+                            }
+
                             return `
-                                <select class="form-select form-select-sm editable-select"
-                                    data-column="Stage"
-                                    data-sku='${rowData["SKU"]}'
-                                    style="width: 100px;>
-                                    <option value="RFQ Sent" ${value === "RFQ Sent" ? "selected" : ""}>RFQ Sent</option>
-                                    <option value="Analytics" ${value === "Analytics" ? "selected" : ""}>Analytics</option>
-                                    <option value="To Approve" ${value === "To Approve" ? "selected" : ""}>To Approve</option>
-                                    <option value="Approved" ${value === "Approved" ? "selected" : ""}>Approved</option>
-                                    <option value="Advance" ${value === "Advance" ? "selected" : ""}>Advance</option>
-                                    <option value="Mfrg Progress" ${value === "Mfrg Progress" ? "selected" : ""}>Mfrg Progress</option>
-                                </select>
-                            `;
-                        },
+                        <select class="form-select form-select-sm editable-select"
+                            data-type="Stage"
+                            data-sku='${rowData["SKU"]}'
+                            data-parent='${rowData["Parent"]}'
+                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
+                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
+                                background-color: ${bgColor}; color: #000;">
+                            <option value="">Select</option>
+                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''} style="background-color: #ffc107; color: #000;">2 Order</option>
+                            <option value="mip" ${value === 'mip' ? 'selected' : ''} style="background-color: #0d6efd; color: #000;">MIP</option>
+                            <option value="r2s" ${value === 'r2s' ? 'selected' : ''} style="background-color: #198754; color: #000;">R2S</option>
+                        </select>
+                    `;
+                        }
                     },
                     {
                         title: "NRP",
@@ -651,7 +652,7 @@
                     let filtered = data.filter(item => {
                         let qty = parseFloat(item.approved_qty) || 0;
                         let isParent = item.SKU && item.SKU.startsWith("PARENT");
-                        let isMfrg = item.Stage && item.Stage.trim().toLowerCase() === "mfrg progress";
+                        let isMfrg = item.stage && item.stage.trim().toLowerCase() === "mip";
                         let isNR = item.nrl && item.nrl.trim().toUpperCase() === "NR";
 
                         return qty > 0 && !isParent && !isMfrg && !isNR;
@@ -753,14 +754,114 @@
                 .catch(err => console.error(err));
             }
 
-            // handle changes to editable select fields
-            $(document).on("change", ".editable-select", async function() {
-                const sku = this.dataset.sku;
-                const column = this.dataset.column; 
-                const value = this.value;
+            // Reusable AJAX call for forecast data updates
+            function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
+                $.post('/update-forecast-data', {
+                    ...data,
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                }).done(res => {
+                    if (res.success) {
+                        console.log('Saved:', res.message);
+                        onSuccess();
+                    } else {
+                        console.warn('Not saved:', res.message);
+                        onFail();
+                    }
+                }).fail(err => {
+                    console.error('AJAX failed:', err);
+                    alert('Error saving data.');
+                    onFail();
+                });
+            }
+
+            // Handle editable select fields
+            $(document).off('change', '.editable-select').on('change', '.editable-select', function() {
+                const $el = $(this);
+                const sku = $el.data('sku');
+                const parent = $el.data('parent');
+                const column = $el.data('column'); // For other columns like Supplier, nrl
+                const field = $el.data('type'); // For Stage column
+                const value = $el.val().trim();
                 
-                try {
-                    const response = await fetch('/update-link', {
+                // Handle Stage column using updateForecastField
+                if (field === "Stage") {
+                    // Update background color immediately
+                    let bgColor = '#fff';
+                    if (value === 'to_order_analysis') {
+                        bgColor = '#ffc107'; // Yellow
+                    } else if (value === 'mip') {
+                        bgColor = '#0d6efd'; // Blue
+                    } else if (value === 'r2s') {
+                        bgColor = '#198754'; // Green
+                    }
+                    $el.css({
+                        'background-color': bgColor,
+                        'color': '#000'
+                    });
+                    const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                    if (table) {
+                        const row = table.searchRows("SKU", "=", sku)[0];
+                        const orderQty = row ? row.getData()["order_qty"] : null;
+                        
+                        if (!orderQty || orderQty === "0" || parseInt(orderQty) === 0) {
+                            alert("Order Qty cannot be empty or zero.");
+                            $el.val('');
+                            return;
+                        }
+                    }
+
+                    updateForecastField({
+                        sku,
+                        parent,
+                        column: field,
+                        value: value
+                    }, function() {
+                        // Update cell color after successful save
+                        const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                        if (table) {
+                            const row = table.searchRows("SKU", "=", sku)[0];
+                            if (row) {
+                                // Refresh the cell to update the color
+                                row.reformat();
+                            }
+                        }
+
+                        // Handle MIP stage (equivalent to Mfrg Progress)
+                        if (value === "mip") {
+                            const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                            if (!table) return;
+
+                            const row = table.searchRows("SKU", "=", sku)[0];
+                            if (!row) return;
+
+                            const rowData = row.getData();
+                            const payload = {
+                                parent: rowData.Parent || "",
+                                sku: rowData.SKU || "",
+                                order_qty: rowData.order_qty || "",
+                                supplier: rowData.Supplier || "",
+                                adv_date: rowData["Adv date"] || ""
+                            };
+
+                            fetch("/mfrg-progresses/insert", {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                                },
+                                body: JSON.stringify(payload)
+                            }).then(r => r.json()).then(insertRes => {
+                                if (insertRes.success) {
+                                    row.delete();
+                                }
+                            });
+                        }
+                    }, function() {
+                        alert('Failed to save Stage.');
+                    });
+                } else {
+                    // Handle other columns using existing /update-link endpoint
+                    fetch('/update-link', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -772,56 +873,27 @@
                             column, 
                             value 
                         })
-                    });
+                    })
+                    .then(res => res.json())
+                    .then(result => {
+                        if (!result.success) {
+                            console.error('Update failed:', result.message);
+                            return;
+                        }
 
-                    const result = await response.json();
-
-                    if (!result.success) {
-                        console.error('Update failed:', result.message);
-                        return;
-                    }
-
-                    if (value.trim().toUpperCase() === "NR") {
-                        const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                        if (table) {
-                            const targetRow = table.searchRows("SKU", "=", sku)[0];
-                            if (targetRow) {
-                                targetRow.delete();
+                        if (value.trim().toUpperCase() === "NR") {
+                            const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                            if (table) {
+                                const targetRow = table.searchRows("SKU", "=", sku)[0];
+                                if (targetRow) {
+                                    targetRow.delete();
+                                }
                             }
                         }
-                    }
-
-                    if(column === "Stage" && value.trim().toLowerCase() === "mfrg progress"){
-                        const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                        if (!table) return;
-
-                        const row = table.searchRows("SKU", "=", sku)[0];
-                        if (!row) return;
-
-                        const rowData = row.getData();
-                        const payload = {
-                            parent: rowData.Parent || "",
-                            sku: rowData.SKU || "",
-                            order_qty: rowData.order_qty || "",
-                            supplier: rowData.Supplier || "",
-                            adv_date: rowData["Adv date"] || ""
-                        };
-
-                        const insertRes = await fetch("/mfrg-progresses/insert", {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json",
-                                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                            },
-                            body: JSON.stringify(payload)
-                        }).then(r => r.json());
-                        if (insertRes.success) {
-                            row.delete();
-                        }
-                    }
-
-                } catch (error) {
-                    console.error('Network error:', error);
+                    })
+                    .catch(error => {
+                        console.error('Network error:', error);
+                    });
                 }
             });
 
@@ -891,7 +963,7 @@
                     if(type === 'parent') keep = keep && row.is_parent;
                     else if(type === 'sku') keep = keep && !row.SKU.startsWith("PARENT");
 
-                    if(stage) keep = keep && row.Stage.toLowerCase() === stage;
+                    if(stage) keep = keep && (row.stage || '').toLowerCase() === stage;
                     if(pending) keep = keep && getRowColor(row) === pending;
                     if(supplierOverride) keep = keep && row.Supplier.trim().toLowerCase() === supplierOverride.trim().toLowerCase();
                     if(searchText) keep = keep && Object.values(row).some(val => val && val.toString().toLowerCase().includes(searchText));
@@ -954,10 +1026,15 @@
             document.getElementById("stage-filter").addEventListener("change", () => applyFilters());
             document.getElementById("search-input").addEventListener("input", debounce(() => applyFilters(), 300));
 
+            // Set default stage filter to "2 Order"
+            document.getElementById("stage-filter").value = "to_order_analysis";
+
             // Table events
             table.on("dataLoaded", function() {
                 updateSupplierKeys();
                 currentIndex = 0;
+                // Set default stage filter to "2 Order" on data load
+                document.getElementById("stage-filter").value = "to_order_analysis";
                 applyFilters();
             });
 

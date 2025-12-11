@@ -140,6 +140,17 @@
                                 </div>
                             </div>
 
+                            <!-- Stage Filter -->
+                            <div class="col-auto">
+                                <label class="form-label fw-semibold mb-1 d-block">🎯 Stage</label>
+                                <select id="stage-filter" class="form-select form-select-sm" style="min-width: 160px;">
+                                    <option value="">All Stages</option>
+                                    <option value="to_order_analysis">2 Order</option>
+                                    <option value="mip" selected>MIP</option>
+                                    <option value="r2s">R2S</option>
+                                </select>
+                            </div>
+
                             <!-- 💰 Advance + Pending Summary -->
                             <div id="advance-total-wrapper" style="display: none;">
                                 <div id="advance-total-display" class="py-1 px-2 rounded shadow-sm d-inline-flex align-items-center gap-2 flex-wrap"
@@ -234,6 +245,7 @@
                                     <input type="text" class="form-control column-search" data-search-column="3" placeholder="Search SKU..." style="margin-top:4px; font-size:12px; height:28px; width: 150px;">
                                     <div class="search-results" data-results-column="3" style="position:relative; z-index:10;"></div>
                                 </th>
+                                <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">Order<br/>QTY<div class="resizer"></div></th>
                                 <th data-column="5">Rate<div class="resizer"></div></th>
                                 <th data-column="6" class="text-center">Supplier<div class="resizer"></div></th>
@@ -279,7 +291,38 @@
                                         </span>
                                         <span class="sku-full d-none" id="sku-full">{{ $item->sku ?? '' }}</span>
                                     </td>
-                                    <td data-column="4" data-qty="{{ $item->qty ?? 0 }}" style="text-align: end;">{{ $item->qty }}</td>
+                                    <td data-column="17" class="text-center">
+                                        @php
+                                            $stageValue = $item->stage ?? '';
+                                            $bgColor = '#fff';
+                                            if ($stageValue === 'to_order_analysis') {
+                                                $bgColor = '#ffc107'; // Yellow
+                                            } elseif ($stageValue === 'mip') {
+                                                $bgColor = '#0d6efd'; // Blue
+                                            } elseif ($stageValue === 'r2s') {
+                                                $bgColor = '#198754'; // Green
+                                            }
+                                        @endphp
+                                        <select class="form-select form-select-sm editable-select-stage" 
+                                            data-type="Stage"
+                                            data-sku="{{ $item->sku }}"
+                                            data-parent="{{ $item->parent ?? '' }}"
+                                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
+                                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
+                                                background-color: {{ $bgColor }}; color: #000;">
+                                            <option value="">Select</option>
+                                            <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                            <option value="mip" {{ $stageValue === 'mip' ? 'selected' : '' }}>MIP</option>
+                                            <option value="r2s" {{ $stageValue === 'r2s' ? 'selected' : '' }}>R2S</option>
+                                        </select>
+                                    </td>
+                                    <td data-column="4" data-qty="{{ $item->qty ?? 0 }}" style="text-align: end; background-color: #e9ecef;">
+                                        <input type="number" 
+                                            value="{{ $item->qty ?? 0 }}" 
+                                            readonly
+                                            style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed; border: none;"
+                                            class="form-control form-control-sm">
+                                    </td>
                                     <td data-column="5">
                                         <div class="input-group input-group-sm" style="width:105px;">
                                             <span class="input-group-text" style="padding: 0 6px; background: #e9ecef;">
@@ -538,6 +581,12 @@
         // Inline Auto-Save
         setupAutoSave();
 
+        // Stage Update Handler
+        setupStageUpdate();
+
+        // Stage Filter
+        setupStageFilter();
+
         // Currency Conversion
         setupCurrencyConversion();
 
@@ -555,6 +604,13 @@
 
         //total amount
         calculateTotalAmount();
+
+        // Apply stage filter on page load
+        setTimeout(() => {
+            if (document.getElementById('stage-filter')) {
+                applyStageFilter();
+            }
+        }, 100);
 
         // ========= FUNCTIONS ========= //
 
@@ -859,6 +915,108 @@
                         alert('❌ AJAX error occurred.');
                     });
                 });
+            });
+        }
+
+        // Reusable AJAX call for forecast data updates
+        function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
+            fetch('/update-forecast-data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    onSuccess();
+                } else {
+                    onFail();
+                }
+            })
+            .catch(err => {
+                console.error('AJAX failed:', err);
+                alert('Error saving data.');
+                onFail();
+            });
+        }
+
+        function setupStageUpdate() {
+            document.querySelectorAll('.editable-select-stage').forEach(function(select) {
+                select.addEventListener('change', function() {
+                    const sku = this.dataset.sku;
+                    const parent = this.dataset.parent;
+                    const value = this.value.trim();
+
+                    // Update background color immediately
+                    let bgColor = '#fff';
+                    if (value === 'to_order_analysis') {
+                        bgColor = '#ffc107'; // Yellow
+                    } else if (value === 'mip') {
+                        bgColor = '#0d6efd'; // Blue
+                    } else if (value === 'r2s') {
+                        bgColor = '#198754'; // Green
+                    }
+                    this.style.backgroundColor = bgColor;
+                    this.style.color = '#000';
+
+                    // Get order_qty for validation
+                    const row = this.closest('tr');
+                    const qtyCell = row.querySelector('td[data-column="4"] input');
+                    const orderQty = qtyCell ? parseFloat(qtyCell.value) : 0;
+
+                    if (!orderQty || orderQty === 0) {
+                        alert("Order Qty cannot be empty or zero.");
+                        this.value = '';
+                        this.style.backgroundColor = '#fff';
+                        return;
+                    }
+
+                    updateForecastField({
+                        sku: sku,
+                        parent: parent,
+                        column: 'Stage',
+                        value: value
+                    }, function() {
+                        // Success - color already updated
+                    }, function() {
+                        alert('Failed to save Stage.');
+                        // Revert color
+                        this.style.backgroundColor = '#fff';
+                    });
+                });
+            });
+        }
+
+        function setupStageFilter() {
+            const stageFilter = document.getElementById('stage-filter');
+            if (!stageFilter) return;
+
+            // Set default to "MIP"
+            stageFilter.value = 'mip';
+            applyStageFilter();
+
+            stageFilter.addEventListener('change', function() {
+                applyStageFilter();
+            });
+        }
+
+        function applyStageFilter() {
+            const stageFilter = document.getElementById('stage-filter');
+            const selectedStage = stageFilter ? stageFilter.value.toLowerCase().trim() : '';
+            const rows = document.querySelectorAll('.wide-table tbody tr');
+
+            rows.forEach(row => {
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+
+                if (!selectedStage || rowStage === selectedStage) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
             });
         }
 

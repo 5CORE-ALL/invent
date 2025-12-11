@@ -109,6 +109,16 @@
                                     <option value="Tianjin">Tianjin</option>
                                 </select>
                             </div>
+                            <!-- Stage Filter -->
+                            <div class="col-auto">
+                                <label class="form-label fw-semibold mb-1 d-block">🎯 Stage</label>
+                                <select id="stage-filter" class="form-select form-select-sm" style="min-width: 160px;">
+                                    <option value="">All Stages</option>
+                                    <option value="to_order_analysis">2 Order</option>
+                                    <option value="mip">MIP</option>
+                                    <option value="r2s" selected>R2S</option>
+                                </select>
+                            </div>
                             <div class="custom-select-wrapper" style="min-width: 220px; position: relative;">
                                 <div class="custom-select-box d-flex align-items-center justify-content-between" id="customSelectBox"
                                     style="border: 1.5px solid #e0e6ed; border-radius: 7px; background: #fff; height: 38px; padding: 0 14px; cursor: pointer; min-width: 220px; box-shadow: 0 1px 4px rgba(60,192,195,0.07); transition: border-color 0.2s;">
@@ -185,6 +195,7 @@
                                     <div class="search-results" data-results-column="3"
                                         style="position:relative; z-index:10;"></div>
                                 </th>
+                                <th data-column="21" data-column-name="stage" class="text-center">Stage<div class="resizer"></div></th>
                                 <th data-column="4" data-column-name="qty" class="text-center">Or. QTY<div class="resizer"></div></th>
                                 <th data-column="20" data-column-name="rec_qty" class="text-center">Rec. QTY<div class="resizer"></div></th>
                                 <th data-column="18" data-column-name="qty" class="text-center">Rate<div class="resizer"></div></th>
@@ -248,8 +259,37 @@
                                 
                                 <td data-column="2" class="text-center">{{ $item->parent }}</td>
                                 <td data-column="3" class="text-center">{{ $item->sku }}</td>
-                                <td data-column="4" class="text-center">
-                                    {{ $item->qty }}
+                                <td data-column="21" class="text-center">
+                                    @php
+                                        $stageValue = $item->stage ?? '';
+                                        $bgColor = '#fff';
+                                        if ($stageValue === 'to_order_analysis') {
+                                            $bgColor = '#ffc107'; // Yellow
+                                        } elseif ($stageValue === 'mip') {
+                                            $bgColor = '#0d6efd'; // Blue
+                                        } elseif ($stageValue === 'r2s') {
+                                            $bgColor = '#198754'; // Green
+                                        }
+                                    @endphp
+                                    <select class="form-select form-select-sm editable-select-stage" 
+                                        data-type="Stage"
+                                        data-sku="{{ $item->sku }}"
+                                        data-parent="{{ $item->parent ?? '' }}"
+                                        style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
+                                            font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
+                                            background-color: {{ $bgColor }}; color: #000;">
+                                        <option value="">Select</option>
+                                        <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                        <option value="mip" {{ $stageValue === 'mip' ? 'selected' : '' }}>MIP</option>
+                                        <option value="r2s" {{ $stageValue === 'r2s' ? 'selected' : '' }}>R2S</option>
+                                    </select>
+                                </td>
+                                <td data-column="4" class="text-center" style="background-color: #e9ecef;">
+                                    <input type="number" 
+                                        value="{{ $item->qty }}" 
+                                        readonly
+                                        style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed; border: none;"
+                                        class="form-control form-control-sm">
                                 </td>
                                 <td data-column="20" class="text-center">
                                     <input type="number" 
@@ -510,6 +550,122 @@
                 });
             });
         });
+
+        // Reusable AJAX call for forecast data updates
+        function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
+            fetch('/update-forecast-data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    onSuccess();
+                } else {
+                    onFail();
+                }
+            })
+            .catch(err => {
+                console.error('AJAX failed:', err);
+                alert('Error saving data.');
+                onFail();
+            });
+        }
+
+        // Stage Update Handler
+        function setupStageUpdate() {
+            document.querySelectorAll('.editable-select-stage').forEach(function(select) {
+                select.addEventListener('change', function() {
+                    const sku = this.dataset.sku;
+                    const parent = this.dataset.parent;
+                    const value = this.value.trim();
+
+                    // Update background color immediately
+                    let bgColor = '#fff';
+                    if (value === 'to_order_analysis') {
+                        bgColor = '#ffc107'; // Yellow
+                    } else if (value === 'mip') {
+                        bgColor = '#0d6efd'; // Blue
+                    } else if (value === 'r2s') {
+                        bgColor = '#198754'; // Green
+                    }
+                    this.style.backgroundColor = bgColor;
+                    this.style.color = '#000';
+
+                    // Get order_qty for validation
+                    const row = this.closest('tr');
+                    const qtyInput = row.querySelector('td[data-column="4"] input');
+                    const orderQty = qtyInput ? parseFloat(qtyInput.value) : 0;
+
+                    if (!orderQty || orderQty === 0) {
+                        alert("Order Qty cannot be empty or zero.");
+                        this.value = '';
+                        this.style.backgroundColor = '#fff';
+                        return;
+                    }
+
+                    updateForecastField({
+                        sku: sku,
+                        parent: parent,
+                        column: 'Stage',
+                        value: value
+                    }, function() {
+                        // Success - color already updated
+                    }, function() {
+                        alert('Failed to save Stage.');
+                        // Revert color
+                        this.style.backgroundColor = '#fff';
+                    });
+                });
+            });
+        }
+
+        // Stage Filter
+        function setupStageFilter() {
+            const stageFilter = document.getElementById('stage-filter');
+            if (!stageFilter) return;
+
+            // Set default to "R2S"
+            stageFilter.value = 'r2s';
+            applyStageFilter();
+
+            stageFilter.addEventListener('change', function() {
+                applyStageFilter();
+            });
+        }
+
+        function applyStageFilter() {
+            const stageFilter = document.getElementById('stage-filter');
+            const selectedStage = stageFilter ? stageFilter.value.toLowerCase().trim() : '';
+            const zoneFilter = document.getElementById('zoneFilter');
+            const selectedZone = zoneFilter ? zoneFilter.value.trim().toLowerCase() : '';
+            const rows = document.querySelectorAll('.wide-table tbody tr');
+
+            rows.forEach(row => {
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const stageMatch = !selectedStage || rowStage === selectedStage;
+
+                // Also check zone filter
+                const selectInRow = row.querySelector('select[data-column="area"]');
+                const rowZone = selectInRow ? selectInRow.value.trim().toLowerCase() : '';
+                const zoneMatch = !selectedZone || rowZone === selectedZone;
+
+                if (stageMatch && zoneMatch) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        // Initialize stage handlers
+        setupStageUpdate();
+        setupStageFilter();
 
         // Save data on input change
         document.querySelectorAll('.auto-save').forEach(input => {
@@ -777,8 +933,8 @@
                 if (!isNaN(cbmValue)) totalCBM += cbmValue;
 
                 // Order Qty
-                const qtyInput = row.querySelector('input[data-column="qty"]');
-                const qtyValue = parseFloat(qtyInput?.value.trim());
+                const qtyInput = row.querySelector('td[data-column="4"] input');
+                const qtyValue = parseFloat(qtyInput?.value || qtyInput?.textContent || 0);
                 if (!isNaN(qtyValue)) totalOrderQty += qtyValue;
             });
 
@@ -786,6 +942,13 @@
             document.getElementById('total-cbm').textContent = totalCBM.toFixed(0);
             document.getElementById('total-order-qty').textContent = totalOrderQty;
         }
+
+        // Apply stage filter on page load
+        setTimeout(() => {
+            if (document.getElementById('stage-filter')) {
+                applyStageFilter();
+            }
+        }, 100);
 
     });
 </script>
@@ -809,20 +972,7 @@
     });
 
     document.getElementById('zoneFilter').addEventListener('change', function() {
-        const selectedZone = this.value.trim().toLowerCase();
-        const allRows = document.querySelectorAll('tbody tr');
-
-        allRows.forEach(row => {
-            const selectInRow = row.querySelector('select[data-column="area"]');
-            if (!selectInRow) return;
-
-            const rowZone = selectInRow.value.trim().toLowerCase();
-            if (selectedZone === "" || rowZone === selectedZone) {
-                row.style.display = ''; 
-            } else {
-                row.style.display = 'none';
-            }
-        });
+        applyStageFilter(); // Use the combined filter function
     });
 
 
