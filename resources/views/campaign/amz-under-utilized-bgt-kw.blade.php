@@ -134,6 +134,45 @@
         'sub_title' => 'Amazon - Budget',
     ])
     <div class="row">
+        <!-- Count Cards -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%);">
+                <div class="card-body text-center text-white">
+                    <h5 class="card-title mb-2">Over Utilized</h5>
+                    <h2 class="mb-0 fw-bold" id="over-utilized-count">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #ff2727 0%, #ff6b6b 100%);">
+                <div class="card-body text-center text-white">
+                    <h5 class="card-title mb-2">Under Utilized</h5>
+                    <h2 class="mb-0 fw-bold" id="under-utilized-count">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%);">
+                <div class="card-body text-center text-white">
+                    <h5 class="card-title mb-2">Correctly Utilized</h5>
+                    <h2 class="mb-0 fw-bold" id="correctly-utilized-count">0</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Utilization Trend (Last 30 Days)</h5>
+                    <canvas id="utilizationChart" height="80"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-3">
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body py-3">
@@ -242,6 +281,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
 
@@ -984,6 +1024,84 @@
             }
 
             document.body.style.zoom = "78%";
+
+            // Load counts and chart
+            loadUtilizationCounts();
+            loadUtilizationChart();
         });
+
+        function loadUtilizationCounts() {
+            fetch('/amazon-sp/get-utilization-counts')
+                .then(res => res.json())
+                .then(data => {
+                    if(data.status === 200) {
+                        document.getElementById('over-utilized-count').textContent = data.over_utilized || 0;
+                        document.getElementById('under-utilized-count').textContent = data.under_utilized || 0;
+                        document.getElementById('correctly-utilized-count').textContent = data.correctly_utilized || 0;
+                    }
+                })
+                .catch(err => console.error('Error loading counts:', err));
+        }
+
+        function loadUtilizationChart() {
+            fetch('/amazon-sp/get-utilization-chart-data')
+                .then(res => res.json())
+                .then(data => {
+                    if(data.status === 200 && data.data && data.data.length > 0) {
+                        const chartData = data.data;
+                        const dates = chartData.map(d => d.date);
+                        const overData = chartData.map(d => d.over_utilized);
+                        const underData = chartData.map(d => d.under_utilized);
+                        const correctlyData = chartData.map(d => d.correctly_utilized);
+
+                        const ctx = document.getElementById('utilizationChart').getContext('2d');
+                        new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: dates,
+                                datasets: [
+                                    {
+                                        label: 'Over Utilized',
+                                        data: overData,
+                                        borderColor: '#ff01d0',
+                                        backgroundColor: 'rgba(255, 1, 208, 0.1)',
+                                        tension: 0.4
+                                    },
+                                    {
+                                        label: 'Under Utilized',
+                                        data: underData,
+                                        borderColor: '#ff2727',
+                                        backgroundColor: 'rgba(255, 39, 39, 0.1)',
+                                        tension: 0.4
+                                    },
+                                    {
+                                        label: 'Correctly Utilized',
+                                        data: correctlyData,
+                                        borderColor: '#28a745',
+                                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                        tension: 0.4
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        position: 'top'
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true
+                                    }
+                                }
+                            }
+                        });
+                    }
+                })
+                .catch(err => console.error('Error loading chart:', err));
+        }
     </script>
 @endsection
