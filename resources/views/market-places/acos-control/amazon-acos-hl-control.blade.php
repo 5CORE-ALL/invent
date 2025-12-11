@@ -632,7 +632,7 @@
                             }
                             return `
                                 <span style="color:${color}; font-weight:600;">
-                                    ${isNaN(cvr_l30) ? 0 : cvr_l30.toFixed(0)}%
+                                    ${isNaN(cvr_l30) ? 0 : cvr_l30.toFixed(2)}%
                                 </span>
                             `;
                         }
