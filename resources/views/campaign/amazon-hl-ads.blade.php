@@ -974,7 +974,7 @@
                             }
                             return `
                                 <span style="color:${color}; font-weight:600;">
-                                    ${cvr_l30.toFixed(0)}%
+                                    ${cvr_l30.toFixed(2)}%
                                 </span>
                                 <i class="fa fa-info-circle text-primary cvr_l30_btn" 
                                     data-cvr-l30="${cvr_l30}" 
@@ -1002,7 +1002,7 @@
                             }
                             return `
                                 <span style="color:${color}; font-weight:600;">
-                                    ${cvr_l60.toFixed(0)}%
+                                    ${cvr_l60.toFixed(2)}%
                                 </span>
                             `;
 
@@ -1029,7 +1029,7 @@
                             }
                             return `
                                 <span style="color:${color}; font-weight:600;">
-                                    ${cvr_l15.toFixed(0)}%
+                                    ${cvr_l15.toFixed(2)}%
                                 </span>
                             `;
                         },
@@ -1055,7 +1055,7 @@
                             }
                             return `
                                 <span style="color:${color}; font-weight:600;">
-                                    ${cvr_l7.toFixed(0)}%
+                                    ${cvr_l7.toFixed(2)}%
                                 </span>
                             `;
                         },
