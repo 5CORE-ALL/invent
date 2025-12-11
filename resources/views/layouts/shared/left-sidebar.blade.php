@@ -2637,7 +2637,7 @@
                                     <li>
                                         <a href="{{ url('aliexpressAnalysis') }}">Aliexpress Analytics</a>
                                     </li>
-
+                                    <li><a href="{{ url('aliexpress-tabulator') }}">Aliexpress Daily Data</a></li>
                                     <li>
                                         <a href="{{ route('zero.aliexpress') }}">Aliexpress 0 view</a>
                                     </li>

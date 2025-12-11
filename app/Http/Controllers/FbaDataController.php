@@ -13,6 +13,7 @@ use App\Models\FbaReportsMaster;
 use App\Models\FbaMonthlySale;
 use App\Models\FbaManualData;
 use App\Models\FbaOrder;
+use App\Models\FbaListingStatus;
 use App\Models\FbaShipCalculation;
 use App\Models\FbaMetricsHistory;
 use App\Models\FbaSkuDailyData;
@@ -573,6 +574,10 @@ class FbaDataController extends Controller
          return strtoupper(trim($p->sku));
       });
 
+      // Fetch FBA Listing Status data - normalize SKU keys to match format
+      $fbaListingStatuses = FbaListingStatus::all()->keyBy(function ($item) {
+         return strtoupper(trim($item->sku));
+      });
 
       // Fetch KW (Keyword) ads data - campaigns NOT ending with 'pt'
       $skus = $fbaData->keys()->toArray();
@@ -640,7 +645,7 @@ class FbaDataController extends Controller
       $overallAvgPrice = $totalL30 > 0 ? $totalPrice * $totalL30 / $totalL30 : 0;
 
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -649,6 +654,7 @@ class FbaDataController extends Controller
          $manual = $fbaManualData->get(strtoupper(trim($fba->seller_sku)));
          $dispatchDate = $fbaDispatchDates->get($sku);
          $shipCalc = $fbaShipCalculations->get($sku);
+         $listingStatus = $fbaListingStatuses->get($sku);
 
          // Get KW and PT ads data
          $adsKW = $adsKWDataBySku[$sku] ?? null;
@@ -786,6 +792,7 @@ class FbaDataController extends Controller
             'Parent' => $product ? ($product->parent ?? '') : '',
             'SKU' => $sku,
             'FBA_SKU' => $fba->seller_sku,
+            'NRL_FBA' => $listingStatus ? ($listingStatus->status_value['status'] ?? 'FBA') : 'FBA',
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
             'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             'AMZ_L30' => $amzL30,
@@ -844,20 +851,34 @@ class FbaDataController extends Controller
             'Width' => $width,
             'Height' => $height,
             'Shipment_Track_Status' => $manual ? ($manual->data['shipment_track_status'] ?? '') : '',
-            'MSL' => (
-                ($monthlySales ? ($monthlySales->jan ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->feb ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->mar ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->apr ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->may ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->jun ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->jul ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->aug ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->sep ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->oct ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->nov ?? 0) : 0) +
+            'MSL' => max(
+                ($monthlySales ? ($monthlySales->jan ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->feb ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->mar ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->apr ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->may ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->jun ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->jul ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->aug ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->sep ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->oct ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->nov ?? 0) : 0),
                 ($monthlySales ? ($monthlySales->dec ?? 0) : 0)
-            ) - ($fba->quantity_available ?? 0) - ($fbaShipments->get(strtoupper(trim($fba->seller_sku)))->quantity_shipped ?? 0),
+            ),
+            'Sugg_Send' => max(
+                ($monthlySales ? floatval($monthlySales->jan ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->feb ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->mar ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->apr ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->may ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->jun ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->jul ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->aug ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->sep ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->oct ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->nov ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->dec ?? 0) : 0)
+            ) - floatval($fba->quantity_available ?? 0) - floatval($manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0),
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
             'Zero_Stock' => $manual ? ($manual->data['zero_stock'] ?? false) : false,
@@ -975,6 +996,7 @@ class FbaDataController extends Controller
             'Width' => '',
             'Height' => '',
             'MSL' => $children->sum('MSL'),
+            'Sugg_Send' => $children->sum('Sugg_Send'),
             'SEND' => '',
             'Correct_Cost' => false,
             'Zero_Stock' => false,
@@ -996,6 +1018,7 @@ class FbaDataController extends Controller
             'Nov' => $children->sum('Nov'),
             'Dec' => $children->sum('Dec'),
             'is_parent' => true,
+            'NRL_FBA' => '',
             'Pft%' => '',
             'ROI%' => '',
             'GPFT%' => '',
@@ -1008,7 +1031,7 @@ class FbaDataController extends Controller
             'REV_COUNT' => '',
             'RATING' => '',
             'LP' => '',
-            'FBA_Ship_Calculation' => '',
+            'FBA_Ship_Calculation' => round($children->sum(fn($item) => is_numeric($item['FBA_Ship_Calculation']) ? $item['FBA_Ship_Calculation'] : 0), 2),
             'PFT_AMT' => round($children->sum('PFT_AMT'), 2),
             'SALES_AMT' => round($children->sum('SALES_AMT'), 2),
             'LP_AMT' => round($children->sum('LP_AMT'), 2),
@@ -1633,5 +1656,39 @@ class FbaDataController extends Controller
       cache([$cacheKey => $visibility], 60 * 24 * 30); // Cache for 30 days
 
       return response()->json(['success' => true]);
+   }
+
+   public function updateFbaListingStatus(Request $request)
+   {
+      $request->validate([
+         'sku' => 'required|string',
+         'status' => 'required|in:All,FBA,FBM,NRL,Both',
+      ]);
+
+      // Normalize SKU to uppercase and trimmed to match format used in fbaDataJson
+      $sku = strtoupper(trim($request->input('sku')));
+      $status = $request->input('status');
+
+      Log::info('Saving FBA Listing Status', [
+         'sku' => $sku,
+         'status' => $status
+      ]);
+
+      $listingStatus = FbaListingStatus::updateOrCreate(
+         ['sku' => $sku],
+         ['status_value' => ['status' => $status]]
+      );
+
+      Log::info('FBA Listing Status saved', [
+         'id' => $listingStatus->id,
+         'sku' => $listingStatus->sku,
+         'status_value' => $listingStatus->status_value
+      ]);
+
+      return response()->json([
+         'success' => true,
+         'message' => 'NRL FBA status updated successfully',
+         'data' => $listingStatus
+      ]);
    }
 }
