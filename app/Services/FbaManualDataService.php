@@ -139,6 +139,9 @@ class FbaManualDataService
             'Shipment_Track_Status' => ['Shipment Track Status', function($product, $sku, $fba, $monthlySales, $fbaPriceInfo, $manual) {
                 return $manual ? ($manual->data['shipment_track_status'] ?? '') : '';
             }],
+            'GW_CTN' => ['GW CTN', function($product, $sku, $fba, $monthlySales, $fbaPriceInfo, $manual) {
+                return $manual ? ($manual->data['gw_ctn'] ?? 0) : 0;
+            }],
         ];
 
         // If no columns selected, export all
@@ -233,11 +236,12 @@ class FbaManualDataService
                         'height' => $this->cleanText($row[3] ?? ''),
                         'weight' => $this->cleanText($row[4] ?? ''),
                         'quantity_in_each_box' => $this->cleanText($row[5] ?? ''),
-                        'total_quantity_sent' => $this->cleanText($row[6] ?? ''),
-                        'total_send_cost' => $this->cleanText($row[7] ?? ''),
-                        'inbound_quantity' => $this->cleanText($row[8] ?? ''),
-                        'send_cost' => $this->cleanText($row[9] ?? ''),
-                        'commission_percentage' => $this->cleanText($row[10] ?? '')
+                        'gw_ctn' => $this->cleanText($row[6] ?? ''),
+                        'total_quantity_sent' => $this->cleanText($row[7] ?? ''),
+                        'total_send_cost' => $this->cleanText($row[8] ?? ''),
+                        'inbound_quantity' => $this->cleanText($row[9] ?? ''),
+                        'send_cost' => $this->cleanText($row[10] ?? ''),
+                        'commission_percentage' => $this->cleanText($row[11] ?? '')
                     ];
                     foreach ($allManuals as $manual) {
                         $existingData = $manual->data ?? [];
@@ -276,35 +280,36 @@ class FbaManualDataService
                 }
                 if (!empty($row[4])) $updateData['weight'] = $this->cleanText($row[4]);
                 if (!empty($row[5])) $updateData['quantity_in_each_box'] = $this->cleanText($row[5]);
-                if (!empty($row[6])) $updateData['total_quantity_sent'] = $this->cleanText($row[6]);
-                if (!empty($row[7])) $updateData['total_send_cost'] = $this->cleanText($row[7]);
-                if (!empty($row[8])) $updateData['inbound_quantity'] = $this->cleanText($row[8]);
-                if (!empty($row[9])) $updateData['send_cost'] = $this->cleanText($row[9]);
-                if (!empty($row[10])) $updateData['commission_percentage'] = $this->cleanText($row[10]);
+                if (!empty($row[6])) $updateData['gw_ctn'] = $this->cleanText($row[6]);
+                if (!empty($row[7])) $updateData['total_quantity_sent'] = $this->cleanText($row[7]);
+                if (!empty($row[8])) $updateData['total_send_cost'] = $this->cleanText($row[8]);
+                if (!empty($row[9])) $updateData['inbound_quantity'] = $this->cleanText($row[9]);
+                if (!empty($row[10])) $updateData['send_cost'] = $this->cleanText($row[10]);
+                if (!empty($row[11])) $updateData['commission_percentage'] = $this->cleanText($row[11]);
                 
-                // ✅ Validate s_price if provided in CSV (column 9)
-                if (isset($row[9]) && !empty($row[9])) {
-                    $sPrice = floatval($this->cleanText($row[9]));
+                // ✅ Validate s_price if provided in CSV (column 12)
+                if (isset($row[12]) && !empty($row[12])) {
+                    $sPrice = floatval($this->cleanText($row[12]));
                     if ($sPrice > 0) {
                         $updateData['s_price'] = $sPrice;
                     } else {
-                        Log::warning("Invalid s_price rejected for SKU: {$sku}", ['s_price' => $row[9]]);
+                        Log::warning("Invalid s_price rejected for SKU: {$sku}", ['s_price' => $row[12]]);
                     }
                 }
                 
-                // ✅ Validate ratings if provided in CSV (column 10)
-                if (isset($row[10]) && !empty($row[10])) {
-                    $ratings = floatval($this->cleanText($row[10]));
+                // ✅ Validate ratings if provided in CSV (column 13)
+                if (isset($row[13]) && !empty($row[13])) {
+                    $ratings = floatval($this->cleanText($row[13]));
                     if ($ratings >= 0 && $ratings <= 5) {
                         $updateData['ratings'] = $ratings;
                     } else {
-                        Log::warning("Invalid ratings rejected for SKU: {$sku}", ['ratings' => $row[10]]);
+                        Log::warning("Invalid ratings rejected for SKU: {$sku}", ['ratings' => $row[13]]);
                     }
                 }
                 
-                // ✅ Validate shipment_track_status if provided in CSV (column 13)
-                if (isset($row[13]) && !empty($row[13])) {
-                    $updateData['shipment_track_status'] = $this->cleanText($row[13]);
+                // ✅ Validate shipment_track_status if provided in CSV (column 14)
+                if (isset($row[14]) && !empty($row[14])) {
+                    $updateData['shipment_track_status'] = $this->cleanText($row[14]);
                 }
                 
                 $manual->data = array_merge($existingData, $updateData);
@@ -341,8 +346,8 @@ class FbaManualDataService
 
         $callback = function () {
             $file = fopen('php://output', 'w');
-            fputcsv($file, ['SKU', 'Length', 'Width', 'Height', 'Weight', 'Qty in each box', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'Commission Percentage', 'S Price', 'Ratings', 'Shipment Track Status']);
-            fputcsv($file, ['SAMPLE-SKU-001', '10', '8', '6', '2.5', '10', '100', '500', '20', '50', '10', '29.99', '4.5', 'Shipped']);
+            fputcsv($file, ['SKU', 'Length', 'Width', 'Height', 'Weight', 'Qty in each box', 'GW CTN', 'Total qty Sent', 'Total Send Cost', 'Inbound qty', 'Send cost', 'Commission Percentage', 'S Price', 'Ratings', 'Shipment Track Status']);
+            fputcsv($file, ['SAMPLE-SKU-001', '10', '8', '6', '2.5', '10', '3.0', '100', '500', '20', '50', '10', '29.99', '4.5', 'Shipped']);
             fclose($file);
         };
 
