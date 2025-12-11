@@ -10,6 +10,10 @@ class Category extends Model
     protected $dates = ['deleted_at'];
 
     protected $fillable = [
-        'code', 'name',
+        'code', 'name', 'status', 'fields',
+    ];
+    
+    protected $casts = [
+        'fields' => 'array',
     ];
 }

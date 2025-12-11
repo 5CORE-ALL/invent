@@ -96,7 +96,7 @@
 
                             <!-- 2 ORDER Color Filter -->
                             <div class="dropdown">
-                                <button class="btn btn-sm btn-info dropdown-toggle d-flex align-items-center gap-1"
+                                <button class="btn btn-sm btn-warning dropdown-toggle d-flex align-items-center gap-1 fw-semibold text-dark"
                                     type="button" id="order-color-filter-dropdown" data-bs-toggle="dropdown">
                                     <i class="bi bi-funnel-fill"></i>
                                     2 ORDER
@@ -108,10 +108,10 @@
                             </div>
 
                             <!-- Yellow Count -->
-                            <div id="yellow-count-container" class="d-none px-2 btn btn-sm rounded-2 shadow-sm border border-danger bg-danger">
+                            <div id="yellow-count-container" class="d-none px-2 btn btn-sm rounded-2 shadow-sm border border-warning bg-warning">
                                 <div class="d-flex align-items-center gap-1">
-                                    <i class="bi bi-star-fill text-white"></i>
-                                    <span id="yellow-count-box" class="fw-semibold text-white">App Pending: 0</span>
+                                    <i class="bi bi-star-fill text-dark"></i>
+                                    <span id="yellow-count-box" class="fw-semibold text-dark">App Pending: 0</span>
                                 </div>
                             </div>
 
@@ -135,6 +135,24 @@
                                 <option value="parent">🔸 Parent</option>
                             </select>
 
+                            <!-- Stage Filter -->
+                            <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
+                                <option value="">All Stages</option>
+                                <option value="__blank__">Select Stage</option>
+                                <option value="to_order_analysis">2 Order</option>
+                                <option value="mip">MIP</option>
+                                <option value="r2s">R2S</option>
+                                <option value="transit">Transit</option>
+                            </select>
+
+                            <!-- NRP Filter -->
+                            <select id="nrp-filter" class="form-select-sm border border-primary" style="width: 150px;">
+                                <option value="">All NRP</option>
+                                <option value="NR">2BDC</option>
+                                <option value="REQ">REQ</option>
+                                <option value="LATER">LATER</option>
+                            </select>
+
                             <button id="total-transit" class="btn btn-sm btn-info">
                                  Transit
                             </button>
@@ -144,7 +162,7 @@
                             </button>
 
                             <button id="restock_needed" class="btn btn-sm btn-warning fw-semibold text-dark">
-                                Restock: <span id = "total_restock" class="fw-semibold text-dark">0</span>
+                                Zero Stock: <span id = "total_restock" class="fw-semibold text-dark">0</span>
                             </button>
 
                             <button id="total_msl_c" class="btn btn-sm btn-success fw-semibold text-dark">
@@ -180,17 +198,34 @@
                                  Restock MSL LP: $<span id="total_restock_msl_lp_value" class="fw-semibold text-dark">0</span>
                             </button> --}}
 
-                            <button id="total_mip_value" class="btn btn-sm btn-success fw-semibold text-dark">
+                            <button id="total_mip_value" class="btn btn-sm btn-warning fw-semibold text-dark">
                                  MIP Val: $<span id="total_mip_value_display" class="fw-semibold text-dark">0</span>
                             </button>
 
-                            <button id="total_r2s_value" class="btn btn-sm btn-info fw-semibold text-dark">
+                            <button id="total_r2s_value" class="btn btn-sm btn-warning fw-semibold text-dark">
                                  R2S Val: $<span id="total_r2s_value_display" class="fw-semibold text-dark">0</span>
                             </button>
 
                             <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark">
                                  Trn Val: $<span id="total_transit_value_display" class="fw-semibold text-dark">0</span>
                             </button>
+
+                            <!-- Navigation Buttons -->
+                            <a href="{{ route('to.order.analysis') }}" target="_blank" class="btn btn-sm btn-primary fw-semibold text-dark" style="text-decoration: none;">
+                                2 Order
+                            </a>
+
+                            <a href="{{ route('mfrg.in.progress') }}" target="_blank" class="btn btn-sm btn-success fw-semibold text-dark" style="text-decoration: none;">
+                                MIP
+                            </a>
+
+                            <a href="{{ route('ready.to.ship') }}" target="_blank" class="btn btn-sm btn-info fw-semibold text-dark" style="text-decoration: none;">
+                                R2S
+                            </a>
+
+                            <a href="{{ route('transit.container.details') }}" target="_blank" class="btn btn-sm btn-secondary fw-semibold text-dark" style="text-decoration: none;">
+                                Transit
+                            </a>
                         </div>
                     </div>
 
@@ -733,12 +768,6 @@
                     title: "MOQ",
                     field: "MOQ",
                     accessor: row => row["MOQ"],
-                   
-                },
-                {
-                    title: "Odr. Qty",
-                    field: "Approved QTY",
-                    accessor: row => row?.["Approved QTY"] ?? null,
                     headerSort: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
@@ -749,12 +778,10 @@
 
                         return `<div 
                         class="editable-qty" 
-                        contenteditable="true" 
-                        data-field="Approved QTY" 
+                        data-field="MOQ" 
                         data-original="${value ?? ''}" 
                         data-sku='${sku}' 
                         data-parent='${parent}' 
-                        id="approved-qty"
                         style="outline:none; min-width:40px; text-align:center; font-weight:bold;">
                         ${value ?? ''}
                     </div>`;
@@ -1105,6 +1132,8 @@
         let currentRowTypeFilter = 'all';
         let currentRestockFilter = false;
         let currentZeroInvFilter = false;
+        let currentStageFilter = '';
+        let currentNRPFilter = '';
 
         function setCombinedFilters() {
             const allData = table.getData();
@@ -1134,7 +1163,31 @@
                 const children = groupedChildrenMap[parentKey];
 
                 const matchingChildren = children.filter(child => {
-                    const nrMatch = !hideNRYes || child.nr !== 'NR';
+                    // NRP filter - treat empty/null as REQ (matching formatter logic)
+                    const childNR = child.nr || '';
+                    const effectiveChildNR = childNR === '' ? 'REQ' : childNR;
+                    const nrpMatch = !currentNRPFilter || effectiveChildNR === currentNRPFilter;
+                    
+                    // NR match - if NRP filter is set to NR, show NR rows even if hideNRYes is true
+                    const nrMatch = !hideNRYes || child.nr !== 'NR' || (currentNRPFilter === 'NR');
+                    
+                    // Stage filter - check stage field or transit field
+                    // If filter is "__blank__", match empty/null/undefined stage
+                    const childStage = child.stage || '';
+                    let stageMatch = true;
+                    if (currentStageFilter) {
+                        if (currentStageFilter === '__blank__') {
+                            stageMatch = !childStage || childStage === '';
+                        } else if (currentStageFilter === 'transit') {
+                            // For transit filter, check if transit value exists and > 0
+                            const transitValue = child.raw_data ? child.raw_data["transit"] : child["transit"];
+                            const transit = parseFloat(transitValue) || 0;
+                            stageMatch = transit > 0;
+                        } else {
+                            stageMatch = childStage === currentStageFilter;
+                        }
+                    }
+                    
                     let filterMatch = true;
                     if (currentRestockFilter) {
                         const invValue = child.raw_data ? child.raw_data["INV"] : child["INV"];
@@ -1151,7 +1204,7 @@
                             child.to_order >= 0 :
                             true;
                     }
-                    return nrMatch && filterMatch;
+                    return nrMatch && nrpMatch && stageMatch && filterMatch;
                 });
 
                 if (matchingChildren.length > 0) {
@@ -1181,19 +1234,42 @@
                         true;
                 }
 
-                const matchesNR = hideNRYes ? data.nr !== 'NR' : true;
+                // NRP filter - treat empty/null as REQ (matching formatter logic)
+                const dataNR = data.nr || '';
+                const effectiveNR = dataNR === '' ? 'REQ' : dataNR;
+                const nrpMatch = !currentNRPFilter || effectiveNR === currentNRPFilter;
+                
+                // NR match - if NRP filter is set to NR, show NR rows even if hideNRYes is true
+                const matchesNR = hideNRYes ? (data.nr !== 'NR' || currentNRPFilter === 'NR') : true;
+                
+                // Stage filter - check stage field or transit field
+                // If filter is "__blank__", match empty/null/undefined stage
+                const dataStage = data.stage || '';
+                let stageMatch = true;
+                if (currentStageFilter) {
+                    if (currentStageFilter === '__blank__') {
+                        stageMatch = !dataStage || dataStage === '';
+                    } else if (currentStageFilter === 'transit') {
+                        // For transit filter, check if transit value exists and > 0
+                        const transitValue = data.raw_data ? data.raw_data["transit"] : data["transit"];
+                        const transit = parseFloat(transitValue) || 0;
+                        stageMatch = transit > 0;
+                    } else {
+                        stageMatch = dataStage === currentStageFilter;
+                    }
+                }
 
                 // 🎯 Force filter to one parent group if play mode is active
                 if (currentParentFilter) {
                     if (isParent) {
                         return data.Parent === currentParentFilter;
                     } else {
-                        return data.Parent === currentParentFilter && matchesFilter && matchesNR;
+                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && nrpMatch && stageMatch;
                     }
                 }
 
                 if (isChild) {
-                    const showChild = matchesFilter && matchesNR;
+                    const showChild = matchesFilter && matchesNR && nrpMatch && stageMatch;
                     if (currentRowTypeFilter === 'parent') return false;
                     if (currentRowTypeFilter === 'sku') return showChild;
                     return showChild;
@@ -1388,7 +1464,7 @@
                     // ✅ Skip update if already updated in ajaxResponse
                     parentGroups[parent].parentRow = row;
                 } else {
-                    const approvedValue = data.raw_data ? data.raw_data["Approved QTY"] : data["Approved QTY"];
+                    const approvedValue = data.raw_data ? data.raw_data["MOQ"] : data["MOQ"];
                     const invValue = data.raw_data ? data.raw_data["INV"] : data["INV"];
                     const l30Value = data.raw_data ? data.raw_data["L30"] : data["L30"];
                     const orderGivenValue = data.raw_data ? data.raw_data["order_given"] : data["order_given"];
@@ -1414,7 +1490,7 @@
 
                     if (!alreadySet) {
                         group.parentRow.update({
-                            "Approved QTY": group.approved,
+                            "MOQ": group.approved,
                             "INV": group.inv,
                             "L30": group.l30,
                             "order_given": group.orderGiven,
@@ -1438,16 +1514,52 @@
                 "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
             ];
 
+            // Get current date to determine year for each month
+            const currentDate = new Date();
+            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getMonth(); // 0-11 (Jan = 0, Dec = 11)
+
+            // Month index mapping (0 = Jan, 11 = Dec)
+            const monthIndexMap = {
+                "JAN": 0, "FEB": 1, "MAR": 2, "APR": 3,
+                "MAY": 4, "JUN": 5, "JUL": 6, "AUG": 7,
+                "SEP": 8, "OCT": 9, "NOV": 10, "DEC": 11
+            };
+
+            // Determine year for each month based on GenerateMovementAnalysis command logic
+            // Command generates rolling data for last 12-14 months
+            // 
+            // Examples when current month is Jan 2026:
+            //   - Data range: Nov 2025 to Jan 2026 (previousMonths=2)
+            //   - JAN: 2026 (current year, monthIndex 0 <= currentMonth 0)
+            //   - FEB to DEC: 2025 (previous year, monthIndex > currentMonth)
+            //
+            // Year assignment rule (matches rolling data):
+            //   - If monthIndex > currentMonth: previous year (months after current in calendar)
+            //   - If monthIndex <= currentMonth: current year (current month and months before it in same calendar)
+            const getYearForMonth = (monthIndex) => {
+                // If month index is greater than current month, it's from previous year
+                // Example: If current month is Jan (0) and month is Feb (1), Feb is from previous year (2025)
+                if (monthIndex > currentMonth) {
+                    return currentYear - 1;
+                }
+                // If month index is less than or equal to current month, it's current year
+                // Example: If current month is Jan (0) and month is Jan (0), it's current year (2026)
+                return currentYear;
+            };
+
             // Sort and display in month order
             monthOrder.forEach(month => {
                 const value = monthData[month] ?? 0;
+                const monthIndex = monthIndexMap[month];
+                const year = getYearForMonth(monthIndex);
 
                 const card = document.createElement("div");
                 card.className = "month-card";
 
                 const title = document.createElement("div");
                 title.className = "month-title";
-                title.innerText = month;
+                title.innerText = `${month} ${year}`;
 
                 const count = document.createElement("div");
                 count.className = "month-value";
@@ -1617,11 +1729,11 @@
                 const parent = $cell.data('parent');
 
                 // Convert raw value to number safely
-                const newValue = ['Approved QTY', 'S-MSL', 'order_given'].includes(field) ?
+                const newValue = ['MOQ', 'S-MSL', 'order_given'].includes(field) ?
                     Number(newValueRaw) :
                     newValueRaw;
 
-                const original = ['Approved QTY', 'S-MSL', 'order_given'].includes(field) ?
+                const original = ['MOQ', 'S-MSL', 'order_given'].includes(field) ?
                     Number(originalValue) :
                     originalValue;
 
@@ -1629,7 +1741,7 @@
                 if (newValue === original) return;
 
                 // Numeric validation
-                if (['Approved QTY', 'S-MSL', 'order_given'].includes(field) && isNaN(newValue)) {
+                if (['MOQ', 'S-MSL', 'order_given'].includes(field) && isNaN(newValue)) {
                     alert('Please enter a valid number.');
                     $cell.text(originalValue); // revert
                     return;
@@ -1653,7 +1765,7 @@
                 }, function() {
                     $cell.data('original', newValue);
 
-                    if (field === 'Approved QTY') {
+                    if (field === 'MOQ') {
                         const today = new Date();
                         const currentDate = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
 
@@ -1661,7 +1773,7 @@
                             r.getData().SKU === sku && r.getData().Parent === parent
                         );
 
-                        if (row) row.update({ "Approved QTY": newValue });
+                        if (row) row.update({ "MOQ": newValue });
 
                         updateForecastField({
                             sku,
@@ -1744,10 +1856,10 @@
 
                     if (field === "Stage") {
                         const row = table.getRow(sku);
-                        const approvedQty = row ? row.getData()["Approved QTY"] : null;
+                        const approvedQty = row ? row.getData()["MOQ"] : null;
                         
                         if (!approvedQty || approvedQty === "0" || parseInt(approvedQty) === 0) {
-                            alert("Approved QTY cannot be empty or zero.");
+                            alert("MOQ cannot be empty or zero.");
                             $el.val('');
                             return;
                         }
@@ -1967,6 +2079,18 @@
 
             document.getElementById('row-data-type').addEventListener('change', function(e) {
                 currentRowTypeFilter = e.target.value;
+                setCombinedFilters();
+            });
+
+            // Stage filter event listener
+            document.getElementById('stage-filter').addEventListener('change', function(e) {
+                currentStageFilter = e.target.value;
+                setCombinedFilters();
+            });
+
+            // NRP filter event listener
+            document.getElementById('nrp-filter').addEventListener('change', function(e) {
+                currentNRPFilter = e.target.value;
                 setCombinedFilters();
             });
 

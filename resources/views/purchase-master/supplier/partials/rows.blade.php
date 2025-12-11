@@ -215,7 +215,7 @@
     <div class="modal fade" id="editSupplierModal{{ $supplier->id }}" tabindex="-1" aria-labelledby="editSupplierModal{{ $supplier->id }}Label" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
             <div class="modal-content border-0 shadow-lg">
-                <form method="POST" action="{{ route('supplier.create') }}" class="needs-validation" novalidate>
+                <form method="POST" action="{{ route('supplier.create') }}" class="needs-validation" novalidate id="editSupplierForm{{ $supplier->id }}">
                     <input type="hidden" name="supplier_id" value="{{ $supplier->id }}">
                     @csrf
                     <!-- Modal Header -->
@@ -245,12 +245,12 @@
 
                                 <!-- Category -->
                                 @php
-                                    $selected = collect(explode(',', $supplier->category_id ?? ''))->filter()->map(fn($id) => (int) $id)->toArray();
+                                    $selected = collect(explode(',', $supplier->category_id ?? ''))->filter()->map(fn($id) => (int) trim($id))->filter()->toArray();
                                 @endphp
 
                                 <div class="col-md-6">
                                     <label class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
-                                    <select name="category_id[]" class="form-select select2" data-placeholder="Select Category" multiple required>
+                                    <select name="category_id[]" class="form-select select2" data-placeholder="Select Category" multiple required id="categorySelect{{ $supplier->id }}">
                                         @foreach($categories as $category)
                                             <option value="{{ $category->id }}" {{ in_array((int) $category->id, $selected) ? 'selected' : '' }}>
                                                 {{ $category->name }}
@@ -271,8 +271,8 @@
 
                                 <div class="col-md-12">
                                     <label class="form-label fw-semibold">Parents</label>
-                                    <input type="text" name="parent" class="form-control" placeholder="Use commas to separate multiple Parents (e.g., TV-BOX, CAMERA)" value="{{ $supplier->parent }}" required>
-                                    <small class="text-danger">Separate multiple parents with commas</small>
+                                    <input type="text" name="parent" class="form-control" placeholder="Use commas to separate multiple Parents (e.g., TV-BOX, CAMERA)" value="{{ $supplier->parent }}">
+                                    <small class="text-muted">Separate multiple parents with commas</small>
                                 </div>
 
                                 <div class="col-md-6">

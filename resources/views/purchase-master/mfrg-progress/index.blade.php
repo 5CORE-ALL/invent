@@ -74,16 +74,9 @@
     <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h4 class="mb-0 font-weight-bold">
-                        <i class="mdi mdi-factory mr-2" style="color:#3bc0c3;"></i>
-                        MFRG In Progress
-                    </h4>
-                </div>
-
                 <div class="column-controls card mb-4 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 10px;">
                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-                        <div class="d-flex align-items-center gap-3 flex-wrap w-100">
+                        <div class="d-flex align-items-center gap-3 flex-wrap" style="flex: 1;">
                             <!-- Title -->
                             {{-- ▶️ Navigation --}}
                             <div class="col-auto">
@@ -184,17 +177,41 @@
                                     <option value="red">red <span id="redCount"></span></option>
                                 </select>
                             </div>
-
-                            <!-- Other Stats -->
-                            <div class="py-1 px-3 bg-dark rounded shadow-sm d-inline-flex align-items-center gap-2 text-white fw-bold fs-6 border border-light">
-                                <span>Total Amount: <span id="total-amount">0</span></span>
-                            </div>
-                            <div class="py-1 px-3 bg-info rounded shadow-sm d-inline-flex align-items-center gap-2 text-white fw-bold fs-6 border border-light">
-                                <span>Total Ord. Qty: <span id="total-order-qty">0</span></span>
-                            </div>
-                            <div class="py-1 px-3 rounded shadow-sm d-inline-flex align-items-center gap-2 text-white fw-bold fs-6 border border-light" 
-                                style="background: #23979b;">
-                                <span>Total CBM: <span id="total-cbm">0</span></span>
+                        </div>
+                        
+                        <!-- Combined Stats Box - Outside inner flex to prevent wrapping -->
+                        <div class="col-auto">
+                            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); min-width: 320px;">
+                                <div class="card-body p-3">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <div class="text-center flex-fill">
+                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                💰 Total Amount
+                                            </div>
+                                            <div id="total-amount" class="fw-bold text-dark" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                                0
+                                            </div>
+                                        </div>
+                                        <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                                        <div class="text-center flex-fill">
+                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                📦 Total Ord. Qty
+                                            </div>
+                                            <div id="total-order-qty" class="fw-bold text-info" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                                0
+                                            </div>
+                                        </div>
+                                        <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                                        <div class="text-center flex-fill">
+                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                📊 Total CBM
+                                            </div>
+                                            <div id="total-cbm" class="fw-bold text-success" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                                0
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -265,14 +282,16 @@
                                     <td data-column="4" data-qty="{{ $item->qty ?? 0 }}" style="text-align: end;">{{ $item->qty }}</td>
                                     <td data-column="5">
                                         <div class="input-group input-group-sm" style="width:105px;">
-                                            <span class="input-group-text" style="padding: 0 6px;">
-                                                <select data-sku="{{ $item->sku }}" data-column="rate_currency" class="form-select form-select-sm currency-select auto-save" style="border: none; background: transparent; font-size: 13px; padding: 0 2px;">
-                                                    <option value="USD" {{ ($item->rate_currency ?? '') == 'USD' ? 'selected' : '' }}>$</option>
-                                                    <option value="CNY" {{ ($item->rate_currency ?? '') == 'CNY' ? 'selected' : '' }}>¥</option>
-                                                </select>
+                                            <span class="input-group-text" style="padding: 0 6px; background: #e9ecef;">
+                                                <span style="font-size: 13px; color: #6c757d;">
+                                                    {{ ($item->currency_from_po ?? $item->rate_currency ?? 'USD') == 'USD' ? '$' : '¥' }}
+                                                </span>
                                             </span>
-                                            <input data-sku="{{ $item->sku }}" data-column="rate" type="number" value="{{ $item->rate ?? '' }}" 
-                                                class="form-control form-control-sm amount-input auto-save" style="background: #f9f9f9; font-size: 13px;" />
+                                            <input data-sku="{{ $item->sku }}" data-column="rate" type="text" 
+                                                value="{{ $item->price_from_po ?? $item->rate ?? '' }}" 
+                                                class="form-control form-control-sm" 
+                                                style="background: #f9f9f9; font-size: 13px; cursor: not-allowed;" 
+                                                readonly />
                                         </div>
                                     </td>
 
@@ -1198,7 +1217,9 @@
         rows.forEach(row => {
             const supplierCell = row.querySelector('td[data-column="6"]');
             if (supplierCell) {
-                const supplierName = supplierCell.textContent.trim();
+                // Get supplier from input field, not textContent
+                const supplierInput = supplierCell.querySelector('input[data-column="supplier"]');
+                const supplierName = supplierInput ? supplierInput.value.trim() : supplierCell.textContent.trim();
                 if (supplierName && !suppliers.includes(supplierName)) {
                     suppliers.push(supplierName);
                 }
@@ -1208,8 +1229,15 @@
         function showSupplierRows(supplier) {
             rows.forEach(row => {
                 const cell = row.querySelector('td[data-column="6"]');
-                if (cell && cell.textContent.trim() === supplier) {
-                    row.style.display = "";
+                if (cell) {
+                    // Get supplier from input field, not textContent
+                    const supplierInput = cell.querySelector('input[data-column="supplier"]');
+                    const supplierName = supplierInput ? supplierInput.value.trim() : cell.textContent.trim();
+                    if (supplierName === supplier) {
+                        row.style.display = "";
+                    } else {
+                        row.style.display = "none";
+                    }
                 } else {
                     row.style.display = "none";
                 }
@@ -1229,9 +1257,35 @@
             showSupplierRows(suppliers[supplierIndex]);
         }
 
+        // Function to refresh supplier list
+        function refreshSupplierList() {
+            suppliers.length = 0; // Clear existing list
+            rows.forEach(row => {
+                const supplierCell = row.querySelector('td[data-column="6"]');
+                if (supplierCell) {
+                    const supplierInput = supplierCell.querySelector('input[data-column="supplier"]');
+                    const supplierName = supplierInput ? supplierInput.value.trim() : supplierCell.textContent.trim();
+                    if (supplierName && !suppliers.includes(supplierName)) {
+                        suppliers.push(supplierName);
+                    }
+                }
+            });
+            // Reset index if current supplier is no longer in list
+            if (supplierIndex >= suppliers.length) {
+                supplierIndex = 0;
+            }
+        }
+
         document.getElementById("play-auto").addEventListener("click", function () {
+            // Refresh supplier list before playing
+            refreshSupplierList();
+            if (suppliers.length === 0) {
+                alert("No suppliers found. Please add suppliers to rows.");
+                return;
+            }
             this.style.display = "none";
             document.getElementById("play-pause").style.display = "inline-block";
+            supplierIndex = 0; // Start from first supplier
             showSupplierRows(suppliers[supplierIndex]);
         });
 
@@ -1248,27 +1302,36 @@
 
 
         document.getElementById("play-forward").addEventListener("click", function () {
-            
-            playNextSupplier();
+            if (suppliers.length === 0) {
+                refreshSupplierList();
+            }
+            if (suppliers.length > 0) {
+                playNextSupplier();
+            }
         });
 
         document.getElementById("play-backward").addEventListener("click", function () {
-            
-            supplierIndex = (supplierIndex - 1 + suppliers.length) % suppliers.length;
-            showSupplierRows(suppliers[supplierIndex]);
+            if (suppliers.length === 0) {
+                refreshSupplierList();
+            }
+            if (suppliers.length > 0) {
+                supplierIndex = (supplierIndex - 1 + suppliers.length) % suppliers.length;
+                showSupplierRows(suppliers[supplierIndex]);
+            }
         });
 
         function updateCounts() {
             let green = 0, yellow = 0, red = 0;
 
             rows.forEach(row => {
-                const dateInput = row.querySelector('input[data-column="del_date"]');
+                // Check created_at (Order Date) field for background color, not del_date
+                const dateInput = row.querySelector('input[data-column="created_at"]');
                 if (!dateInput) return;
 
                 const bg = dateInput.style.backgroundColor.trim().toLowerCase();
-                if (bg === "green") green++;
-                else if (bg === "yellow") yellow++;
-                else if (bg === "red") red++;
+                if (bg === "green" || bg.includes("green")) green++;
+                else if (bg === "yellow" || bg.includes("yellow")) yellow++;
+                else if (bg === "red" || bg.includes("red")) red++;
             });
 
             greenSpan.textContent = `(${green})`;
@@ -1278,12 +1341,14 @@
 
         function filterDateRows(type) {
             rows.forEach(row => {
-                const dateInput = row.querySelector('input[data-column="del_date"]');
+                // Check created_at (Order Date) field for background color, not del_date
+                const dateInput = row.querySelector('input[data-column="created_at"]');
                 if (!dateInput) return;
 
                 const bg = dateInput.style.backgroundColor.trim().toLowerCase();
+                const bgColor = bg.includes("green") ? "green" : (bg.includes("yellow") ? "yellow" : (bg.includes("red") ? "red" : ""));
 
-                row.style.display = (!type || bg === type) ? "" : "none";
+                row.style.display = (!type || bgColor === type) ? "" : "none";
             });
 
             calculateTotalCBM();

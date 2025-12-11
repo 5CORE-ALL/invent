@@ -182,25 +182,36 @@
                             </select>
                         </div>
 
-                        {{-- 🕒 Pending Items --}}
+                        {{-- 🕒 Pending Items & 📦 Total CBM Combined --}}
                         <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">🕒 Pending Items</label>
-                            <div id="pendingItemsCount" class="fw-bold text-primary" style="font-size: 1.1rem;">
-                                00
+                            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); min-width: 280px;">
+                                <div class="card-body p-3">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <div class="text-center flex-fill">
+                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                🕒 Pending Items
+                                            </div>
+                                            <div id="pendingItemsCount" class="fw-bold text-primary" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                                00
+                                            </div>
+                                        </div>
+                                        <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                                        <div class="text-center flex-fill">
+                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                📦 Total CBM
+                                            </div>
+                                            <div id="totalCBM" class="fw-bold text-success" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                                00
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <div class="col-auto" hidden>
                             <label class="form-label fw-semibold mb-1 d-block">Total Approved Qty</label>
                             <div id="totalApprovedQty" class="fw-bold text-primary" style="font-size: 1.1rem;">
-                                00
-                            </div>
-                        </div>
-
-                        {{-- 📦 Total CBM --}}
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">📦 Total CBM</label>
-                            <div id="totalCBM" class="fw-bold text-success" style="font-size: 1.1rem;">
                                 00
                             </div>
                         </div>

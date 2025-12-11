@@ -35,41 +35,54 @@ class SupplierController extends Controller
         $validator = Validator::make($data, $rules);
 
         if ($validator->fails()) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
             return redirect()->back()->withErrors($validator)->withInput();
         }
 
         $inputs = $request->all();
 
-        if (!empty($inputs['supplier_id'])) {
-            $supplier = Supplier::findOrFail($inputs['supplier_id']);
-        } else {
-            $supplier = new Supplier;
-        }
+        try {
+            if (!empty($inputs['supplier_id'])) {
+                $supplier = Supplier::findOrFail($inputs['supplier_id']);
+            } else {
+                $supplier = new Supplier;
+            }
 
-        $supplier->type         = $inputs['type'];
-        $supplier->category_id  = isset($inputs['category_id']) ? implode(',', $inputs['category_id']) : null;
-        $supplier->name         = $inputs['name'];
-        $supplier->company      = $inputs['company']      ?? null;
+            $supplier->type         = trim($inputs['type']);
+            $supplier->category_id  = !empty($inputs['category_id']) && is_array($inputs['category_id']) 
+                ? implode(',', array_filter($inputs['category_id'])) 
+                : null;
+            $supplier->name         = trim($inputs['name']);
+            $supplier->company      = !empty($inputs['company']) ? trim($inputs['company']) : null;
+            $supplier->parent       = !empty($inputs['parent']) ? trim($inputs['parent']) : null;
+            $supplier->country_code = !empty($inputs['country_code']) ? trim($inputs['country_code']) : null;
+            $supplier->phone        = !empty($inputs['phone']) ? trim($inputs['phone']) : null;
+            $supplier->city         = !empty($inputs['city']) ? trim($inputs['city']) : null;
+            $supplier->email        = !empty($inputs['email']) ? trim($inputs['email']) : null;
+            $supplier->whatsapp     = !empty($inputs['whatsapp']) ? trim($inputs['whatsapp']) : null;
+            $supplier->wechat       = !empty($inputs['wechat']) ? trim($inputs['wechat']) : null;
+            $supplier->alibaba      = !empty($inputs['alibaba']) ? trim($inputs['alibaba']) : null;
+            $supplier->website      = !empty($inputs['website']) ? trim($inputs['website']) : null;
+            $supplier->others       = !empty($inputs['others']) ? trim($inputs['others']) : null;
+            $supplier->address      = !empty($inputs['address']) ? trim($inputs['address']) : null;
+            $supplier->bank_details = !empty($inputs['bank_details']) ? trim($inputs['bank_details']) : null;
 
-        $supplier->parent       = $inputs['parent'];
-
-        $supplier->country_code = $inputs['country_code'] ?? null;
-        $supplier->phone        = $inputs['phone']        ?? null;
-        $supplier->city         = $inputs['city']         ?? null;
-        $supplier->email        = $inputs['email']        ?? null;
-        $supplier->whatsapp     = $inputs['whatsapp']     ?? null;
-        $supplier->wechat       = $inputs['wechat']       ?? null;
-        $supplier->alibaba      = $inputs['alibaba']      ?? null;
-        $supplier->website      = $inputs['website']      ?? null;
-        $supplier->others       = $inputs['others']       ?? null;
-        $supplier->address      = $inputs['address']      ?? null;
-        $supplier->bank_details = $inputs['bank_details'] ?? null;
-
-        if ($supplier->save()) {
-            $msg = !empty($inputs['supplier_id']) ? 'Supplier successfully updated…' : 'Supplier successfully created…';
-            Session::flash('flash_message', $msg);
-        } else {
-            Session::flash('flash_message', 'Something went wrong.');
+            if ($supplier->save()) {
+                $msg = !empty($inputs['supplier_id']) 
+                    ? 'Supplier successfully updated.' 
+                    : 'Supplier successfully created.';
+                Session::flash('flash_message', $msg);
+            } else {
+                Session::flash('flash_message', 'Something went wrong while saving.');
+            }
+        } catch (\Exception $e) {
+            Session::flash('flash_message', 'Error: ' . $e->getMessage());
         }
 
         return redirect()->back();
