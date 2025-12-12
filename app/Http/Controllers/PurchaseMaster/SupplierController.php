@@ -64,6 +64,7 @@ class SupplierController extends Controller
             $supplier->country_code = !empty($inputs['country_code']) ? trim($inputs['country_code']) : null;
             $supplier->phone        = !empty($inputs['phone']) ? trim($inputs['phone']) : null;
             $supplier->city         = !empty($inputs['city']) ? trim($inputs['city']) : null;
+            $supplier->zone         = !empty($inputs['zone']) ? trim($inputs['zone']) : null;
             $supplier->email        = !empty($inputs['email']) ? trim($inputs['email']) : null;
             $supplier->whatsapp     = !empty($inputs['whatsapp']) ? trim($inputs['whatsapp']) : null;
             $supplier->wechat       = !empty($inputs['wechat']) ? trim($inputs['wechat']) : null;
@@ -133,6 +134,7 @@ class SupplierController extends Controller
                     'country_code'  => $data['country_code'] ?? '',
                     'phone'         => $data['phone'] ?? '',
                     'city'          => $data['city'] ?? '',
+                    'zone'          => $data['zone'] ?? '',
                     'email'         => $data['email'] ?? '',
                     'whatsapp'      => $data['whatsapp'] ?? '',
                     'wechat'        => $data['wechat'] ?? '',

@@ -75,6 +75,10 @@
     </td>
 
     <td>
+        <span class="badge bg-info">{{ $supplier->zone ?? '-' }}</span>
+    </td>
+
+    <td>
         <!-- View Button -->
             <a href="#" class="btn btn-soft-success btn-sm"
                 data-bs-toggle="modal" data-bs-target="#viewSupplierModal{{ $supplier->id }}"
@@ -294,6 +298,16 @@
                                 </div>
 
                                 <div class="col-md-6">
+                                    <label class="form-label fw-semibold">Zone</label>
+                                    <select name="zone" class="form-select">
+                                        <option value="">Select Zone</option>
+                                        <option value="GHZ" {{ ($supplier->zone ?? '') == 'GHZ' ? 'selected' : '' }}>GHZ</option>
+                                        <option value="Ningbo" {{ ($supplier->zone ?? '') == 'Ningbo' ? 'selected' : '' }}>Ningbo</option>
+                                        <option value="Tianjin" {{ ($supplier->zone ?? '') == 'Tianjin' ? 'selected' : '' }}>Tianjin</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-6">
                                     <label class="form-label fw-semibold">Email Address</label>
                                     <input type="email" name="email" class="form-control" placeholder="Email Address" value="{{ $supplier->email }}">
                                 </div>
@@ -438,6 +452,16 @@
                                     <div class="col-sm-6">
                                         <span class="fw-semibold text-muted">City:</span>
                                         <div>{{ $supplier->city ?? '-' }}</div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <span class="fw-semibold text-muted">Zone:</span>
+                                        <div>
+                                            @if(!empty($supplier->zone))
+                                                <span class="badge bg-info">{{ $supplier->zone }}</span>
+                                            @else
+                                                <span class="text-muted">-</span>
+                                            @endif
+                                        </div>
                                     </div>
                                     <div class="col-sm-6">
                                         <span class="fw-semibold text-muted">Email:</span>

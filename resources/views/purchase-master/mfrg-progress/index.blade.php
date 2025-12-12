@@ -233,7 +233,7 @@
                         <thead>
                             <tr>
                                 <th data-column="1">Image<div class="resizer"></div></th>
-                                <th data-column="2">
+                                <th data-column="2" hidden>
                                     Parent
                                     <div class="resizer"></div>
                                     <input type="text" class="form-control column-search" data-search-column="2" placeholder="Search Parent..." style="margin-top:4px; font-size:12px; height:28px;">
@@ -247,8 +247,8 @@
                                 </th>
                                 <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">Order<br/>QTY<div class="resizer"></div></th>
-                                <th data-column="5">Rate<div class="resizer"></div></th>
-                                <th data-column="6" class="text-center">Supplier<div class="resizer"></div></th>
+                                <th data-column="5" hidden>Rate<div class="resizer"></div></th>
+                                <th data-column="6" class="text-center" style="width: 70px; min-width: 70px; max-width: 70px;">Supplier<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
@@ -257,7 +257,7 @@
                                 <th data-column="11">Del<br/>Date<div class="resizer"></div></th>
                                 {{-- <th data-column="12">O Links<div class="resizer"></div></th> --}}
                                 <th data-column="12" hidden>value<div class="resizer"></div></th>
-                                <th data-column="13">Payment<br/>Pending<div class="resizer"></div></th>
+                                <th data-column="13" hidden>Payment<br/>Pending<div class="resizer"></div></th>
                                 {{-- <th data-column="15">photo<br/>packing<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="16">photo int.<br/>sale<div class="resizer"></div></th> --}}
                                 <th data-column="14">CBM<div class="resizer"></div></th>
@@ -265,15 +265,16 @@
                                 {{-- <th data-column="19" class="text-center">BARCODE<br/>&<br/>SKU<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="20">artwork<br/>&<br/>maual<br/>book<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="21">notes<div class="resizer"></div></th> --}}
-                                <th data-column="16">Ready to<br/>ship<div class="resizer"></div></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach ($data as $item)
                                 @php
                                     $readyToShip = $item->ready_to_ship ?? '';
+                                    $stageValue = $item->stage ?? '';
                                 @endphp
                                 @continue($readyToShip === 'Yes')
+                                @continue($stageValue !== 'mip')
                                 <tr>
                                     <td data-column="1">
                                         @if(!empty($item->Image))
@@ -282,14 +283,11 @@
                                             <span class="text-muted">No</span>
                                         @endif
                                     </td>
-                                    <td data-column="2" class="text-center">
+                                    <td data-column="2" class="text-center" hidden>
                                         {{ $item->parent ?? '' }}
                                     </td>
                                     <td data-column="3" class="text-center">
-                                        <span class="sku-short" style="cursor:pointer;">
-                                            {{ \Illuminate\Support\Str::limit($item->sku ?? '', 10) }}
-                                        </span>
-                                        <span class="sku-full d-none" id="sku-full">{{ $item->sku ?? '' }}</span>
+                                        {{ $item->sku ?? '' }}
                                     </td>
                                     <td data-column="17" class="text-center">
                                         @php
@@ -298,9 +296,9 @@
                                             if ($stageValue === 'to_order_analysis') {
                                                 $bgColor = '#ffc107'; // Yellow
                                             } elseif ($stageValue === 'mip') {
-                                                $bgColor = '#0d6efd'; // Blue
+                                                $bgColor = '#ADD8E6'; // Light Blue
                                             } elseif ($stageValue === 'r2s') {
-                                                $bgColor = '#198754'; // Green
+                                                $bgColor = '#90EE90'; // Light Green
                                             }
                                         @endphp
                                         <select class="form-select form-select-sm editable-select-stage" 
@@ -323,7 +321,7 @@
                                             style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed; border: none;"
                                             class="form-control form-control-sm">
                                     </td>
-                                    <td data-column="5">
+                                    <td data-column="5" hidden>
                                         <div class="input-group input-group-sm" style="width:105px;">
                                             <span class="input-group-text" style="padding: 0 6px; background: #e9ecef;">
                                                 <span style="font-size: 13px; color: #6c757d;">
@@ -338,8 +336,8 @@
                                         </div>
                                     </td>
 
-                                    <td data-column="6" class="text-center">
-                                        <input type="text" class="form-control form-control-sm auto-save" data-sku="{{ $item->sku }}" data-column="supplier" value="{{ $item->supplier ?? '' }}" placeholder="supplier">
+                                    <td data-column="6" class="text-center" style="width: 70px; min-width: 70px; max-width: 70px;">
+                                        <span style="font-size: 12px;">{{ \Illuminate\Support\Str::limit($item->supplier ?? '', 10) }}</span>
                                     </td>
                                     <td data-column="7" hidden>
                                         @php
@@ -387,23 +385,25 @@
                                         if (!empty($item->created_at)) {
                                             $daysDiff = \Carbon\Carbon::parse($item->created_at)->diffInDays(\Carbon\Carbon::today());
 
-                                            if ($daysDiff > 45) {
-                                                $bgColor = 'background-color: red; color: white;';
-                                            } elseif ($daysDiff > 30) {
+                                            if ($daysDiff > 25) {
+                                                $bgColor = 'background-color: red; color: black;';
+                                            } elseif ($daysDiff >= 15 && $daysDiff <= 25) {
                                                 $bgColor = 'background-color: yellow; color: black;';
-                                            }else{
-                                                $bgColor = 'background-color: green; color: white;';
+                                            } else {
+                                                $bgColor = 'color: black;';
                                             }
                                         }
                                     @endphp
                                     <td data-column="10">
-                                        <input type="date" data-sku="{{ $item->sku }}" data-column="created_at" value="{{ !empty($item->created_at) ? \Carbon\Carbon::parse($item->created_at)->format('Y-m-d') : '' }}" 
-                                        class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px; {{ $bgColor }}">
-                                        @if ($daysDiff !== null)
-                                            <small style="font-size: 12px; color: rgb(72, 69, 69);">
-                                                {{ $daysDiff }} days ago
-                                            </small>
-                                        @endif
+                                        <div style="display: flex; align-items: center; gap: 4px;">
+                                            <input type="date" data-sku="{{ $item->sku }}" data-column="created_at" value="{{ !empty($item->created_at) ? \Carbon\Carbon::parse($item->created_at)->format('Y-m-d') : '' }}" 
+                                            class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px; {{ $bgColor }}">
+                                            @if ($daysDiff !== null)
+                                                <span style="font-size: 12px; color: rgb(72, 69, 69); white-space: nowrap;">
+                                                    {{ $daysDiff }} D
+                                                </span>
+                                            @endif
+                                        </div>
                                     </td>
                                     <td data-column="11">
                                         <input type="date" data-sku="{{ $item->sku }}" data-column="del_date" 
@@ -431,7 +431,7 @@
                                     <td class="total-value d-none" data-column="12">
                                         {{ is_numeric($item->qty ?? null) && is_numeric($item->rate ?? null) ? ($item->qty * $item->rate) : '' }}
                                     </td>
-                                    <td data-column="13">
+                                    <td data-column="13" hidden>
                                         @php
                                             $supplier = $item->supplier ?? '';
                                             $grouped = collect($data)->where('supplier', $supplier);
@@ -522,12 +522,6 @@
                                         <input type="text" class="form-control form-control-sm auto-save" data-sku="{{ $item->sku }}" data-column="notes" value="{{ $item->notes ?? '' }}" style="font-size: 13px;" placeholder="Notes">
                                     </td> --}}
 
-                                    <td data-column="16">
-                                        <select class="form-select form-select-sm auto-save" data-sku="{{ $item->sku }}" data-column="ready_to_ship" style="width: 75px;">
-                                            <option value="No" {{ $item->ready_to_ship == 'No' ? 'selected' : '' }}>No</option>
-                                            <option value="Yes" {{ $item->ready_to_ship == 'Yes' ? 'selected' : '' }}>Yes</option>
-                                        </select>
-                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -636,21 +630,6 @@
                     if (newWidth > 80) {
                         th.style.width = th.style.minWidth = th.style.maxWidth = newWidth + 'px';
 
-                        if (th.dataset.column === "3") { 
-                            const cells = document.querySelectorAll('td[data-column="3"]');
-                            cells.forEach(cell => {
-                                const shortSpan = cell.querySelector('.sku-short');
-                                const fullSpan = cell.querySelector('.sku-full');
-
-                                if (newWidth > 200) { 
-                                    shortSpan.classList.add("d-none");
-                                    fullSpan.classList.remove("d-none");
-                                } else { 
-                                    fullSpan.classList.add("d-none");
-                                    shortSpan.classList.remove("d-none");
-                                }
-                            });
-                        }
                     }
                 }
 
@@ -870,10 +849,10 @@
 
                             // ✅ Insert into Ready to Ship table
                             if (column === 'ready_to_ship' && value === 'Yes') {
-                                const parent = row.querySelector('td:nth-child(2)')?.innerText?.trim() || '';
-                                const skuVal = row.querySelector('#sku-full')?.innerText?.trim() || '';
-                                const supplier = row.querySelector('td[data-column="6"] input')?.value?.trim() || '';
-                                const qty = row.querySelector('td:nth-child(4)')?.innerText?.trim() || '';
+                                const parent = row.querySelector('td[data-column="2"]')?.innerText?.trim() || '';
+                                const skuVal = row.querySelector('td[data-column="3"]')?.innerText?.trim() || '';
+                                const supplier = row.querySelector('td[data-column="6"] span')?.textContent?.trim() || '';
+                                const qty = row.querySelector('td[data-column="4"]')?.innerText?.trim() || '';
                                 const totalCbm = row.querySelector('td[data-column="15"] input')?.value?.trim() || '';
                                 const rate = row.querySelector('td[data-column="5"] input')?.value?.trim() || '';                                
 
@@ -955,9 +934,9 @@
                     if (value === 'to_order_analysis') {
                         bgColor = '#ffc107'; // Yellow
                     } else if (value === 'mip') {
-                        bgColor = '#0d6efd'; // Blue
+                        bgColor = '#ADD8E6'; // Light Blue
                     } else if (value === 'r2s') {
-                        bgColor = '#198754'; // Green
+                        bgColor = '#90EE90'; // Light Green
                     }
                     this.style.backgroundColor = bgColor;
                     this.style.color = '#000';
@@ -1184,9 +1163,15 @@
                 let matchingRows = [];
                 allRows.forEach(row => {
                     const supplierCell = row.querySelector('td[data-column="6"]');
-                    if (supplierCell && supplierCell.textContent.trim().toLowerCase() === selectedSupplier.toLowerCase()) {
-                        row.style.display = '';
-                        matchingRows.push(row);
+                    if (supplierCell) {
+                        const supplierSpan = supplierCell.querySelector('span');
+                        const supplierName = supplierSpan ? supplierSpan.textContent.trim() : supplierCell.textContent.trim();
+                        if (supplierName.toLowerCase() === selectedSupplier.toLowerCase()) {
+                            row.style.display = '';
+                            matchingRows.push(row);
+                        } else {
+                            row.style.display = 'none';
+                        }
                     } else {
                         row.style.display = 'none';
                     }
@@ -1313,20 +1298,6 @@
             });
         }
 
-        document.querySelectorAll('.sku-short').forEach(el => {
-            el.addEventListener('click', function () {
-                const shortSpan = this;
-                const fullSpan = this.nextElementSibling;
-
-                shortSpan.classList.add("d-none");
-                fullSpan.classList.remove("d-none");
-
-                fullSpan.addEventListener('click', function () {
-                    fullSpan.classList.add("d-none");
-                    shortSpan.classList.remove("d-none");
-                }, { once: true });
-            });
-        });
 
         // document.getElementById('play-auto').addEventListener('click', () => {
         //     isPlaying = true;
@@ -1375,9 +1346,9 @@
         rows.forEach(row => {
             const supplierCell = row.querySelector('td[data-column="6"]');
             if (supplierCell) {
-                // Get supplier from input field, not textContent
-                const supplierInput = supplierCell.querySelector('input[data-column="supplier"]');
-                const supplierName = supplierInput ? supplierInput.value.trim() : supplierCell.textContent.trim();
+                // Get supplier from span, not input field
+                const supplierSpan = supplierCell.querySelector('span');
+                const supplierName = supplierSpan ? supplierSpan.textContent.trim() : supplierCell.textContent.trim();
                 if (supplierName && !suppliers.includes(supplierName)) {
                     suppliers.push(supplierName);
                 }
@@ -1388,9 +1359,9 @@
             rows.forEach(row => {
                 const cell = row.querySelector('td[data-column="6"]');
                 if (cell) {
-                    // Get supplier from input field, not textContent
-                    const supplierInput = cell.querySelector('input[data-column="supplier"]');
-                    const supplierName = supplierInput ? supplierInput.value.trim() : cell.textContent.trim();
+                    // Get supplier from span, not input field
+                    const supplierSpan = cell.querySelector('span');
+                    const supplierName = supplierSpan ? supplierSpan.textContent.trim() : cell.textContent.trim();
                     if (supplierName === supplier) {
                         row.style.display = "";
                     } else {
@@ -1421,8 +1392,8 @@
             rows.forEach(row => {
                 const supplierCell = row.querySelector('td[data-column="6"]');
                 if (supplierCell) {
-                    const supplierInput = supplierCell.querySelector('input[data-column="supplier"]');
-                    const supplierName = supplierInput ? supplierInput.value.trim() : supplierCell.textContent.trim();
+                    const supplierSpan = supplierCell.querySelector('span');
+                    const supplierName = supplierSpan ? supplierSpan.textContent.trim() : supplierCell.textContent.trim();
                     if (supplierName && !suppliers.includes(supplierName)) {
                         suppliers.push(supplierName);
                     }
