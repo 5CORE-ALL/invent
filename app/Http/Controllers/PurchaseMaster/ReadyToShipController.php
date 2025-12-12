@@ -93,9 +93,16 @@ class ReadyToShipController extends Controller
             return $item;
         });
 
+        // Create supplier to zone mapping
+        $supplierZoneMap = Supplier::where('type', 'Supplier')
+            ->whereNotNull('zone')
+            ->pluck('zone', 'name')
+            ->toArray();
+
         return view('purchase-master.ready-to-ship.index', [
             'readyToShipList' => $readyToShipData,
             'suppliers' => Supplier::pluck('name'),
+            'supplierZoneMap' => $supplierZoneMap,
         ]);
     }
 
@@ -122,6 +129,7 @@ class ReadyToShipController extends Controller
             'area',
             'pay_term',
             'payment_confirmation',
+            'supplier',
         ])) {
             return response()->json(['success' => false, 'message' => 'Invalid column.']);
         }

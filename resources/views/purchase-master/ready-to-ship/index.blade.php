@@ -177,7 +177,7 @@
                                 <th data-column="7" data-column-name="area">ZONE<div class="resizer"></div>
                                 </th>
                                 <th data-column="1">Image<div class="resizer"></div></th>
-                                <th data-column="2">
+                                <th data-column="2" hidden>
                                     Parent
                                     <div class="resizer"></div>
                                     <input type="text" class="form-control column-search" data-search-column="2"
@@ -198,24 +198,24 @@
                                 <th data-column="21" data-column-name="stage" class="text-center">Stage<div class="resizer"></div></th>
                                 <th data-column="4" data-column-name="qty" class="text-center">Or. QTY<div class="resizer"></div></th>
                                 <th data-column="20" data-column-name="rec_qty" class="text-center">Rec. QTY<div class="resizer"></div></th>
-                                <th data-column="18" data-column-name="qty" class="text-center">Rate<div class="resizer"></div></th>
+                                <th data-column="18" data-column-name="qty" class="text-center" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="5" data-column-name="supplier">Supplier<div class="resizer"></div>
                                 </th>
-                                <th data-column="6" data-column-name="cbm">CBM<div class="resizer"></div>
+                                <th data-column="6" data-column-name="cbm" hidden>CBM<div class="resizer"></div>
                                 </th>
                                 <th data-column="19" data-column-name="total_cbm">Total CBM<div class="resizer"></div>
                                 </th>
-                                <th data-column="8" data-column-name="shipped_cbm_in_container">Balance<div
+                                <th data-column="8" data-column-name="shipped_cbm_in_container" hidden>Balance<div
                                         class="resizer"></div>
                                 </th>
-                                <th data-column="9" data-column-name="payment">Payment<div class="resizer"></div>
+                                <th data-column="9" data-column-name="payment" hidden>Payment<div class="resizer"></div>
                                 </th>
                                 <th data-column="10" data-column-name="pay_term">Pay<br/>Term<div class="resizer"></div>
                                 </th>
                                 <th data-column="11" data-column-name="payment_confirmation">Payment<br/>Confirmation<div
                                         class="resizer"></div>
                                 </th>
-                                <th data-column="12" data-column-name="model_number">Model<br/>Number<div class="resizer">
+                                <th data-column="12" data-column-name="model_number" hidden>Model<br/>Number<div class="resizer">
                                     </div>
                                 </th>
                                 <th data-column="13" data-column-name="photo_mail_send">Photo Mail<br/>Send<div
@@ -227,10 +227,10 @@
                                 <th data-column="15" data-column-name="packing_list">Packing<br/>List<div class="resizer">
                                     </div>
                                 </th>
-                                <th data-column="16" data-column-name="container_rfq">Container<br/>RFQ<div class="resizer">
+                                <th data-column="16" data-column-name="container_rfq" hidden>Container<br/>RFQ<div class="resizer">
                                     </div>
                                 </th>
-                                <th data-column="17" data-column-name="quote_result">Quote<br/>Result<div class="resizer">
+                                <th data-column="17" data-column-name="quote_result" hidden>Quote<br/>Result<div class="resizer">
                                     </div>
                                 </th>
                             </tr>
@@ -257,7 +257,7 @@
                                     @endif
                                 </td>
                                 
-                                <td data-column="2" class="text-center">{{ $item->parent }}</td>
+                                <td data-column="2" class="text-center" hidden>{{ $item->parent }}</td>
                                 <td data-column="3" class="text-center">{{ $item->sku }}</td>
                                 <td data-column="21" class="text-center">
                                     @php
@@ -301,7 +301,7 @@
                                            max="10000"
                                            style="font-size: 0.95rem; height: 36px; width: 90px;">
                                 </td>
-                                <td data-column="18">
+                                <td data-column="18" hidden>
                                     <input type="number" 
                                            class="form-control auto-save" 
                                            data-sku="{{ $item->sku }}" 
@@ -312,17 +312,20 @@
                                            style="font-size: 0.95rem; height: 36px; width: 90px;">
                                 </td>
                                 <td data-column="5">
-                                    @if(!empty($item->supplier_names))
-                                        {{ implode(', ', $item->supplier_names) }}
-                                    @else
-                                        <span class="text-muted">No supplier</span>
-                                    @endif
+                                    <select data-sku="{{ $item->sku }}" data-column="supplier" class="form-select form-select-sm auto-save" style="min-width: 150px; font-size: 13px;">
+                                        <option value="">Select supplier</option>
+                                        @foreach ($suppliers as $supplierName)
+                                            <option value="{{ $supplierName }}" {{ ($item->supplier ?? '') == $supplierName ? 'selected' : '' }}>
+                                                {{ $supplierName }}
+                                            </option>
+                                        @endforeach
+                                    </select>
                                 </td>
-                                <td data-column="6">{{ isset($item->CBM) && $item->CBM !== null ? number_format((float)$item->CBM, 4) : 'N/A' }}</td>
+                                <td data-column="6" hidden>{{ isset($item->CBM) && $item->CBM !== null ? number_format((float)$item->CBM, 4) : 'N/A' }}</td>
                                 <td data-column="19">{{ is_numeric($item->qty ?? null) && is_numeric($item->CBM ?? null) ? number_format($item->qty * $item->CBM, 2, '.', '') : '' }}</td>
                                 
-                                <td data-column="8">{{ $item->shipped_cbm_in_container }}</td>
-                                <td data-column="9">{{ $item->payment }}</td>
+                                <td data-column="8" hidden>{{ $item->shipped_cbm_in_container }}</td>
+                                <td data-column="9" hidden>{{ $item->payment }}</td>
                                 <td data-column="10">
                                     <select data-sku="{{ $item->sku }}" data-column="pay_term"
                                         class="form-select form-select-sm auto-save"
@@ -343,12 +346,12 @@
                                             '' }}>No</option>
                                     </select>
                                 </td>
-                                <td data-column="12">{{ $item->model_number }}</td>
+                                <td data-column="12" hidden>{{ $item->model_number }}</td>
                                 <td data-column="13">{{ $item->photo_mail_send }}</td>
                                 <td data-column="14">{{ $item->followup_delivery }}</td>
                                 <td data-column="15">{{ $item->packing_list }}</td>
-                                <td data-column="16">{{ $item->container_rfq }}</td>
-                                <td data-column="17">{{ $item->quote_result }}</td>
+                                <td data-column="16" hidden>{{ $item->container_rfq }}</td>
+                                <td data-column="17" hidden>{{ $item->quote_result }}</td>
                                  <td class="total-value d-none">
                                     {{ is_numeric($item->qty ?? null) && is_numeric($item->rate ?? null) ? ($item->qty * $item->rate) : '' }}
                                 </td>
@@ -667,6 +670,27 @@
         setupStageUpdate();
         setupStageFilter();
 
+        // Supplier to Zone mapping
+        const supplierZoneMap = @json($supplierZoneMap ?? []);
+
+        // Auto-populate zone for already selected suppliers on page load
+        function autoPopulateZoneForSelectedSuppliers() {
+            document.querySelectorAll('select[data-column="supplier"]').forEach(supplierSelect => {
+                const selectedSupplier = supplierSelect.value;
+                if (selectedSupplier && supplierZoneMap[selectedSupplier]) {
+                    const row = supplierSelect.closest('tr');
+                    const zoneSelect = row.querySelector('select[data-column="area"]');
+                    if (zoneSelect && !zoneSelect.value) {
+                        // Only update if zone is not already set
+                        zoneSelect.value = supplierZoneMap[selectedSupplier];
+                    }
+                }
+            });
+        }
+
+        // Run on page load
+        autoPopulateZoneForSelectedSuppliers();
+
         // Save data on input change
         document.querySelectorAll('.auto-save').forEach(input => {
             input.addEventListener('change', function() {
@@ -674,6 +698,17 @@
                 const value = this.value;
 
                 if (!sku || !column) return;
+
+                // If supplier is changed, auto-update zone
+                if (column === 'supplier' && value && supplierZoneMap[value]) {
+                    const row = this.closest('tr');
+                    const zoneSelect = row.querySelector('select[data-column="area"]');
+                    if (zoneSelect) {
+                        zoneSelect.value = supplierZoneMap[value];
+                        // Trigger change event to save zone
+                        zoneSelect.dispatchEvent(new Event('change'));
+                    }
+                }
 
                 fetch('/ready-to-ship/inline-update-by-sku', {
                     method: 'POST',
@@ -860,9 +895,15 @@
 
                 allRows.forEach(row => {
                     const supplierCell = row.querySelector('td[data-column="5"]');
-                    if (supplierCell && supplierCell.textContent.trim().toLowerCase() === selectedSupplier) {
-                        row.style.display = '';
-                        matchingRows.push(row);
+                    if (supplierCell) {
+                        const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
+                        const supplierValue = supplierSelect ? supplierSelect.value.trim().toLowerCase() : '';
+                        if (supplierValue === selectedSupplier) {
+                            row.style.display = '';
+                            matchingRows.push(row);
+                        } else {
+                            row.style.display = 'none';
+                        }
                     } else {
                         row.style.display = 'none';
                     }

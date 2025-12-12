@@ -127,6 +127,7 @@
                                 <th>Name</th>
                                 <th>Company</th>
                                 <th>Parents</th>
+                                <th>Zone</th>
                                 <th>Phone</th>
                                 <th>Rating</th>
                                 <th>Email</th>
@@ -273,6 +274,15 @@
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">City</label>
                             <input type="text" name="city" class="form-control" placeholder="City">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Zone</label>
+                            <select name="zone" class="form-select">
+                                <option value="">Select Zone</option>
+                                <option value="GHZ">GHZ</option>
+                                <option value="Ningbo">Ningbo</option>
+                                <option value="Tianjin">Tianjin</option>
+                            </select>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Email</label>
