@@ -2521,23 +2521,11 @@ class OverallAmazonController extends Controller
     public function getAmazonColumnVisibility(Request $request)
     {
         $userId = auth()->id() ?? 'guest';
-        $key = "amazon_tabulator_column_visibility_{$userId}";
+        $key = "amazon_sales_tabulator_column_visibility_{$userId}";
         
         $visibility = Cache::get($key, []);
         
         return response()->json($visibility);
-    }
-
-    public function setAmazonColumnVisibility(Request $request)
-    {
-        $userId = auth()->id() ?? 'guest';
-        $key = "amazon_tabulator_column_visibility_{$userId}";
-        
-        $visibility = $request->input('visibility', []);
-        
-        Cache::put($key, $visibility, now()->addDays(365));
-        
-        return response()->json(['success' => true]);
     }
 
     public function exportAmazonPricingCVR(Request $request)
@@ -2728,5 +2716,46 @@ class OverallAmazonController extends Controller
         $chartData = array_values($dataByDate);
 
         return response()->json($chartData);
+    }
+
+    public function getShiphubSalesData(Request $request)
+    {
+        try {
+            // Fetch data from shiphub order_items table for marketplace = amazon, last 30 days
+            // Exclude raw_data column as it's too large
+            $data = DB::connection('shiphub')
+                ->table('order_items')
+                ->select([
+                    'id', 'order_id', 'order_number', 'order_item_id', 'sku', 'asin', 'upc',
+                    'product_name', 'quantity_ordered', 'quantity_shipped', 'unit_price',
+                    'item_tax', 'promotion_discount', 'currency', 'is_gift', 'weight',
+                    'length', 'width', 'height', 'weight_unit', 'dimensions', 'marketplace',
+                    'created_at', 'updated_at'
+                ])
+                ->where('marketplace', 'amazon')
+                ->where('updated_at', '>=', now()->subDays(30))
+                ->orderBy('updated_at', 'desc')
+                ->get();
+
+            // Return as JSON for Tabulator
+            return response()->json($data);
+        } catch (\Exception $e) {
+            Log::error('Error fetching shiphub sales data: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
+
+    public function saveAmazonColumnVisibility(Request $request)
+    {
+        $userId = auth()->id();
+        $key = "amazon_sales_tabulator_column_visibility_{$userId}";
+        $visibility = $request->input('visibility', []);
+        Cache::put($key, $visibility, now()->addDays(30));
+        return response()->json(['success' => true]);
+    }
+
+    public function amazonSalesTabulatorView(Request $request)
+    {
+        return view('market-places.amazon_sales_tabulator_view');
     }
 }

@@ -826,9 +826,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
+    Route::get('/amazon-sales-tabulator-view', action: [OverallAmazonController::class, 'amazonSalesTabulatorView'])->name('amazon.sales.tabulator.view');
+    Route::get('/amazon/shiphub-sales-data', [OverallAmazonController::class, 'getShiphubSalesData'])->name('amazon.shiphub.sales.data');
+    Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
+    Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
-    Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility']);
-    Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'setAmazonColumnVisibility']);
     Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
     Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice']);

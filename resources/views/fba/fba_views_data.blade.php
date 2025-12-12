@@ -2968,7 +2968,7 @@
 
                 function applyColumnVisibilityFromServer() {
                     // Columns that should always be hidden by default (Pft% related columns and CTN columns)
-                    const alwaysHiddenColumns = ["FBA_Price", "ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
+                    const alwaysHiddenColumns = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
                     
                     fetch('/fba-column-visibility', {
                             method: 'GET',
@@ -3048,7 +3048,7 @@
                 // Show All Columns button
                 document.getElementById("show-all-columns-btn").addEventListener("click", function() {
                     // Columns that should always be hidden (Pft% related columns and CTN columns)
-                    const alwaysHiddenColumns = ["FBA_Price", "ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
+                    const alwaysHiddenColumns = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
                     
                     table.getColumns().forEach(col => {
                         const field = col.getField();
