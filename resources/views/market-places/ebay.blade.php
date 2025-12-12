@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => 'eBay', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <div id="messageArea" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1055;"></div>
+<div class="toast-container"></div>
 
 
 @section('css')
@@ -8,13 +9,21 @@
     <link rel="stylesheet" href="{{ asset('css/ebay-table-compact.css') }}">
     <style>
         /* ========== TABLE STRUCTURE ========== */
+        #ebay-table-wrapper {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 200px);
+        }
+        
         .table-container {
             overflow-x: auto;
-            overflow-y: visible;
+            overflow-y: auto;
             position: relative;
-            max-height: 650px;
             border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            flex: 1;
+            /* Ensure this is the scrolling container */
+            -webkit-overflow-scrolling: touch;
         }
 
         .custom-resizable-table {
@@ -24,7 +33,7 @@
             margin: 0;
             border: 1px solid #e0e0e0;
             border-radius: 8px;
-            overflow: hidden;
+            /* Remove any overflow that might interfere */
         }
 
         .custom-resizable-table th,
@@ -48,19 +57,37 @@
             background-color: #f8f9ff;
         }
 
-        .custom-resizable-table th {
+        .custom-resizable-table thead {
+            display: table-header-group;
             background: #00d5d5;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .custom-resizable-table thead tr {
+            background: #00d5d5;
+        }
+
+        .custom-resizable-table th {
+            background: #00d5d5 !important;
             font-weight: 700;
             font-size: 13px;
             color: #000000;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             user-select: none;
+            position: -webkit-sticky;
             position: sticky;
             top: 0;
-            z-index: 10;
+            z-index: 100;
             border-bottom: 2px solid #3b82f6;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        
+        /* Ensure parent containers don't interfere with sticky */
+        .card-body[style*="padding: 0"] {
+            overflow: visible !important;
         }
 
         /* ========== RESIZABLE COLUMNS ========== */
@@ -1126,13 +1153,10 @@
     </div>
 
     <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <h4 class="header-title">eBay Product Analysis</h4>
-
-                    <!-- Custom Dropdown Filters Row -->
-                    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center justify-content-between">
+        <div class="card shadow-sm">
+            <div class="card-body py-3">
+                <h4>eBay Product Analysis</h4>
+                <div class="d-flex align-items-center flex-wrap gap-2">
                         <!-- Left side: Filter buttons and Create Task -->
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                             <!-- Dil% Filter -->
@@ -1337,7 +1361,7 @@
                             </div>
 
                             <!-- Task Board Button -->
-                            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal"
+                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                                 data-bs-target="#createTaskModal">
                                 <i class="bi bi-plus-circle me-2"></i>Create Task
                             </button>
@@ -1475,21 +1499,21 @@
                             <!--for popup modal -->
 
                             <!-- Close All Modals Button -->
-                            <button id="close-all-modals" class="btn btn-danger btn-sm" style="display: none;">
+                            <button id="close-all-modals" class="btn btn-sm btn-danger" style="display: none;">
                                 <i class="fas fa-times"></i> Close All Modals
                             </button>
                         </div>
 
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                             <!-- Export Button -->
-                            <a href="{{ route('ebay.analytics.export') }}" class="btn btn-success">
-                                <i class="fas fa-file-export me-1"></i> Export Live/Listings
+                            <a href="{{ route('ebay.analytics.export') }}" class="btn btn-sm btn-success">
+                                <i class="fa fa-file-excel"></i> Export
                             </a>
 
                             <!-- Import Button -->
-                            <button type="button" class="btn btn-primary" data-bs-toggle="modal"
+                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                                 data-bs-target="#ebayImportModal">
-                                <i class="fas fa-file-import me-1"></i> Import Live/Listings
+                                <i class="fas fa-file-import"></i> Import
                             </button>
                         </div>
                     </div>
@@ -1557,73 +1581,68 @@
                     </div>
 
                     <!-- Controls row -->
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                         <!-- Left side controls -->
-                        <div class="d-flex flex-column" style="gap: 8px;">
-                            <div class="d-flex" style="gap: 16px;">
-                                <div class="form-group mb-2">
-                                    <label for="row-data-type" class="mr-2">Data Type:</label>
-                                    <select id="row-data-type" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="sku">SKU (Child)</option>
-                                        <option value="parent">Parent</option>
-                                    </select>
-                                </div>
-                                <div class="form-group mb-2">
-                                    <label for="ovl30-filter" class="mr-2">OV L30:</label>
-                                    <select id="ovl30-filter" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="0">0</option>
-                                        <option value="1-100+">1-100+</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="d-flex" style="gap: 16px;">
-                                <div class="form-group mb-2">
-                                    <label for="inv-filter" class="mr-2">INV:</label>
-                                    <select id="inv-filter" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="0">0</option>
-                                        <option value="1-100+">1-100+</option>
-                                    </select>
-                                </div>
-                                <div class="form-group mb-2">
-                                    <label for="el30-filter" class="mr-2">EL 30:</label>
-                                    <select id="el30-filter" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="0">0</option>
-                                        <option value="1-100+">1-100+</option>
-                                    </select>
-                                </div>
-                            </div>
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <select id="row-data-type" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                                <option value="all">Data Type: All</option>
+                                <option value="sku">SKU (Child)</option>
+                                <option value="parent">Parent</option>
+                            </select>
+                            <select id="ovl30-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                                <option value="all">OV L30: All</option>
+                                <option value="0">0</option>
+                                <option value="1-100+">1-100+</option>
+                            </select>
+                            <select id="inv-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                                <option value="all">INV: All</option>
+                                <option value="0">0</option>
+                                <option value="1-100+">1-100+</option>
+                            </select>
+                            <select id="el30-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                                <option value="all">EL 30: All</option>
+                                <option value="0">0</option>
+                                <option value="1-100+">1-100+</option>
+                            </select>
                         </div>
-                        <div>
-                            <div class="form-group mr-2 custom-dropdown">
-                                <button id="hideColumnsBtn" class="btn btn-sm btn-outline-secondary">
-                                    Hide Columns
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <!-- Column Visibility Dropdown -->
+                            <div class="dropdown d-inline-block">
+                                <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                    id="hideColumnsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fa fa-eye"></i> Columns
                                 </button>
-                                <div class="custom-dropdown-menu" id="columnToggleMenu">
+                                <ul class="dropdown-menu" aria-labelledby="hideColumnsBtn" id="columnToggleMenu"
+                                    style="max-height: 400px; overflow-y: auto;">
                                     <!-- Will be populated by JavaScript -->
-                                </div>
+                                </ul>
                             </div>
-                            <div class="form-group">
-                                <button id="showAllColumns" class="btn btn-sm btn-outline-secondary">
-                                    Show All
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Search on right -->
-                        <div class="form-inline">
-                            <div class="form-group">
-                                <label for="search-input" class="mr-2">Search:</label>
-                                <input type="text" id="search-input" class="form-control form-control-sm"
-                                    placeholder="Search all columns...">
-                            </div>
+                            <button id="showAllColumns" class="btn btn-sm btn-outline-secondary">
+                                <i class="fa fa-eye"></i> Show All
+                            </button>
                         </div>
                     </div>
 
-
+                    <!-- Summary Stats -->
+                    <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
+                        <h6 class="mb-3">All Calculations Summary</h6>
+                        <div class="d-flex flex-wrap gap-2">
+                            <span class="badge bg-success fs-5 p-2" id="total-pft-summary-badge" style="color: black; font-weight: bold;">Total PFT: $0.00</span>
+                            <span class="badge bg-primary fs-5 p-2" id="total-sales-summary-badge" style="color: black; font-weight: bold;">Total Sales: $0.00</span>
+                            <span class="badge bg-info fs-5 p-2" id="total-grpft-summary-badge" style="color: black; font-weight: bold;">Total GRPFT: 0%</span>
+                            <span class="badge bg-warning fs-5 p-2" id="total-ad-spend-summary-badge" style="color: black; font-weight: bold;">Total AD Spend: $0.00</span>
+                            <span class="badge bg-danger fs-5 p-2" id="total-el30-summary-badge" style="color: black; font-weight: bold;">Total EL 30: 0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <div id="ebay-table-wrapper">
+                    <!-- SKU Search -->
+                    <div class="p-2 bg-light border-bottom">
+                        <input type="text" id="search-input" class="form-control" placeholder="Search SKU...">
+                    </div>
+                    <!-- Table body (scrollable section) -->
                     <div class="table-container">
                         <table class="custom-resizable-table" id="ebay-table">
                             <thead>
@@ -1739,20 +1758,22 @@
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="pft" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="grpft" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 GRPFT
                                             </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="grpft-total">0%</div>
                                         </div>
                                     </th>
-                                    <th data-field="gpft" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="pft" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 PFT
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="gpft-total">0%</div>
+                                            <div class="metric-total" id="pft-total">0%</div>
                                         </div>
                                     </th>
                                     <th data-field="tprft" style="vertical-align: middle; white-space: nowrap;">
@@ -1760,6 +1781,8 @@
                                             <div class="d-flex align-items-center">
                                                 TPRFT
                                             </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="tprft-total">0%</div>
                                         </div>
                                     </th>
                                     <th data-field="ad-spend" style="vertical-align: middle; white-space: nowrap;">
@@ -1847,9 +1870,10 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
 
-                    <!-- Pagination controls -->
-                    <div class="pagination-controls mt-2">
+                <!-- Pagination controls -->
+                <div class="pagination-controls p-2 bg-light border-top">
                         <div class="form-group">
                             <span id="visible-rows" class="badge badge-light" style="color: #dc3545;">Showing 1-25 of
                                 150</span>
@@ -1871,7 +1895,6 @@
                     </div>
                 </div>
             </div>
-        </div>
     </div>
 @endsection
 
@@ -3020,48 +3043,61 @@
                     const eL30 = Number(item['eBay L30']) || 0;
                     const ebayPercentage = {{ $ebayPercentage ?? 0}};
                     const ebayAdPercentage = {{ $ebayAdUpdates ?? 0}};
+                    const totalSalesData = eL30 * price;
+                    let tacos = Number(item.TacosL30) || 0;
 
-                    const totalEbayPercentage = (ebayPercentage - ebayAdPercentage) / 100;
+                    let pft = ((price * (ebayPercentage / 100)) - lp - ship) / price;
+                    if(isNaN(pft) || !isFinite(pft)) {
+                        pft = 0;
+                    }
 
-                    const netPft = (price * (ebayPercentage / 100)) - ship - lp - (spend / eL30);
-                    const netGpft = (price * totalEbayPercentage) - ship - lp;
-                    let gPft = (netGpft / price) * 100;
+                    let grpft = ((price * (ebayAdPercentage / 100)) - ship - lp) / price;
+                    if(isNaN(grpft) || !isFinite(grpft)) {
+                        grpft = 0;
+                    }
 
-                    // PFT with color coding
+                    let tprft = grpft - tacos;
+                    
+                    if(isNaN(tprft) || !isFinite(tprft)) {
+                        tprft = 0;
+                    }
+
+                    // GRPFT with color coding
                     $row.append($('<td>').attr('data-field', 'pft').html(
-                        typeof item['PFT %'] === 'number' && !isNaN(item['PFT %']) ?
-                        `<span class="dil-percent-value ${getPftColor(item['PFT %'])}">${Math.round(item['PFT %'] * 100)}%</span>` :
-                        ''
+                        `
+                            <span class="dil-percent-value ${getPftColor(grpft * 100)}">
+                                ${(grpft * 100).toFixed(0)}%
+                            </span>
+                        `
                     ));
 
-                    // GPFT with color coding
-                    if(isNaN(gPft) || !isFinite(gPft)) {
-                        gPft = 0;
-                    }
+                    // PFT with color coding
                     $row.append($('<td>').attr('data-field', 'gpft').html(
                         `
-                            <span class="dil-percent-value ${getPftColor(gPft)}">
-                                ${gPft.toFixed(0)}%
+                            <span class="dil-percent-value ${getPftColor(pft * 100)}">
+                                ${(pft * 100).toFixed(0)}%
                             </span>
                         ` 
                     ));
 
                     // TPRFT with color coding
-                    let tpft = (netPft / price) * 100;
-                    
-                    if(isNaN(tpft) || !isFinite(tpft)) {
-                        tpft = 0;
-                    }
+                    $row.append($('<td>').attr('data-field', 'tprft').html(
+                        `
+                            <span class="dil-percent-value ${getPftColor(tprft)}">
+                                ${tprft.toFixed(2)}%
+                            </span>
+                        ` 
+                    ));
                     
                     // Auto-save TPFT only if SKU exists and TPFT has a valid value
-                    if (item['(Child) sku'] && !isNaN(tpft) && isFinite(tpft) && tpft !== 0) {
+                    if (item['(Child) sku'] && !isNaN(tprft) && isFinite(tprft) && tprft !== 0) {
                         $.ajax({
                             url: '/update-ebay-nr-data',
                             type: 'POST',
                             data: {
                                 sku: item['(Child) sku'],
                                 field: 'TPFT',
-                                value: tpft.toFixed(2),
+                                value: tprft.toFixed(2),
                                 _token: $('meta[name="csrf-token"]').attr('content')
                             },
                             success: function(res) {
@@ -3072,14 +3108,6 @@
                             }
                         });
                     }
-
-                    $row.append($('<td>').attr('data-field', 'tprft').html(
-                        `
-                            <span class="dil-percent-value ${getPftColor(tpft)}">
-                                ${tpft.toFixed(0)}%
-                            </span>
-                        ` 
-                    ));
 
                     $row.append($('<td>').attr('data-field', 'ad-spend').html(
                         `${item.spend_l30.toFixed(2)}`
@@ -5547,7 +5575,13 @@
                         reqCount: 0, // <-- REQ counter
                         nrCount: 0, // <-- NR counter
                         nraColCount: 0, // <-- NRA column counter
-                        raColCount: 0 // <-- RA column counter
+                        raColCount: 0, // <-- RA column counter
+                        grpftTotal: 0, // <-- GRPFT total
+                        pftTotal: 0, // <-- PFT total
+                        tprftTotal: 0, // <-- TPRFT total
+                        totalPftAmount: 0, // <-- Total PFT Amount
+                        totalAdSpend: 0, // <-- Total AD Spend
+                        totalGrpftAmount: 0 // <-- Total GRPFT Amount
                     };
 
                     filteredData.forEach(item => {
@@ -5616,6 +5650,41 @@
                         metrics.scvrSum += (Number(item['views']) > 0) ?
                             (Number(item['eBay L30']) / Number(item['views'])) :
                             0;
+                        
+                        // Calculate Total PFT Amount and AD Spend
+                        metrics.totalPftAmount += parseFloat(item.Profit) || 0;
+                        metrics.totalAdSpend += parseFloat(item.AD_Spend_L30 || item.spend_l30 || 0);
+                        
+                        // Calculate GRPFT, PFT, and TPRFT for totals
+                        const itemPrice = parseFloat(item['eBay Price']) || 0;
+                        const itemShip = parseFloat(item.SHIP) || 0;
+                        const itemLp = parseFloat(item.LP) || 0;
+                        const itemTacos = parseFloat(item.TacosL30) || 0;
+                        const ebayPct = {{ $ebayPercentage ?? 0}};
+                        const ebayAdPct = {{ $ebayAdUpdates ?? 0}};
+                        
+                        if (itemPrice > 0) {
+                            const itemPft = (itemPrice * (ebayPct / 100) - itemLp - itemShip) / itemPrice;
+                            const itemGrpft = (itemPrice * (ebayAdPct / 100) - itemShip - itemLp) / itemPrice;
+                            const itemTprft = itemGrpft - itemTacos;
+                            
+                            if (!isNaN(itemPft) && isFinite(itemPft)) {
+                                metrics.pftTotal += itemPft * 100;
+                            }
+                            if (!isNaN(itemGrpft) && isFinite(itemGrpft)) {
+                                metrics.grpftTotal += itemGrpft * 100;
+                                // Calculate GRPFT amount: (price * ebayAdPercentage / 100 - ship - lp) * L30
+                                const itemL30 = parseFloat(item['eBay L30']) || 0;
+                                const grpftAmount = ((itemPrice * (ebayAdPct / 100)) - itemShip - itemLp) * itemL30;
+                                if (!isNaN(grpftAmount) && isFinite(grpftAmount)) {
+                                    metrics.totalGrpftAmount += grpftAmount;
+                                }
+                            }
+                            if (!isNaN(itemTprft) && isFinite(itemTprft)) {
+                                metrics.tprftTotal += itemTprft * 100;
+                            }
+                        }
+                        
                         metrics.rowCount++;
                     });
 
@@ -5686,15 +5755,30 @@
 
 
                     // Calculate and display averages
-                    let pftTotal = 0;
+                    // Calculate average PFT (old calculation for backward compatibility)
+                    let pftTotalAvg = 0;
                     if (metrics.salesL30Sum > 0) {
-                        pftTotal = (metrics.profitSum / metrics.salesL30Sum) * 100;
+                        pftTotalAvg = (metrics.profitSum / metrics.salesL30Sum) * 100;
                     }
 
-                    $('#pft-total').text(pftTotal.toFixed(2) + '%');
+                    // Calculate averages for GRPFT, PFT, and TPRFT
+                    const grpftAvg = divisor > 0 ? (metrics.grpftTotal / divisor) : 0;
+                    const pftAvg = divisor > 0 ? (metrics.pftTotal / divisor) : 0;
+                    const tprftAvg = divisor > 0 ? (metrics.tprftTotal / divisor) : 0;
+
+                    $('#grpft-total').text(grpftAvg.toFixed(0) + '%');
+                    $('#pft-total').text(pftAvg.toFixed(0) + '%');
+                    $('#tprft-total').text(tprftAvg.toFixed(0) + '%');
                     $('#roi-total').text(Math.round((metrics.roiSum / divisor) * 100) + '%');
                     $('#tacos-total').text(Math.round((metrics.tacosTotal / divisor) * 100) + '%');
                     $('#cvr-total').text(Math.round((metrics.scvrSum / divisor) * 100) + '%');
+                    
+                    // Update Summary Stats badges
+                    $('#total-pft-summary-badge').text('Total PFT: $' + metrics.totalPftAmount.toFixed(2));
+                    $('#total-sales-summary-badge').text('Total Sales: $' + metrics.totalSalesTotal.toFixed(2));
+                    $('#total-grpft-summary-badge').text('Total GRPFT: $' + metrics.totalGrpftAmount.toFixed(2));
+                    $('#total-ad-spend-summary-badge').text('Total AD Spend: $' + metrics.totalAdSpend.toFixed(2));
+                    $('#total-el30-summary-badge').text('Total EL 30: ' + metrics.el30Total.toLocaleString());
 
                 } catch (error) {
                     console.error('Error in calculateTotals:', error);
@@ -5710,12 +5794,21 @@
                 $('#el30-total').text('0');
                 $('#eDil-total').text('0%');
                 $('#views-total').text('0');
+                $('#grpft-total').text('0%');
                 $('#pft-total').text('0%');
+                $('#tprft-total').text('0%');
                 $('#roi-total').text('0%');
                 $('#tacos-total').text('0%');
                 $('#cvr-total').text('0%');
                 $('#listed-total').text('0');
                 $('#live-total').text('0');
+                
+                // Reset Summary Stats badges
+                $('#total-pft-summary-badge').text('Total PFT: $0.00');
+                $('#total-sales-summary-badge').text('Total Sales: $0.00');
+                $('#total-grpft-summary-badge').text('Total GRPFT: $0.00');
+                $('#total-ad-spend-summary-badge').text('Total AD Spend: $0.00');
+                $('#total-el30-summary-badge').text('Total EL 30: 0');
                 $('#req-total').text('0');
             }
 

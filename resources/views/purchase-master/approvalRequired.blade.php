@@ -867,31 +867,6 @@
                     }
                 },
                 {
-                    title: "Hide",
-                    field: "hide",
-                    accessor: row => row?.["hide"] ?? null,
-                    headerSort: false,
-                    formatter: function(cell) {
-                        const value = cell.getValue() ?? '';
-                        const rowData = cell.getRow().getData();
-
-                        return `
-                        <select class="form-select form-select-sm editable-select"
-                            data-type="Hide"
-                            data-sku='${rowData["SKU"]}'
-                            data-parent='${rowData["Parent"]}'
-                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
-                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
-                                background-color: #fff;">
-                            <option value="">Select</option>
-                            <option value="@Need" ${value === '@Need' ? 'selected' : ''}>@Need</option>
-                            <option value="@Taken" ${value === '@Taken' ? 'selected' : ''}>@Taken</option>
-                            <option value="@Senior" ${value === '@Senior' ? 'selected' : ''}>@Senior</option>
-                        </select>
-                    `;
-                    }
-                },
-                {
                     title: "MSL SP",
                     field: "MSL_SP",
                     accessor: row => row["MSL_SP"],
@@ -1208,7 +1183,9 @@
                             child.to_order >= 0 :
                             true;
                     }
-                    return nrMatch && nrpMatch && stageMatch && filterMatch;
+                    // Exclude rows with stage 'to_order_analysis'
+                    const excludeToOrderAnalysis = childStage !== 'to_order_analysis';
+                    return nrMatch && nrpMatch && stageMatch && filterMatch && excludeToOrderAnalysis;
                 });
 
                 if (matchingChildren.length > 0) {
@@ -1271,17 +1248,20 @@
                     }
                 }
 
+                // Exclude rows with stage 'to_order_analysis'
+                const excludeToOrderAnalysis = dataStage !== 'to_order_analysis';
+
                 // 🎯 Force filter to one parent group if play mode is active
                 if (currentParentFilter) {
                     if (isParent) {
                         return data.Parent === currentParentFilter;
                     } else {
-                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && nrpMatch && stageMatch;
+                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && nrpMatch && stageMatch && excludeToOrderAnalysis;
                     }
                 }
-
+                
                 if (isChild) {
-                    const showChild = matchesFilter && matchesNR && nrpMatch && stageMatch;
+                    const showChild = matchesFilter && matchesNR && nrpMatch && stageMatch && excludeToOrderAnalysis;
                     if (currentRowTypeFilter === 'parent') return false;
                     if (currentRowTypeFilter === 'sku') return showChild;
                     return showChild;
@@ -1444,7 +1424,8 @@
             const yellowCount = visibleRows.filter(r =>
                 r.to_order >= 0 &&
                 !r.is_parent &&
-                r.nr !== 'NR'
+                r.nr !== 'NR' &&
+                r.stage !== 'to_order_analysis'
             ).length;
 
             document.getElementById('yellow-count-box').textContent = `Appr Req: ${yellowCount}`;
@@ -2084,8 +2065,12 @@
 
                 if (currentColorFilter === 'yellow') {
                     const allData = table.getRows().map(r => r.getData());
-                    const yellowCount = allData.filter(r => r.to_order >= 0 && !r.is_parent && (hideNRYes ?
-                        r.nr !== 'NR' : true)).length;
+                    const yellowCount = allData.filter(r => 
+                        r.to_order >= 0 && 
+                        !r.is_parent && 
+                        (hideNRYes ? r.nr !== 'NR' : true) &&
+                        r.stage !== 'to_order_analysis'
+                    ).length;
                     document.getElementById('yellow-count-box').textContent =
                         `Appr Req: ${yellowCount}`;
                 }
