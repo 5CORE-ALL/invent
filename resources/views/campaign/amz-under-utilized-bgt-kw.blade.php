@@ -344,6 +344,15 @@
                         visible: false
                     },
                     {
+                        title: "FBA INV",
+                        field: "FBA_INV",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<div class="text-center">${value || 0}</div>`;
+                        }
+                    },
+                    {
                         title: "OV L30",
                         field: "L30",
                         visible: false
