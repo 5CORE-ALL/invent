@@ -2721,9 +2721,8 @@ class OverallAmazonController extends Controller
     public function getShiphubSalesData(Request $request)
     {
         try {
-            // Fetch data from shiphub order_items table for marketplace = amazon, last 30 days
-            // Exclude raw_data column as it's too large
-            $data = DB::connection('shiphub')
+            // 1. Fetch Amazon sales data from shiphub (last 30 days from current date)
+            $salesData = DB::connection('shiphub')
                 ->table('order_items')
                 ->select([
                     'id', 'order_id', 'order_number', 'order_item_id', 'sku', 'asin', 'upc',
@@ -2733,12 +2732,177 @@ class OverallAmazonController extends Controller
                     'created_at', 'updated_at'
                 ])
                 ->where('marketplace', 'amazon')
-                ->where('updated_at', '>=', now()->subDays(30))
-                ->orderBy('updated_at', 'desc')
+                ->where('created_at', '>=', now()->subDays(30))
+                ->orderBy('created_at', 'desc')
                 ->get();
 
+            // 2. Get unique SKUs from sales data
+            $skus = $salesData->pluck('sku')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            // 3. Fetch ProductMaster data ONLY for SKUs that exist in sales data
+            $productMasters = \App\Models\ProductMaster::whereIn('sku', $skus)
+                ->get()
+                ->keyBy('sku');
+
+            // 3.5. Identify SKUs ending with FBA and fetch FBA ship calculations
+            $fbaSkus = array_filter($skus, function($sku) {
+                return preg_match('/\bFBA$/i', trim($sku));
+            });
+            
+            // Fetch FBA data for FBA SKUs
+            $fbaShipCalculations = [];
+            if (!empty($fbaSkus)) {
+                // Get FBA Manual Data
+                $fbaManualData = \App\Models\FbaManualData::whereIn('sku', $fbaSkus)
+                    ->get()
+                    ->keyBy('sku');
+                
+                // Get FBA Reports Master data
+                $fbaReports = \App\Models\FbaReportsMaster::where(function($query) use ($fbaSkus) {
+                        foreach ($fbaSkus as $sku) {
+                            $baseSku = preg_replace('/\s*FBA\s*$/i', '', trim($sku));
+                            $baseSku = strtoupper(trim($baseSku));
+                            $query->orWhere(function($q) use ($baseSku, $sku) {
+                                $q->where('seller_sku', $baseSku . ' FBA')
+                                  ->orWhere('seller_sku', $baseSku . 'FBA')
+                                  ->orWhere('seller_sku', $baseSku . ' fba')
+                                  ->orWhere('seller_sku', $sku)
+                                  ->orWhere('seller_sku', $baseSku);
+                            });
+                        }
+                    })
+                    ->get()
+                    ->keyBy('seller_sku');
+                
+                // Calculate FBA ship for each FBA SKU
+                foreach ($fbaSkus as $sku) {
+                    $baseSku = preg_replace('/\s*FBA\s*$/i', '', trim($sku));
+                    $baseSku = strtoupper(trim($baseSku));
+                    
+                    // Try to find FBA report with various SKU formats
+                    $fbaReport = null;
+                    foreach ([$baseSku . ' FBA', $baseSku . 'FBA', $baseSku . ' fba', $sku, $baseSku] as $variation) {
+                        if ($fbaReports->has($variation)) {
+                            $fbaReport = $fbaReports->get($variation);
+                            break;
+                        }
+                    }
+                    
+                    $fulfillmentFee = $fbaReport ? floatval($fbaReport->fulfillment_fee ?? 0) : 0;
+                    
+                    // Get manual data
+                    $manual = $fbaManualData->get($sku);
+                    $fbaFeeManual = $manual ? floatval($manual->data['fba_fee_manual'] ?? 0) : 0;
+                    
+                    // Calculate send_cost: shipping_amount / quantity_in_each_box
+                    $sendCost = 0;
+                    if ($manual) {
+                        $shippingAmount = floatval($manual->data['shipping_amount'] ?? 0);
+                        $quantityInBox = floatval($manual->data['quantity_in_each_box'] ?? 0);
+                        if ($quantityInBox > 0) {
+                            $sendCost = round($shippingAmount / $quantityInBox, 2);
+                        }
+                    }
+                    
+                    // Calculate FBA ship: fulfillment_fee + send_cost if fulfillment_fee > 0, else fba_fee_manual + send_cost
+                    if ($fulfillmentFee > 0) {
+                        $fbaShipCalculations[$sku] = round($fulfillmentFee + $sendCost, 2);
+                    } else {
+                        $fbaShipCalculations[$sku] = round($fbaFeeManual + $sendCost, 2);
+                    }
+                }
+            }
+
+            // 3.6. Get Amazon marketplace percentage from MarketplacePercentage table (like other controllers)
+            $amazonMarketplaceData = \App\Models\MarketplacePercentage::where('marketplace', 'Amazon')->first();
+            $amazonMarketplacePercentage = $amazonMarketplaceData ? ($amazonMarketplaceData->percentage / 100) : 0; // Convert to decimal
+            $amazonAdUpdates = $amazonMarketplaceData ? ($amazonMarketplaceData->ad_updates / 100) : 0; // Convert to decimal
+
+            // 4. Merge data - enrich sales data with product master info
+            $result = [];
+            foreach ($salesData as $item) {
+                $sku = $item->sku;
+                $pm = $productMasters[$sku] ?? null;
+
+                // Extract LP and Ship from ProductMaster
+                $lp = 0;
+                $ship = 0;
+
+                if ($pm) {
+                    // Get values from ProductMaster
+                    $values = is_array($pm->Values) 
+                        ? $pm->Values 
+                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    
+                    // Get LP
+                    $lp = $pm->LP ?? ($values['lp'] ?? 0);
+                    
+                    // Get Ship
+                    $ship = $pm->Ship ?? ($values['ship'] ?? 0);
+                }
+                
+                // Use marketplace percentage from MarketplacePercentage table (like other controllers)
+                $marketplace_percentages = $amazonMarketplacePercentage; // Already converted to decimal (e.g., 0.80)
+                $ad_updates = $amazonAdUpdates; // Already converted to decimal (e.g., 0.14)
+
+                // Check if SKU ends with FBA - use FBA ship calculation if available
+                $isFbaSku = preg_match('/\bFBA$/i', trim($sku));
+                $fbaShipCalculation = $isFbaSku && isset($fbaShipCalculations[$sku]) 
+                    ? $fbaShipCalculations[$sku] 
+                    : null;
+
+                // Build result row
+                $row = [
+                    'id' => $item->id,
+                    'order_id' => $item->order_id,
+                    'order_number' => $item->order_number,
+                    'order_item_id' => $item->order_item_id,
+                    'sku' => $item->sku,
+                    'asin' => $item->asin,
+                    'upc' => $item->upc,
+                    'product_name' => $item->product_name,
+                    'quantity_ordered' => $item->quantity_ordered,
+                    'quantity_shipped' => $item->quantity_shipped,
+                    'unit_price' => $item->unit_price,
+                    'item_tax' => $item->item_tax,
+                    'promotion_discount' => $item->promotion_discount,
+                    'currency' => $item->currency,
+                    'is_gift' => $item->is_gift,
+                    'weight' => $item->weight,
+                    'length' => $item->length,
+                    'width' => $item->width,
+                    'height' => $item->height,
+                    'weight_unit' => $item->weight_unit,
+                    'dimensions' => $item->dimensions,
+                    'marketplace' => $item->marketplace,
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                    // Add ProductMaster fields
+                    'LP_productmaster' => $lp,
+                    'Ship_productmaster' => $ship,
+                    'marketplace_percentages' => $marketplace_percentages,
+                    'ad_updates' => $ad_updates,
+                    // Add FBA ship calculation if SKU ends with FBA
+                    'FBA_ship_calculation' => $fbaShipCalculation,
+                    'is_fba_sku' => $isFbaSku,
+                ];
+
+                $result[] = $row;
+            }
+
+            Log::info('Amazon sales data fetched', [
+                'sales_records' => count($salesData),
+                'unique_skus' => count($skus),
+                'product_master_matches' => $productMasters->count(),
+                'date_range' => 'Last 30 days from ' . now()->subDays(30)->format('Y-m-d') . ' to ' . now()->format('Y-m-d'),
+            ]);
+
             // Return as JSON for Tabulator
-            return response()->json($data);
+            return response()->json($result);
         } catch (\Exception $e) {
             Log::error('Error fetching shiphub sales data: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch data'], 500);
