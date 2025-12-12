@@ -565,6 +565,7 @@
             const pftPercentage = totalRevenue > 0 ? (totalPft / totalRevenue) * 100 : 0;
             
             // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
+            // COGS = LP * Quantity
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
