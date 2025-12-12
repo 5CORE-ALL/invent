@@ -120,6 +120,9 @@
                             <a href="{{ route('forecast.analysis') }}">Forecast Analysis</a>
                         </li>
                         <li>
+                            <a href="{{ route('approval.required') }}">Approval Required</a>
+                        </li>
+                        <li>
                             <a href="{{ route('to.order.analysis') }}">To Order Analysis</a>
                         </li>
                         <li>
@@ -1600,6 +1603,9 @@
                                                         view</a>
                                                 </li>
                                                 <li>
+                                                    <a href="{{ url('amazon-sales-tabulator-view') }}">Amazon Sales Data</a>
+                                                </li>
+                                                <li>
                                                     <a href="{{ route('amazon.low.visibility.view') }}">Amz FBM
                                                         Low Visibility</a>
                                                 </li>
@@ -2637,7 +2643,7 @@
                                     <li>
                                         <a href="{{ url('aliexpressAnalysis') }}">Aliexpress Analytics</a>
                                     </li>
-
+                                    <li><a href="{{ url('aliexpress-tabulator') }}">Aliexpress Daily Data</a></li>
                                     <li>
                                         <a href="{{ route('zero.aliexpress') }}">Aliexpress 0 view</a>
                                     </li>
@@ -2850,6 +2856,7 @@
                                         <a href="{{ url('sheinAnalysis') }}">Shein
                                             Analytics</a>
                                     </li>
+                                    <li><a href="{{ url('shein-tabulator') }}">Shein Daily Data</a></li>
                                     <li><a href="{{ route('zero.shein') }}">Shein 0 view</a></li>
                                     <li><a href="{{ route('listing.shein') }}">Listing Shein</a></li>
                                 </ul>

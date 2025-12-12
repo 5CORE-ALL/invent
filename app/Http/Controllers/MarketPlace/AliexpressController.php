@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
 use App\Models\MarketplacePercentage;
 use App\Models\AliexpressDataView;
+use App\Models\AliexpressDailyData;
 use App\Models\ChannelMaster;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
@@ -14,6 +15,9 @@ use App\Models\ShopifySku;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 class AliexpressController extends Controller
 {
     protected $apiController;
@@ -355,5 +359,283 @@ class AliexpressController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    /**
+     * Upload Aliexpress daily data file in chunks
+     */
+    public function uploadDailyDataChunk(Request $request)
+    {
+        try {
+            $file = $request->file('file');
+            $chunk = $request->input('chunk', 0);
+            $totalChunks = $request->input('totalChunks', 1);
+            
+            if (!$file) {
+                return response()->json(['success' => false, 'message' => 'No file uploaded'], 400);
+            }
+
+            // Load the spreadsheet
+            $spreadsheet = IOFactory::load($file->getPathname());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+            
+            if (empty($rows)) {
+                return response()->json(['success' => false, 'message' => 'File is empty'], 400);
+            }
+
+            // Get headers (first row)
+            $headers = array_shift($rows);
+            
+            // Truncate table on first chunk
+            if ($chunk == 0) {
+                AliexpressDailyData::truncate();
+                Log::info('Aliexpress daily data table truncated');
+            }
+
+            $imported = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                try {
+                    // Skip empty rows
+                    if (empty(array_filter($row))) {
+                        continue;
+                    }
+
+                    // Combine headers with row data
+                    $rowData = array_combine($headers, $row);
+                    
+                    // Extract SKU and Quantity from "SKU Code" column
+                    // Format: "WF 8"-890 1PC * 1" -> SKU: "WF 8"-890 1PC", Quantity: 1
+                    $skuCodeRaw = $rowData['SKU Code'] ?? '';
+                    $sku = '';
+                    $quantity = 1;
+                    
+                    if (!empty($skuCodeRaw) && strpos($skuCodeRaw, '*') !== false) {
+                        $parts = explode('*', $skuCodeRaw);
+                        $sku = trim($parts[0]);
+                        $quantity = isset($parts[1]) ? (int)trim($parts[1]) : 1;
+                    } else {
+                        $sku = trim($skuCodeRaw);
+                    }
+
+                    // Prepare data for insertion
+                    $data = [
+                        'order_id' => $rowData['Order ID'] ?? null,
+                        'order_status' => $rowData['Order Status'] ?? null,
+                        'owner' => $rowData['Owner'] ?? null,
+                        'buyer_name' => $rowData['Buyer Name'] ?? null,
+                        'order_date' => $this->parseDate($rowData['Order Date'] ?? null),
+                        'payment_time' => $this->parseDate($rowData['Payment time'] ?? null),
+                        'payment_method' => $rowData['Payment method'] ?? null,
+                        'supply_price' => $this->sanitizePrice($rowData['Supply Price'] ?? null),
+                        'product_total' => $this->sanitizePrice($rowData['Product Total'] ?? null),
+                        'shipping_cost' => $this->sanitizePrice($rowData['Shipping Cost'] ?? null),
+                        'estimated_vat' => $this->sanitizePrice($rowData['Estimated VAT'] ?? null),
+                        'platform_collects' => $rowData['Whether the platform collects and pays for itself'] ?? null,
+                        'order_amount' => $this->sanitizePrice($rowData['Order amount'] ?? null),
+                        'ddp_tariff' => $this->sanitizePrice($rowData['DDP tariff'] ?? null),
+                        'store_promotion' => $this->sanitizePrice($rowData['Store Promotion'] ?? null),
+                        'store_direct_discount' => $this->sanitizePrice($rowData['Store Direct Discount'] ?? null),
+                        'platform_coupon' => $this->sanitizePrice($rowData['Platform Coupon'] ?? null),
+                        'item_id' => $rowData['Item ID'] ?? null,
+                        'product_information' => $rowData['Product Information'] ?? null,
+                        'ean_code' => $rowData['EANcode'] ?? null,
+                        'sku_code' => $sku,
+                        'quantity' => $quantity,
+                        'order_note' => $rowData['Order Note'] ?? null,
+                        'complete_shipping_address' => $rowData['Complete shipping address'] ?? null,
+                        'receiver_name' => $rowData['Receiver Name'] ?? null,
+                        'buyer_country' => $rowData['Buyer Country'] ?? null,
+                        'state_province' => $rowData['State/Province'] ?? null,
+                        'city' => $rowData['City'] ?? null,
+                        'detailed_address' => $rowData['Detailed address'] ?? null,
+                        'zip_code' => $rowData['Zip Code'] ?? null,
+                        'national_address' => $rowData['National address (used only in SA)'] ?? null,
+                        'email' => $rowData['Email'] ?? null,
+                        'phone' => $rowData['Phone '] ?? null, // Note the space in original
+                        'mobile' => $rowData['Mobile'] ?? null,
+                        'tax_number' => $rowData['Tax number'] ?? null,
+                        'shipping_method' => $rowData['Shipping Method'] ?? null,
+                        'shipping_deadline' => $this->parseDate($rowData['Shipping Deadline'] ?? null),
+                        'tracking_number' => $rowData['Tracking number'] ?? null,
+                        'shipping_time' => $this->parseDate($rowData['Shipping Time'] ?? null),
+                        'buyer_confirmation_time' => $this->parseDate($rowData['Buyer Confirmation Time'] ?? null),
+                        'order_type' => $rowData['Order type'] ?? null,
+                    ];
+
+                    AliexpressDailyData::create($data);
+                    $imported++;
+
+                } catch (\Exception $e) {
+                    $errors[] = "Row " . ($index + 2) . ": " . $e->getMessage();
+                    Log::error("Error importing Aliexpress row " . ($index + 2) . ": " . $e->getMessage());
+                }
+            }
+
+            $isLastChunk = ($chunk + 1) >= $totalChunks;
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Chunk $chunk uploaded. Imported: $imported records" . ($errors ? ", Errors: " . count($errors) : ""),
+                'imported' => $imported,
+                'errors' => $errors,
+                'isLastChunk' => $isLastChunk
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Aliexpress upload error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Upload failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Sanitize price values
+     */
+    private function sanitizePrice($value)
+    {
+        if (empty($value) || $value === '?') {
+            return null;
+        }
+
+        // Remove currency symbols (US $), commas, and whitespace
+        $cleaned = preg_replace('/US\s*\$|[$,\s]/', '', $value);
+        
+        return is_numeric($cleaned) ? (float)$cleaned : null;
+    }
+
+    /**
+     * Parse date string to Carbon instance
+     */
+    private function parseDate($dateString)
+    {
+        if (empty($dateString) || $dateString === null || $dateString === '') {
+            return null;
+        }
+
+        try {
+            // Try parsing various date formats
+            // Format: "12/10/2025 11:35"
+            if (preg_match('/^\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}/', $dateString)) {
+                return Carbon::createFromFormat('m/d/Y H:i', $dateString);
+            }
+            
+            // Fallback to general parsing
+            return Carbon::parse($dateString);
+        } catch (\Exception $e) {
+            Log::warning("Failed to parse date: $dateString - " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get daily data for Aliexpress tabulator view
+     */
+    public function getDailyData(Request $request)
+    {
+        try {
+            // Fetch all data from aliexpress_daily_data
+            $aliexpressData = AliexpressDailyData::orderBy('order_date', 'desc')->get();
+
+            // Get unique SKUs from the data
+            $skus = $aliexpressData->pluck('sku_code')->filter()->unique()->toArray();
+
+            // Fetch LP and Ship from ProductMaster for these SKUs
+            $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+
+            $data = [];
+            foreach ($aliexpressData as $item) {
+                $sku = $item->sku_code;
+                $lp = 0;
+                $ship = 0;
+                $cogs = 0;
+
+                // Get LP and Ship from ProductMaster
+                if (isset($productMasters[$sku])) {
+                    $productMaster = $productMasters[$sku];
+                    $values = $productMaster->Values ?? [];
+                    
+                    $lp = $values['lp'] ?? $productMaster->lp ?? 0;
+                    $ship = $values['ship'] ?? $productMaster->ship ?? 0;
+                    $cogs = $lp + $ship;
+                }
+
+                $data[] = [
+                    'id' => $item->id,
+                    'order_id' => $item->order_id,
+                    'order_status' => $item->order_status,
+                    'buyer_name' => $item->buyer_name,
+                    'order_date' => $item->order_date ? $item->order_date->format('Y-m-d H:i') : null,
+                    'payment_time' => $item->payment_time ? $item->payment_time->format('Y-m-d H:i') : null,
+                    'payment_method' => $item->payment_method,
+                    'supply_price' => $item->supply_price,
+                    'product_total' => $item->product_total,
+                    'shipping_cost' => $item->shipping_cost,
+                    'order_amount' => $item->order_amount,
+                    'platform_coupon' => $item->platform_coupon,
+                    'sku_code' => $item->sku_code,
+                    'quantity' => $item->quantity,
+                    'lp' => $lp,
+                    'ship' => $ship,
+                    'cogs' => $cogs,
+                    'buyer_country' => $item->buyer_country,
+                    'state_province' => $item->state_province,
+                    'city' => $item->city,
+                    'tracking_number' => $item->tracking_number,
+                    'shipping_time' => $item->shipping_time ? $item->shipping_time->format('Y-m-d H:i') : null,
+                ];
+            }
+            
+            return response()->json($data);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Aliexpress daily data: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
+
+    /**
+     * Show Aliexpress tabulator view
+     */
+    public function aliexpressTabulatorView()
+    {
+        return view('market-places.aliexpress_tabulator_view');
+    }
+
+    /**
+     * Save column visibility preferences
+     */
+    public function saveAliexpressColumnVisibility(Request $request)
+    {
+        try {
+            $userId = auth()->id() ?? 'guest';
+            $visibility = $request->input('visibility', []);
+            
+            cache()->put("aliexpress_column_visibility_{$userId}", $visibility, now()->addDays(30));
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Column visibility saved'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save preferences'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get column visibility preferences
+     */
+    public function getAliexpressColumnVisibility()
+    {
+        $userId = auth()->id() ?? 'guest';
+        $visibility = cache()->get("aliexpress_column_visibility_{$userId}", []);
+        
+        return response()->json($visibility);
     }
 }

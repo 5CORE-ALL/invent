@@ -3000,7 +3000,7 @@
                     if (scvr < 0.01) {
                         sbidValue = item.ESBID || 0; // Use ESBID for CVR < 0.01%
                     } else if (scvr >= 0.01 && scvr <= 1) {
-                        sbidValue = 10; // Flat 10
+                        sbidValue = 9; // Flat 10
                     } else if (scvr >= 1.01 && scvr <= 2) {
                         sbidValue = 8; // Flat 8
                     } else if (scvr >= 2.01 && scvr <= 3) {
@@ -3017,6 +3017,11 @@
 
                     // Cap sbidValue to maximum of 15
                     sbidValue = Math.min(sbidValue, 15);
+
+                    // If ov_dil is greater than 100%, set sbid to 0
+                    if (item.ov_dil > 1) {
+                        sbidValue = 2;
+                    }
 
                     $row.append($('<td data-field="sbid">').html(
                         `<span class="dil-percent-value">

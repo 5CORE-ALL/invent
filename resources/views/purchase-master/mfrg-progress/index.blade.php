@@ -74,16 +74,9 @@
     <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h4 class="mb-0 font-weight-bold">
-                        <i class="mdi mdi-factory mr-2" style="color:#3bc0c3;"></i>
-                        MFRG In Progress
-                    </h4>
-                </div>
-
                 <div class="column-controls card mb-4 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 10px;">
                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-                        <div class="d-flex align-items-center gap-3 flex-wrap w-100">
+                        <div class="d-flex align-items-center gap-3 flex-wrap" style="flex: 1;">
                             <!-- Title -->
                             {{-- ▶️ Navigation --}}
                             <div class="col-auto">
@@ -147,6 +140,17 @@
                                 </div>
                             </div>
 
+                            <!-- Stage Filter -->
+                            <div class="col-auto">
+                                <label class="form-label fw-semibold mb-1 d-block">🎯 Stage</label>
+                                <select id="stage-filter" class="form-select form-select-sm" style="min-width: 160px;">
+                                    <option value="">All Stages</option>
+                                    <option value="to_order_analysis">2 Order</option>
+                                    <option value="mip" selected>MIP</option>
+                                    <option value="r2s">R2S</option>
+                                </select>
+                            </div>
+
                             <!-- 💰 Advance + Pending Summary -->
                             <div id="advance-total-wrapper" style="display: none;">
                                 <div id="advance-total-display" class="py-1 px-2 rounded shadow-sm d-inline-flex align-items-center gap-2 flex-wrap"
@@ -184,17 +188,41 @@
                                     <option value="red">red <span id="redCount"></span></option>
                                 </select>
                             </div>
-
-                            <!-- Other Stats -->
-                            <div class="py-1 px-3 bg-dark rounded shadow-sm d-inline-flex align-items-center gap-2 text-white fw-bold fs-6 border border-light">
-                                <span>Total Amount: <span id="total-amount">0</span></span>
-                            </div>
-                            <div class="py-1 px-3 bg-info rounded shadow-sm d-inline-flex align-items-center gap-2 text-white fw-bold fs-6 border border-light">
-                                <span>Total Ord. Qty: <span id="total-order-qty">0</span></span>
-                            </div>
-                            <div class="py-1 px-3 rounded shadow-sm d-inline-flex align-items-center gap-2 text-white fw-bold fs-6 border border-light" 
-                                style="background: #23979b;">
-                                <span>Total CBM: <span id="total-cbm">0</span></span>
+                        </div>
+                        
+                        <!-- Combined Stats Box - Outside inner flex to prevent wrapping -->
+                        <div class="col-auto">
+                            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); min-width: 320px;">
+                                <div class="card-body p-3">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <div class="text-center flex-fill">
+                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                💰 Total Amount
+                                            </div>
+                                            <div id="total-amount" class="fw-bold text-dark" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                                0
+                                            </div>
+                                        </div>
+                                        <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                                        <div class="text-center flex-fill">
+                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                📦 Total Ord. Qty
+                                            </div>
+                                            <div id="total-order-qty" class="fw-bold text-info" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                                0
+                                            </div>
+                                        </div>
+                                        <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                                        <div class="text-center flex-fill">
+                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                📊 Total CBM
+                                            </div>
+                                            <div id="total-cbm" class="fw-bold text-success" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                                0
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -205,7 +233,7 @@
                         <thead>
                             <tr>
                                 <th data-column="1">Image<div class="resizer"></div></th>
-                                <th data-column="2">
+                                <th data-column="2" hidden>
                                     Parent
                                     <div class="resizer"></div>
                                     <input type="text" class="form-control column-search" data-search-column="2" placeholder="Search Parent..." style="margin-top:4px; font-size:12px; height:28px;">
@@ -217,9 +245,10 @@
                                     <input type="text" class="form-control column-search" data-search-column="3" placeholder="Search SKU..." style="margin-top:4px; font-size:12px; height:28px; width: 150px;">
                                     <div class="search-results" data-results-column="3" style="position:relative; z-index:10;"></div>
                                 </th>
+                                <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">Order<br/>QTY<div class="resizer"></div></th>
-                                <th data-column="5">Rate<div class="resizer"></div></th>
-                                <th data-column="6" class="text-center">Supplier<div class="resizer"></div></th>
+                                <th data-column="5" hidden>Rate<div class="resizer"></div></th>
+                                <th data-column="6" class="text-center" style="width: 70px; min-width: 70px; max-width: 70px;">Supplier<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
@@ -228,7 +257,7 @@
                                 <th data-column="11">Del<br/>Date<div class="resizer"></div></th>
                                 {{-- <th data-column="12">O Links<div class="resizer"></div></th> --}}
                                 <th data-column="12" hidden>value<div class="resizer"></div></th>
-                                <th data-column="13">Payment<br/>Pending<div class="resizer"></div></th>
+                                <th data-column="13" hidden>Payment<br/>Pending<div class="resizer"></div></th>
                                 {{-- <th data-column="15">photo<br/>packing<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="16">photo int.<br/>sale<div class="resizer"></div></th> --}}
                                 <th data-column="14">CBM<div class="resizer"></div></th>
@@ -236,15 +265,16 @@
                                 {{-- <th data-column="19" class="text-center">BARCODE<br/>&<br/>SKU<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="20">artwork<br/>&<br/>maual<br/>book<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="21">notes<div class="resizer"></div></th> --}}
-                                <th data-column="16">Ready to<br/>ship<div class="resizer"></div></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach ($data as $item)
                                 @php
                                     $readyToShip = $item->ready_to_ship ?? '';
+                                    $stageValue = $item->stage ?? '';
                                 @endphp
                                 @continue($readyToShip === 'Yes')
+                                @continue($stageValue !== 'mip')
                                 <tr>
                                     <td data-column="1">
                                         @if(!empty($item->Image))
@@ -253,31 +283,61 @@
                                             <span class="text-muted">No</span>
                                         @endif
                                     </td>
-                                    <td data-column="2" class="text-center">
+                                    <td data-column="2" class="text-center" hidden>
                                         {{ $item->parent ?? '' }}
                                     </td>
                                     <td data-column="3" class="text-center">
-                                        <span class="sku-short" style="cursor:pointer;">
-                                            {{ \Illuminate\Support\Str::limit($item->sku ?? '', 10) }}
-                                        </span>
-                                        <span class="sku-full d-none" id="sku-full">{{ $item->sku ?? '' }}</span>
+                                        {{ $item->sku ?? '' }}
                                     </td>
-                                    <td data-column="4" data-qty="{{ $item->qty ?? 0 }}" style="text-align: end;">{{ $item->qty }}</td>
-                                    <td data-column="5">
+                                    <td data-column="17" class="text-center">
+                                        @php
+                                            $stageValue = $item->stage ?? '';
+                                            $bgColor = '#fff';
+                                            if ($stageValue === 'to_order_analysis') {
+                                                $bgColor = '#ffc107'; // Yellow
+                                            } elseif ($stageValue === 'mip') {
+                                                $bgColor = '#ADD8E6'; // Light Blue
+                                            } elseif ($stageValue === 'r2s') {
+                                                $bgColor = '#90EE90'; // Light Green
+                                            }
+                                        @endphp
+                                        <select class="form-select form-select-sm editable-select-stage" 
+                                            data-type="Stage"
+                                            data-sku="{{ $item->sku }}"
+                                            data-parent="{{ $item->parent ?? '' }}"
+                                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
+                                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
+                                                background-color: {{ $bgColor }}; color: #000;">
+                                            <option value="">Select</option>
+                                            <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                            <option value="mip" {{ $stageValue === 'mip' ? 'selected' : '' }}>MIP</option>
+                                            <option value="r2s" {{ $stageValue === 'r2s' ? 'selected' : '' }}>R2S</option>
+                                        </select>
+                                    </td>
+                                    <td data-column="4" data-qty="{{ $item->qty ?? 0 }}" style="text-align: end; background-color: #e9ecef;">
+                                        <input type="number" 
+                                            value="{{ $item->qty ?? 0 }}" 
+                                            readonly
+                                            style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed; border: none;"
+                                            class="form-control form-control-sm">
+                                    </td>
+                                    <td data-column="5" hidden>
                                         <div class="input-group input-group-sm" style="width:105px;">
-                                            <span class="input-group-text" style="padding: 0 6px;">
-                                                <select data-sku="{{ $item->sku }}" data-column="rate_currency" class="form-select form-select-sm currency-select auto-save" style="border: none; background: transparent; font-size: 13px; padding: 0 2px;">
-                                                    <option value="USD" {{ ($item->rate_currency ?? '') == 'USD' ? 'selected' : '' }}>$</option>
-                                                    <option value="CNY" {{ ($item->rate_currency ?? '') == 'CNY' ? 'selected' : '' }}>¥</option>
-                                                </select>
+                                            <span class="input-group-text" style="padding: 0 6px; background: #e9ecef;">
+                                                <span style="font-size: 13px; color: #6c757d;">
+                                                    {{ ($item->currency_from_po ?? $item->rate_currency ?? 'USD') == 'USD' ? '$' : '¥' }}
+                                                </span>
                                             </span>
-                                            <input data-sku="{{ $item->sku }}" data-column="rate" type="number" value="{{ $item->rate ?? '' }}" 
-                                                class="form-control form-control-sm amount-input auto-save" style="background: #f9f9f9; font-size: 13px;" />
+                                            <input data-sku="{{ $item->sku }}" data-column="rate" type="text" 
+                                                value="{{ $item->price_from_po ?? $item->rate ?? '' }}" 
+                                                class="form-control form-control-sm" 
+                                                style="background: #f9f9f9; font-size: 13px; cursor: not-allowed;" 
+                                                readonly />
                                         </div>
                                     </td>
 
-                                    <td data-column="6" class="text-center">
-                                        <input type="text" class="form-control form-control-sm auto-save" data-sku="{{ $item->sku }}" data-column="supplier" value="{{ $item->supplier ?? '' }}" placeholder="supplier">
+                                    <td data-column="6" class="text-center" style="width: 70px; min-width: 70px; max-width: 70px;">
+                                        <span style="font-size: 12px;">{{ \Illuminate\Support\Str::limit($item->supplier ?? '', 10) }}</span>
                                     </td>
                                     <td data-column="7" hidden>
                                         @php
@@ -325,23 +385,25 @@
                                         if (!empty($item->created_at)) {
                                             $daysDiff = \Carbon\Carbon::parse($item->created_at)->diffInDays(\Carbon\Carbon::today());
 
-                                            if ($daysDiff > 45) {
-                                                $bgColor = 'background-color: red; color: white;';
-                                            } elseif ($daysDiff > 30) {
+                                            if ($daysDiff > 25) {
+                                                $bgColor = 'background-color: red; color: black;';
+                                            } elseif ($daysDiff >= 15 && $daysDiff <= 25) {
                                                 $bgColor = 'background-color: yellow; color: black;';
-                                            }else{
-                                                $bgColor = 'background-color: green; color: white;';
+                                            } else {
+                                                $bgColor = 'color: black;';
                                             }
                                         }
                                     @endphp
                                     <td data-column="10">
-                                        <input type="date" data-sku="{{ $item->sku }}" data-column="created_at" value="{{ !empty($item->created_at) ? \Carbon\Carbon::parse($item->created_at)->format('Y-m-d') : '' }}" 
-                                        class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px; {{ $bgColor }}">
-                                        @if ($daysDiff !== null)
-                                            <small style="font-size: 12px; color: rgb(72, 69, 69);">
-                                                {{ $daysDiff }} days ago
-                                            </small>
-                                        @endif
+                                        <div style="display: flex; align-items: center; gap: 4px;">
+                                            <input type="date" data-sku="{{ $item->sku }}" data-column="created_at" value="{{ !empty($item->created_at) ? \Carbon\Carbon::parse($item->created_at)->format('Y-m-d') : '' }}" 
+                                            class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px; {{ $bgColor }}">
+                                            @if ($daysDiff !== null)
+                                                <span style="font-size: 12px; color: rgb(72, 69, 69); white-space: nowrap;">
+                                                    {{ $daysDiff }} D
+                                                </span>
+                                            @endif
+                                        </div>
                                     </td>
                                     <td data-column="11">
                                         <input type="date" data-sku="{{ $item->sku }}" data-column="del_date" 
@@ -369,7 +431,7 @@
                                     <td class="total-value d-none" data-column="12">
                                         {{ is_numeric($item->qty ?? null) && is_numeric($item->rate ?? null) ? ($item->qty * $item->rate) : '' }}
                                     </td>
-                                    <td data-column="13">
+                                    <td data-column="13" hidden>
                                         @php
                                             $supplier = $item->supplier ?? '';
                                             $grouped = collect($data)->where('supplier', $supplier);
@@ -460,12 +522,6 @@
                                         <input type="text" class="form-control form-control-sm auto-save" data-sku="{{ $item->sku }}" data-column="notes" value="{{ $item->notes ?? '' }}" style="font-size: 13px;" placeholder="Notes">
                                     </td> --}}
 
-                                    <td data-column="16">
-                                        <select class="form-select form-select-sm auto-save" data-sku="{{ $item->sku }}" data-column="ready_to_ship" style="width: 75px;">
-                                            <option value="No" {{ $item->ready_to_ship == 'No' ? 'selected' : '' }}>No</option>
-                                            <option value="Yes" {{ $item->ready_to_ship == 'Yes' ? 'selected' : '' }}>Yes</option>
-                                        </select>
-                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -519,6 +575,12 @@
         // Inline Auto-Save
         setupAutoSave();
 
+        // Stage Update Handler
+        setupStageUpdate();
+
+        // Stage Filter
+        setupStageFilter();
+
         // Currency Conversion
         setupCurrencyConversion();
 
@@ -536,6 +598,13 @@
 
         //total amount
         calculateTotalAmount();
+
+        // Apply stage filter on page load
+        setTimeout(() => {
+            if (document.getElementById('stage-filter')) {
+                applyStageFilter();
+            }
+        }, 100);
 
         // ========= FUNCTIONS ========= //
 
@@ -561,21 +630,6 @@
                     if (newWidth > 80) {
                         th.style.width = th.style.minWidth = th.style.maxWidth = newWidth + 'px';
 
-                        if (th.dataset.column === "3") { 
-                            const cells = document.querySelectorAll('td[data-column="3"]');
-                            cells.forEach(cell => {
-                                const shortSpan = cell.querySelector('.sku-short');
-                                const fullSpan = cell.querySelector('.sku-full');
-
-                                if (newWidth > 200) { 
-                                    shortSpan.classList.add("d-none");
-                                    fullSpan.classList.remove("d-none");
-                                } else { 
-                                    fullSpan.classList.add("d-none");
-                                    shortSpan.classList.remove("d-none");
-                                }
-                            });
-                        }
                     }
                 }
 
@@ -587,17 +641,17 @@
                 }
             }
 
-            function saveColumnWidths() {
-                const widths = {};
-                document.querySelectorAll('.wide-table thead th').forEach(th => {
-                    const col = th.getAttribute('data-column');
-                    widths[col] = th.offsetWidth;
-                });
-                localStorage.setItem('columnWidths', JSON.stringify(widths));
-            }
+        function saveColumnWidths() {
+            const widths = {};
+            document.querySelectorAll('.wide-table thead th').forEach(th => {
+                const col = th.getAttribute('data-column');
+                widths[col] = th.offsetWidth;
+            });
+            localStorage.setItem('columnWidths_mfrg', JSON.stringify(widths));
+        }
 
-            function restoreColumnWidths() {
-                const widths = JSON.parse(localStorage.getItem('columnWidths') || '{}');
+        function restoreColumnWidths() {
+            const widths = JSON.parse(localStorage.getItem('columnWidths_mfrg') || '{}');
                 Object.keys(widths).forEach(col => {
                     const th = document.querySelector(`.wide-table thead th[data-column="${col}"]`);
                     if (th) {
@@ -649,11 +703,11 @@
             });
 
             function saveHiddenColumns(hidden) {
-                localStorage.setItem('hiddenColumns', JSON.stringify(hidden));
+                localStorage.setItem('hiddenColumns_mfrg', JSON.stringify(hidden));
             }
 
             function getHiddenColumns() {
-                return JSON.parse(localStorage.getItem('hiddenColumns') || '[]');
+                return JSON.parse(localStorage.getItem('hiddenColumns_mfrg') || '[]');
             }
 
             const hiddenColumns = getHiddenColumns();
@@ -795,10 +849,10 @@
 
                             // ✅ Insert into Ready to Ship table
                             if (column === 'ready_to_ship' && value === 'Yes') {
-                                const parent = row.querySelector('td:nth-child(2)')?.innerText?.trim() || '';
-                                const skuVal = row.querySelector('#sku-full')?.innerText?.trim() || '';
-                                const supplier = row.querySelector('td[data-column="6"] input')?.value?.trim() || '';
-                                const qty = row.querySelector('td:nth-child(4)')?.innerText?.trim() || '';
+                                const parent = row.querySelector('td[data-column="2"]')?.innerText?.trim() || '';
+                                const skuVal = row.querySelector('td[data-column="3"]')?.innerText?.trim() || '';
+                                const supplier = row.querySelector('td[data-column="6"] span')?.textContent?.trim() || '';
+                                const qty = row.querySelector('td[data-column="4"]')?.innerText?.trim() || '';
                                 const totalCbm = row.querySelector('td[data-column="15"] input')?.value?.trim() || '';
                                 const rate = row.querySelector('td[data-column="5"] input')?.value?.trim() || '';                                
 
@@ -840,6 +894,108 @@
                         alert('❌ AJAX error occurred.');
                     });
                 });
+            });
+        }
+
+        // Reusable AJAX call for forecast data updates
+        function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
+            fetch('/update-forecast-data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    onSuccess();
+                } else {
+                    onFail();
+                }
+            })
+            .catch(err => {
+                console.error('AJAX failed:', err);
+                alert('Error saving data.');
+                onFail();
+            });
+        }
+
+        function setupStageUpdate() {
+            document.querySelectorAll('.editable-select-stage').forEach(function(select) {
+                select.addEventListener('change', function() {
+                    const sku = this.dataset.sku;
+                    const parent = this.dataset.parent;
+                    const value = this.value.trim();
+
+                    // Update background color immediately
+                    let bgColor = '#fff';
+                    if (value === 'to_order_analysis') {
+                        bgColor = '#ffc107'; // Yellow
+                    } else if (value === 'mip') {
+                        bgColor = '#ADD8E6'; // Light Blue
+                    } else if (value === 'r2s') {
+                        bgColor = '#90EE90'; // Light Green
+                    }
+                    this.style.backgroundColor = bgColor;
+                    this.style.color = '#000';
+
+                    // Get order_qty for validation
+                    const row = this.closest('tr');
+                    const qtyCell = row.querySelector('td[data-column="4"] input');
+                    const orderQty = qtyCell ? parseFloat(qtyCell.value) : 0;
+
+                    if (!orderQty || orderQty === 0) {
+                        alert("Order Qty cannot be empty or zero.");
+                        this.value = '';
+                        this.style.backgroundColor = '#fff';
+                        return;
+                    }
+
+                    updateForecastField({
+                        sku: sku,
+                        parent: parent,
+                        column: 'Stage',
+                        value: value
+                    }, function() {
+                        // Success - color already updated
+                    }, function() {
+                        alert('Failed to save Stage.');
+                        // Revert color
+                        this.style.backgroundColor = '#fff';
+                    });
+                });
+            });
+        }
+
+        function setupStageFilter() {
+            const stageFilter = document.getElementById('stage-filter');
+            if (!stageFilter) return;
+
+            // Set default to "MIP"
+            stageFilter.value = 'mip';
+            applyStageFilter();
+
+            stageFilter.addEventListener('change', function() {
+                applyStageFilter();
+            });
+        }
+
+        function applyStageFilter() {
+            const stageFilter = document.getElementById('stage-filter');
+            const selectedStage = stageFilter ? stageFilter.value.toLowerCase().trim() : '';
+            const rows = document.querySelectorAll('.wide-table tbody tr');
+
+            rows.forEach(row => {
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+
+                if (!selectedStage || rowStage === selectedStage) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
             });
         }
 
@@ -1007,9 +1163,15 @@
                 let matchingRows = [];
                 allRows.forEach(row => {
                     const supplierCell = row.querySelector('td[data-column="6"]');
-                    if (supplierCell && supplierCell.textContent.trim().toLowerCase() === selectedSupplier.toLowerCase()) {
-                        row.style.display = '';
-                        matchingRows.push(row);
+                    if (supplierCell) {
+                        const supplierSpan = supplierCell.querySelector('span');
+                        const supplierName = supplierSpan ? supplierSpan.textContent.trim() : supplierCell.textContent.trim();
+                        if (supplierName.toLowerCase() === selectedSupplier.toLowerCase()) {
+                            row.style.display = '';
+                            matchingRows.push(row);
+                        } else {
+                            row.style.display = 'none';
+                        }
                     } else {
                         row.style.display = 'none';
                     }
@@ -1136,20 +1298,6 @@
             });
         }
 
-        document.querySelectorAll('.sku-short').forEach(el => {
-            el.addEventListener('click', function () {
-                const shortSpan = this;
-                const fullSpan = this.nextElementSibling;
-
-                shortSpan.classList.add("d-none");
-                fullSpan.classList.remove("d-none");
-
-                fullSpan.addEventListener('click', function () {
-                    fullSpan.classList.add("d-none");
-                    shortSpan.classList.remove("d-none");
-                }, { once: true });
-            });
-        });
 
         // document.getElementById('play-auto').addEventListener('click', () => {
         //     isPlaying = true;
@@ -1198,7 +1346,9 @@
         rows.forEach(row => {
             const supplierCell = row.querySelector('td[data-column="6"]');
             if (supplierCell) {
-                const supplierName = supplierCell.textContent.trim();
+                // Get supplier from span, not input field
+                const supplierSpan = supplierCell.querySelector('span');
+                const supplierName = supplierSpan ? supplierSpan.textContent.trim() : supplierCell.textContent.trim();
                 if (supplierName && !suppliers.includes(supplierName)) {
                     suppliers.push(supplierName);
                 }
@@ -1208,8 +1358,15 @@
         function showSupplierRows(supplier) {
             rows.forEach(row => {
                 const cell = row.querySelector('td[data-column="6"]');
-                if (cell && cell.textContent.trim() === supplier) {
-                    row.style.display = "";
+                if (cell) {
+                    // Get supplier from span, not input field
+                    const supplierSpan = cell.querySelector('span');
+                    const supplierName = supplierSpan ? supplierSpan.textContent.trim() : cell.textContent.trim();
+                    if (supplierName === supplier) {
+                        row.style.display = "";
+                    } else {
+                        row.style.display = "none";
+                    }
                 } else {
                     row.style.display = "none";
                 }
@@ -1229,9 +1386,35 @@
             showSupplierRows(suppliers[supplierIndex]);
         }
 
+        // Function to refresh supplier list
+        function refreshSupplierList() {
+            suppliers.length = 0; // Clear existing list
+            rows.forEach(row => {
+                const supplierCell = row.querySelector('td[data-column="6"]');
+                if (supplierCell) {
+                    const supplierSpan = supplierCell.querySelector('span');
+                    const supplierName = supplierSpan ? supplierSpan.textContent.trim() : supplierCell.textContent.trim();
+                    if (supplierName && !suppliers.includes(supplierName)) {
+                        suppliers.push(supplierName);
+                    }
+                }
+            });
+            // Reset index if current supplier is no longer in list
+            if (supplierIndex >= suppliers.length) {
+                supplierIndex = 0;
+            }
+        }
+
         document.getElementById("play-auto").addEventListener("click", function () {
+            // Refresh supplier list before playing
+            refreshSupplierList();
+            if (suppliers.length === 0) {
+                alert("No suppliers found. Please add suppliers to rows.");
+                return;
+            }
             this.style.display = "none";
             document.getElementById("play-pause").style.display = "inline-block";
+            supplierIndex = 0; // Start from first supplier
             showSupplierRows(suppliers[supplierIndex]);
         });
 
@@ -1248,27 +1431,36 @@
 
 
         document.getElementById("play-forward").addEventListener("click", function () {
-            
-            playNextSupplier();
+            if (suppliers.length === 0) {
+                refreshSupplierList();
+            }
+            if (suppliers.length > 0) {
+                playNextSupplier();
+            }
         });
 
         document.getElementById("play-backward").addEventListener("click", function () {
-            
-            supplierIndex = (supplierIndex - 1 + suppliers.length) % suppliers.length;
-            showSupplierRows(suppliers[supplierIndex]);
+            if (suppliers.length === 0) {
+                refreshSupplierList();
+            }
+            if (suppliers.length > 0) {
+                supplierIndex = (supplierIndex - 1 + suppliers.length) % suppliers.length;
+                showSupplierRows(suppliers[supplierIndex]);
+            }
         });
 
         function updateCounts() {
             let green = 0, yellow = 0, red = 0;
 
             rows.forEach(row => {
-                const dateInput = row.querySelector('input[data-column="del_date"]');
+                // Check created_at (Order Date) field for background color, not del_date
+                const dateInput = row.querySelector('input[data-column="created_at"]');
                 if (!dateInput) return;
 
                 const bg = dateInput.style.backgroundColor.trim().toLowerCase();
-                if (bg === "green") green++;
-                else if (bg === "yellow") yellow++;
-                else if (bg === "red") red++;
+                if (bg === "green" || bg.includes("green")) green++;
+                else if (bg === "yellow" || bg.includes("yellow")) yellow++;
+                else if (bg === "red" || bg.includes("red")) red++;
             });
 
             greenSpan.textContent = `(${green})`;
@@ -1278,12 +1470,14 @@
 
         function filterDateRows(type) {
             rows.forEach(row => {
-                const dateInput = row.querySelector('input[data-column="del_date"]');
+                // Check created_at (Order Date) field for background color, not del_date
+                const dateInput = row.querySelector('input[data-column="created_at"]');
                 if (!dateInput) return;
 
                 const bg = dateInput.style.backgroundColor.trim().toLowerCase();
+                const bgColor = bg.includes("green") ? "green" : (bg.includes("yellow") ? "yellow" : (bg.includes("red") ? "red" : ""));
 
-                row.style.display = (!type || bg === type) ? "" : "none";
+                row.style.display = (!type || bgColor === type) ? "" : "none";
             });
 
             calculateTotalCBM();

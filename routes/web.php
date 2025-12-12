@@ -670,6 +670,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/supplier-ledger/get-balance', 'getSupplierBalance')->name('supplier.ledger.get-balance');
         Route::get('/supplier-ledger/list', 'fetchSupplierLedgerData');
         Route::post('/advance-payments/save', 'saveAdvancePayments')->name('advance.payments.save');
+        Route::put('/advance-payments/update', 'updateAdvancePayments')->name('advance.payments.update');
         Route::get('/advance-and-payments/data', 'getAdvancePaymentsData');
         Route::post('/advance-payments/delete', 'deleteAdvancePayments');
         Route::post('/supplier-ledger/delete', 'deleteSupplierLedger');
@@ -825,9 +826,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
+    Route::get('/amazon-sales-tabulator-view', action: [OverallAmazonController::class, 'amazonSalesTabulatorView'])->name('amazon.sales.tabulator.view');
+    Route::get('/amazon/shiphub-sales-data', [OverallAmazonController::class, 'getShiphubSalesData'])->name('amazon.shiphub.sales.data');
+    Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
+    Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
-    Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility']);
-    Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'setAmazonColumnVisibility']);
     Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
     Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice']);
@@ -1123,6 +1126,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shortfall.analysis', action: [ShortFallAnalysisController::class, 'shortFallAnalysis'])->name('shortfall.analysis');
     Route::get('/costprice.analysis', action: [CostpriceAnalysisController::class, 'costpriceAnalysis'])->name('costprice.analysis');
     Route::get('/forecast.analysis', action: [ForecastAnalysisController::class, 'forecastAnalysis'])->name('forecast.analysis');
+    Route::get('/approval.required', action: [ForecastAnalysisController::class, 'approvalRequired'])->name('approval.required');
 
     Route::get('/listing-master', action: [ListingManagerController::class, 'listingmaster'])->name('listing');
 
@@ -1486,6 +1490,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/aliexpress-analytics/export', [AliexpressController::class, 'exportAliexpressAnalytics'])->name('aliexpress.analytics.export');
     Route::get('/aliexpress-analytics/sample', [AliexpressController::class, 'downloadSample'])->name('aliexpress.analytics.sample');
 
+    // Aliexpress Daily Data routes
+    Route::post('/aliexpress/upload-daily-data', [AliexpressController::class, 'uploadDailyDataChunk'])->name('aliexpress.upload.daily.data');
+    Route::get('/aliexpress/daily-data', [AliexpressController::class, 'getDailyData'])->name('aliexpress.get.daily.data');
+    Route::get('/aliexpress-tabulator', [AliexpressController::class, 'aliexpressTabulatorView'])->name('aliexpress.tabulator.view');
+    Route::post('/aliexpress-column-visibility', [AliexpressController::class, 'saveAliexpressColumnVisibility'])->name('aliexpress.save.column.visibility');
+    Route::get('/aliexpress-column-visibility', [AliexpressController::class, 'getAliexpressColumnVisibility'])->name('aliexpress.get.column.visibility');
+
 
     // ebay variation
     Route::get('/zero-ebayvariation', [EbayVariationZeroController::class, 'ebayVariationZeroview'])->name('zero.ebayvariation');
@@ -1647,6 +1658,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shein-analytics/import', [SheinController::class, 'importSheinAnalytics'])->name('shein.analytics.import');
     Route::get('/shein-analytics/export', [SheinController::class, 'exportSheinAnalytics'])->name('shein.analytics.export');
     Route::get('/shein-analytics/sample', [SheinController::class, 'downloadSample'])->name('shein.analytics.sample');
+    
+    // Shein Daily Data routes
+    Route::post('/shein/upload-daily-data', [SheinController::class, 'uploadDailyDataChunk'])->name('shein.upload.daily.data');
+    Route::get('/shein/daily-data', [SheinController::class, 'getDailyData'])->name('shein.get.daily.data');
+    Route::get('/shein-tabulator', [SheinController::class, 'sheinTabulatorView'])->name('shein.tabulator.view');
+    Route::post('/shein-column-visibility', [SheinController::class, 'saveSheinColumnVisibility'])->name('shein.save.column.visibility');
+    Route::get('/shein-column-visibility', [SheinController::class, 'getSheinColumnVisibility'])->name('shein.get.column.visibility');
 
 
     //faire
@@ -2052,6 +2070,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(AmazonSpBudgetController::class)->group(function () {
         Route::get('/amazon-sp/amz-utilized-bgt-kw', 'amzUtilizedBgtKw')->name('amazon-sp.amz-utilized-bgt-kw');
         Route::get('/amazon-sp/get-amz-utilized-bgt-kw', 'getAmzUtilizedBgtKw');
+        Route::get('/amazon-sp/get-utilization-chart-data', 'getAmazonUtilizationChartData');
+        Route::get('/amazon-sp/get-utilization-counts', 'getAmazonUtilizationCounts');
         Route::post('/update-amazon-sp-bid-price', 'updateAmazonSpBidPrice');
         Route::put('/update-keywords-bid-price', 'updateCampaignKeywordsBid');
 
@@ -2188,9 +2208,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::controller(AmazonACOSController::class)->group(function () {
-        Route::get('/amazon-acos-control/data', 'index')->name('amazon.acos.index');
-        Route::get('/amazon-acos-data', 'getAmzonAcOSData');
-
         Route::get('/amazon-acos-kw-control', 'amazonAcosKwControl')->name('amazon.acos.kw.control');
         Route::get('/amazon-acos-kw-control-data', 'amazonAcosKwControlData')->name('amazon.acos.kw.control.data');
         Route::get('/amazon-acos-hl-control', 'amazonAcosHlControl')->name('amazon.acos.hl.control');
@@ -2199,6 +2216,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-acos-pt-control-data', 'amazonAcosPtControlData')->name('amazon.acos.pt.control.data');
 
         Route::put('/update-amazon-campaign-bgt-price', 'updateAmazonCampaignBgt');
+        Route::post('/toggle-amazon-sp-campaign-status', 'toggleAmazonSpCampaignStatus');
+        Route::post('/toggle-amazon-sb-campaign-status', 'toggleAmazonSbCampaignStatus');
         Route::put('/update-amazon-sb-campaign-bgt-price', 'updateAmazonSbCampaignBgt');
     });
 
@@ -2534,6 +2553,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('fba-column-visibility', 'getFbaColumnVisibility');
         Route::post('fba-column-visibility', 'setFbaColumnVisibility');
         Route::get('fba-metrics-history', 'getMetricsHistory');
+        Route::post('update-fba-listing-status', 'updateFbaListingStatus');
 
     });
     Route::controller(FBAAnalysticsController::class)->group(function () {

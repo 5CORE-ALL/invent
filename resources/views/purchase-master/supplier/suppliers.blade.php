@@ -1,8 +1,5 @@
 @extends('layouts.vertical', ['title' => 'Suppliers', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
-@section('content')
-@include('layouts.shared.page-title', ['page_title' => 'Suppliers', 'sub_title' => 'Suppliers'])
-
 @section('css')
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
@@ -20,6 +17,9 @@
         }
     </style>
 @endsection
+
+@section('content')
+@include('layouts.shared.page-title', ['page_title' => 'Suppliers', 'sub_title' => 'Suppliers'])
 
 @if(Session::has('flash_message'))
 <div class="alert alert-primary bg-primary text-white alert-dismissible fade show" role="alert" style="background-color: #169e28 !important; color: #fff !important;">
@@ -127,6 +127,7 @@
                                 <th>Name</th>
                                 <th>Company</th>
                                 <th>Parents</th>
+                                <th>Zone</th>
                                 <th>Phone</th>
                                 <th>Rating</th>
                                 <th>Email</th>
@@ -137,7 +138,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @include('purchase-master.supplier.partials.rows', ['suppliers' => $suppliers])
+                            @include('purchase-master.supplier.partials.rows', ['suppliers' => $suppliers, 'categories' => $categories])
                         </tbody>
                     </table>
                 </div>
@@ -205,8 +206,18 @@
 <div class="modal fade" id="addSupplierModal" tabindex="-1" aria-labelledby="supplierModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
         <div class="modal-content border-0 shadow-lg">
-            <form method="POST" action="{{ route('supplier.create') }}" class="needs-validation" novalidate>
+            <form method="POST" action="{{ route('supplier.create') }}" class="needs-validation" novalidate id="addSupplierForm">
                 @csrf
+                
+                @if ($errors->any())
+                    <div class="alert alert-danger m-3">
+                        <ul class="mb-0">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title fw-bold" id="supplierModalLabel">
                         <i class="mdi mdi-account-plus me-2"></i> Add Supplier
@@ -245,8 +256,8 @@
                         </div>
                         <div class="col-md-12">
                             <label class="form-label fw-semibold">Parents</label>
-                            <input type="text" name="parent" class="form-control" placeholder="Use commas to separate multiple Parents (e.g., TV-BOX, CAMERA)" required>
-                            <small class="text-danger">Separate multiple parents with commas</small>
+                            <input type="text" name="parent" class="form-control" placeholder="Use commas to separate multiple Parents (e.g., TV-BOX, CAMERA)">
+                            <small class="text-muted">Separate multiple parents with commas</small>
                         </div>
                         <div class="col-md-6">
                             <div class="row">
@@ -256,13 +267,22 @@
                                 </div>
                                 <div class="col-md-8">
                                     <label class="form-label fw-semibold">Phone</label>
-                                    <input type="number" name="phone" class="form-control" placeholder="Phone Number">
+                                    <input type="text" name="phone" class="form-control" placeholder="Phone Number">
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">City</label>
                             <input type="text" name="city" class="form-control" placeholder="City">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Zone</label>
+                            <select name="zone" class="form-select">
+                                <option value="">Select Zone</option>
+                                <option value="GHZ">GHZ</option>
+                                <option value="Ningbo">Ningbo</option>
+                                <option value="Tianjin">Tianjin</option>
+                            </select>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Email</label>
@@ -396,7 +416,7 @@
 @endsection
 
 @section('script')
-    <script src="https://cdn.jsdelivr.net/npm/jquery@3.5.0/dist/jquery.slim.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
     <script>
@@ -432,13 +452,186 @@
             });
         });
 
-        $(document).ready(function () {
-            $('.select2').select2({
-                theme: 'bootstrap-5',
-                width: '100%',
-                placeholder: function () {
-                    return $(this).data('placeholder');
+        // Initialize Select2 for all select2 elements
+        function initSelect2(container) {
+            const scope = container || document;
+            $(scope).find('.select2').each(function() {
+                if (!$(this).hasClass('select2-hidden-accessible')) {
+                    const $select = $(this);
+                    const $modal = $select.closest('.modal');
+                    
+                    // Get selected values from HTML options before initializing Select2
+                    const selectedValues = [];
+                    $select.find('option:selected').each(function() {
+                        const val = $(this).val();
+                        if (val && val !== '') {
+                            selectedValues.push(val);
+                        }
+                    });
+                    
+                    // Check if this is a category select
+                    const isCategorySelect = $select.attr('name') === 'category_id[]';
+                    const optionCount = $select.find('option').length;
+                    
+                    if (isCategorySelect) {
+                        console.log('Initializing category Select2 - Options count:', optionCount);
+                    }
+                    
+                    $select.select2({
+                        theme: 'bootstrap-5',
+                        width: '100%',
+                        placeholder: function () {
+                            return $select.data('placeholder') || 'Select...';
+                        },
+                        dropdownParent: $modal.length ? $modal : $(document.body),
+                        allowClear: false
+                    });
+                    
+                    // Ensure selected values are set after initialization
+                    if (selectedValues.length > 0) {
+                        // Set the value in Select2
+                        $select.val(selectedValues).trigger('change');
+                        
+                        // Also ensure the underlying select options are marked as selected
+                        // This is important for form submission
+                        $select.find('option').prop('selected', false);
+                        selectedValues.forEach(function(val) {
+                            $select.find('option[value="' + val + '"]').prop('selected', true);
+                        });
+                    }
+                    
+                    if (isCategorySelect) {
+                        console.log('Category Select2 initialized - Is accessible:', $select.hasClass('select2-hidden-accessible'));
+                    }
                 }
+            });
+        }
+
+        $(document).ready(function () {
+            // Initialize Select2 on page load
+            initSelect2();
+            
+            // Initialize Select2 when edit modal is shown
+            $(document).on('shown.bs.modal', '[id^="editSupplierModal"]', function() {
+                const modal = $(this);
+                // Small delay to ensure DOM is ready and Bootstrap modal animation completes
+                setTimeout(function() {
+                    // Destroy existing Select2 instances in this modal first
+                    modal.find('.select2').each(function() {
+                        if ($(this).hasClass('select2-hidden-accessible')) {
+                            $(this).select2('destroy');
+                        }
+                    });
+                    // Then initialize fresh
+                    initSelect2(modal[0]);
+                }, 150);
+            });
+            
+            // Initialize Select2 when add modal is shown
+            $('#addSupplierModal').on('shown.bs.modal', function() {
+                const modal = $(this);
+                // Small delay to ensure DOM is ready and Bootstrap modal animation completes
+                setTimeout(function() {
+                    // Destroy existing Select2 instances in this modal first
+                    modal.find('.select2').each(function() {
+                        if ($(this).hasClass('select2-hidden-accessible')) {
+                            $(this).select2('destroy');
+                        }
+                    });
+                    // Then initialize fresh
+                    initSelect2(modal[0]);
+                    
+                    // Debug: Check if category select was initialized
+                    const categorySelect = modal.find('select[name="category_id[]"]');
+                    console.log('Add Modal - Category select found:', categorySelect.length);
+                    console.log('Add Modal - Is Select2 initialized:', categorySelect.hasClass('select2-hidden-accessible'));
+                    console.log('Add Modal - Options count:', categorySelect.find('option').length);
+                }, 150);
+            });
+            
+            // Reset form when add modal is closed
+            $('#addSupplierModal').on('hidden.bs.modal', function() {
+                const modal = $(this);
+                // Destroy Select2 instances before reset
+                modal.find('.select2').each(function() {
+                    if ($(this).hasClass('select2-hidden-accessible')) {
+                        $(this).select2('destroy');
+                    }
+                });
+                // Reset form
+                modal.find('form')[0].reset();
+            });
+            
+            // Handle form submission with validation
+            $(document).on('submit', 'form[action="{{ route('supplier.create') }}"]', function(e) {
+                const form = $(this);
+                const formElement = form[0]; // Get native form element
+                
+                // Use FormData as the source of truth - this is what will actually be submitted
+                const formData = new FormData(formElement);
+                const formDataCategories = formData.getAll('category_id[]');
+                
+                // Filter out empty/null/undefined values
+                const finalCategories = formDataCategories.filter(function(val) {
+                    return val != null && val !== '' && val !== undefined;
+                });
+                
+                // Debug: Log what we found
+                console.log('=== Category Validation Debug ===');
+                console.log('FormData categories (raw):', formDataCategories);
+                console.log('FormData categories length:', formDataCategories.length);
+                console.log('Filtered categories:', finalCategories);
+                console.log('Filtered categories length:', finalCategories.length);
+                console.log('Will block submission?', finalCategories.length === 0);
+                
+                // Validate category selection - use FormData as primary check
+                // ONLY block if FormData has NO valid categories
+                if (finalCategories.length === 0) {
+                    console.log('❌ BLOCKING: No categories found in FormData');
+                    e.preventDefault();
+                    alert('Please select at least one category.');
+                    // Try to find and focus the category select
+                    const categorySelect = form.find('select[name="category_id[]"]');
+                    if (categorySelect.length > 0) {
+                        if (categorySelect.hasClass('select2-hidden-accessible')) {
+                            categorySelect.select2('open');
+                        } else {
+                            categorySelect.focus();
+                        }
+                    }
+                    return false;
+                } else {
+                    console.log('✅ ALLOWING: Categories found in FormData:', finalCategories);
+                    // Categories are valid, continue with other validations
+                }
+                
+                // Validate type - use FormData
+                const typeValue = formData.get('type');
+                console.log('Type value from FormData:', typeValue);
+                if (!typeValue || typeValue === '' || typeValue === null) {
+                    e.preventDefault();
+                    alert('Please select a type.');
+                    const typeSelect = form.find('select[name="type"]');
+                    if (typeSelect.length > 0) {
+                        typeSelect.focus();
+                    }
+                    return false;
+                }
+                
+                // Validate name - use FormData
+                const nameValue = formData.get('name');
+                console.log('Name value from FormData:', nameValue);
+                if (!nameValue || !nameValue.trim()) {
+                    e.preventDefault();
+                    alert('Please enter supplier name.');
+                    const nameInput = form.find('input[name="name"]');
+                    if (nameInput.length > 0) {
+                        nameInput.focus();
+                    }
+                    return false;
+                }
+                
+                console.log('✅ All validations passed - submitting form');
             });
 
             let searchTimer;

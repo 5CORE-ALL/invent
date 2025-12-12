@@ -109,6 +109,16 @@
                                     <option value="Tianjin">Tianjin</option>
                                 </select>
                             </div>
+                            <!-- Stage Filter -->
+                            <div class="col-auto">
+                                <label class="form-label fw-semibold mb-1 d-block">🎯 Stage</label>
+                                <select id="stage-filter" class="form-select form-select-sm" style="min-width: 160px;">
+                                    <option value="">All Stages</option>
+                                    <option value="to_order_analysis">2 Order</option>
+                                    <option value="mip">MIP</option>
+                                    <option value="r2s" selected>R2S</option>
+                                </select>
+                            </div>
                             <div class="custom-select-wrapper" style="min-width: 220px; position: relative;">
                                 <div class="custom-select-box d-flex align-items-center justify-content-between" id="customSelectBox"
                                     style="border: 1.5px solid #e0e6ed; border-radius: 7px; background: #fff; height: 38px; padding: 0 14px; cursor: pointer; min-width: 220px; box-shadow: 0 1px 4px rgba(60,192,195,0.07); transition: border-color 0.2s;">
@@ -167,7 +177,7 @@
                                 <th data-column="7" data-column-name="area">ZONE<div class="resizer"></div>
                                 </th>
                                 <th data-column="1">Image<div class="resizer"></div></th>
-                                <th data-column="2">
+                                <th data-column="2" hidden>
                                     Parent
                                     <div class="resizer"></div>
                                     <input type="text" class="form-control column-search" data-search-column="2"
@@ -185,26 +195,27 @@
                                     <div class="search-results" data-results-column="3"
                                         style="position:relative; z-index:10;"></div>
                                 </th>
+                                <th data-column="21" data-column-name="stage" class="text-center">Stage<div class="resizer"></div></th>
                                 <th data-column="4" data-column-name="qty" class="text-center">Or. QTY<div class="resizer"></div></th>
                                 <th data-column="20" data-column-name="rec_qty" class="text-center">Rec. QTY<div class="resizer"></div></th>
-                                <th data-column="18" data-column-name="qty" class="text-center">Rate<div class="resizer"></div></th>
+                                <th data-column="18" data-column-name="qty" class="text-center" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="5" data-column-name="supplier">Supplier<div class="resizer"></div>
                                 </th>
-                                <th data-column="6" data-column-name="cbm">CBM<div class="resizer"></div>
+                                <th data-column="6" data-column-name="cbm" hidden>CBM<div class="resizer"></div>
                                 </th>
                                 <th data-column="19" data-column-name="total_cbm">Total CBM<div class="resizer"></div>
                                 </th>
-                                <th data-column="8" data-column-name="shipped_cbm_in_container">Balance<div
+                                <th data-column="8" data-column-name="shipped_cbm_in_container" hidden>Balance<div
                                         class="resizer"></div>
                                 </th>
-                                <th data-column="9" data-column-name="payment">Payment<div class="resizer"></div>
+                                <th data-column="9" data-column-name="payment" hidden>Payment<div class="resizer"></div>
                                 </th>
                                 <th data-column="10" data-column-name="pay_term">Pay<br/>Term<div class="resizer"></div>
                                 </th>
                                 <th data-column="11" data-column-name="payment_confirmation">Payment<br/>Confirmation<div
                                         class="resizer"></div>
                                 </th>
-                                <th data-column="12" data-column-name="model_number">Model<br/>Number<div class="resizer">
+                                <th data-column="12" data-column-name="model_number" hidden>Model<br/>Number<div class="resizer">
                                     </div>
                                 </th>
                                 <th data-column="13" data-column-name="photo_mail_send">Photo Mail<br/>Send<div
@@ -216,10 +227,10 @@
                                 <th data-column="15" data-column-name="packing_list">Packing<br/>List<div class="resizer">
                                     </div>
                                 </th>
-                                <th data-column="16" data-column-name="container_rfq">Container<br/>RFQ<div class="resizer">
+                                <th data-column="16" data-column-name="container_rfq" hidden>Container<br/>RFQ<div class="resizer">
                                     </div>
                                 </th>
-                                <th data-column="17" data-column-name="quote_result">Quote<br/>Result<div class="resizer">
+                                <th data-column="17" data-column-name="quote_result" hidden>Quote<br/>Result<div class="resizer">
                                     </div>
                                 </th>
                             </tr>
@@ -246,10 +257,39 @@
                                     @endif
                                 </td>
                                 
-                                <td data-column="2" class="text-center">{{ $item->parent }}</td>
+                                <td data-column="2" class="text-center" hidden>{{ $item->parent }}</td>
                                 <td data-column="3" class="text-center">{{ $item->sku }}</td>
-                                <td data-column="4" class="text-center">
-                                    {{ $item->qty }}
+                                <td data-column="21" class="text-center">
+                                    @php
+                                        $stageValue = $item->stage ?? '';
+                                        $bgColor = '#fff';
+                                        if ($stageValue === 'to_order_analysis') {
+                                            $bgColor = '#ffc107'; // Yellow
+                                        } elseif ($stageValue === 'mip') {
+                                            $bgColor = '#0d6efd'; // Blue
+                                        } elseif ($stageValue === 'r2s') {
+                                            $bgColor = '#198754'; // Green
+                                        }
+                                    @endphp
+                                    <select class="form-select form-select-sm editable-select-stage" 
+                                        data-type="Stage"
+                                        data-sku="{{ $item->sku }}"
+                                        data-parent="{{ $item->parent ?? '' }}"
+                                        style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
+                                            font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
+                                            background-color: {{ $bgColor }}; color: #000;">
+                                        <option value="">Select</option>
+                                        <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                        <option value="mip" {{ $stageValue === 'mip' ? 'selected' : '' }}>MIP</option>
+                                        <option value="r2s" {{ $stageValue === 'r2s' ? 'selected' : '' }}>R2S</option>
+                                    </select>
+                                </td>
+                                <td data-column="4" class="text-center" style="background-color: #e9ecef;">
+                                    <input type="number" 
+                                        value="{{ $item->qty }}" 
+                                        readonly
+                                        style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed; border: none;"
+                                        class="form-control form-control-sm">
                                 </td>
                                 <td data-column="20" class="text-center">
                                     <input type="number" 
@@ -261,7 +301,7 @@
                                            max="10000"
                                            style="font-size: 0.95rem; height: 36px; width: 90px;">
                                 </td>
-                                <td data-column="18">
+                                <td data-column="18" hidden>
                                     <input type="number" 
                                            class="form-control auto-save" 
                                            data-sku="{{ $item->sku }}" 
@@ -272,17 +312,20 @@
                                            style="font-size: 0.95rem; height: 36px; width: 90px;">
                                 </td>
                                 <td data-column="5">
-                                    @if(!empty($item->supplier_names))
-                                        {{ implode(', ', $item->supplier_names) }}
-                                    @else
-                                        <span class="text-muted">No supplier</span>
-                                    @endif
+                                    <select data-sku="{{ $item->sku }}" data-column="supplier" class="form-select form-select-sm auto-save" style="min-width: 150px; font-size: 13px;">
+                                        <option value="">Select supplier</option>
+                                        @foreach ($suppliers as $supplierName)
+                                            <option value="{{ $supplierName }}" {{ ($item->supplier ?? '') == $supplierName ? 'selected' : '' }}>
+                                                {{ $supplierName }}
+                                            </option>
+                                        @endforeach
+                                    </select>
                                 </td>
-                                <td data-column="6">{{ isset($item->CBM) && $item->CBM !== null ? number_format((float)$item->CBM, 4) : 'N/A' }}</td>
+                                <td data-column="6" hidden>{{ isset($item->CBM) && $item->CBM !== null ? number_format((float)$item->CBM, 4) : 'N/A' }}</td>
                                 <td data-column="19">{{ is_numeric($item->qty ?? null) && is_numeric($item->CBM ?? null) ? number_format($item->qty * $item->CBM, 2, '.', '') : '' }}</td>
                                 
-                                <td data-column="8">{{ $item->shipped_cbm_in_container }}</td>
-                                <td data-column="9">{{ $item->payment }}</td>
+                                <td data-column="8" hidden>{{ $item->shipped_cbm_in_container }}</td>
+                                <td data-column="9" hidden>{{ $item->payment }}</td>
                                 <td data-column="10">
                                     <select data-sku="{{ $item->sku }}" data-column="pay_term"
                                         class="form-select form-select-sm auto-save"
@@ -303,12 +346,12 @@
                                             '' }}>No</option>
                                     </select>
                                 </td>
-                                <td data-column="12">{{ $item->model_number }}</td>
+                                <td data-column="12" hidden>{{ $item->model_number }}</td>
                                 <td data-column="13">{{ $item->photo_mail_send }}</td>
                                 <td data-column="14">{{ $item->followup_delivery }}</td>
                                 <td data-column="15">{{ $item->packing_list }}</td>
-                                <td data-column="16">{{ $item->container_rfq }}</td>
-                                <td data-column="17">{{ $item->quote_result }}</td>
+                                <td data-column="16" hidden>{{ $item->container_rfq }}</td>
+                                <td data-column="17" hidden>{{ $item->quote_result }}</td>
                                  <td class="total-value d-none">
                                     {{ is_numeric($item->qty ?? null) && is_numeric($item->rate ?? null) ? ($item->qty * $item->rate) : '' }}
                                 </td>
@@ -341,11 +384,11 @@
                 const col = th.getAttribute('data-column');
                 widths[col] = th.offsetWidth;
             });
-            localStorage.setItem('columnWidths', JSON.stringify(widths));
+            localStorage.setItem('columnWidths_readyToShip', JSON.stringify(widths));
         }
 
         function restoreColumnWidths() {
-            const widths = JSON.parse(localStorage.getItem('columnWidths') || '{}');
+            const widths = JSON.parse(localStorage.getItem('columnWidths_readyToShip') || '{}');
             Object.keys(widths).forEach(columnIndex => {
                 const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
                 if (th) {
@@ -511,6 +554,143 @@
             });
         });
 
+        // Reusable AJAX call for forecast data updates
+        function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
+            fetch('/update-forecast-data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    onSuccess();
+                } else {
+                    onFail();
+                }
+            })
+            .catch(err => {
+                console.error('AJAX failed:', err);
+                alert('Error saving data.');
+                onFail();
+            });
+        }
+
+        // Stage Update Handler
+        function setupStageUpdate() {
+            document.querySelectorAll('.editable-select-stage').forEach(function(select) {
+                select.addEventListener('change', function() {
+                    const sku = this.dataset.sku;
+                    const parent = this.dataset.parent;
+                    const value = this.value.trim();
+
+                    // Update background color immediately
+                    let bgColor = '#fff';
+                    if (value === 'to_order_analysis') {
+                        bgColor = '#ffc107'; // Yellow
+                    } else if (value === 'mip') {
+                        bgColor = '#0d6efd'; // Blue
+                    } else if (value === 'r2s') {
+                        bgColor = '#198754'; // Green
+                    }
+                    this.style.backgroundColor = bgColor;
+                    this.style.color = '#000';
+
+                    // Get order_qty for validation
+                    const row = this.closest('tr');
+                    const qtyInput = row.querySelector('td[data-column="4"] input');
+                    const orderQty = qtyInput ? parseFloat(qtyInput.value) : 0;
+
+                    if (!orderQty || orderQty === 0) {
+                        alert("Order Qty cannot be empty or zero.");
+                        this.value = '';
+                        this.style.backgroundColor = '#fff';
+                        return;
+                    }
+
+                    updateForecastField({
+                        sku: sku,
+                        parent: parent,
+                        column: 'Stage',
+                        value: value
+                    }, function() {
+                        // Success - color already updated
+                    }, function() {
+                        alert('Failed to save Stage.');
+                        // Revert color
+                        this.style.backgroundColor = '#fff';
+                    });
+                });
+            });
+        }
+
+        // Stage Filter
+        function setupStageFilter() {
+            const stageFilter = document.getElementById('stage-filter');
+            if (!stageFilter) return;
+
+            // Set default to "R2S"
+            stageFilter.value = 'r2s';
+            applyStageFilter();
+
+            stageFilter.addEventListener('change', function() {
+                applyStageFilter();
+            });
+        }
+
+        function applyStageFilter() {
+            const stageFilter = document.getElementById('stage-filter');
+            const selectedStage = stageFilter ? stageFilter.value.toLowerCase().trim() : '';
+            const zoneFilter = document.getElementById('zoneFilter');
+            const selectedZone = zoneFilter ? zoneFilter.value.trim().toLowerCase() : '';
+            const rows = document.querySelectorAll('.wide-table tbody tr');
+
+            rows.forEach(row => {
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const stageMatch = !selectedStage || rowStage === selectedStage;
+
+                // Also check zone filter
+                const selectInRow = row.querySelector('select[data-column="area"]');
+                const rowZone = selectInRow ? selectInRow.value.trim().toLowerCase() : '';
+                const zoneMatch = !selectedZone || rowZone === selectedZone;
+
+                if (stageMatch && zoneMatch) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        // Initialize stage handlers
+        setupStageUpdate();
+        setupStageFilter();
+
+        // Supplier to Zone mapping
+        const supplierZoneMap = @json($supplierZoneMap ?? []);
+
+        // Auto-populate zone for already selected suppliers on page load
+        function autoPopulateZoneForSelectedSuppliers() {
+            document.querySelectorAll('select[data-column="supplier"]').forEach(supplierSelect => {
+                const selectedSupplier = supplierSelect.value;
+                if (selectedSupplier && supplierZoneMap[selectedSupplier]) {
+                    const row = supplierSelect.closest('tr');
+                    const zoneSelect = row.querySelector('select[data-column="area"]');
+                    if (zoneSelect && !zoneSelect.value) {
+                        // Only update if zone is not already set
+                        zoneSelect.value = supplierZoneMap[selectedSupplier];
+                    }
+                }
+            });
+        }
+
+        // Run on page load
+        autoPopulateZoneForSelectedSuppliers();
+
         // Save data on input change
         document.querySelectorAll('.auto-save').forEach(input => {
             input.addEventListener('change', function() {
@@ -518,6 +698,17 @@
                 const value = this.value;
 
                 if (!sku || !column) return;
+
+                // If supplier is changed, auto-update zone
+                if (column === 'supplier' && value && supplierZoneMap[value]) {
+                    const row = this.closest('tr');
+                    const zoneSelect = row.querySelector('select[data-column="area"]');
+                    if (zoneSelect) {
+                        zoneSelect.value = supplierZoneMap[value];
+                        // Trigger change event to save zone
+                        zoneSelect.dispatchEvent(new Event('change'));
+                    }
+                }
 
                 fetch('/ready-to-ship/inline-update-by-sku', {
                     method: 'POST',
@@ -658,11 +849,11 @@
         }
 
         function saveHiddenColumns(hidden) {
-            localStorage.setItem('hiddenColumns', JSON.stringify(hidden));
+            localStorage.setItem('hiddenColumns_readyToShip', JSON.stringify(hidden));
         }
 
         function getHiddenColumns() {
-            return JSON.parse(localStorage.getItem('hiddenColumns') || '[]');
+            return JSON.parse(localStorage.getItem('hiddenColumns_readyToShip') || '[]');
         }
 
         setupSupplierSelect();
@@ -704,9 +895,15 @@
 
                 allRows.forEach(row => {
                     const supplierCell = row.querySelector('td[data-column="5"]');
-                    if (supplierCell && supplierCell.textContent.trim().toLowerCase() === selectedSupplier) {
-                        row.style.display = '';
-                        matchingRows.push(row);
+                    if (supplierCell) {
+                        const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
+                        const supplierValue = supplierSelect ? supplierSelect.value.trim().toLowerCase() : '';
+                        if (supplierValue === selectedSupplier) {
+                            row.style.display = '';
+                            matchingRows.push(row);
+                        } else {
+                            row.style.display = 'none';
+                        }
                     } else {
                         row.style.display = 'none';
                     }
@@ -777,8 +974,8 @@
                 if (!isNaN(cbmValue)) totalCBM += cbmValue;
 
                 // Order Qty
-                const qtyInput = row.querySelector('input[data-column="qty"]');
-                const qtyValue = parseFloat(qtyInput?.value.trim());
+                const qtyInput = row.querySelector('td[data-column="4"] input');
+                const qtyValue = parseFloat(qtyInput?.value || qtyInput?.textContent || 0);
                 if (!isNaN(qtyValue)) totalOrderQty += qtyValue;
             });
 
@@ -786,6 +983,13 @@
             document.getElementById('total-cbm').textContent = totalCBM.toFixed(0);
             document.getElementById('total-order-qty').textContent = totalOrderQty;
         }
+
+        // Apply stage filter on page load
+        setTimeout(() => {
+            if (document.getElementById('stage-filter')) {
+                applyStageFilter();
+            }
+        }, 100);
 
     });
 </script>
@@ -809,20 +1013,7 @@
     });
 
     document.getElementById('zoneFilter').addEventListener('change', function() {
-        const selectedZone = this.value.trim().toLowerCase();
-        const allRows = document.querySelectorAll('tbody tr');
-
-        allRows.forEach(row => {
-            const selectInRow = row.querySelector('select[data-column="area"]');
-            if (!selectInRow) return;
-
-            const rowZone = selectInRow.value.trim().toLowerCase();
-            if (selectedZone === "" || rowZone === selectedZone) {
-                row.style.display = ''; 
-            } else {
-                row.style.display = 'none';
-            }
-        });
+        applyStageFilter(); // Use the combined filter function
     });
 
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MfrgProgress;
 use App\Models\ReadyToShip;
 use App\Models\Supplier;
+use App\Models\PurchaseOrder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -25,6 +26,11 @@ class MFRGInProgressController extends Controller
         $productMaster = DB::table('product_master')->get()
             ->keyBy(fn($item) => strtoupper(trim($item->sku)));
 
+        // Get stage data from forecast_analysis table
+        $forecastData = DB::table('forecast_analysis')
+            ->get()
+            ->keyBy(fn($item) => strtoupper(trim($item->sku)));
+
         // Supplier Table Parent Mapping
         $supplierRows = Supplier::where('type', 'Supplier')->get();
         $supplierMapByParent = [];
@@ -38,12 +44,38 @@ class MFRGInProgressController extends Controller
             }
         }
 
+        // Fetch purchase orders and create SKU to price mapping
+        $purchaseOrders = PurchaseOrder::whereNotNull('items')->get();
+        $skuToPriceMap = [];
+        $normalizeSku = fn($sku) => strtoupper(trim($sku ?? ''));
+        
+        foreach ($purchaseOrders as $po) {
+            $items = json_decode($po->items, true);
+            if (is_array($items)) {
+                foreach ($items as $item) {
+                    if (isset($item['sku']) && isset($item['price'])) {
+                        $normalizedSku = $normalizeSku($item['sku']);
+                        // Use latest price if multiple POs have same SKU
+                        if (!isset($skuToPriceMap[$normalizedSku]) || $po->created_at > ($skuToPriceMap[$normalizedSku]['date'] ?? '')) {
+                            $skuToPriceMap[$normalizedSku] = [
+                                'price' => $item['price'],
+                                'currency' => $item['currency'] ?? 'USD',
+                                'date' => $po->created_at
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+
         foreach ($mfrgData as $row) {
             $sku = strtoupper(trim($row->sku));
             $image = null;
             $cbm = null;
             $parent = null;
             $supplierNames = [];
+            $priceFromPO = null;
+            $currencyFromPO = null;
 
             // Shopify Image
             if (isset($shopifyImages[$sku]) && !empty($shopifyImages[$sku]->image_src)) {
@@ -78,8 +110,24 @@ class MFRGInProgressController extends Controller
                 $row->supplier = implode(', ', $supplierNames); // mapping value
             }
 
+            // Get price from purchase_order if available
+            if (isset($skuToPriceMap[$sku])) {
+                $priceFromPO = $skuToPriceMap[$sku]['price'];
+                $currencyFromPO = $skuToPriceMap[$sku]['currency'];
+            }
+
+            // Get stage from forecast_analysis
+            $stage = '';
+            if (isset($forecastData[$sku])) {
+                $stage = $forecastData[$sku]->stage ?? '';
+            }
+            $row->stage = $stage;
+            $row->order_qty = $row->qty; // Add order_qty field for validation
+
             $row->Image = $image;
             $row->CBM = $cbm;
+            $row->price_from_po = $priceFromPO;
+            $row->currency_from_po = $currencyFromPO;
         }
 
 
@@ -116,6 +164,11 @@ class MFRGInProgressController extends Controller
             ->get()
             ->keyBy(fn($item) => $normalizeSku($item->sku));
 
+        // Get stage data from forecast_analysis table
+        $forecastData = DB::table('forecast_analysis')
+            ->get()
+            ->keyBy(fn($item) => $normalizeSku($item->sku));
+
         $supplierRows = Supplier::where('type', 'Supplier')->get();
         $supplierMapByParent = [];
         foreach ($supplierRows as $row) {
@@ -123,6 +176,29 @@ class MFRGInProgressController extends Controller
             foreach ($parents as $parent) {
                 if (!empty($parent)) {
                     $supplierMapByParent[$parent][] = $row->name;
+                }
+            }
+        }
+
+        // Fetch purchase orders and create SKU to price mapping
+        $purchaseOrders = PurchaseOrder::whereNotNull('items')->get();
+        $skuToPriceMap = [];
+        
+        foreach ($purchaseOrders as $po) {
+            $items = json_decode($po->items, true);
+            if (is_array($items)) {
+                foreach ($items as $item) {
+                    if (isset($item['sku']) && isset($item['price'])) {
+                        $normalizedSku = $normalizeSku($item['sku']);
+                        // Use latest price if multiple POs have same SKU
+                        if (!isset($skuToPriceMap[$normalizedSku]) || $po->created_at > ($skuToPriceMap[$normalizedSku]['date'] ?? '')) {
+                            $skuToPriceMap[$normalizedSku] = [
+                                'price' => $item['price'],
+                                'currency' => $item['currency'] ?? 'USD',
+                                'date' => $po->created_at
+                            ];
+                        }
+                    }
                 }
             }
         }
@@ -135,6 +211,8 @@ class MFRGInProgressController extends Controller
             $cbm = null;
             $parent = null;
             $supplierNames = [];
+            $priceFromPO = null;
+            $currencyFromPO = null;
 
             if (isset($shopifyImages[$sku]) && !empty($shopifyImages[$sku]->image_src)) {
                 $image = $shopifyImages[$sku]->image_src;
@@ -161,8 +239,25 @@ class MFRGInProgressController extends Controller
             }
 
             $row->supplier = !empty($row->supplier) ? $row->supplier : implode(', ', $supplierNames);
+            
+            // Get price from purchase_order if available
+            if (isset($skuToPriceMap[$sku])) {
+                $priceFromPO = $skuToPriceMap[$sku]['price'];
+                $currencyFromPO = $skuToPriceMap[$sku]['currency'];
+            }
+            
+            // Get stage from forecast_analysis
+            $stage = '';
+            if (isset($forecastData[$sku])) {
+                $stage = $forecastData[$sku]->stage ?? '';
+            }
+            $row->stage = $stage;
+            $row->order_qty = $row->qty; // Add order_qty field for validation
+
             $row->Image = $image;
             $row->CBM = $cbm;
+            $row->price_from_po = $priceFromPO;
+            $row->currency_from_po = $currencyFromPO;
 
             $processedData[] = $row;
         }

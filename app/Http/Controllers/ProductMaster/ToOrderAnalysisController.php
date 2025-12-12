@@ -113,6 +113,12 @@ class ToOrderAnalysisController extends Controller
 
                 $product = $productData->get($sheetSku);
                 $forecast = $forecastData->get($sheetSku);
+                
+                // Skip if SKU has NR in forecast_analysis table
+                if ($forecast && strtoupper(trim($forecast->nr ?? '')) === 'NR') {
+                    continue; // Skip this SKU - don't show in to-order-analysis
+                }
+                
                 $parent = $toOrder->parent ?? $product->parent ?? '';
                 $supplierName = '';
 
@@ -151,12 +157,12 @@ class ToOrderAnalysisController extends Controller
                     'SKU'             => $sheetSku,
                     'Approved QTY'    => $approvedQty,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
-                    'Clink'           => $forecast->clink ?? '',
+                    'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
                     'Supplier'        => $toOrder->supplier_name ?? $supplierName ?? '',
                     'RFQ Form Link'   => $toOrder->rfq_form_link ?? '',
                     'sheet_link'      => $toOrder->sheet_link ?? '',
                     'Rfq Report Link' => $toOrder->rfq_report_link ?? '',
-                    'Stage'           => $toOrder->stage ?? '',
+                    'stage'           => ($forecast ? ($forecast->stage ?? '') : ''),
                     'nrl'             => $toOrder->nrl ?? '',
                     'Adv date'        => $toOrder->advance_date ?? '',
                     'order_qty'       => $toOrder->order_qty ?? '',
@@ -170,11 +176,11 @@ class ToOrderAnalysisController extends Controller
             // ✅ Apply stage + search filter BEFORE pagination
             $filteredChildren = collect($processedData)->filter(function ($item) use ($search, $stageFilter) {
                 $matchSearch = $search === '' || str_contains(strtolower($item->SKU . $item->Supplier . $item->Parent), $search);
-                $matchStage = $stageFilter === '' || strtolower($item->Stage) === $stageFilter;
+                $matchStage = $stageFilter === '' || strtolower($item->stage ?? '') === $stageFilter;
 
                 return !$item->is_parent &&
                     ((int)$item->{'Approved QTY'} > 0) &&
-                    strtolower($item->Stage ?? '') !== 'mfrg progress' &&
+                    strtolower($item->stage ?? '') !== 'mip' &&
                     $matchSearch &&
                     $matchStage;
             })->values();
@@ -273,6 +279,12 @@ class ToOrderAnalysisController extends Controller
 
                 $product = $productData->get($sheetSku);
                 $forecast = $forecastData->get($sheetSku);
+                
+                // Skip if SKU has NR in forecast_analysis table
+                if ($forecast && strtoupper(trim($forecast->nr ?? '')) === 'NR') {
+                    continue; // Skip this SKU - don't show in to-order-analysis
+                }
+                
                 $parent = $toOrder->parent ?? $product->parent ?? '';
                 $supplierName = '';
 
@@ -314,12 +326,12 @@ class ToOrderAnalysisController extends Controller
                     'SKU'             => $sheetSku,
                     'approved_qty'    => $approvedQty,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
-                    'Clink'           => $forecast->clink ?? '',
+                    'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
                     'Supplier'        => $toOrder->supplier_name ?? $supplierName ?? '',
                     'RFQ Form Link'   => $toOrder->rfq_form_link ?? '',
                     'sheet_link'      => $toOrder->sheet_link ?? '',
                     'Rfq Report Link' => $toOrder->rfq_report_link ?? '',
-                    'Stage'           => $toOrder->stage ?? '',
+                    'stage'           => ($forecast ? ($forecast->stage ?? '') : ''),
                     'nrl'             => $toOrder->nrl ?? '',
                     'Adv date'        => $toOrder->advance_date ?? '',
                     'order_qty'       => $toOrder->order_qty ?? '',

@@ -13,6 +13,7 @@ use App\Models\FbaReportsMaster;
 use App\Models\FbaMonthlySale;
 use App\Models\FbaManualData;
 use App\Models\FbaOrder;
+use App\Models\FbaListingStatus;
 use App\Models\FbaShipCalculation;
 use App\Models\FbaMetricsHistory;
 use App\Models\FbaSkuDailyData;
@@ -573,6 +574,10 @@ class FbaDataController extends Controller
          return strtoupper(trim($p->sku));
       });
 
+      // Fetch FBA Listing Status data - normalize SKU keys to match format
+      $fbaListingStatuses = FbaListingStatus::all()->keyBy(function ($item) {
+         return strtoupper(trim($item->sku));
+      });
 
       // Fetch KW (Keyword) ads data - campaigns NOT ending with 'pt'
       $skus = $fbaData->keys()->toArray();
@@ -640,7 +645,7 @@ class FbaDataController extends Controller
       $overallAvgPrice = $totalL30 > 0 ? $totalPrice * $totalL30 / $totalL30 : 0;
 
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
@@ -649,6 +654,7 @@ class FbaDataController extends Controller
          $manual = $fbaManualData->get(strtoupper(trim($fba->seller_sku)));
          $dispatchDate = $fbaDispatchDates->get($sku);
          $shipCalc = $fbaShipCalculations->get($sku);
+         $listingStatus = $fbaListingStatuses->get($sku);
 
          // Get KW and PT ads data
          $adsKW = $adsKWDataBySku[$sku] ?? null;
@@ -701,10 +707,19 @@ class FbaDataController extends Controller
          
          // Keep enhanced calculations for other metrics (GPFT, GROI, etc.)
          $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
+         // Calculate Send_Cost using formula: CTN Cost / QTY CTN
+         $calculatedSendCost = 0;
+         if ($manual) {
+            $shippingAmount = floatval($manual->data['shipping_amount'] ?? 0);
+            $quantityInBox = floatval($manual->data['quantity_in_each_box'] ?? 0);
+            if ($quantityInBox > 0) {
+               $calculatedSendCost = round($shippingAmount / $quantityInBox, 2);
+            }
+         }
          $FBA_SHIP = $this->fbaManualDataService->calculateFbaShipCalculation(
             $fba->seller_sku,
             $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-            $manual ? ($manual->data['send_cost'] ?? 0) : 0
+            $calculatedSendCost
          );
 
          // ✅ Validate s_price from database - prevent 0 values from being used
@@ -786,6 +801,7 @@ class FbaDataController extends Controller
             'Parent' => $product ? ($product->parent ?? '') : '',
             'SKU' => $sku,
             'FBA_SKU' => $fba->seller_sku,
+            'NRL_FBA' => $listingStatus ? ($listingStatus->status_value['status'] ?? 'FBA') : 'FBA',
             'FBA_Price' => $fbaPriceInfo ? round(($fbaPriceInfo->price ?? 0), 2) : 0,
             'l30_units' => $monthlySales ? ($monthlySales->l30_units ?? 0) : 0,
             'AMZ_L30' => $amzL30,
@@ -828,7 +844,16 @@ class FbaDataController extends Controller
             'Issues_Remarks_Update' => $manual ? ($manual->data['issues_remarks_update'] ?? '') : '',
             'Sent_By' => $manual ? ($manual->data['sent_by'] ?? '') : '',
             'Quantity_in_each_box' => $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0,
-            'Send_Cost' => $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+            'GW_CTN' => $manual ? ($manual->data['gw_ctn'] ?? 0) : 0,
+            // Calculate Send_Cost using formula: CTN Cost / QTY CTN = Sent Cost
+            'Send_Cost' => (function() use ($manual) {
+                $shippingAmount = $manual ? floatval($manual->data['shipping_amount'] ?? 0) : 0;
+                $quantityInBox = $manual ? floatval($manual->data['quantity_in_each_box'] ?? 0) : 0;
+                if ($quantityInBox > 0) {
+                    return round($shippingAmount / $quantityInBox, 2);
+                }
+                return 0;
+            })(),
             'IN_Charges' => $manual ? ($manual->data['in_charges'] ?? 0) : 0,
             'Commission_Percentage' => $manual ? ($manual->data['commission_percentage'] ?? 0) : 0,
             'Ratings' => $manual ? ($manual->data['ratings'] ?? 0) : 0,
@@ -844,20 +869,86 @@ class FbaDataController extends Controller
             'Width' => $width,
             'Height' => $height,
             'Shipment_Track_Status' => $manual ? ($manual->data['shipment_track_status'] ?? '') : '',
-            'MSL' => (
-                ($monthlySales ? ($monthlySales->jan ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->feb ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->mar ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->apr ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->may ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->jun ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->jul ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->aug ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->sep ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->oct ?? 0) : 0) +
-                ($monthlySales ? ($monthlySales->nov ?? 0) : 0) +
+            // Count missing fields and list them for display in FBA SKU column
+            // Only counts EDITABLE columns (fields that users can edit in the table)
+            'Missing_Fields_Data' => (function() use ($manual, $fba, $length, $width, $height, $dispatchDate, $S_PRICE) {
+                $missingFields = [];
+                $fieldLabels = [
+                    'Length' => 'L CTN',
+                    'Width' => 'W CTN',
+                    'Height' => 'H CTN',
+                    'Quantity_in_each_box' => 'Qty CTN',
+                    'GW_CTN' => 'GW CTN',
+                    'Shipping_Amount' => 'CTN cost',
+                    'S_Price' => 'S Price',
+                    'Inbound_Quantity' => 'Inbound',
+                    'Total_quantity_sent' => 'Sent QTY',
+                    'UPC_Codes' => 'UPC Codes',
+                    'Barcode' => 'Barcode',
+                    'Dispatch_Date' => 'D Date',
+                    'FBA_Fee_Manual' => 'FBA Fee Manual'
+                ];
+                
+                // === CTN Fields (editable, hidden by Send Cost toggle) ===
+                if (empty(trim($length ?? ''))) $missingFields[] = $fieldLabels['Length'];
+                if (empty(trim($width ?? ''))) $missingFields[] = $fieldLabels['Width'];
+                if (empty(trim($height ?? ''))) $missingFields[] = $fieldLabels['Height'];
+                $qtyInBox = $manual ? ($manual->data['quantity_in_each_box'] ?? 0) : 0;
+                if (empty($qtyInBox) || $qtyInBox == 0) $missingFields[] = $fieldLabels['Quantity_in_each_box'];
+                $gwCtn = $manual ? ($manual->data['gw_ctn'] ?? 0) : 0;
+                if (empty($gwCtn) || $gwCtn == 0) $missingFields[] = $fieldLabels['GW_CTN'];
+                $shippingAmount = $manual ? ($manual->data['shipping_amount'] ?? 0) : 0;
+                if (empty($shippingAmount) || $shippingAmount == 0) $missingFields[] = $fieldLabels['Shipping_Amount'];
+                
+                // === PFT Toggle Hidden Columns (editable) ===
+                // Note: S_Price is excluded from missing fields count as requested
+                // if (empty($S_PRICE) || $S_PRICE == 0) $missingFields[] = $fieldLabels['S_Price'];
+                
+                // === Other Editable Fields ===
+                $inboundQty = $manual ? ($manual->data['inbound_quantity'] ?? 0) : 0;
+                if (empty($inboundQty) || $inboundQty == 0) $missingFields[] = $fieldLabels['Inbound_Quantity'];
+                $totalQtySent = $manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0;
+                if (empty($totalQtySent) || $totalQtySent == 0) $missingFields[] = $fieldLabels['Total_quantity_sent'];
+                if (empty(trim($manual ? ($manual->data['upc_codes'] ?? '') : ''))) $missingFields[] = $fieldLabels['UPC_Codes'];
+                if (empty(trim($manual ? ($manual->data['barcode'] ?? '') : ''))) $missingFields[] = $fieldLabels['Barcode'];
+                $dispatchDateValue = $dispatchDate ? $dispatchDate->dispatch_date : ($manual ? ($manual->data['dispatch_date'] ?? '') : '');
+                if (empty(trim($dispatchDateValue))) $missingFields[] = $fieldLabels['Dispatch_Date'];
+                $fbaFeeManual = $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0;
+                if (empty($fbaFeeManual) || $fbaFeeManual == 0) $missingFields[] = $fieldLabels['FBA_Fee_Manual'];
+                
+                return [
+                    'count' => count($missingFields),
+                    'fields' => $missingFields
+                ];
+            })(),
+            'MSL' => max(
+                ($monthlySales ? ($monthlySales->jan ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->feb ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->mar ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->apr ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->may ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->jun ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->jul ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->aug ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->sep ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->oct ?? 0) : 0),
+                ($monthlySales ? ($monthlySales->nov ?? 0) : 0),
                 ($monthlySales ? ($monthlySales->dec ?? 0) : 0)
-            ) - ($fba->quantity_available ?? 0) - ($fbaShipments->get(strtoupper(trim($fba->seller_sku)))->quantity_shipped ?? 0),
+            ),
+            'Sugg_Send' => max(
+                ($monthlySales ? floatval($monthlySales->jan ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->feb ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->mar ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->apr ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->may ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->jun ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->jul ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->aug ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->sep ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->oct ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->nov ?? 0) : 0),
+                ($monthlySales ? floatval($monthlySales->dec ?? 0) : 0)
+            ) - floatval($fba->quantity_available ?? 0) - floatval($manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0),
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
             'Zero_Stock' => $manual ? ($manual->data['zero_stock'] ?? false) : false,
@@ -869,7 +960,15 @@ class FbaDataController extends Controller
             'FBA_Ship_Calculation' => $this->fbaManualDataService->calculateFbaShipCalculation(
                $fba->seller_sku,
                $manual ? ($manual->data['fba_fee_manual'] ?? 0) : 0,
-               $manual ? ($manual->data['send_cost'] ?? 0) : 0,
+               // Use calculated Send_Cost: CTN Cost / QTY CTN
+               (function() use ($manual) {
+                   $shippingAmount = $manual ? floatval($manual->data['shipping_amount'] ?? 0) : 0;
+                   $quantityInBox = $manual ? floatval($manual->data['quantity_in_each_box'] ?? 0) : 0;
+                   if ($quantityInBox > 0) {
+                       return round($shippingAmount / $quantityInBox, 2);
+                   }
+                   return 0;
+               })(),
                $manual ? ($manual->data['in_charges'] ?? 0) : 0
             ),
 
@@ -957,6 +1056,7 @@ class FbaDataController extends Controller
             'Issues_Remarks_Update' => '',
             'Sent_By' => '',
             'Quantity_in_each_box' => round($children->sum(fn($item) => is_numeric($item['Quantity_in_each_box']) ? $item['Quantity_in_each_box'] : 0), 2),
+            'GW_CTN' => round($children->sum(fn($item) => is_numeric($item['GW_CTN']) ? $item['GW_CTN'] : 0), 2),
             'Total_quantity_sent' => round($children->sum(fn($item) => is_numeric($item['Total_quantity_sent']) ? $item['Total_quantity_sent'] : 0), 2),
             'Send_Cost' => round($children->sum(fn($item) => is_numeric($item['Send_Cost']) ? $item['Send_Cost'] : 0), 2),
             'IN_Charges' => round($children->sum(fn($item) => is_numeric($item['IN_Charges']) ? $item['IN_Charges'] : 0), 2),
@@ -974,7 +1074,9 @@ class FbaDataController extends Controller
             'Length' => '',
             'Width' => '',
             'Height' => '',
+            'Missing_Fields_Data' => ['count' => 0, 'fields' => []], // Parent rows don't show missing count
             'MSL' => $children->sum('MSL'),
+            'Sugg_Send' => $children->sum('Sugg_Send'),
             'SEND' => '',
             'Correct_Cost' => false,
             'Zero_Stock' => false,
@@ -996,6 +1098,7 @@ class FbaDataController extends Controller
             'Nov' => $children->sum('Nov'),
             'Dec' => $children->sum('Dec'),
             'is_parent' => true,
+            'NRL_FBA' => '',
             'Pft%' => '',
             'ROI%' => '',
             'GPFT%' => '',
@@ -1008,7 +1111,7 @@ class FbaDataController extends Controller
             'REV_COUNT' => '',
             'RATING' => '',
             'LP' => '',
-            'FBA_Ship_Calculation' => '',
+            'FBA_Ship_Calculation' => round($children->sum(fn($item) => is_numeric($item['FBA_Ship_Calculation']) ? $item['FBA_Ship_Calculation'] : 0), 2),
             'PFT_AMT' => round($children->sum('PFT_AMT'), 2),
             'SALES_AMT' => round($children->sum('SALES_AMT'), 2),
             'LP_AMT' => round($children->sum('LP_AMT'), 2),
@@ -1125,9 +1228,18 @@ class FbaDataController extends Controller
          $data['dimensions'] = trim($length . 'x' . $width . 'x' . $height, 'x');
       }
 
-      // Extract only 3 fields
+      // Extract fields
       $FBA_FEE_MANUAL = floatval($data['fba_fee_manual'] ?? 0);
-      $SEND_COST = floatval($data['send_cost'] ?? 0);
+      
+      // Calculate Send_Cost using formula: CTN Cost / QTY CTN = Sent Cost
+      $shippingAmount = floatval($data['shipping_amount'] ?? 0);
+      $quantityInBox = floatval($data['quantity_in_each_box'] ?? 0);
+      $SEND_COST = 0;
+      if ($quantityInBox > 0) {
+         $SEND_COST = round($shippingAmount / $quantityInBox, 2);
+      }
+      // Update send_cost in data (for backward compatibility, but it's now calculated)
+      $data['send_cost'] = $SEND_COST;
 
       // Calculate FBA_SHIP (Fulfillment_Fee + FBA_Fee_Manual + Send_Cost)
       $FBA_SHIP = $fulfillmentFee + $FBA_FEE_MANUAL + $SEND_COST;
@@ -1633,5 +1745,39 @@ class FbaDataController extends Controller
       cache([$cacheKey => $visibility], 60 * 24 * 30); // Cache for 30 days
 
       return response()->json(['success' => true]);
+   }
+
+   public function updateFbaListingStatus(Request $request)
+   {
+      $request->validate([
+         'sku' => 'required|string',
+         'status' => 'required|in:All,FBA,FBM,NRL,Both',
+      ]);
+
+      // Normalize SKU to uppercase and trimmed to match format used in fbaDataJson
+      $sku = strtoupper(trim($request->input('sku')));
+      $status = $request->input('status');
+
+      Log::info('Saving FBA Listing Status', [
+         'sku' => $sku,
+         'status' => $status
+      ]);
+
+      $listingStatus = FbaListingStatus::updateOrCreate(
+         ['sku' => $sku],
+         ['status_value' => ['status' => $status]]
+      );
+
+      Log::info('FBA Listing Status saved', [
+         'id' => $listingStatus->id,
+         'sku' => $listingStatus->sku,
+         'status_value' => $listingStatus->status_value
+      ]);
+
+      return response()->json([
+         'success' => true,
+         'message' => 'NRL FBA status updated successfully',
+         'data' => $listingStatus
+      ]);
    }
 }

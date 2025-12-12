@@ -44,7 +44,9 @@ class ColorService
             $style .= 'color:#800080;'; // purple
         }
 
-        return "<span style=\"{$style}\">" . $v . "%</span>";
+        // Round the value to nearest integer for display
+        $display = is_numeric($v) ? number_format(round($v, 0)) : $v;
+        return "<span style=\"{$style}\">" . $display . "%</span>";
     }
 
     /**
@@ -71,7 +73,9 @@ class ColorService
             $style .= 'color:purple;';
         }
 
-        return "<span style=\"{$style}\">" . $value . "%</span>";
+        // Round ROI to nearest integer for display
+        $display = is_numeric($value) ? number_format(round($value, 0)) : $value;
+        return "<span style=\"{$style}\">" . $display . "%</span>";
     }
 
     /**

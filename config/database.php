@@ -101,17 +101,31 @@ return [
             'engine' => null,
         ],
 
-        'repricer' => [ // REPRICER
+        'shiphub' => [
             'driver' => 'mysql',
-            'host' => env('REPRICER_DB_HOST', '127.0.0.1'),
-            'port' => env('REPRICER_DB_PORT', '3306'),
-            'database' => env('REPRICER_DB_DATABASE', '5core_repricer'),
-            'username' => env('REPRICER_DB_USERNAME', 'root'),
-            'password' => env('REPRICER_DB_PASSWORD', ''),
+            'host' => env('SHIPHUB_DB_HOST', '127.0.0.1'),
+            'port' => env('SHIPHUB_DB_PORT', '3306'),
+            'database' => env('SHIPHUB_DB_DATABASE', 'shiphub'),
+            'username' => env('DB_USERNAME_SHIPHUB', 'root'),
+            'password' => env('DB_PASSWORD_SHIPHUB', ''),
             'charset' => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
             'prefix' => '',
             'strict' => true,
+            'engine' => null,
+        ],
+
+        'repricer' => [
+            'driver' => 'mysql',
+            'host' => env('REPRICER_DB_HOST', '127.0.0.1'),
+            'port' => env('REPRICER_DB_PORT', '3306'),
+            'database' => env('REPRICER_DB_DATABASE', 'repriser_updated'),
+            'username' => env('DB_USERNAME_REPRICER', 'repriser_up_usr'),
+            'password' => env('DB_PASSWORD_REPRICER', '(NS]aO.%~M098</s'),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => false,
             'engine' => null,
         ],
 

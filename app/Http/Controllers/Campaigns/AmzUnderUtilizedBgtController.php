@@ -8,6 +8,7 @@ use App\Models\AmazonDataView;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Models\FbaTable;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -317,6 +318,15 @@ class AmzUnderUtilizedBgtController extends Controller
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
+        // Fetch FBA data where seller_sku contains FBA, then key by base SKU (without FBA)
+        $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+            ->get()
+            ->keyBy(function ($item) {
+                $sku = $item->seller_sku;
+                $base = preg_replace('/\s*FBA\s*/i', '', $sku);
+                return strtoupper(trim($base));
+            });
+
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
@@ -385,6 +395,9 @@ class AmzUnderUtilizedBgtController extends Controller
             $row['parent'] = $parent;
             $row['sku']    = $pm->sku;
             $row['INV']    = $shopify->inv ?? 0;
+            // Match FBA data by base SKU (FBA data is keyed by base SKU without FBA)
+            $baseSku = strtoupper(trim($pm->sku));
+            $row['FBA_INV'] = isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0;
             $row['L30']    = $shopify->quantity ?? 0;
             $row['fba']    = $pm->fba ?? null;
             $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
@@ -629,7 +642,13 @@ class AmzUnderUtilizedBgtController extends Controller
                 }
             }
 
-            if($row['NRA'] !== 'NRA' && $row['campaignName'] !== ''){
+            // Calculate UB7 for filtering (same as frontend filter at line 781)
+            $budget = $row['campaignBudgetAmount'] ?? 0;
+            $l7_spend = $row['l7_spend'] ?? 0;
+            $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+            
+            // Only include campaigns where UB7 < 70 (under-utilized) - same as frontend filter
+            if($row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && $ub7 < 70){
                 $result[] = (object) $row;
             }
         }

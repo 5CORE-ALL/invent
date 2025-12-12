@@ -315,12 +315,44 @@ class ForecastAnalysisController extends Controller
         ]);
     }
 
+    public function approvalRequired(Request $request)
+    {
+        $mode = $request->query('mode');
+        $demo = $request->query('demo');
+
+        return view('purchase-master.approvalRequired', [
+            'mode' => $mode,
+            'demo' => $demo,
+        ]);
+    }
+
     public function updateForcastSheet(Request $request)
     {        
         $sku = trim($request->input('sku'));
         $parent = trim($request->input('parent'));
         $column = trim($request->input('column'));
         $value = $request->input('value');
+
+        // Handle MOQ updates separately - save to ProductMaster
+        if (strtoupper($column) === 'MOQ') {
+            $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
+            
+            if (!$product) {
+                return response()->json(['success' => false, 'message' => 'Product not found']);
+            }
+
+            // Get current Values or initialize empty array
+            $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values, true) ?? []);
+            
+            // Update MOQ value
+            $values['moq'] = $value;
+            
+            // Save back to ProductMaster
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json(['success' => true, 'message' => 'MOQ updated successfully']);
+        }
 
         $columnMap = [
             'S-MSL' => 's_msl',
@@ -361,7 +393,17 @@ class ForecastAnalysisController extends Controller
             }
 
             if (strtolower($column) === 'stage'){
-                $orderQty = $existing->approved_qty ?? null;
+                // Get MOQ from ProductMaster table (not from approved_qty)
+                $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
+                $moqValue = null;
+                if ($product && $product->Values) {
+                    $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                    $moqValue = $values['moq'] ?? null;
+                }
+                
+                // Use MOQ value from ProductMaster
+                $orderQty = $moqValue ?? null;
+                
                 if(strtolower($value) === 'to_order_analysis'){
                     DB::table('to_order_analysis')->updateOrInsert(
                         ['sku' => $sku, 'parent' => $parent],
@@ -378,15 +420,35 @@ class ForecastAnalysisController extends Controller
                 }
 
                 if(strtolower($value) === 'mip'){
-                    DB::table('mfrg_progress')->updateOrInsert(
-                        ['sku' => $sku, 'parent' => $parent],
-                        [
-                            'qty' => $orderQty,
+                    // Always use MOQ value from ProductMaster
+                    $qtyToSet = (int)($orderQty ?? 0);
+                    
+                    // Check if record exists
+                    $existingMfrg = DB::table('mfrg_progress')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
+                        ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
+                        ->first();
+                    
+                    if ($existingMfrg) {
+                        // Update existing record - explicitly set qty to MOQ value
+                        DB::table('mfrg_progress')
+                            ->where('id', $existingMfrg->id)
+                            ->update([
+                                'qty' => $qtyToSet,
+                                'ready_to_ship' => 'No',
+                                'updated_at' => now(),
+                            ]);
+                    } else {
+                        // Insert new record
+                        DB::table('mfrg_progress')->insert([
+                            'sku' => $sku,
+                            'parent' => $parent,
+                            'qty' => $qtyToSet,
                             'ready_to_ship' => 'No',
-                            'updated_at' => now(),
                             'created_at' => now(),
-                        ]
-                    );
+                            'updated_at' => now(),
+                        ]);
+                    }
                 }
 
                 if(strtolower($value) === 'r2s'){
@@ -415,10 +477,16 @@ class ForecastAnalysisController extends Controller
             ]);
 
             if (strtolower($column) === 'stage'){
-                $orderQty = DB::table('forecast_analysis')
-                    ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
-                    ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
-                    ->value('order_given');
+                // Get MOQ from ProductMaster table (not from approved_qty)
+                $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
+                $moqValue = null;
+                if ($product && $product->Values) {
+                    $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                    $moqValue = $values['moq'] ?? null;
+                }
+                
+                // Use MOQ value from ProductMaster
+                $orderQty = $moqValue ?? null;
                     
                 if(strtolower($value) === 'to_order_analysis'){
                     DB::table('to_order_analysis')->updateOrInsert(
@@ -433,14 +501,35 @@ class ForecastAnalysisController extends Controller
                 }
 
                 if(strtolower($value) === 'mip'){
-                    DB::table('mfrg_progress')->updateOrInsert(
-                        ['sku' => $sku, 'parent' => $parent],
-                        [
-                            'qty' => $orderQty,
-                            'updated_at' => now(),
+                    // Always use MOQ value from ProductMaster
+                    $qtyToSet = (int)($orderQty ?? 0);
+                    
+                    // Check if record exists
+                    $existingMfrg = DB::table('mfrg_progress')
+                        ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
+                        ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
+                        ->first();
+                    
+                    if ($existingMfrg) {
+                        // Update existing record - explicitly set qty to MOQ value
+                        DB::table('mfrg_progress')
+                            ->where('id', $existingMfrg->id)
+                            ->update([
+                                'qty' => $qtyToSet,
+                                'ready_to_ship' => 'No',
+                                'updated_at' => now(),
+                            ]);
+                    } else {
+                        // Insert new record
+                        DB::table('mfrg_progress')->insert([
+                            'sku' => $sku,
+                            'parent' => $parent,
+                            'qty' => $qtyToSet,
+                            'ready_to_ship' => 'No',
                             'created_at' => now(),
-                        ]
-                    );
+                            'updated_at' => now(),
+                        ]);
+                    }
                 }
 
                 if(strtolower($value) === 'r2s'){

@@ -2163,6 +2163,7 @@
 
 
 
+                        
                         // {
                         //     title: "Listed",
                         //     field: "Listed",
@@ -2258,12 +2259,41 @@
                         //     hozAlign: "center",
                         //     editor: "input"
                         // },
-                        // {
-                        //     title: "Quantity Box",
-                        //     field: "Quantity_in_each_box",
-                        //     hozAlign: "center",
-                        //     editor: "input"
-                        // },
+                        {
+                            title: "L CTN",
+                            field: "Length",
+                            hozAlign: "center",
+                            visible: false,
+                            editor: "input"
+                        },
+                        {
+                            title: "W CTN",
+                            field: "Width",
+                            hozAlign: "center",
+                            visible: false,
+                            editor: "input"
+                        },
+                        {
+                            title: "H CTN",
+                            field: "Height",
+                            hozAlign: "center",
+                            visible: false,
+                            editor: "input"
+                        },
+                        {
+                            title: "Qty CTN",
+                            field: "Quantity_in_each_box",
+                            hozAlign: "center",
+                            visible: false,
+                            editor: "input"
+                        },
+                        {
+                            title: "GW CTN",
+                            field: "GW_CTN",
+                            hozAlign: "center",
+                            visible: false,
+                            editor: "input"
+                        },
                         // {
                         //     title: "Sent Quantity",
                         //     field: "Total_quantity_sent",
@@ -2274,7 +2304,16 @@
                             title: "Send <br> Cost",
                             field: "Send_Cost",
                             hozAlign: "center",
-                            editor: "input"
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue());
+                                if (isNaN(value)) return '';
+                                return `
+                                    <span>${value.toFixed(2)}</span>
+                                    <i class="fa fa-info-circle text-primary send-cost-toggle-btn" 
+                                        style="cursor:pointer; margin-left:8px;" 
+                                        title="Toggle CTN columns"></i>
+                                `;
+                            }
                         },
                         {
                             title: "Comm %",
@@ -2301,12 +2340,13 @@
                         //         cell.setValue(!currentValue);
                         //     }
                         // },
-                        // {
-                        //     title: "Shipping Amount",
-                        //     field: "Shipping_Amount",
-                        //     hozAlign: "center",
-                        //     editor: "input"
-                        // },
+                        {
+                            title: "CTN cost",
+                            field: "Shipping_Amount",
+                            hozAlign: "center",
+                            visible: false,
+                            editor: "input"
+                        },
                         // {
                         //     title: "Inbound Quantity",
                         //     field: "Inbound_Quantity",
@@ -2430,7 +2470,7 @@
                     if (field === 'Barcode' || field === 'Done' || field === 'Listed' || field === 'Live' ||
                         field === 'Dispatch_Date' || field === 'Weight' || field ===
                         'Quantity_in_each_box' ||
-                        field === 'Total_quantity_sent' || field === 'Send_Cost' ||
+                        field === 'Total_quantity_sent' ||
                         field === 'Commission_Percentage' || field === 'Ratings' || field === 'TCOS_Percentage' ||
                         field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field === 'Dimensions' || field ===
@@ -2927,6 +2967,9 @@
                 }
 
                 function applyColumnVisibilityFromServer() {
+                    // Columns that should always be hidden by default (Pft% related columns and CTN columns)
+                    const alwaysHiddenColumns = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
+                    
                     fetch('/fba-column-visibility', {
                             method: 'GET',
                             headers: {
@@ -2938,11 +2981,17 @@
                         .then(savedVisibility => {
                             table.getColumns().forEach(col => {
                                 const field = col.getField();
-                                if (field && savedVisibility[field] !== undefined) {
-                                    if (savedVisibility[field]) {
-                                        col.show();
-                                    } else {
+                                if (field) {
+                                    // Force hide Pft% and CTN related columns (ignore saved preferences)
+                                    if (alwaysHiddenColumns.includes(field)) {
                                         col.hide();
+                                    } else if (savedVisibility[field] !== undefined) {
+                                        // Apply saved preferences for other columns
+                                        if (savedVisibility[field]) {
+                                            col.show();
+                                        } else {
+                                            col.hide();
+                                        }
                                     }
                                 }
                             });
@@ -2998,13 +3047,41 @@
 
                 // Show All Columns button
                 document.getElementById("show-all-columns-btn").addEventListener("click", function() {
+                    // Columns that should always be hidden (Pft% related columns and CTN columns)
+                    const alwaysHiddenColumns = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
+                    
                     table.getColumns().forEach(col => {
-                        if (col.getField()) {
+                        const field = col.getField();
+                        // Don't show Pft% and CTN related columns even when "Show All" is clicked
+                        if (field && !alwaysHiddenColumns.includes(field)) {
                             col.show();
                         }
                     });
                     buildColumnDropdown();
                     saveColumnVisibilityToServer();
+                });
+
+                // Send Cost Toggle Event Listener
+                $(document).on('click', '.send-cost-toggle-btn', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    console.log('Send Cost toggle clicked, table:', table);
+                    let colsToToggle = ["Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
+
+                    colsToToggle.forEach(colName => {
+                        try {
+                            let col = table.getColumn(colName);
+                            if (col) {
+                                console.log('Toggling CTN column:', colName);
+                                col.toggle();
+                            } else {
+                                console.warn('CTN column not found:', colName);
+                            }
+                        } catch (err) {
+                            console.error('Error toggling CTN column', colName, err);
+                        }
+                    });
                 });
             });
 

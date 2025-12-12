@@ -193,7 +193,9 @@ class LedgerMasterController extends Controller
             return [
                 'id' => $payment->id,
                 'vo_number' => $payment->vo_number,
+                'supplier_id' => $payment->supplier_id,
                 'supplier_name' => $payment->supplier->name ?? '',
+                'purchase_contract_id' => $payment->purchase_contract_id,
                 'purchase_contract' => $payment->purchaseContract->po_number ?? '',
                 'amount' => $amount ?? '',
                 'advance_amount' => $advance ?? '',
@@ -204,6 +206,42 @@ class LedgerMasterController extends Controller
         });
 
         return response()->json($payments);
+    }
+
+    public function updateAdvancePayments(Request $request)
+    {
+        $request->validate([
+            'payment_id' => 'required|exists:advance_payments,id',
+            'vo_number' => 'required|string',
+            'supplier_id' => 'required|exists:suppliers,id',
+            'purchase_contract_id' => 'required|exists:purchase_orders,id',
+            'amount' => 'nullable|numeric',
+            'advance_amount' => 'nullable|numeric',
+            'image' => 'nullable|image|mimes:jpg,jpeg,png',
+            'remarks' => 'nullable|string',
+        ]);
+
+        $payment = AdvancePayment::findOrFail($request->payment_id);
+
+        $payment->vo_number = $request->vo_number;
+        $payment->supplier_id = $request->supplier_id;
+        $payment->purchase_contract_id = $request->purchase_contract_id;
+        $payment->amount = $request->amount;
+        $payment->advance_amount = $request->advance_amount;
+        $payment->remarks = $request->remarks;
+
+        // Image upload - delete old image if new one is uploaded
+        if ($request->hasFile('image')) {
+            // Delete old image
+            if ($payment->image && Storage::disk('public')->exists($payment->image)) {
+                Storage::disk('public')->delete($payment->image);
+            }
+            $payment->image = $request->file('image')->store('advance_payments', 'public');
+        }
+
+        $payment->save();
+
+        return back()->with('flash_message', 'Advance and Payment updated successfully.');
     }
 
     public function deleteAdvancePayments(Request $request)

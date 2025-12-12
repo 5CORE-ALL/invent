@@ -92,7 +92,7 @@
 
                     <!-- Add Category Modal -->
                     <div class="modal fade" id="addCategoryModal" tabindex="-1" aria-labelledby="addCategoryModalLabel"
-                        aria-hidden="true">
+                        aria-hidden="true" data-bs-backdrop="static">
                         <div class="modal-dialog modal-dialog-centered shadow-none modal-lg">
                             <div class="modal-content border-0 rounded-3">
                                 <div class="modal-header bg-primary text-white rounded-top">
@@ -116,27 +116,10 @@
                                         <div class="col-md-4">
                                             <label for="category_status" class="form-label fw-semibold">Status </label>
                                             <select class="form-select" id="category_status" name="status">
-                                                <option value="" disabled selected>Select Status</option>
-                                                <option value="active">Active</option>
+                                                <option value="active" selected>Active</option>
                                                 <option value="inactive">Inactive</option>
                                             </select>
                                         </div>
-                                    </div>
-
-                                    <hr class="my-4">
-
-                                    {{-- Custom Fields --}}
-                                    <div class="mb-3">
-                                        <div class="d-flex justify-content-between align-items-center mb-2">
-                                            <label class="form-label fw-semibold mb-0">Custom Fields for this
-                                                Category</label>
-                                            <button type="button" class="btn btn-sm btn-outline-primary"
-                                                id="add-field-btn">
-                                                <i class="mdi mdi-plus"></i> Add Field
-                                            </button>
-                                        </div>
-
-                                        <div id="custom-fields-container" class="bg-light p-3 rounded border"></div>
                                     </div>
                                 </div>
 
@@ -272,72 +255,6 @@
                                                             </div>
                                                         </div>
 
-                                                        <!-- Custom Fields -->
-                                                        <div class="mb-3">
-                                                            <label class="form-label fw-semibold">Custom Fields</label>
-                                                            <div id="fields-container-{{ $category->id }}">
-                                                                @php
-                                                                    // Ensure $category->fields is decoded properly
-                                                                    $decoded_fields = [];
-
-                                                                    if (!empty($category->fields)) {
-                                                                        $decoded = json_decode($category->fields, true);
-                                                                        if (
-                                                                            json_last_error() === JSON_ERROR_NONE &&
-                                                                            is_array($decoded)
-                                                                        ) {
-                                                                            $decoded_fields = $decoded;
-                                                                        }
-                                                                    }
-                                                                @endphp
-
-                                                                @foreach ($decoded_fields as $index => $field)
-                                                                    <div class="row g-2 align-items-center mb-2 field-row">
-                                                                        <div class="col-md-4">
-                                                                            <input type="text"
-                                                                                name="field_label[{{ $category->id }}][]"
-                                                                                class="form-control field-label"
-                                                                                value="{{ $field['label'] ?? '' }}"
-                                                                                required>
-                                                                        </div>
-                                                                        <div class="col-md-4">
-                                                                            <input type="text"
-                                                                                name="field_name[{{ $category->id }}][]"
-                                                                                class="form-control field-name"
-                                                                                value="{{ $field['name'] ?? '' }}"
-                                                                                required>
-                                                                        </div>
-                                                                        <div class="col-md-3">
-                                                                            <select
-                                                                                name="field_type[{{ $category->id }}][]"
-                                                                                class="form-select">
-                                                                                <option value="text"
-                                                                                    {{ ($field['type'] ?? '') == 'text' ? 'selected' : '' }}>
-                                                                                    Text</option>
-                                                                                <option value="number"
-                                                                                    {{ ($field['type'] ?? '') == 'number' ? 'selected' : '' }}>
-                                                                                    Number</option>
-                                                                                <option value="textarea"
-                                                                                    {{ ($field['type'] ?? '') == 'textarea' ? 'selected' : '' }}>
-                                                                                    Textarea</option>
-                                                                                <option value="select"
-                                                                                    {{ ($field['type'] ?? '') == 'select' ? 'selected' : '' }}>
-                                                                                    Select</option>
-                                                                            </select>
-                                                                        </div>
-                                                                        <div class="col-md-1 text-center">
-                                                                            <button type="button"
-                                                                                class="btn btn-danger btn-sm remove-field">&times;</button>
-                                                                        </div>
-                                                                    </div>
-                                                                @endforeach
-                                                            </div>
-                                                            <button type="button" class="btn btn-sm btn-secondary mt-2"
-                                                                onclick="addField('{{ $category->id }}', this)">
-                                                                + Add Field
-                                                            </button>
-                                                        </div>
-
                                                     </div>
 
                                                     <div class="modal-footer">
@@ -383,37 +300,57 @@
             });
             $('#submit-add').on('click', function(e) {
                 e.preventDefault();
+                
+                // Validation
+                const categoryName = $('#category_name').val().trim();
+                if (!categoryName) {
+                    alert('Please enter a category name.');
+                    $('#category_name').focus();
+                    return;
+                }
+
                 const data = {
                     _token: $('meta[name="csrf-token"]').attr('content'),
-                    category_name: $('#category_name').val(),
-                    status: $('#category_status').val(),
-                    field_label: [],
-                    field_name: [],
-                    field_type: []
+                    category_name: categoryName,
+                    status: $('#category_status').val() || 'inactive'
                 };
 
-                $('#custom-fields-container .field-row').each(function() {
-                    data.field_label.push($(this).find('.field-label').val());
-                    data.field_name.push($(this).find('.field-name').val());
-                    data.field_type.push($(this).find('select').val());
-                });
+                // Disable button to prevent double submission
+                const submitBtn = $('#submit-add');
+                submitBtn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Saving...');
 
                 $.ajax({
                     url: '{{ route('category.create') }}',
                     method: 'POST',
                     data: data,
+                    dataType: 'json',
                     success: function(response) {
                         if (response.success) {
-
+                            $('#addCategoryModal').modal('hide');
+                            // Reset form
+                            $('#category_name').val('');
+                            $('#category_status').val('active');
                             location.reload();
                         } else {
-                            location.reload();
+                            alert(response.message || 'Failed to save category.');
+                            submitBtn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Save Category');
                         }
                     },
                     error: function(xhr, status, error) {
                         console.error('Error:', error);
-                        alert('An error occurred while saving the category. Please try again.');
-                        location.reload();
+                        let errorMessage = 'An error occurred while saving the category.';
+                        
+                        if (xhr.responseJSON) {
+                            if (xhr.responseJSON.errors) {
+                                const errors = Object.values(xhr.responseJSON.errors).flat();
+                                errorMessage = errors.join('\n');
+                            } else if (xhr.responseJSON.message) {
+                                errorMessage = xhr.responseJSON.message;
+                            }
+                        }
+                        
+                        alert(errorMessage);
+                        submitBtn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Save Category');
                     }
                 });
             });
@@ -425,39 +362,56 @@
                 const container = $('#edit-container-' + categoryId);
                 const categoryIdAttr = container.data('category-id');
 
+                // Validation
+                const categoryName = $('#category_name_' + categoryId).val().trim();
+                if (!categoryName) {
+                    alert('Please enter a category name.');
+                    $('#category_name_' + categoryId).focus();
+                    return;
+                }
+
                 // Collect data
                 const data = {
                     _token: $('meta[name="csrf-token"]').attr('content'),
                     category_id: categoryIdAttr,
-                    category_name: $('#category_name_' + categoryId).val(),
-                    status: $('#category_status_' + categoryId).val(),
-                    field_label: [],
-                    field_name: [],
-                    field_type: [],
-                    flag: 'update'
+                    category_name: categoryName,
+                    status: $('#category_status_' + categoryId).val() || 'inactive'
                 };
 
-                // Collect custom fields
-                $('#fields-container-' + categoryId + ' .field-row').each(function() {
-                    data.field_label.push($(this).find('.field-label').val());
-                    data.field_name.push($(this).find('.field-name').val());
-                    data.field_type.push($(this).find('select').val());
-                });
-
-                console.log('Submitting Edit Data:', data);
+                // Disable button to prevent double submission
+                const submitBtn = $('#submit-edit-' + categoryId);
+                submitBtn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Updating...');
 
                 // AJAX submission
                 $.ajax({
                     url: '{{ route('category.create') }}',
-                    method: 'post',
+                    method: 'POST',
                     data: data,
+                    dataType: 'json',
                     success: function(response) {
-
-                        location.reload();
-
+                        if (response.success) {
+                            $('#editCategoryModal' + categoryId).modal('hide');
+                            location.reload();
+                        } else {
+                            alert(response.message || 'Failed to update category.');
+                            submitBtn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Update Category');
+                        }
                     },
                     error: function(xhr, status, error) {
-                        location.reload();
+                        console.error('Error:', error);
+                        let errorMessage = 'An error occurred while updating the category.';
+                        
+                        if (xhr.responseJSON) {
+                            if (xhr.responseJSON.errors) {
+                                const errors = Object.values(xhr.responseJSON.errors).flat();
+                                errorMessage = errors.join('\n');
+                            } else if (xhr.responseJSON.message) {
+                                errorMessage = xhr.responseJSON.message;
+                            }
+                        }
+                        
+                        alert(errorMessage);
+                        submitBtn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Update Category');
                     }
                 });
             });
@@ -506,86 +460,10 @@
         });
 
         document.addEventListener('DOMContentLoaded', function() {
-            // Add new field on button click for Add Category Modal
-            document.getElementById('add-field-btn')?.addEventListener('click', function(e) {
-                e.preventDefault();
-                const container = document.getElementById('custom-fields-container');
-                if (container) {
-                    container.insertAdjacentHTML('beforeend', `
-                        <div class="field-row row g-2 align-items-center mb-2">
-                            <div class="col-md-4">
-                                <input type="text" name="field_label[new][]" class="form-control field-label" placeholder="Field Label (e.g. Product Width)" required>
-                            </div>
-                            <div class="col-md-4">
-                                <input type="text" name="field_name[new][]" class="form-control field-name" placeholder="Auto-generated" readonly required>
-                            </div>
-                            <div class="col-md-3">
-                                <select name="field_type[new][]" class="form-select">
-                                    <option value="text" selected>Text</option>
-                                    <option value="number">Number</option>
-                                    <option value="textarea">Textarea</option>
-                                    <option value="select">Select</option>
-                                </select>
-                            </div>
-                            <div class="col-md-1 text-center">
-                                <button type="button" class="btn btn-danger btn-sm remove-field" title="Remove Field">&times;</button>
-                            </div>
-                        </div>
-                    `);
-                }
-            });
-
-            // Add new field for Edit Category Modal
-            window.addField = function(categoryId, btnElement) {
-                const container = document.querySelector(`#fields-container-${categoryId}`);
-                if (container) {
-                    container.insertAdjacentHTML('beforeend', `
-                        <div class="field-row row g-2 align-items-center mb-2">
-                            <div class="col-md-4">
-                                <input type="text" name="field_label[${categoryId}][]" class="form-control field-label" placeholder="Field Label" required>
-                            </div>
-                            <div class="col-md-4">
-                                <input type="text" name="field_name[${categoryId}][]" class="form-control field-name" placeholder="Auto-generated" readonly required>
-                            </div>
-                            <div class="col-md-3">
-                                <select name="field_type[${categoryId}][]" class="form-select">
-                                    <option value="text">Text</option>
-                                    <option value="number">Number</option>
-                                    <option value="textarea">Textarea</option>
-                                    <option value="select">Select</option>
-                                </select>
-                            </div>
-                            <div class="col-md-1 text-center">
-                                <button type="button" class="btn btn-danger btn-sm remove-field">&times;</button>
-                            </div>
-                        </div>
-                    `);
-                    console.log(`Added new field to #fields-container-${categoryId}`);
-                } else {
-                    console.error(`Container #fields-container-${categoryId} not found`);
-                }
-            };
-
-            // Remove field row on clicking remove button (delegated)
-            document.body.addEventListener('click', function(e) {
-                if (e.target.classList.contains('remove-field')) {
-                    e.target.closest('.field-row').remove();
-                }
-            });
-
-            // Auto-generate field_name from field_label input (delegated)
-            document.body.addEventListener('input', function(e) {
-                if (e.target.classList.contains('field-label')) {
-                    const labelValue = e.target.value.trim();
-                    const fieldNameInput = e.target.closest('.field-row').querySelector('.field-name');
-                    const snakeCaseName = labelValue
-                        .toLowerCase()
-                        .replace(/[^a-z0-9]+/g, '_')
-                        .replace(/^_|_$/g, '');
-                    if (fieldNameInput) {
-                        fieldNameInput.value = snakeCaseName;
-                    }
-                }
+            // Reset form when modal is closed
+            $('#addCategoryModal').on('hidden.bs.modal', function() {
+                $('#category_name').val('');
+                $('#category_status').val('active');
             });
         });
     </script>

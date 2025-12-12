@@ -40,9 +40,14 @@ class ReadyToShipController extends Controller
             ->get()
             ->keyBy(fn($item) => strtoupper(trim($item->sku)));
 
+        // Get stage data from forecast_analysis table
+        $forecastData = DB::table('forecast_analysis')
+            ->get()
+            ->keyBy(fn($item) => strtoupper(trim($item->sku)));
+
         $readyToShipData = ReadyToShip::where('transit_inv_status', 0)->get();
 
-        $readyToShipData->transform(function ($item) use ($supplierMapByParent, $shopifyImages, $productMaster) {
+        $readyToShipData->transform(function ($item) use ($supplierMapByParent, $shopifyImages, $productMaster, $forecastData) {
             $sku = strtoupper(trim($item->sku));
             $parent = strtoupper(trim($item->parent ?? ''));
             $item->supplier_names = $supplierMapByParent[$parent] ?? [];
@@ -75,14 +80,29 @@ class ReadyToShipController extends Controller
                 }
             }
 
+            // Get stage from forecast_analysis
+            $stage = '';
+            if (isset($forecastData[$sku])) {
+                $stage = $forecastData[$sku]->stage ?? '';
+            }
+            $item->stage = $stage;
+            $item->order_qty = $item->qty; // Add order_qty field for validation
+
             $item->Image = $image;
             $item->CBM = $cbm;
             return $item;
         });
 
+        // Create supplier to zone mapping
+        $supplierZoneMap = Supplier::where('type', 'Supplier')
+            ->whereNotNull('zone')
+            ->pluck('zone', 'name')
+            ->toArray();
+
         return view('purchase-master.ready-to-ship.index', [
             'readyToShipList' => $readyToShipData,
             'suppliers' => Supplier::pluck('name'),
+            'supplierZoneMap' => $supplierZoneMap,
         ]);
     }
 
@@ -109,6 +129,7 @@ class ReadyToShipController extends Controller
             'area',
             'pay_term',
             'payment_confirmation',
+            'supplier',
         ])) {
             return response()->json(['success' => false, 'message' => 'Invalid column.']);
         }

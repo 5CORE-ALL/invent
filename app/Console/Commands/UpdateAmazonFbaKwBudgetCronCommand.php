@@ -123,20 +123,14 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
                 $acos = 100;
             }
 
-            // Determine budget value based on ACOS
-            // ACOS < 10% → budget = 5
-            // ACOS 10%-20% → budget = 4
-            // ACOS 20%-30% → budget = 3
-            // ACOS 30%-40% → budget = 2
-            // ACOS > 40% → budget = 1
+            // Determine budget value based on ACOS (new rule)
+            // ACOS < 10% → budget = 3
+            // ACOS 10%-20% → budget = 2
+            // ACOS > 20% → budget = 1
             $newBudget = 1;
             if ($acos < 10) {
-                $newBudget = 5;
-            } elseif ($acos >= 10 && $acos < 20) {
-                $newBudget = 4;
-            } elseif ($acos >= 20 && $acos < 30) {
                 $newBudget = 3;
-            } elseif ($acos >= 30 && $acos < 40) {
+            } elseif ($acos >= 10 && $acos < 20) {
                 $newBudget = 2;
             } else {
                 $newBudget = 1;
