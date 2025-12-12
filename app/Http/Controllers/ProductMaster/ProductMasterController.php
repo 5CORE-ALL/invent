@@ -1801,7 +1801,7 @@ class ProductMasterController extends Controller
 
             Log::info("✓ Temu credentials found");
 
-            // Try to find Temu product by SKU
+            // Check if product exists in your local DB/view
             $temuProduct = \App\Models\TemuDataView::where('sku', $sku)
                 ->orWhere('sku', strtoupper($sku))
                 ->orWhere('sku', strtolower($sku))
@@ -1813,93 +1813,86 @@ class ProductMasterController extends Controller
             }
             
             Log::info("Found Temu product for SKU: {$sku}");
-            
-            // Use the same signature method as TemuApiService
+
             $timestamp = time();
-            
-            // Build request body - Note: Temu may not have a direct title update API
-            // This might need adjustment based on actual Temu API documentation
-            $requestBody = [
-                "type" => "bg.local.goods.update",
-                "productSkcExternalId" => $sku,
-                "productName" => $title,
+
+            // Correct method type and fields for local goods update (US sellers)
+            $method = "bg.local.goods.update";
+            $data = [
+                "goodsExternalId" => $sku,      // Your external SKU
+                "goodsName" => $title,         // Title field (max 200 chars)
+                // Add more fields if needed, e.g., "goodsDesc" => "Updated description"
             ];
-            
-            // Generate signature like TemuApiService does
+
+            $dataJson = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+            // Parameters for signature (must include these exact keys)
             $params = [
-                'access_token' => $accessToken,
                 'app_key' => $appKey,
-                'timestamp' => $timestamp,
-                'data_type' => 'JSON',
+                'access_token' => $accessToken,
+                'timestamp' => (string)$timestamp,
+                'method' => $method,
+                'data' => $dataJson,
             ];
-            
-            // Flatten and sort for signing
-            $signParams = array_merge($params, $requestBody);
-            ksort($signParams);
-            
-            $temp = '';
-            foreach ($signParams as $key => $value) {
-                if (is_array($value) || is_object($value)) {
-                    $value = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-                }
-                $temp .= $key . $value;
+
+            // Sort keys alphabetically
+            ksort($params);
+
+            // Concatenate key + value without separators
+            $signString = '';
+            foreach ($params as $key => $value) {
+                $signString .= $key . $value;
             }
-            
-            $signStr = $appSecret . $temp . $appSecret;
+
+            // Full sign: secret + concatenated + secret
+            $signStr = $appSecret . $signString . $appSecret;
             $sign = strtoupper(md5($signStr));
+
+            // Add sign to params for sending
             $params['sign'] = $sign;
-            
-            $completeRequest = array_merge($params, $requestBody);
-            
-            Log::info("Temu API call - SKU: {$sku}, Type: bg.local.goods.update");
-            
-            sleep(2); // Rate limiting
-            
-            $response = \Illuminate\Support\Facades\Http::withHeaders([
-                    'Content-Type' => 'application/json',
-                ])
+
+            Log::info("Temu API call - Method: {$method}, SKU: {$sku}, Sign: {$sign}");
+
+            sleep(2); // Gentle rate limiting
+
+            // Send as form-data (multipart/form-data) - this is crucial for Temu router
+            $response = \Illuminate\Support\Facades\Http::asForm()
                 ->timeout(30)
-                ->post('https://openapi-b-us.temu.com/openapi/router', $completeRequest);
+                ->post('https://openapi-b-us.temu.com/openapi/router', $params);
 
             $status = $response->status();
             $body = $response->body();
             
-            Log::info("Temu API response status: " . $status);
-            Log::info("Temu API response body: " . $body);
+            Log::info("Temu API response status: {$status}");
+            Log::info("Temu API response body: {$body}");
 
             if ($response->successful()) {
                 $responseData = $response->json();
-                
-                // Temu typically returns success with code 0
-                if (isset($responseData['success']) && $responseData['success'] === true) {
-                    Log::info("✓ Successfully updated Temu title for SKU: {$sku}");
-                    return true;
-                } elseif (isset($responseData['errorCode']) && $responseData['errorCode'] === 0) {
-                    Log::info("✓ Successfully updated Temu title for SKU: {$sku}");
-                    return true;
-                } elseif (!isset($responseData['errorCode']) || $responseData['errorCode'] === null) {
-                    // No error code means success
+
+                // Success indicators: errorCode == 0 (or sometimes 1000000) and success == true
+                $errorCode = $responseData['errorCode'] ?? null;
+                $success = $responseData['success'] ?? false;
+
+                if (($errorCode === 0 || $errorCode === 1000000) && $success) {
                     Log::info("✓ Successfully updated Temu title for SKU: {$sku}");
                     return true;
                 } else {
                     $errorMsg = $responseData['errorMsg'] ?? $responseData['message'] ?? 'Unknown error';
-                    $errorCode = $responseData['errorCode'] ?? 'N/A';
-                    Log::error("✗ Temu API returned error: Code {$errorCode}, Message: {$errorMsg}");
+                    Log::error("✗ Temu update failed - Code: {$errorCode}, Message: {$errorMsg}");
                     Log::error("Full response: " . json_encode($responseData));
                     return false;
                 }
             } else {
-                Log::error("✗ Failed to update Temu title for SKU {$sku}. Status: {$status}, Error: {$body}");
-                
+                Log::error("✗ HTTP failure updating Temu title for SKU {$sku}. Status: {$status}, Body: {$body}");
+
                 if ($status == 401) {
-                    Log::error("Authentication failed. Check TEMU_ACCESS_TOKEN in .env");
+                    Log::error("Invalid access_token - regenerate in Seller Center > Apps and Services");
                 } elseif ($status == 403) {
-                    Log::error("Permission denied. Verify 'Local Product Management' permission is enabled in Temu Seller Center");
-                } elseif ($status == 404) {
-                    Log::error("API endpoint not found. Temu may have changed their API structure");
-                    Log::error("Current endpoint: {$updateEndpoint}");
+                    Log::error("Missing permissions - edit app, enable 'Local Product Management', regenerate token");
+                } elseif ($status == 429) {
+                    Log::error("Rate limited - wait and retry");
                 }
-                
+
                 return false;
             }
         } catch (\Exception $e) {
