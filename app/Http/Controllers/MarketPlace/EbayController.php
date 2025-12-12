@@ -269,8 +269,8 @@ class EbayController extends Controller
                 ->select('sku', 'price', 'link')
                 ->where('price', '>', 0)
                 ->whereIn('sku', $nonParentSkus)
-                ->orderBy('sku')
-                ->orderBy('price')
+                ->orderBy('sku', 'asc')
+                ->orderByRaw('CAST(price AS DECIMAL(10,2)) ASC')
                 ->get()
                 ->groupBy('sku');
 

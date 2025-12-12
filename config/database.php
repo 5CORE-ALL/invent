@@ -101,17 +101,17 @@ return [
             'engine' => null,
         ],
 
-        'repricer' => [ // REPRICER
+        'repricer' => [
             'driver' => 'mysql',
             'host' => env('REPRICER_DB_HOST', '127.0.0.1'),
             'port' => env('REPRICER_DB_PORT', '3306'),
-            'database' => env('REPRICER_DB_DATABASE', '5core_repricer'),
-            'username' => env('REPRICER_DB_USERNAME', 'root'),
-            'password' => env('REPRICER_DB_PASSWORD', ''),
+            'database' => env('REPRICER_DB_DATABASE', 'repriser_updated'),
+            'username' => env('DB_USERNAME_REPRICER', 'repriser_up_usr'),
+            'password' => env('DB_PASSWORD_REPRICER', '(NS]aO.%~M098</s'),
             'charset' => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
             'prefix' => '',
-            'strict' => true,
+            'strict' => false,
             'engine' => null,
         ],
 
