@@ -2068,6 +2068,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(AmazonSpBudgetController::class)->group(function () {
         Route::get('/amazon-sp/amz-utilized-bgt-kw', 'amzUtilizedBgtKw')->name('amazon-sp.amz-utilized-bgt-kw');
         Route::get('/amazon-sp/get-amz-utilized-bgt-kw', 'getAmzUtilizedBgtKw');
+        Route::get('/amazon-sp/get-utilization-chart-data', 'getAmazonUtilizationChartData');
+        Route::get('/amazon-sp/get-utilization-counts', 'getAmazonUtilizationCounts');
         Route::post('/update-amazon-sp-bid-price', 'updateAmazonSpBidPrice');
         Route::put('/update-keywords-bid-price', 'updateCampaignKeywordsBid');
 
@@ -2204,9 +2206,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::controller(AmazonACOSController::class)->group(function () {
-        Route::get('/amazon-acos-control/data', 'index')->name('amazon.acos.index');
-        Route::get('/amazon-acos-data', 'getAmzonAcOSData');
-
         Route::get('/amazon-acos-kw-control', 'amazonAcosKwControl')->name('amazon.acos.kw.control');
         Route::get('/amazon-acos-kw-control-data', 'amazonAcosKwControlData')->name('amazon.acos.kw.control.data');
         Route::get('/amazon-acos-hl-control', 'amazonAcosHlControl')->name('amazon.acos.hl.control');
@@ -2215,6 +2214,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-acos-pt-control-data', 'amazonAcosPtControlData')->name('amazon.acos.pt.control.data');
 
         Route::put('/update-amazon-campaign-bgt-price', 'updateAmazonCampaignBgt');
+        Route::post('/toggle-amazon-sp-campaign-status', 'toggleAmazonSpCampaignStatus');
+        Route::post('/toggle-amazon-sb-campaign-status', 'toggleAmazonSbCampaignStatus');
         Route::put('/update-amazon-sb-campaign-bgt-price', 'updateAmazonSbCampaignBgt');
     });
 
