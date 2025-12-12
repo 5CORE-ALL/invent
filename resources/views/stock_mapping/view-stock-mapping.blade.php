@@ -1703,6 +1703,11 @@ tableData = sheetData.map((item, index) => {
   const notrequired = item.not_required;
   const rawShopify = item.inventory_shopify;
   const INV_shopify = !isNaN(parseFloat(rawShopify)) ? parseFloat(rawShopify) : 0;
+  
+  // Debug logging for first 3 items to check PLS and Business5Core data
+  if (index < 3) {
+    console.log(`SKU: ${sku}, PLS: ${item.inventory_pls}, Business5Core: ${item.inventory_business5core}`);
+  }
 
   const row = {
     sku_dbid,
@@ -1727,10 +1732,9 @@ tableData = sheetData.map((item, index) => {
 
     row[`INV_${platform}`] = parsed;
     
-    // Calculate ±1% tolerance for matching
-    const tolerance = INV_shopify * 0.01;
+    // Calculate difference with tolerance of 3
     const difference = Math.abs(parsed - INV_shopify);
-    const isWithinTolerance = difference <= tolerance;
+    const isWithinTolerance = difference <= 3;
     
     // Special case for ebay3: if value > 95, treat as matched regardless of Shopify value
     if (platform === 'ebay3' && parsed > 95) {
@@ -1774,15 +1778,14 @@ tableData = sheetData.map((item, index) => {
             }
 
             data.forEach(item => {
-                // Helper function to check if values match within ±1% tolerance
+                // Helper function to check if values match within difference of 3
                 const isMatchWithTolerance = (shopifyVal, platformVal) => {
                     if (platformVal === 'Not Listed' || platformVal === 'NRL') return false;
                     const shopify = parseFloat(shopifyVal);
                     const platform = parseFloat(platformVal);
                     if (isNaN(shopify) || isNaN(platform)) return false;
-                    const tolerance = shopify * 0.01;
                     const difference = Math.abs(platform - shopify);
-                    return difference <= tolerance;
+                    return difference <= 3;
                 };
 
                const isMismatchAmz = item.INV_amazon !== 'Not Listed' && (parseFloat(item.INV_shopify) === parseFloat(item.INV_amazon) || isMatchWithTolerance(item.INV_shopify, item.INV_amazon)) ? true:false;

@@ -1790,6 +1790,12 @@ class ProductMasterController extends Controller
         try {
             Log::info("Starting Temu title update for SKU: {$sku}, Title: {$title}");
             
+            // Check if Temu is temporarily disabled (IP whitelist pending)
+            if (env('TEMU_DISABLED', false)) {
+                Log::warning("Temu updates temporarily disabled (IP whitelist pending). Set TEMU_DISABLED=false when ready.");
+                return false;
+            }
+            
             $appKey = env('TEMU_APP_KEY');
             $appSecret = env('TEMU_SECRET_KEY');
             $accessToken = env('TEMU_ACCESS_TOKEN');
