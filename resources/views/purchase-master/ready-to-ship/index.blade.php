@@ -537,6 +537,17 @@
         function filterRows() {
             const search = wholeSearchInput.value.trim().toLowerCase();
             rows.forEach(row => {
+                // Check if stage is R2S
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const isR2S = rowStage === 'r2s';
+                
+                // Only show R2S stage rows
+                if (!isR2S) {
+                    row.style.display = 'none';
+                    return;
+                }
+                
                 const found = Array.from(row.querySelectorAll('td')).some(td => td.textContent.toLowerCase().includes(search));
                 row.style.display = found || search === '' ? '' : 'none';
             });
@@ -548,6 +559,17 @@
                 const col = this.getAttribute('data-search-column');
                 const searchValue = this.value.trim().toLowerCase();
                 rows.forEach(row => {
+                    // Check if stage is R2S
+                    const stageSelect = row.querySelector('.editable-select-stage');
+                    const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                    const isR2S = rowStage === 'r2s';
+                    
+                    // Only show R2S stage rows
+                    if (!isR2S) {
+                        row.style.display = 'none';
+                        return;
+                    }
+                    
                     const cell = row.querySelector(`td[data-column="${col}"]`);
                     row.style.display = cell && (cell.textContent.toLowerCase().includes(searchValue) || searchValue === '') ? '' : 'none';
                 });
@@ -647,23 +669,28 @@
             const zoneFilter = document.getElementById('zoneFilter');
             const selectedZone = zoneFilter ? zoneFilter.value.trim().toLowerCase() : '';
             const rows = document.querySelectorAll('.wide-table tbody tr');
+            const visibleRows = [];
 
             rows.forEach(row => {
                 const stageSelect = row.querySelector('.editable-select-stage');
                 const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
                 const stageMatch = !selectedStage || rowStage === selectedStage;
 
-                // Also check zone filter
+                // Check zone filter
                 const selectInRow = row.querySelector('select[data-column="area"]');
                 const rowZone = selectInRow ? selectInRow.value.trim().toLowerCase() : '';
                 const zoneMatch = !selectedZone || rowZone === selectedZone;
 
                 if (stageMatch && zoneMatch) {
                     row.style.display = '';
+                    visibleRows.push(row);
                 } else {
                     row.style.display = 'none';
                 }
             });
+
+            // Recalculate totals after filtering
+            calculateSupplierTotals(visibleRows);
         }
 
         // Initialize stage handlers
@@ -686,6 +713,10 @@
                     }
                 }
             });
+            // Reapply filter after auto-populating zones
+            if (typeof applyStageFilter === 'function') {
+                applyStageFilter();
+            }
         }
 
         // Run on page load
@@ -707,7 +738,22 @@
                         zoneSelect.value = supplierZoneMap[value];
                         // Trigger change event to save zone
                         zoneSelect.dispatchEvent(new Event('change'));
+                        // Reapply filter after zone is updated
+                        setTimeout(() => {
+                            if (typeof applyStageFilter === 'function') {
+                                applyStageFilter();
+                            }
+                        }, 100);
                     }
+                }
+
+                // If zone is manually changed, reapply filter
+                if (column === 'area') {
+                    setTimeout(() => {
+                        if (typeof applyStageFilter === 'function') {
+                            applyStageFilter();
+                        }
+                    }, 100);
                 }
 
                 fetch('/ready-to-ship/inline-update-by-sku', {
@@ -984,6 +1030,14 @@
             document.getElementById('total-order-qty').textContent = totalOrderQty;
         }
 
+        // Zone filter event listener
+        const zoneFilterElement = document.getElementById('zoneFilter');
+        if (zoneFilterElement) {
+            zoneFilterElement.addEventListener('change', function() {
+                applyStageFilter(); // Use the combined filter function
+            });
+        }
+
         // Apply stage filter on page load
         setTimeout(() => {
             if (document.getElementById('stage-filter')) {
@@ -1010,10 +1064,6 @@
         img.addEventListener('mouseleave', e => {
             popup.style.display = 'none';
         });
-    });
-
-    document.getElementById('zoneFilter').addEventListener('change', function() {
-        applyStageFilter(); // Use the combined filter function
     });
 
 

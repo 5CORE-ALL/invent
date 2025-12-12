@@ -104,6 +104,7 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
+                        <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
@@ -313,6 +314,219 @@
                     }
                 },
                 {
+                    title: "Sales",
+                    field: "sales",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 120,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    },
+                    mutator: function(value, data, type, params, component) {
+                        // Sales = unit_price * quantity_ordered
+                        const unitPrice = parseFloat(data.unit_price) || 0;
+                        const quantity = parseInt(data.quantity_ordered) || 0;
+                        const sales = unitPrice * quantity;
+                        return sales.toFixed(2);
+                    }
+                },
+                {
+                    title: "LP",
+                    field: "lp",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 100,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    },
+                    mutator: function(value, data, type, params, component) {
+                        // Get LP from Product Master fields
+                        const lp = parseFloat(data.LP_productmaster) || 
+                                  parseFloat(data.lp) || 
+                                  parseFloat(data.landing_price) || 
+                                  parseFloat(data.cost_price) || 0;
+                        return lp;
+                    }
+                },
+                {
+                    title: "Ship",
+                    field: "ship",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 100,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        // Check if this is an FBA SKU and has FBA ship calculation
+                        const isFbaSku = rowData.is_fba_sku || /FBA$/i.test(rowData.sku || '');
+                        const fbaShip = parseFloat(rowData.FBA_ship_calculation);
+                        
+                        // Use FBA ship calculation if available and SKU ends with FBA
+                        const displayValue = (isFbaSku && !isNaN(fbaShip)) ? fbaShip : value;
+                        const formattedValue = parseFloat(displayValue).toFixed(2);
+                        
+                        // Display in dark pink if FBA ship is used
+                        if (isFbaSku && !isNaN(fbaShip)) {
+                            return `<span style="color: #e91e63; font-weight: bold;">$${formattedValue}</span>`;
+                        }
+                        return `$${formattedValue}`;
+                    },
+                    mutator: function(value, data, type, params, component) {
+                        // Check if SKU ends with FBA and has FBA ship calculation
+                        const isFbaSku = data.is_fba_sku || /FBA$/i.test(data.sku || '');
+                        const fbaShip = parseFloat(data.FBA_ship_calculation);
+                        
+                        // Use FBA ship calculation if available, otherwise use Product Master ship
+                        if (isFbaSku && !isNaN(fbaShip)) {
+                            return fbaShip;
+                        }
+                        
+                        // Get Ship from Product Master fields
+                        const ship = parseFloat(data.Ship_productmaster) || 
+                                    parseFloat(data.ship) || 
+                                    parseFloat(data.shipping_cost) || 
+                                    parseFloat(data.temu_ship) || 0;
+                        return ship;
+                    }
+                },
+                {
+                    title: "COGS",
+                    field: "cogs",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 120,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    },
+                    mutator: function(value, data, type, params, component) {
+                        // COGS = Quantity * LP
+                        const quantity = parseInt(data.quantity_ordered) || 0;
+                        const lp = parseFloat(data.LP_productmaster) || parseFloat(data.lp) || 0;
+                        const cogs = quantity * lp;
+                        return cogs.toFixed(2);
+                    }
+                },
+                {
+                    title: "PFT",
+                    field: "pft",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 120,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const color = value >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">$${parseFloat(value).toFixed(2)}</span>`;
+                    },
+                    mutator: function(value, data, type, params, component) {
+                        // Get values from row data
+                        const unitPrice = parseFloat(data.unit_price) || 0;
+                        const quantity = parseInt(data.quantity_ordered) || 0;
+                        // Backend sends marketplace_percentages as decimal, ad_updates as decimal
+                        let marketplace = parseFloat(data.marketplace_percentages) || 0;
+                        let adpercent = parseFloat(data.ad_updates) || 0;
+                        
+                        // Safety check: if marketplace > 1, it's stored as percentage, convert to decimal
+                        if (marketplace > 1) {
+                            marketplace = marketplace / 100;
+                        }
+                        // Safety check: if ad_updates > 1, it's stored as percentage, convert to decimal
+                        if (adpercent > 1) {
+                            adpercent = adpercent / 100;
+                        }
+                        const lp = parseFloat(data.LP_productmaster) || parseFloat(data.lp) || 0;
+                        // Check if SKU ends with FBA and use FBA ship calculation if available
+                        const isFbaSku = data.is_fba_sku || /FBA$/i.test(data.sku || '');
+                        const fbaShip = parseFloat(data.FBA_ship_calculation);
+                        const ship = (isFbaSku && !isNaN(fbaShip)) 
+                            ? fbaShip 
+                            : (parseFloat(data.Ship_productmaster) || parseFloat(data.temu_ship) || parseFloat(data.ship) || parseFloat(data.shipping_cost) || 0);
+                        
+                        // PFT = ((unitPrice * (marketplace - adpercent)) - lp - ship) * quantity
+                        const pft = ((unitPrice * (marketplace - adpercent)) - lp - ship) * quantity;
+                        return pft.toFixed(2);
+                    }
+                },
+                {
+                    title: "ROI %",
+                    field: "roi",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 100,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        let color = '#6c757d'; // gray default
+                        
+                        // Color code based on ROI percentage
+                        if (value < 50) color = '#dc3545'; // red
+                        else if (value >= 50 && value < 75) color = '#ffc107'; // yellow
+                        else if (value >= 75 && value <= 125) color = '#28a745'; // green
+                        else if (value > 125) color = '#e83e8c'; // pink
+                        
+                        return `<span style="color: ${color}; font-weight: bold;">${parseFloat(value).toFixed(0)}%</span>`;
+                    },
+                    mutator: function(value, data, type, params, component) {
+                        // Get LP for COGS calculation
+                        const lp = parseFloat(data.LP_productmaster) || parseFloat(data.lp) || 0;
+                        const quantity = parseInt(data.quantity_ordered) || 0;
+                        
+                        // Calculate COGS (LP * quantity_ordered)
+                        const cogs = lp * quantity;
+                        
+                        // Get PFT value - use the same calculation as PFT column to ensure consistency
+                        const unitPrice = parseFloat(data.unit_price) || 0;
+                        // Backend sends marketplace_percentages as decimal (0.66), ad_updates as decimal (0.10)
+                        let marketplace = parseFloat(data.marketplace_percentages);
+                        let adpercent = parseFloat(data.ad_updates);
+                        
+                        // Debug: Check if values need conversion (if > 1, they're percentages, convert to decimal)
+                        if (isNaN(marketplace)) marketplace = 0.66;
+                        if (isNaN(adpercent)) adpercent = 0;
+                        
+                        // Safety check: if marketplace > 1, it's stored as percentage, convert to decimal
+                        if (marketplace > 1) {
+                            marketplace = marketplace / 100;
+                        }
+                        // Safety check: if ad_updates > 1, it's stored as percentage, convert to decimal
+                        if (adpercent > 1) {
+                            adpercent = adpercent / 100;
+                        }
+                        
+                        // Check if SKU ends with FBA and use FBA ship calculation if available
+                        const isFbaSku = data.is_fba_sku || /FBA$/i.test(data.sku || '');
+                        const fbaShip = parseFloat(data.FBA_ship_calculation);
+                        const ship = (isFbaSku && !isNaN(fbaShip)) 
+                            ? fbaShip 
+                            : (parseFloat(data.Ship_productmaster) || parseFloat(data.temu_ship) || parseFloat(data.ship) || parseFloat(data.shipping_cost) || 0);
+                        
+                        // Calculate margin (marketplace - adpercent)
+                        const margin = marketplace - adpercent;
+                        
+                        // Calculate PFT using exact same formula as PFT column
+                        const pft = ((unitPrice * margin) - lp - ship) * quantity;
+                        
+                        // ROI = (PFT / COGS) * 100
+                        // Ensure we don't divide by zero
+                        if (cogs <= 0) {
+                            return '0.00';
+                        }
+                        
+                        const roi = (pft / cogs) * 100;
+                        return roi.toFixed(2);
+                    }
+                },
+                {
                     title: "Currency",
                     field: "currency",
                     width: 80
@@ -402,36 +616,109 @@
             table.setFilter("sku", "like", value);
         });
 
-        // Update summary stats
+        // Update summary stats (matching Temu pattern exactly)
         function updateSummary() {
             const data = table.getData("active");
             let totalOrders = 0;
             let totalQuantity = 0;
             let totalRevenue = 0;
-            let totalTax = 0;
+            let totalPft = 0;
+            let totalL30Sales = 0;
+            let totalWeightedPrice = 0;
+            let totalQuantityForPrice = 0;
+            let totalCogs = 0;
 
             data.forEach(row => {
+                // Skip rows with empty SKU or order_id (matching Temu pattern)
+                if (!row.sku || row.sku === '' || !row.order_id || row.order_id === '') {
+                    return;
+                }
+                
                 totalOrders++;
                 const quantity = parseInt(row.quantity_ordered) || 0;
-                const unitPrice = parseFloat(row.unit_price) || 0;
-                const itemTax = parseFloat(row.item_tax) || 0;
+                const basePrice = parseFloat(row.unit_price) || 0;
                 
+                // Skip if quantity is 0
+                if (quantity === 0) {
+                    return;
+                }
+                
+                // Total revenue = basePrice * quantity (matching Temu pattern)
                 totalQuantity += quantity;
-                totalRevenue += unitPrice * quantity;
-                totalTax += itemTax;
+                totalRevenue += basePrice * quantity;
+                
+                // Calculate weighted price (matching Temu pattern)
+                if (quantity > 0 && basePrice > 0) {
+                    totalWeightedPrice += basePrice * quantity;
+                    totalQuantityForPrice += quantity;
+                }
+                
+                // Get marketplace and ad percentages from data
+                // Backend sends marketplace_percentages as decimal, ad_updates as decimal
+                let marketplace = parseFloat(row.marketplace_percentages) || 0;
+                let adpercent = parseFloat(row.ad_updates) || 0;
+                
+                // Safety check: if marketplace > 1, it's stored as percentage, convert to decimal
+                if (marketplace > 1) {
+                    marketplace = marketplace / 100;
+                }
+                // Safety check: if ad_updates > 1, it's stored as percentage, convert to decimal
+                if (adpercent > 1) {
+                    adpercent = adpercent / 100;
+                }
+                
+                // Get LP and Ship from Product Master (backend sends as LP_productmaster, Ship_productmaster)
+                const lp = parseFloat(row.LP_productmaster) || parseFloat(row.lp) || 0;
+                
+                // Check if SKU ends with FBA and use FBA ship calculation if available
+                const isFbaSku = row.is_fba_sku || /FBA$/i.test(row.sku || '');
+                const fbaShip = parseFloat(row.FBA_ship_calculation);
+                const ship = (isFbaSku && !isNaN(fbaShip)) 
+                    ? fbaShip 
+                    : (parseFloat(row.Ship_productmaster) || parseFloat(row.ship) || parseFloat(row.temu_ship) || parseFloat(row.shipping_cost) || 0);
+                
+                // PFT = ((unitPrice * (marketplace - adpercent)) - lp - ship) * quantity_ordered
+                const pft = ((basePrice * (marketplace - adpercent)) - lp - ship) * quantity;
+                totalPft += pft;
+                
+                // L30 Sales = Quantity * unitPrice
+                const l30Sales = quantity * basePrice;
+                totalL30Sales += l30Sales;
+                
+                // COGS = Quantity * LP
+                const cogs = quantity * lp;
+                totalCogs += cogs;
             });
 
-            const avgPrice = totalQuantity > 0 ? totalRevenue / totalQuantity : 0;
+            // Calculate average price (weighted by quantity, matching Temu)
+            const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
 
+            // Calculate PFT Percentage: (PFT Total / Total Revenue) * 100
+            const pftPercentage = totalRevenue > 0 ? (totalPft / totalRevenue) * 100 : 0;
+            
+            // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
+            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+
+            // Update badges (matching Temu format exactly)
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
+            $('#total-sales-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-            $('#pft-percentage-badge').text('Total Tax: $' + totalTax.toFixed(2));
-            $('#roi-percentage-badge').text('Avg Price: $' + avgPrice.toFixed(2));
+            $('#pft-percentage-badge').text('PFT %: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-            $('#pft-total-badge').text('Total Tax: $' + totalTax.toFixed(2));
-            $('#l30-sales-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-            $('#total-cogs-badge').text('Total COGS: $0.00');
+            $('#pft-total-badge').text('PFT Total: $' + totalPft.toFixed(2));
+            
+            // Color code PFT Total badge (matching Temu pattern)
+            const pftBadge = $('#pft-total-badge');
+            if (totalPft >= 0) {
+                pftBadge.removeClass('bg-danger').addClass('bg-dark');
+            } else {
+                pftBadge.removeClass('bg-dark').addClass('bg-danger');
+            }
+            
+            $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
+            $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
         }
 
         function buildColumnDropdown() {

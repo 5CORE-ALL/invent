@@ -248,7 +248,7 @@
                                 <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">Order<br/>QTY<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
-                                <th data-column="6" class="text-center" style="width: 70px; min-width: 70px; max-width: 70px;">Supplier<div class="resizer"></div></th>
+                                <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
@@ -336,8 +336,15 @@
                                         </div>
                                     </td>
 
-                                    <td data-column="6" class="text-center" style="width: 70px; min-width: 70px; max-width: 70px;">
-                                        <span style="font-size: 12px;">{{ \Illuminate\Support\Str::limit($item->supplier ?? '', 10) }}</span>
+                                    <td data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">
+                                        <select data-sku="{{ $item->sku }}" data-column="supplier" class="form-select form-select-sm auto-save" style="min-width: 140px; font-size: 12px;">
+                                            <option value="">supplier</option>
+                                            @foreach ($suppliers as $supplierName)
+                                                <option value="{{ $supplierName }}" {{ ($item->supplier ?? '') == $supplierName ? 'selected' : '' }}>
+                                                    {{ $supplierName }}
+                                                </option>
+                                            @endforeach
+                                        </select>
                                     </td>
                                     <td data-column="7" hidden>
                                         @php
@@ -686,7 +693,9 @@
             dropdownContent.innerHTML = '';
             ths.forEach((th, i) => {
                 const colIndex = i + 1;
-                const colName = capitalizeWords(th.childNodes[0].nodeValue.trim());
+                if (!th) return;
+                const colNameText = th.childNodes[0]?.nodeValue?.trim() || th.textContent?.trim() || `Column ${colIndex}`;
+                const colName = capitalizeWords(colNameText);
                 const item = document.createElement('div');
                 item.className = 'column-checkbox-item';
                 const checkbox = document.createElement('input');
@@ -715,7 +724,9 @@
                 const columnIndex = checkbox.getAttribute('data-column');
                 const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
                 const label = document.querySelector(`label[for="column-${columnIndex}"]`);
-                const colName = capitalizeWords(th.childNodes[0].nodeValue.trim());
+                if (!th || !label) return;
+                const colNameText = th.childNodes[0]?.nodeValue?.trim() || th.textContent?.trim() || `Column ${columnIndex}`;
+                const colName = capitalizeWords(colNameText);
                 if (hiddenColumns.includes(columnIndex)) {
                     checkbox.checked = false;
                     document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = 'none');
@@ -732,7 +743,9 @@
                     const columnIndex = this.getAttribute('data-column');
                     const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
                     const label = document.querySelector(`label[for="column-${columnIndex}"]`);
-                    const colName = capitalizeWords(th.childNodes[0].nodeValue.trim());
+                    if (!th || !label) return;
+                    const colNameText = th.childNodes[0]?.nodeValue?.trim() || th.textContent?.trim() || `Column ${columnIndex}`;
+                    const colName = capitalizeWords(colNameText);
                     let hidden = getHiddenColumns();
                     if (this.checked) {
                         document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = '');
@@ -754,7 +767,9 @@
                     document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = '');
                     const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
                     const label = document.querySelector(`label[for="column-${columnIndex}"]`);
-                    const colName = capitalizeWords(th.childNodes[0].nodeValue.trim());
+                    if (!th || !label) return;
+                    const colNameText = th.childNodes[0]?.nodeValue?.trim() || th.textContent?.trim() || `Column ${columnIndex}`;
+                    const colName = capitalizeWords(colNameText);
                     label.innerHTML = `${colName} <i class="mdi mdi-eye text-primary"></i>`;
                 });
                 saveHiddenColumns([]);
@@ -851,7 +866,8 @@
                             if (column === 'ready_to_ship' && value === 'Yes') {
                                 const parent = row.querySelector('td[data-column="2"]')?.innerText?.trim() || '';
                                 const skuVal = row.querySelector('td[data-column="3"]')?.innerText?.trim() || '';
-                                const supplier = row.querySelector('td[data-column="6"] span')?.textContent?.trim() || '';
+                                const supplierSelect = row.querySelector('td[data-column="6"] select[data-column="supplier"]');
+                                const supplier = supplierSelect ? supplierSelect.value.trim() : '';
                                 const qty = row.querySelector('td[data-column="4"]')?.innerText?.trim() || '';
                                 const totalCbm = row.querySelector('td[data-column="15"] input')?.value?.trim() || '';
                                 const rate = row.querySelector('td[data-column="5"] input')?.value?.trim() || '';                                
@@ -1164,8 +1180,8 @@
                 allRows.forEach(row => {
                     const supplierCell = row.querySelector('td[data-column="6"]');
                     if (supplierCell) {
-                        const supplierSpan = supplierCell.querySelector('span');
-                        const supplierName = supplierSpan ? supplierSpan.textContent.trim() : supplierCell.textContent.trim();
+                        const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
+                        const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
                         if (supplierName.toLowerCase() === selectedSupplier.toLowerCase()) {
                             row.style.display = '';
                             matchingRows.push(row);
@@ -1346,9 +1362,9 @@
         rows.forEach(row => {
             const supplierCell = row.querySelector('td[data-column="6"]');
             if (supplierCell) {
-                // Get supplier from span, not input field
-                const supplierSpan = supplierCell.querySelector('span');
-                const supplierName = supplierSpan ? supplierSpan.textContent.trim() : supplierCell.textContent.trim();
+                // Get supplier from dropdown
+                const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
+                const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
                 if (supplierName && !suppliers.includes(supplierName)) {
                     suppliers.push(supplierName);
                 }
@@ -1359,9 +1375,9 @@
             rows.forEach(row => {
                 const cell = row.querySelector('td[data-column="6"]');
                 if (cell) {
-                    // Get supplier from span, not input field
-                    const supplierSpan = cell.querySelector('span');
-                    const supplierName = supplierSpan ? supplierSpan.textContent.trim() : cell.textContent.trim();
+                    // Get supplier from dropdown
+                    const supplierSelect = cell.querySelector('select[data-column="supplier"]');
+                    const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
                     if (supplierName === supplier) {
                         row.style.display = "";
                     } else {
@@ -1392,8 +1408,8 @@
             rows.forEach(row => {
                 const supplierCell = row.querySelector('td[data-column="6"]');
                 if (supplierCell) {
-                    const supplierSpan = supplierCell.querySelector('span');
-                    const supplierName = supplierSpan ? supplierSpan.textContent.trim() : supplierCell.textContent.trim();
+                    const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
+                    const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
                     if (supplierName && !suppliers.includes(supplierName)) {
                         suppliers.push(supplierName);
                     }
