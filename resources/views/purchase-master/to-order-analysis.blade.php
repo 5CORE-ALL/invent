@@ -417,7 +417,7 @@
                         headerFilterLiveFilter: true,
                     },
                     {
-                        title: "App. QTY",
+                        title: "MOQ",
                         field: "approved_qty",
                         hozAlign: "center",
                         formatter: function (cell) {
@@ -426,13 +426,22 @@
                             const html = `
                                     <div style="display:flex; justify-content:center; align-items:center; width:100%;">
                                         <input type="number" 
-                                            class="form-control form-control-sm qty-input" 
+                                            class="form-control form-control-sm order_qty" 
                                             value="${value}" 
                                             min="0" max="99999" 
-                                            readonly
-                                            style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed;">
+                                            style="width:80px; text-align:center;">
                                     </div>
                                 `;
+
+                            setTimeout(() => {
+                                const input = cell.getElement().querySelector(".order_qty");
+                                if (input) {
+                                    input.addEventListener("change", function () {
+                                        const newValue = this.value;
+                                        saveLinkUpdate(cell, newValue);
+                                    });
+                                }
+                            }, 10);
 
                             return html;
                         }
@@ -552,36 +561,6 @@
 
                             setTimeout(() => {
                                 const input = cell.getElement().querySelector(".adv_date_input");
-                                if (input) {
-                                    input.addEventListener("change", function () {
-                                        const newValue = this.value;
-                                        saveLinkUpdate(cell, newValue);
-                                    });
-                                }
-                            }, 10);
-
-                            return html;
-                        }
-                    },
-                    {
-                        title: "Order Qty",
-                        field: "order_qty",
-                        hozAlign: "center",
-                        formatter: function (cell) {
-                            const value = cell.getValue() || "";
-                            
-                            const html = `
-                                    <div style="display:flex; justify-content:center; align-items:center; width:100%;">
-                                        <input type="number" 
-                                            class="form-control form-control-sm order_qty" 
-                                            value="${value}" 
-                                            min="0" max="99999" 
-                                            style="width:80px; text-align:center;">
-                                    </div>
-                                `;
-
-                            setTimeout(() => {
-                                const input = cell.getElement().querySelector(".order_qty");
                                 if (input) {
                                     input.addEventListener("change", function () {
                                         const newValue = this.value;
@@ -801,10 +780,10 @@
                     const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
                     if (table) {
                         const row = table.searchRows("SKU", "=", sku)[0];
-                        const orderQty = row ? row.getData()["order_qty"] : null;
+                        const orderQty = row ? row.getData()["approved_qty"] : null;
                         
                         if (!orderQty || orderQty === "0" || parseInt(orderQty) === 0) {
-                            alert("Order Qty cannot be empty or zero.");
+                            alert("MOQ cannot be empty or zero.");
                             $el.val('');
                             return;
                         }
@@ -838,7 +817,7 @@
                             const payload = {
                                 parent: rowData.Parent || "",
                                 sku: rowData.SKU || "",
-                                order_qty: rowData.order_qty || "",
+                                order_qty: rowData.approved_qty || "",
                                 supplier: rowData.Supplier || "",
                                 adv_date: rowData["Adv date"] || ""
                             };
