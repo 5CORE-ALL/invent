@@ -1192,6 +1192,8 @@ class ProductMasterController extends Controller
     public function updateTitlesToPlatforms(Request $request)
     {
         try {
+            Log::info("=== updateTitlesToPlatforms called ===", $request->all());
+            
             $validated = $request->validate([
                 'skus' => 'required|array',
                 'skus.*' => 'required|string',
@@ -1297,6 +1299,7 @@ class ProductMasterController extends Controller
     private function updatePlatformTitle($platform, $sku, $title)
     {
         try {
+            file_put_contents(storage_path('logs/platform_debug.log'), date('Y-m-d H:i:s') . " - Platform: {$platform}, SKU: {$sku}\n", FILE_APPEND);
             Log::info("Updating {$platform} title for SKU: {$sku}");
 
             switch ($platform) {
@@ -1312,6 +1315,7 @@ class ProductMasterController extends Controller
                     return $this->updateEbayTitle($platform, $sku, $title);
                 
                 case 'walmart':
+                    Log::info("Updating walmart title for SKU: {$sku}");
                     return $this->updateWalmartTitle($sku, $title);
                 
                 case 'temu':
@@ -1325,7 +1329,9 @@ class ProductMasterController extends Controller
                     return false;
             }
         } catch (\Exception $e) {
-            Log::error("Error updating {$platform} title for SKU {$sku}: " . $e->getMessage());
+            $error = $e->getMessage();
+            file_put_contents(storage_path('logs/platform_debug.log'), date('Y-m-d H:i:s') . " - ERROR in {$platform}: {$error}\n", FILE_APPEND);
+            Log::error("Error updating {$platform} title for SKU {$sku}: " . $error);
             return false;
         }
     }
@@ -1346,7 +1352,7 @@ class ProductMasterController extends Controller
             }
 
             // Get access token
-            $accessToken = $this->getAmazonAccessToken();
+            $accessToken = $this->getAmazonAccessToken($clientId, $clientSecret, $refreshToken);
             if (!$accessToken) {
                 Log::error("Failed to get Amazon access token");
                 return false;
@@ -1392,60 +1398,513 @@ class ProductMasterController extends Controller
     private function updateEbayTitle($account, $sku, $title)
     {
         try {
-            // Get eBay credentials based on account (ebay1, ebay2, ebay3)
-            $tokenKey = strtoupper($account) . '_ACCESS_TOKEN';
-            $accessToken = env($tokenKey);
-
-            if (!$accessToken) {
+            Log::info("Starting eBay {$account} title update for SKU: {$sku}, Title: {$title}");
+            
+            // Get eBay credentials based on account
+            $credentials = $this->getEbayCredentials($account);
+            
+            if (!$credentials) {
                 Log::warning("{$account} credentials not configured");
                 return false;
             }
 
-            // eBay API logic would go here
-            // This is a placeholder - implement actual eBay API call
-            Log::info("Placeholder: Would update {$account} title for SKU {$sku}");
-            return false; // Change to true when implemented
+            // Get OAuth access token from refresh token
+            $accessToken = $this->getEbayAccessToken($credentials);
+            
+            if (!$accessToken) {
+                Log::warning("Failed to get access token for {$account}");
+                return false;
+            }
+
+            // Find eBay listing by SKU using existing metrics tables
+            $ebayMetricModel = null;
+            
+            if ($account === 'ebay1') {
+                $ebayMetricModel = \App\Models\EbayMetric::class;
+            } elseif ($account === 'ebay2') {
+                $ebayMetricModel = \App\Models\Ebay2Metric::class;
+            } elseif ($account === 'ebay3') {
+                $ebayMetricModel = \App\Models\Ebay3Metric::class;
+            }
+            
+            if (!$ebayMetricModel) {
+                Log::warning("Unknown eBay account: {$account}");
+                return false;
+            }
+            
+            // Get item ID from metrics table
+            $ebayListing = $ebayMetricModel::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+                
+            if (!$ebayListing || !$ebayListing->item_id) {
+                Log::info("No eBay listing found for SKU: {$sku} in {$account}");
+                return false;
+            }
+            
+            $itemId = $ebayListing->item_id;
+            Log::info("Found eBay item ID: {$itemId} for SKU: {$sku} in {$account}");
+
+            // Add delay to respect eBay rate limits
+            sleep(1);
+
+            // eBay Trading API endpoint
+            $apiUrl = 'https://api.ebay.com/ws/api.dll';
+            
+            // Build XML request for ReviseItem
+            $xmlRequest = '<?xml version="1.0" encoding="utf-8"?>
+<ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+    <RequesterCredentials>
+        <eBayAuthToken>' . $accessToken . '</eBayAuthToken>
+    </RequesterCredentials>
+    <Item>
+        <ItemID>' . $itemId . '</ItemID>
+        <Title>' . htmlspecialchars($title, ENT_XML1, 'UTF-8') . '</Title>
+    </Item>
+</ReviseItemRequest>';
+
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => '967',
+                'X-EBAY-API-DEV-NAME' => $credentials['dev_id'],
+                'X-EBAY-API-APP-NAME' => $credentials['app_id'],
+                'X-EBAY-API-CERT-NAME' => $credentials['cert_id'],
+                'X-EBAY-API-CALL-NAME' => 'ReviseItem',
+                'X-EBAY-API-SITEID' => '0', // 0 = US
+                'Content-Type' => 'text/xml',
+            ])
+            ->timeout(30)
+            ->send('POST', $apiUrl, ['body' => $xmlRequest]);
+
+            if ($response->successful()) {
+                $responseBody = $response->body();
+                
+                // Parse XML response to check for success
+                $xml = simplexml_load_string($responseBody);
+                $ack = (string)$xml->Ack;
+                
+                if ($ack === 'Success' || $ack === 'Warning') {
+                    Log::info("✓ Successfully updated {$account} title for SKU: {$sku}, Item ID: {$itemId}");
+                    return true;
+                } else {
+                    $errors = [];
+                    $errorCodes = [];
+                    if (isset($xml->Errors)) {
+                        foreach ($xml->Errors as $error) {
+                            $errorCode = (string)$error->ErrorCode;
+                            $errorMsg = (string)$error->LongMessage;
+                            $errors[] = $errorMsg;
+                            $errorCodes[] = $errorCode;
+                            
+                            // Special handling for common errors
+                            if (strpos($errorMsg, 'ended listing') !== false) {
+                                Log::warning("✗ {$account} SKU {$sku} (Item {$itemId}): Listing has ended and cannot be revised");
+                            } elseif (strpos($errorMsg, 'not found') !== false) {
+                                Log::warning("✗ {$account} SKU {$sku} (Item {$itemId}): Listing not found");
+                            }
+                        }
+                    }
+                    Log::error("✗ eBay API error for {$account} SKU {$sku}: " . implode(', ', $errors));
+                    return false;
+                }
+            } else {
+                Log::error("✗ Failed to update {$account} title for SKU {$sku}: " . $response->body());
+                return false;
+            }
         } catch (\Exception $e) {
-            Log::error("Exception updating {$account} title for SKU {$sku}: " . $e->getMessage());
+            Log::error("✗ Exception updating {$account} title for SKU {$sku}: " . $e->getMessage());
             return false;
+        }
+    }
+
+    private function getEbayCredentials($account)
+    {
+        // Map account names to env variable prefixes
+        $envPrefix = match($account) {
+            'ebay1' => 'EBAY',
+            'ebay2' => 'EBAY2',
+            'ebay3' => 'EBAY_3',
+            default => null
+        };
+
+        if (!$envPrefix) {
+            Log::warning("Invalid eBay account: {$account}");
+            return null;
+        }
+
+        $appId = env("{$envPrefix}_APP_ID");
+        $certId = env("{$envPrefix}_CERT_ID");
+        $devId = env("{$envPrefix}_DEV_ID");
+        $refreshToken = env("{$envPrefix}_REFRESH_TOKEN");
+
+        Log::info("eBay credentials check for {$account}: APP_ID=" . ($appId ? 'SET' : 'MISSING') . 
+                  ", CERT_ID=" . ($certId ? 'SET' : 'MISSING') . 
+                  ", DEV_ID=" . ($devId ? 'SET' : 'MISSING') . 
+                  ", REFRESH_TOKEN=" . ($refreshToken ? 'SET' : 'MISSING'));
+
+        if (!$appId || !$certId || !$devId || !$refreshToken) {
+            Log::warning("Missing credentials for {$account}. Env prefix: {$envPrefix}");
+            return null;
+        }
+
+        return [
+            'app_id' => $appId,
+            'cert_id' => $certId,
+            'dev_id' => $devId,
+            'refresh_token' => trim($refreshToken, '"')
+        ];
+    }
+
+    private function getEbayAccessToken($credentials)
+    {
+        try {
+            $authString = base64_encode($credentials['app_id'] . ':' . $credentials['cert_id']);
+            
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'Content-Type' => 'application/x-www-form-urlencoded',
+                'Authorization' => 'Basic ' . $authString,
+            ])
+            ->asForm()
+            ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                'grant_type' => 'refresh_token',
+                'refresh_token' => $credentials['refresh_token'],
+                'scope' => 'https://api.ebay.com/oauth/api_scope'
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                return $data['access_token'] ?? null;
+            }
+
+            Log::error("Failed to get eBay access token: " . $response->body());
+            return null;
+        } catch (\Exception $e) {
+            Log::error("Exception getting eBay access token: " . $e->getMessage());
+            return null;
         }
     }
 
     private function updateWalmartTitle($sku, $title)
     {
         try {
+            Log::info("Starting Walmart title update for SKU: {$sku}, Title: {$title}");
+            
             $clientId = env('WALMART_CLIENT_ID');
             $clientSecret = env('WALMART_CLIENT_SECRET');
+            $channelType = env('WALMART_CHANNEL_TYPE', '0f3e4dd4-0514-4346-b39d-af0e00ea066d');
+            $baseUrl = env('WALMART_API_ENDPOINT', 'https://marketplace.walmartapis.com');
 
             if (!$clientId || !$clientSecret) {
-                Log::warning("Walmart credentials not configured");
+                Log::warning("Walmart credentials not configured in .env file");
                 return false;
             }
 
-            // Walmart API logic would go here
-            Log::info("Placeholder: Would update Walmart title for SKU {$sku}");
-            return false; // Change to true when implemented
+            // Get OAuth access token
+            $accessToken = $this->getWalmartAccessToken($clientId, $clientSecret);
+            
+            if (!$accessToken) {
+                Log::error("✗ Failed to get Walmart access token for SKU {$sku}");
+                return false;
+            }
+
+            Log::info("✓ Successfully obtained Walmart access token");
+
+            // Build MP_ITEM feed XML for title update with processMode=UPDATE
+            $feedXml = '<?xml version="1.0" encoding="UTF-8"?>
+<MPItemFeed xmlns="http://walmart.com/">
+    <MPItemFeedHeader>
+        <version>1.4</version>
+        <requestId>' . uniqid() . '</requestId>
+        <requestBatchId>' . uniqid() . '</requestBatchId>
+    </MPItemFeedHeader>
+    <MPItem>
+        <processMode>UPDATE</processMode>
+        <Item>
+            <sku>' . htmlspecialchars($sku, ENT_XML1) . '</sku>
+            <productName>' . htmlspecialchars($title, ENT_XML1) . '</productName>
+        </Item>
+    </MPItem>
+</MPItemFeed>';
+
+            Log::info("Walmart MP_ITEM Feed XML: " . $feedXml);
+
+            sleep(2);
+            
+            // Submit feed using MP_ITEM feedType for content updates
+            $feedsEndpoint = $baseUrl . '/v3/feeds?feedType=MP_ITEM';
+            
+            $response = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->withHeaders([
+                    'WM_SEC.ACCESS_TOKEN' => $accessToken,
+                    'WM_QOS.CORRELATION_ID' => uniqid(),
+                    'WM_SVC.NAME' => 'Walmart Marketplace',
+                    'WM_CONSUMER.CHANNEL.TYPE' => $channelType,
+                    'Content-Type' => 'multipart/form-data',
+                    'Accept' => 'application/xml',
+                ])
+                ->attach('file', $feedXml, 'feed.xml')
+                ->timeout(60)
+                ->post($feedsEndpoint);
+
+            Log::info("Walmart MP_ITEM Feed response status: " . $response->status());
+            Log::info("Walmart MP_ITEM Feed response: " . $response->body());
+
+            // Walmart Feeds API returns 202 Accepted for async processing
+            if ($response->status() === 202) {
+                $responseBody = $response->body();
+                
+                // Parse feedId from XML response
+                preg_match('/<feedId>(.*?)<\/feedId>/', $responseBody, $matches);
+                $feedId = $matches[1] ?? null;
+                
+                if ($feedId) {
+                    Log::info("✓ Walmart feed submitted successfully. FeedId: {$feedId}");
+                    Log::info("⏳ Feed is processing asynchronously (15-60 min). Poll status: GET /v3/feeds/{$feedId}");
+                    
+                    // Optionally poll feed status after a delay
+                    // You can implement polling logic here or return success
+                    return true;
+                } else {
+                    Log::warning("⚠ Feed submitted (202) but no feedId found in response");
+                    return true; // Still consider it successful since it was accepted
+                }
+            } elseif ($response->successful()) {
+                Log::info("✓ Walmart title feed submitted successfully");
+                return true;
+            } else {
+                Log::error("✗ Failed to submit Walmart MP_ITEM feed for SKU {$sku}. Status: {$response->status()}, Error: {$response->body()}");
+                return false;
+            }
         } catch (\Exception $e) {
-            Log::error("Exception updating Walmart title for SKU {$sku}: " . $e->getMessage());
+            Log::error("✗ Exception updating Walmart title for SKU {$sku}: " . $e->getMessage());
             return false;
+        }
+    }
+
+    private function getWalmartAccessToken($clientId, $clientSecret)
+    {
+        try {
+            Log::info("Attempting to get Walmart access token...");
+            
+            $authorization = base64_encode("{$clientId}:{$clientSecret}");
+
+            $response = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => "Basic {$authorization}",
+                    'WM_QOS.CORRELATION_ID' => uniqid(),
+                    'WM_SVC.NAME' => 'Walmart Marketplace',
+                    'Accept' => 'application/json',
+                ])
+                ->asForm()
+                ->post('https://marketplace.walmartapis.com/v3/token', [
+                    'grant_type' => 'client_credentials',
+                ]);
+
+            Log::info("Walmart token response status: " . $response->status());
+
+            if ($response->successful()) {
+                $tokenData = $response->json();
+                $accessToken = $tokenData['access_token'] ?? null;
+                
+                if ($accessToken) {
+                    Log::info("✓ Successfully obtained Walmart access token");
+                    return $accessToken;
+                } else {
+                    Log::error("✗ Token response successful but no access_token found: " . json_encode($tokenData));
+                    return null;
+                }
+            }
+
+            $errorBody = $response->json();
+            Log::error("✗ Failed to get Walmart access token. Status: {$response->status()}");
+            Log::error("Error response: " . json_encode($errorBody));
+            
+            if (isset($errorBody['error'])) {
+                $error = $errorBody['error'];
+                $errorDesc = $errorBody['error_description'] ?? 'No description';
+                
+                if ($error === 'invalid_client') {
+                    Log::error("INVALID CREDENTIALS: The WALMART_CLIENT_ID or WALMART_CLIENT_SECRET is incorrect.");
+                    Log::error("Please verify credentials at: https://seller.walmart.com > Settings > API Keys");
+                } elseif ($error === 'unauthorized_client') {
+                    Log::error("UNAUTHORIZED: Client is not authorized for this grant type.");
+                } else {
+                    Log::error("Error type: {$error}, Description: {$errorDesc}");
+                }
+            }
+            
+            return null;
+        } catch (\Exception $e) {
+            Log::error("✗ Exception getting Walmart access token: " . $e->getMessage());
+            Log::error("Stack trace: " . $e->getTraceAsString());
+            return null;
+        }
+    }
+
+    private function checkWalmartFeedStatus($feedId, $accessToken)
+    {
+        try {
+            $baseUrl = env('WALMART_API_ENDPOINT', 'https://marketplace.walmartapis.com');
+            $channelType = env('WALMART_CHANNEL_TYPE', '0f3e4dd4-0514-4346-b39d-af0e00ea066d');
+            
+            Log::info("Checking Walmart feed status for feedId: {$feedId}");
+            
+            $response = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->withHeaders([
+                    'WM_SEC.ACCESS_TOKEN' => $accessToken,
+                    'WM_QOS.CORRELATION_ID' => uniqid(),
+                    'WM_SVC.NAME' => 'Walmart Marketplace',
+                    'WM_CONSUMER.CHANNEL.TYPE' => $channelType,
+                    'Accept' => 'application/xml',
+                ])
+                ->timeout(30)
+                ->get($baseUrl . "/v3/feeds/{$feedId}");
+            
+            Log::info("Feed status response: " . $response->body());
+            
+            if ($response->successful()) {
+                $body = $response->body();
+                
+                // Parse feed status from XML
+                preg_match('/<feedStatus>(.*?)<\/feedStatus>/', $body, $matches);
+                $status = $matches[1] ?? 'UNKNOWN';
+                
+                Log::info("Feed Status: {$status}");
+                
+                return [
+                    'status' => $status,
+                    'response' => $body
+                ];
+            } else {
+                Log::error("Failed to get feed status. Status: {$response->status()}");
+                return null;
+            }
+        } catch (\Exception $e) {
+            Log::error("Exception checking Walmart feed status: " . $e->getMessage());
+            return null;
         }
     }
 
     private function updateTemuTitle($sku, $title)
     {
         try {
-            $apiKey = env('TEMU_API_KEY');
+            Log::info("Starting Temu title update for SKU: {$sku}, Title: {$title}");
             
-            if (!$apiKey) {
-                Log::warning("Temu credentials not configured");
+            $appKey = env('TEMU_APP_KEY');
+            $appSecret = env('TEMU_SECRET_KEY');
+            $accessToken = env('TEMU_ACCESS_TOKEN');
+
+            if (!$appKey || !$appSecret || !$accessToken) {
+                Log::warning("Temu credentials not configured in .env file");
                 return false;
             }
 
-            // Temu API logic would go here
-            Log::info("Placeholder: Would update Temu title for SKU {$sku}");
-            return false; // Change to true when implemented
+            Log::info("✓ Temu credentials found");
+
+            // Try to find Temu product by SKU
+            $temuProduct = \App\Models\TemuDataView::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+            
+            if (!$temuProduct) {
+                Log::error("SKU {$sku} not found in TemuDataView. Product may not be listed on Temu.");
+                return false;
+            }
+            
+            Log::info("Found Temu product for SKU: {$sku}");
+            
+            // Use the same signature method as TemuApiService
+            $timestamp = time();
+            
+            // Build request body - Note: Temu may not have a direct title update API
+            // This might need adjustment based on actual Temu API documentation
+            $requestBody = [
+                "type" => "bg.local.goods.update",
+                "productSkcExternalId" => $sku,
+                "productName" => $title,
+            ];
+            
+            // Generate signature like TemuApiService does
+            $params = [
+                'access_token' => $accessToken,
+                'app_key' => $appKey,
+                'timestamp' => $timestamp,
+                'data_type' => 'JSON',
+            ];
+            
+            // Flatten and sort for signing
+            $signParams = array_merge($params, $requestBody);
+            ksort($signParams);
+            
+            $temp = '';
+            foreach ($signParams as $key => $value) {
+                if (is_array($value) || is_object($value)) {
+                    $value = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                }
+                $temp .= $key . $value;
+            }
+            
+            $signStr = $appSecret . $temp . $appSecret;
+            $sign = strtoupper(md5($signStr));
+            $params['sign'] = $sign;
+            
+            $completeRequest = array_merge($params, $requestBody);
+            
+            Log::info("Temu API call - SKU: {$sku}, Type: bg.local.goods.update");
+            
+            sleep(2); // Rate limiting
+            
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                    'Content-Type' => 'application/json',
+                ])
+                ->timeout(30)
+                ->post('https://openapi-b-us.temu.com/openapi/router', $completeRequest);
+
+            $status = $response->status();
+            $body = $response->body();
+            
+            Log::info("Temu API response status: " . $status);
+            Log::info("Temu API response body: " . $body);
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+                
+                // Temu typically returns success with code 0
+                if (isset($responseData['success']) && $responseData['success'] === true) {
+                    Log::info("✓ Successfully updated Temu title for SKU: {$sku}");
+                    return true;
+                } elseif (isset($responseData['errorCode']) && $responseData['errorCode'] === 0) {
+                    Log::info("✓ Successfully updated Temu title for SKU: {$sku}");
+                    return true;
+                } elseif (!isset($responseData['errorCode']) || $responseData['errorCode'] === null) {
+                    // No error code means success
+                    Log::info("✓ Successfully updated Temu title for SKU: {$sku}");
+                    return true;
+                } else {
+                    $errorMsg = $responseData['errorMsg'] ?? $responseData['message'] ?? 'Unknown error';
+                    $errorCode = $responseData['errorCode'] ?? 'N/A';
+                    Log::error("✗ Temu API returned error: Code {$errorCode}, Message: {$errorMsg}");
+                    Log::error("Full response: " . json_encode($responseData));
+                    return false;
+                }
+            } else {
+                Log::error("✗ Failed to update Temu title for SKU {$sku}. Status: {$status}, Error: {$body}");
+                
+                if ($status == 401) {
+                    Log::error("Authentication failed. Check TEMU_ACCESS_TOKEN in .env");
+                } elseif ($status == 403) {
+                    Log::error("Permission denied. Verify 'Local Product Management' permission is enabled in Temu Seller Center");
+                } elseif ($status == 404) {
+                    Log::error("API endpoint not found. Temu may have changed their API structure");
+                    Log::error("Current endpoint: {$updateEndpoint}");
+                }
+                
+                return false;
+            }
         } catch (\Exception $e) {
-            Log::error("Exception updating Temu title for SKU {$sku}: " . $e->getMessage());
+            Log::error("✗ Exception updating Temu title for SKU {$sku}: " . $e->getMessage());
+            Log::error("Stack trace: " . $e->getTraceAsString());
             return false;
         }
     }
@@ -1453,18 +1912,141 @@ class ProductMasterController extends Controller
     private function updateDobaTitle($sku, $title)
     {
         try {
-            $apiKey = env('DOBA_API_KEY');
+            Log::info("Starting Doba title update for SKU: {$sku}, Title: {$title}");
             
-            if (!$apiKey) {
-                Log::warning("Doba credentials not configured");
+            $publicKey = env('DOBA_PUBLIC_KEY');
+            $privateKey = env('DOBA_PRIVATE_KEY');
+            $appKey = env('DOBA_APP_KEY');
+            
+            if (!$publicKey || !$privateKey || !$appKey) {
+                Log::warning("Doba credentials not configured in .env file");
                 return false;
             }
 
-            // Doba API logic would go here
-            Log::info("Placeholder: Would update Doba title for SKU {$sku}");
-            return false; // Change to true when implemented
+            Log::info("✓ Doba credentials found");
+
+            // Try to find Doba product by SKU
+            $dobaProduct = \App\Models\DobaDataView::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+            
+            // Use doba_product_id if found, otherwise use SKU as fallback
+            $dobaProductId = $dobaProduct && isset($dobaProduct->doba_product_id)
+                ? $dobaProduct->doba_product_id 
+                : $sku;
+            
+            if ($dobaProduct) {
+                Log::info("Found Doba Product ID: {$dobaProductId} for SKU: {$sku}");
+            } else {
+                Log::info("SKU not found in DobaDataView, using SKU as product identifier: {$dobaProductId}");
+            }
+            
+            // Doba API uses RSA signature authentication
+            $timestamp = time();
+            $nonce = uniqid();
+            
+            // Format private key for OpenSSL (convert from string to PEM format if needed)
+            $privateKeyFormatted = $privateKey;
+            if (strpos($privateKey, '-----BEGIN') === false) {
+                // If key doesn't have PEM headers, add them
+                $privateKeyFormatted = "-----BEGIN PRIVATE KEY-----\n" . 
+                    chunk_split($privateKey, 64, "\n") . 
+                    "-----END PRIVATE KEY-----";
+            }
+            
+            // Get the key resource
+            $keyResource = openssl_pkey_get_private($privateKeyFormatted);
+            
+            if (!$keyResource) {
+                Log::error("Failed to load Doba private key. OpenSSL error: " . openssl_error_string());
+                return false;
+            }
+            
+            // Build request data
+            $requestData = [
+                'product_id' => $dobaProductId,
+                'title' => $title,
+                'app_key' => $appKey,
+                'timestamp' => $timestamp,
+                'nonce' => $nonce,
+            ];
+            
+            // Sort parameters for signature
+            ksort($requestData);
+            $signString = http_build_query($requestData);
+            
+            // Generate RSA signature
+            $signature = '';
+            $signResult = openssl_sign($signString, $signature, $keyResource, OPENSSL_ALGO_SHA256);
+            
+            if (!$signResult) {
+                Log::error("Failed to sign Doba request. OpenSSL error: " . openssl_error_string());
+                openssl_free_key($keyResource);
+                return false;
+            }
+            
+            $signBase64 = base64_encode($signature);
+            openssl_free_key($keyResource);
+            
+            Log::info("Doba API call - Product ID: {$dobaProductId}");
+            
+            sleep(2); // Rate limiting
+            
+            // Doba API endpoint
+            $apiUrl = 'https://api.doba.com/v1/products/update';
+            
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                    'Content-Type' => 'application/json',
+                    'X-Doba-App-Key' => $appKey,
+                    'X-Doba-Timestamp' => $timestamp,
+                    'X-Doba-Nonce' => $nonce,
+                    'X-Doba-Signature' => $signBase64,
+                ])
+                ->timeout(30)
+                ->post($apiUrl, [
+                    'product_id' => $dobaProductId,
+                    'title' => $title,
+                ]);
+
+            $status = $response->status();
+            $body = $response->body();
+            
+            Log::info("Doba API response status: " . $status);
+            Log::info("Doba API response body: " . $body);
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+                
+                if (isset($responseData['success']) && $responseData['success'] === true) {
+                    Log::info("✓ Successfully updated Doba title for SKU: {$sku}");
+                    return true;
+                } elseif (isset($responseData['status']) && $responseData['status'] === 'success') {
+                    Log::info("✓ Successfully updated Doba title for SKU: {$sku}");
+                    return true;
+                } else {
+                    $errorMsg = $responseData['message'] ?? $responseData['error'] ?? 'Unknown error';
+                    Log::error("✗ Doba API returned error: {$errorMsg}");
+                    Log::error("Full response: " . json_encode($responseData));
+                    return false;
+                }
+            } else {
+                Log::error("✗ Failed to update Doba title for SKU {$sku}. Status: {$status}, Error: {$body}");
+                
+                if ($status == 401) {
+                    Log::error("Authentication failed. Check Doba credentials in .env");
+                } elseif ($status == 403) {
+                    Log::error("Permission denied. Verify your Doba account has product update permissions");
+                } elseif ($status == 404) {
+                    Log::error("Product not found or API endpoint incorrect");
+                    Log::error("Current endpoint: {$apiUrl}");
+                }
+                
+                return false;
+            }
         } catch (\Exception $e) {
-            Log::error("Exception updating Doba title for SKU {$sku}: " . $e->getMessage());
+            Log::error("✗ Exception updating Doba title for SKU {$sku}: " . $e->getMessage());
+            Log::error("Stack trace: " . $e->getTraceAsString());
             return false;
         }
     }

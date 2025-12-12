@@ -593,7 +593,19 @@
                     platforms: platforms
                 })
             })
-            .then(response => response.json())
+            .then(response => {
+                // Check if response is JSON or HTML
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    return response.json();
+                } else {
+                    // It's HTML (error page), read as text
+                    return response.text().then(html => {
+                        console.error('Server returned HTML instead of JSON:', html);
+                        throw new Error('Server error - check browser console for details');
+                    });
+                }
+            })
             .then(data => {
                 if (data.success) {
                     let message = 'Update Completed!\n\n';
