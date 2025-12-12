@@ -1603,6 +1603,9 @@
                                                         view</a>
                                                 </li>
                                                 <li>
+                                                    <a href="{{ url('amazon-sales-tabulator-view') }}">Amazon Sales Data</a>
+                                                </li>
+                                                <li>
                                                     <a href="{{ route('amazon.low.visibility.view') }}">Amz FBM
                                                         Low Visibility</a>
                                                 </li>
