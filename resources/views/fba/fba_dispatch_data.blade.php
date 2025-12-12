@@ -776,6 +776,15 @@
                             }
                         },
 
+
+                           {
+                            title: "FBA Price",
+                            field: "FBA_Price",
+                            hozAlign: "center",
+                            visible: true,
+                            // formatter: "dollar"
+                        },
+
                         {
                             title: "Pft%",
                             field: "Pft%",
@@ -792,13 +801,6 @@
                         },
 
 
-                           {
-                            title: "FBA Price",
-                            field: "FBA_Price",
-                            hozAlign: "center",
-                            visible: false,
-                            // formatter: "dollar"
-                        },
                         {
                             title: "ROI%",
                             field: "ROI%",
@@ -1598,7 +1600,7 @@
 
                 function applyColumnVisibilityFromServer() {
                     // Columns that should always be hidden by default (Pft% related columns and CTN columns)
-                    const alwaysHiddenColumns = ["FBA_Price", "ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
+                    const alwaysHiddenColumns = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
 
                     fetch('/fba-dispatch-column-visibility', {
                             method: 'GET',
@@ -1637,7 +1639,7 @@
                 // Show All Columns button
                 document.getElementById("show-all-columns-btn").addEventListener("click", function() {
                     // Columns that should always be hidden (Pft% related columns and CTN columns)
-                    const alwaysHiddenColumns = ["FBA_Price", "ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
+                    const alwaysHiddenColumns = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
 
                     table.getColumns().forEach(col => {
                         const def = col.getDefinition();
@@ -1663,7 +1665,7 @@
                     e.stopPropagation();
 
                     console.log('Pft% toggle clicked, table:', table);
-                    let colsToToggle = ["FBA_Price", "ROI%", "S_Price", "SPft%", "SROI%", "lmp_1"];
+                    let colsToToggle = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1"];
 
                     colsToToggle.forEach(colName => {
                         try {
