@@ -765,8 +765,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu/daily-data', [TemuController::class, 'getDailyData'])->name('temu.daily.data');
     Route::get('/ebay/daily-sales-data', [EbaySalesController::class, 'getData'])->name('ebay.daily.sales.data');
     Route::get('/ebay/daily-sales', [EbaySalesController::class, 'index'])->name('ebay.daily.sales');
-    Route::get('/ebay-column-visibility', [EbaySalesController::class, 'getColumnVisibility']);
-    Route::post('/ebay-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
+    Route::get('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'getColumnVisibility']);
+    Route::post('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
     
     // Amazon Sales Routes
     Route::get('/amazon/daily-sales-data', [AmazonSalesController::class, 'getData'])->name('amazon.daily.sales.data');
