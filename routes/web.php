@@ -273,6 +273,7 @@ use App\Http\Controllers\MissingListingController;
 use App\Http\Controllers\ProductMarketing;
 use App\Http\Controllers\FacebookAdsController;
 use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
+use App\Http\Controllers\Sales\EbaySalesController;
 
 /*  
 |--------------------------------------------------------------------------
@@ -761,6 +762,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataChunk']);
     Route::get('/temu/download-daily-data-sample', [TemuController::class, 'downloadDailyDataSample'])->name('temu.daily.sample');
     Route::get('/temu/daily-data', [TemuController::class, 'getDailyData'])->name('temu.daily.data');
+    Route::get('/ebay/daily-sales-data', [EbaySalesController::class, 'getData'])->name('ebay.daily.sales.data');
+    Route::get('/ebay/daily-sales', [EbaySalesController::class, 'index'])->name('ebay.daily.sales');
+    Route::get('/ebay-column-visibility', [EbaySalesController::class, 'getColumnVisibility']);
+    Route::post('/ebay-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
     Route::get('/amazonfba/view-data', [OverallAmazonFbaController::class, 'getViewAmazonFbaData'])->name('amazonfba.viewData');
     Route::get('/fbainv/view-data', [AmazonFbaInvController::class, 'getViewAmazonfbaInvData'])->name('fbainv.viewData');
     Route::get('/product-master-data', [ProductMasterController::class, 'product_master_data']);

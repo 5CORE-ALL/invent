@@ -842,6 +842,29 @@
             </li>
 
             <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#salesDashboard" aria-expanded="false"
+                    aria-controls="salesDashboard" class="side-nav-link">
+                    <i class="ri-bar-chart-line"></i>
+                    <span>Sales Dashboard</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="salesDashboard">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('ebay.daily.sales') }}">eBay Sales Data</a>
+                        </li>
+                        <li>
+                            <a href="{{ url('amazon-sales-tabulator-view') }}">Amazon Sales Data</a>
+                        </li>
+
+                        <li><a href="{{ url('temu-tabulator') }}">Temu Sales Data</a></li>
+
+                        <li><a href="{{ url('shein-tabulator') }}">Shein Sales Data</a></li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPages2" aria-expanded="false"
                     aria-controls="sidebarPages2" class="side-nav-link">
                     <i class="ri-store-3-line"></i>
@@ -1211,53 +1234,63 @@
                                         <a href="{{ route('meta.all.ads') }}">ALL ADS</a>
                                     </li>
                                     <li>
-                                        <a data-bs-toggle="collapse" href="#facebook-ads-submenu" aria-expanded="false"
-                                            aria-controls="facebook-ads-submenu">
+                                        <a data-bs-toggle="collapse" href="#facebook-ads-submenu"
+                                            aria-expanded="false" aria-controls="facebook-ads-submenu">
                                             FB Ads
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="facebook-ads-submenu">
                                             <ul class="side-nav-third-level">
                                                 <li>
-                                                    <a href="{{ route('meta.ads.facebook.single.image') }}">FB Single Image</a>
+                                                    <a href="{{ route('meta.ads.facebook.single.image') }}">FB Single
+                                                        Image</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.facebook.single.video') }}">FB Single Video</a>
+                                                    <a href="{{ route('meta.ads.facebook.single.video') }}">FB Single
+                                                        Video</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.facebook.carousal') }}">FB GRP Carousal</a>
+                                                    <a href="{{ route('meta.ads.facebook.carousal') }}">FB GRP
+                                                        Carousal</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.facebook.existing.post') }}">FB Existing Post</a>
+                                                    <a href="{{ route('meta.ads.facebook.existing.post') }}">FB
+                                                        Existing Post</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.facebook.catalogue') }}">FB Catalogue Ad</a>
+                                                    <a href="{{ route('meta.ads.facebook.catalogue') }}">FB Catalogue
+                                                        Ad</a>
                                                 </li>
                                             </ul>
                                         </div>
                                     </li>
                                     <li>
-                                        <a data-bs-toggle="collapse" href="#instagram-ads-submenu" aria-expanded="false"
-                                            aria-controls="instagram-ads-submenu">
+                                        <a data-bs-toggle="collapse" href="#instagram-ads-submenu"
+                                            aria-expanded="false" aria-controls="instagram-ads-submenu">
                                             Instagram Ads
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="instagram-ads-submenu">
                                             <ul class="side-nav-third-level">
                                                 <li>
-                                                    <a href="{{ route('meta.ads.instagram.single.image') }}">Insta Single Image</a>
+                                                    <a href="{{ route('meta.ads.instagram.single.image') }}">Insta
+                                                        Single Image</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.instagram.single.video') }}">Insta Single Video</a>
+                                                    <a href="{{ route('meta.ads.instagram.single.video') }}">Insta
+                                                        Single Video</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.instagram.carousal') }}">Insta GRP Carousal</a>
+                                                    <a href="{{ route('meta.ads.instagram.carousal') }}">Insta GRP
+                                                        Carousal</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.instagram.existing.post') }}">Insta Existing Post</a>
+                                                    <a href="{{ route('meta.ads.instagram.existing.post') }}">Insta
+                                                        Existing Post</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('meta.ads.instagram.catalogue') }}">Insta     Catalogue Ad</a>
+                                                    <a href="{{ route('meta.ads.instagram.catalogue') }}">Insta
+                                                        Catalogue Ad</a>
                                                 </li>
                                             </ul>
                                         </div>
@@ -1603,7 +1636,8 @@
                                                         view</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ url('amazon-sales-tabulator-view') }}">Amazon Sales Data</a>
+                                                    <a href="{{ url('amazon-sales-tabulator-view') }}">Amazon Sales
+                                                        Data</a>
                                                 </li>
                                                 <li>
                                                     <a href="{{ route('amazon.low.visibility.view') }}">Amz FBM
@@ -1649,7 +1683,7 @@
                                     <li>
 
                                         <a href="{{ url('/amazon-tabulator-view') }}">Amz FBM Price Decrease
-                                            </a>
+                                        </a>
                                     </li>
                                     <li>
                                         <a href="{{ route('amazon.pricing.inc') }}">Amz FBM Price Increase CVR</a>
@@ -1919,6 +1953,7 @@
                                     </li>
 
 
+                                    <li>    <a href="{{ url('ebay/daily-sales') }}">eBay Daily Sales</a></li>
                                     <li>
                                         <a href="{{ route('listing.ebay') }}">Listing eBay</a>
                                     </li>
@@ -2268,7 +2303,7 @@
                                                         CVR</a>
                                                 </li>
 
-                                              
+
                                             </ul>
                                         </div>
                                     </li>
@@ -3017,12 +3052,12 @@
         //             stockBadge.textContent = '0';
         //         });
         // }
-        
+
         // Set stock badge to 0 to avoid display issues
         if (stockBadge) {
             stockBadge.textContent = '0';
         }
-        
+
         // ===== MISSING LISTING NOT LISTED TOTAL ===== (DISABLED TO PREVENT CONNECTION ISSUES)
         // if (missingBadge) {
         //     fetch('/stock/missing/listing/data')
@@ -3062,7 +3097,7 @@
         //             missingBadge.style.display = 'inline';
         //         });
         // }
-        
+
         // Set missing badge to 0 to avoid display issues
         if (missingBadge) {
             missingBadge.textContent = '0';

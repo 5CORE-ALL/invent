@@ -53,9 +53,9 @@ class StockMappingController extends Controller
         $this->apiController = $apiController;
         $this->shopifyApiKey = config('services.shopify.api_key');
         $this->shopifyPassword = config('services.shopify.password');
-        $this->shopifyStoreUrl = str_replace(['https://', 'http://'],'',config('services.shopify.store_url'));
-        $this->shopifyStoreUrlName = env('SHOPIFY_STORE');
-        $this->shopifyAccessToken = env('SHOPIFY_PASSWORD');
+        // $this->shopifyStoreUrl = str_replace(['https://', 'http://'],'',config('services.shopify.store_url'));
+        // $this->shopifyStoreUrlName = env('SHOPIFY_STORE');
+        // $this->shopifyAccessToken = env('SHOPIFY_PASSWORD');
     }
 
 
@@ -69,6 +69,7 @@ class StockMappingController extends Controller
 
      
    public function getShopifyAmazonInventoryStock(Request $request)
+            
 {
         try {
             ini_set('max_execution_time', 300);
@@ -90,7 +91,14 @@ class StockMappingController extends Controller
             ProductStockMapping::chunk(500, function ($items) use (&$data) {
                 foreach ($items as $item) {
                     if (!$data->has($item->sku)) {
+                        // Do not set inventory_pls or inventory_business5core here, let the listing tables set them below
+                        $item->inventory_pls = null;
+                        $item->inventory_business5core = null;
                         $data->put($item->sku, $item);
+                        // Debug: Log first 3 records to see what's stored
+                        if ($data->count() <= 3) {
+                            Log::info("ProductStockMapping SKU: {$item->sku}, PLS: {$item->inventory_pls}, Business5Core: {$item->inventory_business5core}");
+                        }
                     }
                 }
             });
@@ -109,47 +117,38 @@ class StockMappingController extends Controller
             'ebay3'   => [EbayThreeListingStatus::class,'inventory_ebay3'],
             'bestbuy' => [BestbuyUSAListingStatus::class,'inventory_bestbuy'],
             'tiendamia' => [TiendamiaListingStatus::class,'inventory_tiendamia'],
-            'pls' => [PLSProduct::class, 'inventory_pls'],
-            'business5core' => [Business5CoreDataView::class, 'inventory_business5core'],
+            'pls' => [PlsListingStatus::class, 'inventory_pls'],
+            'business5core' => [Business5CoreListingStatus::class, 'inventory_business5core'],
         ];
 
 
             foreach ($marketplaces as $key => [$model, $inventoryField]) {
                 // Fetch all listings for these SKUs in chunks to avoid memory issues
-                $model::whereIn('sku', $skusforNR)->chunk(500, function ($allListings) use (&$data, $key, $inventoryField) {
+                $model::whereIn('sku', $skusforNR)->chunk(500, function ($allListings) use (&$data, $inventoryField) {
                     foreach ($allListings as $listing) {
                         $sku = $listing->sku ?? '';
                         $sku = str_replace("\u{00A0}", ' ', $sku);
                         $sku = trim(preg_replace('/\s+/', ' ', $sku));
-                        
                         if (isset($data[$sku])) {
-                            $inventory = null;
-                            
-                            // Handle different data sources
-                            if ($key === 'pls') {
-                                $inventory = $listing->price ?? null;
-                                if ($inventory === null || $inventory === '') {
-                                    $inventory = !empty($listing->p_l30) ? 1 : 0;
-                                }
-                            } elseif ($key === 'business5core') {
-                                $inventory = Arr::get($listing->value ?? [], 'inventory', null);
-                                if ($inventory === null) {
-                                    $inventory = Arr::get($listing->value ?? [], 'stock', null);
-                                }
-                                if ($inventory === null && isset($listing->value)) {
-                                    $inventory = !empty($listing->value) ? 1 : 0;
-                                }
-                            } else {
-                                $inventory = Arr::get($listing->value ?? [], 'inventory', null);
-                            }
-                            
-                            // Update in memory only, don't save to DB to avoid connection issues
-                            if ($inventory !== null && $inventory !== '') {
+                            $inventory = Arr::get($listing->value ?? [], 'inventory', null);
+                            if ($inventory === 'Not Listed' || $inventory === 'NRL') {
+                                $data[$sku]->$inventoryField = $inventory;
+                            } elseif (is_numeric($inventory)) {
                                 $data[$sku]->$inventoryField = (int)$inventory;
                             }
                         }
                     }
                 });
+            }
+
+            // After all marketplace assignments, fill missing PLS/Business5Core with Shopify inventory
+            foreach ($data as $item) {
+                if (!isset($item->inventory_pls) || $item->inventory_pls === null) {
+                    $item->inventory_pls = $item->inventory_shopify ?? 0;
+                }
+                if (!isset($item->inventory_business5core) || $item->inventory_business5core === null) {
+                    $item->inventory_business5core = $item->inventory_shopify ?? 0;
+                }
             }
         
 
@@ -169,8 +168,8 @@ class StockMappingController extends Controller
         ]);
 
         } catch (\Exception $e) {
-            \Log::error('Stock mapping error: ' . $e->getMessage());
-            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            Log::error('Stock mapping error: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json([
                 'message' => 'Error fetching data',
                 'error' => $e->getMessage(),
@@ -215,8 +214,14 @@ protected function getDataInfo($data)
             }
 
             $fieldName = "inventory_{$platform}";
-            $platformInventoryRaw = is_array($item) ? ($item[$fieldName] ?? 0) : ($item->$fieldName ?? 0);
-            $platformInventory = is_numeric($platformInventoryRaw) ? (int)$platformInventoryRaw : 0;
+            $platformInventoryRaw = is_array($item) ? ($item[$fieldName] ?? null) : ($item->$fieldName ?? null);
+            // For PLS and Business5Core, use the value after fallback (from Shopify) for comparison
+            if ($platform === 'pls' || $platform === 'business5core') {
+                // If value is still null, treat as 0
+                $platformInventory = is_numeric($platformInventoryRaw) ? (int)$platformInventoryRaw : 0;
+            } else {
+                $platformInventory = is_numeric($platformInventoryRaw) ? (int)$platformInventoryRaw : 0;
+            }
 
             // Skip only if value is "Not Listed" or "NRL"
             if (in_array($platformInventoryRaw, ['Not Listed', 'NRL'], true)) {
@@ -229,12 +234,11 @@ protected function getDataInfo($data)
                 continue;
             }
 
-            // Calculate ±1% tolerance (applies to all platforms automatically)
-            $tolerance = $shopifyInventory * 0.01;
+            // Calculate absolute difference
             $difference = abs($platformInventory - $shopifyInventory);
-            
-            // Match if exact or within ±1% tolerance
-            if ($platformInventory === $shopifyInventory || $difference <= $tolerance) {
+
+            // Match if difference is 3 or less
+            if ($difference <= 3) {
                 $info[$platform]['matching']++;
             } else {
                 $info[$platform]['notmatching']++;
