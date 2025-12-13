@@ -776,6 +776,20 @@
                                 </small><br>
                                 G ROI%
                             </th>
+                            <th class="text-center align-middle">
+                                <small class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0%
+                                </small><br>
+                                N PFT
+                            </th>
+                            <th class="text-center align-middle">
+                                <small class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0%
+                                </small><br>
+                                Ads%
+                            </th>
                             {{-- <th>Red Margin</th> --}}
                             <th>Percentage</th>
                             <th>NR</th>
@@ -1667,6 +1681,25 @@
                             return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
                         }
                     },
+                    {
+                        data: 'N PFT',
+                        render: function (v) {
+                            const n = pctFix(v);
+                            let bg = '', color = 'black';
+                            if (n < 0) { bg = '#ff0000'; color = 'white'; }
+                            else if (n >= 0 && n < 10) { bg = '#ffff00'; }
+                            else if (n >= 10 && n < 20) { bg = '#00ff00'; }
+                            else { bg = '#8000ff'; color = 'white'; }
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
+                        }
+                    },
+                    {
+                        data: 'Ads%',
+                        render: function (v) {
+                            const n = pctFix(v);
+                            return `<span style="background:#20c997;color:white;padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
+                        }
+                    },
                     { data: 'Channel Percentage', render: v => `<span class="metric-value">${toNum(v).toLocaleString('en-US')}</span>` },
                     {
                         data: 'NR',
@@ -1760,6 +1793,8 @@
                                 let groi    = pctFix(pick(item, ['G Roi', 'g_roi_percentage', 'roi'], 0));
                                 let gprofitL60  = pctFix(pick(item, ['Gprofitl60'], 0));
                                 let cogs = pctFix(pick(item, ['cogs'], 0));
+                                let nPft = pctFix(pick(item, ['N PFT', 'n_pft', 'nPft'], 0));
+                                let adsPercentage = pctFix(pick(item, ['Ads%', 'ads_percentage', 'adsPercentage'], 0));
 
                                 return {
                                     'Channel': pick(item, ['channel', 'Channel', 'Channel '], ''),
@@ -1775,6 +1810,8 @@
                                     'GprofitL30': gprofit,
                                     'GprofitL60': gprofitL60,
                                     'G ROI%': groi,
+                                    'N PFT': nPft,
+                                    'Ads%': adsPercentage,
                                     'Red Margin': toNum(pick(item, ['red_margin', 'Total_pft', 'total_pft'], 0), 0),
                                     'NR': toNum(pick(item, ['nr','NR'], 0), 0),
                                     'type': pick(item, ['type'], ''),

@@ -54,9 +54,11 @@ use App\Models\DobaMetric;
 use App\Models\DobaSheetdata;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
+use App\Models\EbayGeneralReport;
 use App\Models\EbayMetric;
 use App\Models\EbayOrder;
 use App\Models\EbayOrderItem;
+use App\Models\EbayPriorityReport;
 use App\Models\FaireProductSheet;
 use App\Models\FbMarketplaceSheetdata;
 use App\Models\FbShopSheetdata;
@@ -432,35 +434,16 @@ class ChannelMasterController extends Controller
         $l30Orders = $l30OrdersQuery->count();
         $l60Orders = $l60OrdersQuery->count();
 
-        // Calculate L30 sales from actual orders
-        $l30Sales = EbayOrder::where('period', 'l30')
-            ->join('ebay_order_items', 'ebay_orders.id', '=', 'ebay_order_items.ebay_order_id')
-            ->sum(DB::raw('ebay_order_items.price * ebay_order_items.quantity'));
-
         // For L60, we need to calculate based on order dates (last 60 days vs last 30 days)
         $sixtyDaysAgo = now()->subDays(60);
         $thirtyDaysAgo = now()->subDays(30);
 
-        $l60Sales = EbayOrder::where('order_date', '>=', $sixtyDaysAgo)
-            ->where('order_date', '<', $thirtyDaysAgo)
-            ->join('ebay_order_items', 'ebay_orders.id', '=', 'ebay_order_items.ebay_order_id')
-            ->sum(DB::raw('ebay_order_items.price * ebay_order_items.quantity'));
-
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
-
-        // Get eBay marketing percentage and ad_updates from MarketplacePercentage
-        $marketplaceData = \App\Models\MarketplacePercentage::where('marketplace', 'Ebay')->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
-        $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
-        $margin = $percentage - $adUpdates;
-        $marginDecimal = $margin / 100; // convert to decimal
-
-        // Load product masters (lp, ship) keyed by SKU
+        // Load product masters (lp, ship, weightAct) keyed by SKU
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
-        // Calculate total profit from actual orders
+        // Calculate total profit from actual orders using same format as EbaySalesController
         $l30OrderItems = EbayOrder::where('period', 'l30')
             ->join('ebay_order_items', 'ebay_orders.id', '=', 'ebay_order_items.ebay_order_id')
             ->select('ebay_order_items.sku', 'ebay_order_items.price', 'ebay_order_items.quantity')
@@ -476,59 +459,273 @@ class ChannelMasterController extends Controller
         $totalProfitL60 = 0;
         $totalCogs = 0;
         $totalCogsL60 = 0;
+        $l30Sales = 0; // Recalculate L30 Sales using same method as view
+        $l60Sales = 0; // Recalculate L60 Sales using same method as view
 
         foreach ($l30OrderItems as $item) {
+            // Skip rows with empty SKU (same as view)
+            if (!$item->sku || $item->sku === '') {
+                continue;
+            }
+
             $sku = strtoupper($item->sku);
-            $price = (float) $item->price;
-            $quantity = (int) $item->quantity;
+            $price = (float) $item->price; // This is total price (sale_amount)
+            $quantity = (float) $item->quantity;
+
+            // Skip if quantity is 0 (same as view)
+            if ($quantity === 0) {
+                continue;
+            }
 
             $lp = 0;
             $ship = 0;
+            $weightAct = 0;
 
             if (isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
 
-                $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+                // Extract LP (same as EbaySalesController)
+                $lp = 0;
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+
+                // Extract Ship and Weight Act
+                $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
             }
 
-            // Profit per item: (price * margin - lp - ship) * quantity
-            $profitPerItem = ($price * $marginDecimal - $lp - $ship) * $quantity;
-            $totalProfit += $profitPerItem;
-            $totalCogs += ($lp * $quantity);
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation (same as EbaySalesController):
+            // If quantity is 1: ship_cost = ship
+            // If quantity > 1 and t_weight < 20: ship_cost = ship / quantity
+            // Otherwise: ship_cost = ship
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // COGS = LP * quantity
+            $cogs = $lp * $quantity;
+
+            // PFT Each = (unitPrice * 0.85) - lp - ship_cost
+            $unitPrice = $quantity > 0 ? $price / $quantity : 0;
+            $pftEach = ($unitPrice * 0.85) - $lp - $shipCost;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+
+            // L30 Sales = unitPrice * quantity (same as view: basePrice * quantity)
+            $l30Sales += $unitPrice * $quantity;
+
+            $totalProfit += $pft;
+            $totalCogs += $cogs;
         }
 
         foreach ($l60OrderItems as $item) {
+            // Skip rows with empty SKU (same as view)
+            if (!$item->sku || $item->sku === '') {
+                continue;
+            }
+
             $sku = strtoupper($item->sku);
-            $price = (float) $item->price;
-            $quantity = (int) $item->quantity;
+            $price = (float) $item->price; // This is total price (sale_amount)
+            $quantity = (float) $item->quantity;
+
+            // Skip if quantity is 0 (same as view)
+            if ($quantity === 0) {
+                continue;
+            }
 
             $lp = 0;
             $ship = 0;
+            $weightAct = 0;
 
             if (isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
 
-                $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+                // Extract LP (same as EbaySalesController)
+                $lp = 0;
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+
+                // Extract Ship and Weight Act
+                $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
             }
 
-            // Profit per item: (price * margin - lp - ship) * quantity
-            $profitPerItem = ($price * $marginDecimal - $lp - $ship) * $quantity;
-            $totalProfitL60 += $profitPerItem;
-            $totalCogsL60 += ($lp * $quantity);
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation (same as EbaySalesController):
+            // If quantity is 1: ship_cost = ship
+            // If quantity > 1 and t_weight < 20: ship_cost = ship / quantity
+            // Otherwise: ship_cost = ship
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // COGS = LP * quantity
+            $cogs = $lp * $quantity;
+
+            // PFT Each = (unitPrice * 0.85) - lp - ship_cost
+            $unitPrice = $quantity > 0 ? $price / $quantity : 0;
+            $pftEach = ($unitPrice * 0.85) - $lp - $shipCost;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+
+            // L60 Sales = unitPrice * quantity (same as view: basePrice * quantity)
+            $l60Sales += $unitPrice * $quantity;
+
+            $totalProfitL60 += $pft;
+            $totalCogsL60 += $cogs;
         }
 
-        // Calculate percentages
+        // Calculate growth
+        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+
+        // Calculate percentages - GPFT % = (Total PFT / Total Sales) * 100 (same as view)
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
 
         $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
+
+        // Calculate KW Spent and PMT Spent for L30 (same as EbaySalesController)
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+        
+        // Calculate PMT Spent (from ebay_general_reports)
+        $pmtSpent = DB::table('ebay_general_reports')
+            ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->selectRaw('SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as total_spend')
+            ->value('total_spend') ?? 0;
+        $pmtSpent = (float) $pmtSpent;
+
+        // Calculate KW Spent (from ebay_priority_reports)
+        $kwSpent = DB::table('ebay_priority_reports')
+            ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->selectRaw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend')
+            ->value('total_spend') ?? 0;
+        $kwSpent = (float) $kwSpent;
+
+        // Get unique SKUs from L30 orders
+        $l30Skus = [];
+        $l30ItemIds = [];
+        foreach ($l30OrderItems as $item) {
+            if ($item->sku) {
+                $l30Skus[] = strtoupper(trim($item->sku));
+            }
+        }
+        $l30Skus = array_unique($l30Skus);
+
+        // Get item_ids from L30 orders for PMT calculation
+        $l30OrdersWithItems = EbayOrder::where('period', 'l30')
+            ->with('items')
+            ->get();
+        foreach ($l30OrdersWithItems as $order) {
+            foreach ($order->items as $item) {
+                if ($item->item_id) {
+                    $l30ItemIds[] = $item->item_id;
+                }
+            }
+        }
+        $l30ItemIds = array_unique($l30ItemIds);
+
+        // Calculate PMT Spent per item_id (from ebay_general_reports)
+        $generalReports = EbayGeneralReport::whereIn('listing_id', $l30ItemIds)
+            ->where('report_range', 'L30')
+            ->get();
+        
+        $pmtSpentByItemId = [];
+        foreach ($generalReports as $report) {
+            $spent = (float) preg_replace('/[^\d.]/', '', $report->ad_fees ?? '0');
+            $pmtSpentByItemId[$report->listing_id] = ($pmtSpentByItemId[$report->listing_id] ?? 0) + $spent;
+        }
+
+        // Calculate KW Spent per SKU (from ebay_priority_reports)
+        $kwSpentBySku = [];
+        foreach ($l30Skus as $sku) {
+            $skuUpper = strtoupper(trim($sku));
+            $priorityReports = EbayPriorityReport::where('report_range', 'L30')
+                ->whereNotNull('campaign_name')
+                ->where('campaign_name', '!=', '')
+                ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$skuUpper])
+                ->get();
+            
+            foreach ($priorityReports as $report) {
+                $spent = (float) str_replace(['USD ', ','], '', $report->cpc_ad_fees_payout_currency ?? '0');
+                $kwSpentBySku[$sku] = ($kwSpentBySku[$sku] ?? 0) + $spent;
+            }
+        }
+
+        // Map item_id to SKU for PMT calculation
+        $itemIdToSku = [];
+        foreach ($l30OrdersWithItems as $order) {
+            foreach ($order->items as $item) {
+                if ($item->item_id && $item->sku) {
+                    $itemIdToSku[$item->item_id] = strtoupper(trim($item->sku));
+                }
+            }
+        }
+
+        // Calculate unique SKU spend (KW + PMT per SKU) - only count once per SKU
+        $uniqueSkuSpend = [];
+        foreach ($l30Skus as $sku) {
+            if (!isset($uniqueSkuSpend[$sku])) {
+                $kwSpentForSku = $kwSpentBySku[$sku] ?? 0;
+                $pmtSpentForSku = 0;
+                
+                // Sum PMT for all item_ids that match this SKU
+                foreach ($itemIdToSku as $itemId => $itemSku) {
+                    if ($itemSku === $sku && isset($pmtSpentByItemId[$itemId])) {
+                        $pmtSpentForSku += $pmtSpentByItemId[$itemId];
+                    }
+                }
+                
+                $uniqueSkuSpend[$sku] = $kwSpentForSku + $pmtSpentForSku;
+            }
+        }
+
+        // Calculate total unique SKU spend
+        $totalUniqueSkuSpend = array_sum($uniqueSkuSpend);
+
+        // Calculate TACOS % = ((KW Spent + PMT Spent) / Total Sales) * 100
+        $tacosPercentage = $l30Sales > 0 ? (($kwSpent + $pmtSpent) / $l30Sales) * 100 : 0;
+
+        // Calculate N PFT = GPFT % - TACOS %
+        $nPft = $gProfitPct - $tacosPercentage;
+
+        // Calculate Ads % = (Sum of unique SKU KW+PMT / Total Sales) * 100
+        $adsPercentage = $l30Sales > 0 ? ($totalUniqueSkuSpend / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'eBay')->first();
@@ -544,6 +741,9 @@ class ChannelMasterController extends Controller
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'Total PFT'   => round($totalProfit, 2), // GPFT Total (same as view)
+            'N PFT'      => round($nPft, 2) . '%',
+            'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
