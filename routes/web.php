@@ -274,6 +274,7 @@ use App\Http\Controllers\ProductMarketing;
 use App\Http\Controllers\FacebookAdsController;
 use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
 use App\Http\Controllers\Sales\EbaySalesController;
+use App\Http\Controllers\Sales\AmazonSalesController;
 
 /*  
 |--------------------------------------------------------------------------
@@ -766,6 +767,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay/daily-sales', [EbaySalesController::class, 'index'])->name('ebay.daily.sales');
     Route::get('/ebay-column-visibility', [EbaySalesController::class, 'getColumnVisibility']);
     Route::post('/ebay-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
+    
+    // Amazon Sales Routes
+    Route::get('/amazon/daily-sales-data', [AmazonSalesController::class, 'getData'])->name('amazon.daily.sales.data');
+    Route::get('/amazon/daily-sales', [AmazonSalesController::class, 'index'])->name('amazon.daily.sales');
+    Route::get('/amazon-column-visibility', [AmazonSalesController::class, 'getColumnVisibility']);
+    Route::post('/amazon-column-visibility', [AmazonSalesController::class, 'saveColumnVisibility']);
+    
     Route::get('/amazonfba/view-data', [OverallAmazonFbaController::class, 'getViewAmazonFbaData'])->name('amazonfba.viewData');
     Route::get('/fbainv/view-data', [AmazonFbaInvController::class, 'getViewAmazonfbaInvData'])->name('fbainv.viewData');
     Route::get('/product-master-data', [ProductMasterController::class, 'product_master_data']);
@@ -831,8 +839,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
-    Route::get('/amazon-sales-tabulator-view', action: [OverallAmazonController::class, 'amazonSalesTabulatorView'])->name('amazon.sales.tabulator.view');
-    Route::get('/amazon/shiphub-sales-data', [OverallAmazonController::class, 'getShiphubSalesData'])->name('amazon.shiphub.sales.data');
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');

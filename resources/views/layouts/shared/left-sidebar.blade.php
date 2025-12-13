@@ -854,7 +854,7 @@
                             <a href="{{ route('ebay.daily.sales') }}">eBay Sales Data</a>
                         </li>
                         <li>
-                            <a href="{{ url('amazon-sales-tabulator-view') }}">Amazon Sales Data</a>
+                            <a href="{{ url('amazon/daily-sales') }}">Amazon Sales Data</a>
                         </li>
 
                         <li><a href="{{ url('temu-tabulator') }}">Temu Sales Data</a></li>
@@ -1636,7 +1636,7 @@
                                                         view</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ url('amazon-sales-tabulator-view') }}">Amazon Sales
+                                                    <a href="{{ url('amazon/daily-sales') }}">Amazon Sales
                                                         Data</a>
                                                 </li>
                                                 <li>
