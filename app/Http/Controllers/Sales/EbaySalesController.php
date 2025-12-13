@@ -12,6 +12,8 @@ use App\Models\EbayPriorityReport;
 use App\Models\EbayMetric;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class EbaySalesController extends Controller
 {
@@ -198,38 +200,56 @@ class EbaySalesController extends Controller
 
     public function getColumnVisibility(Request $request)
     {
-        // Similar to temu, but for ebay
-        $defaultVisibility = [
-            'order_id' => true,
-            'item_id' => true,
-            'sku' => true,
-            'quantity' => true,
-            'sale_amount' => true,
-            'price' => true,
-            'total_amount' => true,
-            'order_date' => true,
-            'status' => true,
-            'lp' => true,
-            'ship' => true,
-            't_weight' => true,
-            'ship_cost' => true,
-            'cogs' => true,
-            'pft_each' => true,
-            'pft_each_pct' => true,
-            'pft' => true,
-            'roi' => true,
-            'kw_spent' => true,
-            'pmt_spent' => true,
-        ];
+        try {
+            // Use a global cache key (shared for all users)
+            $key = 'ebay_daily_sales_column_visibility_global';
+            
+            $defaultVisibility = [
+                'order_id' => true,
+                'item_id' => true,
+                'sku' => true,
+                'quantity' => true,
+                'sale_amount' => true,
+                'price' => true,
+                'total_amount' => true,
+                'order_date' => true,
+                'status' => true,
+                'lp' => true,
+                'ship' => true,
+                't_weight' => true,
+                'ship_cost' => true,
+                'cogs' => true,
+                'pft_each' => true,
+                'pft_each_pct' => true,
+                'pft' => true,
+                'roi' => true,
+                'kw_spent' => true,
+                'pmt_spent' => true,
+            ];
 
-        $saved = session('ebay_sales_column_visibility', $defaultVisibility);
-        return response()->json($saved);
+            $saved = Cache::get($key, $defaultVisibility);
+            return response()->json($saved);
+        } catch (\Exception $e) {
+            Log::error('Error getting eBay column visibility: ' . $e->getMessage());
+            return response()->json([], 500);
+        }
     }
 
     public function saveColumnVisibility(Request $request)
     {
-        $visibility = $request->input('visibility', []);
-        session(['ebay_sales_column_visibility' => $visibility]);
-        return response()->json(['success' => true]);
+        try {
+            // Use a global cache key (shared for all users)
+            $key = 'ebay_daily_sales_column_visibility_global';
+            
+            $visibility = $request->input('visibility', []);
+            
+            // Store in cache for 1 year
+            Cache::put($key, $visibility, now()->addDays(365));
+            
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Error saving eBay column visibility: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to save preferences'], 500);
+        }
     }
 }
