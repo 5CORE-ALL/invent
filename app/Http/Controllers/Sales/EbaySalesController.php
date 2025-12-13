@@ -201,8 +201,8 @@ class EbaySalesController extends Controller
     public function getColumnVisibility(Request $request)
     {
         try {
-            // Use a global cache key (shared for all users)
-            $key = 'ebay_daily_sales_column_visibility_global';
+            // Read from JSON file (shared for all users)
+            $filePath = storage_path('app/ebay_column_visibility.json');
             
             $defaultVisibility = [
                 'order_id' => true,
@@ -214,6 +214,7 @@ class EbaySalesController extends Controller
                 'total_amount' => true,
                 'order_date' => true,
                 'status' => true,
+                'period' => true,
                 'lp' => true,
                 'ship' => true,
                 't_weight' => true,
@@ -227,8 +228,15 @@ class EbaySalesController extends Controller
                 'pmt_spent' => true,
             ];
 
-            $saved = Cache::get($key, $defaultVisibility);
-            return response()->json($saved);
+            if (file_exists($filePath)) {
+                $json = file_get_contents($filePath);
+                $saved = json_decode($json, true);
+                if (is_array($saved)) {
+                    return response()->json($saved);
+                }
+            }
+            
+            return response()->json($defaultVisibility);
         } catch (\Exception $e) {
             Log::error('Error getting eBay column visibility: ' . $e->getMessage());
             return response()->json([], 500);
@@ -238,13 +246,13 @@ class EbaySalesController extends Controller
     public function saveColumnVisibility(Request $request)
     {
         try {
-            // Use a global cache key (shared for all users)
-            $key = 'ebay_daily_sales_column_visibility_global';
+            // Save to JSON file (shared for all users)
+            $filePath = storage_path('app/ebay_column_visibility.json');
             
             $visibility = $request->input('visibility', []);
             
-            // Store in cache for 1 year
-            Cache::put($key, $visibility, now()->addDays(365));
+            // Write to JSON file
+            file_put_contents($filePath, json_encode($visibility, JSON_PRETTY_PRINT));
             
             return response()->json(['success' => true]);
         } catch (\Exception $e) {
