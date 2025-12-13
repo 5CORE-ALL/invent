@@ -3442,150 +3442,252 @@ class AdsMasterController extends Controller
     public function channelAdvMaster(Request $request)
     {
         $advMasterDatas = ADVMastersData::get();
+        
+        // Initialize all variables to 0 to handle missing channels
+        $amazon_l30_sales = 0;
+        $amazon_spent = 0;
+        $amazon_clicks = 0;
+        $amazon_ad_sales = 0;
+        $amazon_ad_sold = 0;
+        $amazon_missing_ads = 0;
+        
+        $amazonkw_l30_sales = 0;
+        $amazonkw_spent = 0;
+        $amazonkw_clicks = 0;
+        $amazonkw_ad_sales = 0;
+        $amazonkw_ad_sold = 0;
+        $amazonkw_missing_ads = 0;
+        
+        $amazonpt_l30_sales = 0;
+        $amazonpt_spent = 0;
+        $amazonpt_clicks = 0;
+        $amazonpt_ad_sales = 0;
+        $amazonpt_ad_sold = 0;
+        $amazonpt_missing_ads = 0;
+        
+        $amazonhl_l30_sales = 0;
+        $amazonhl_spent = 0;
+        $amazonhl_clicks = 0;
+        $amazonhl_ad_sales = 0;
+        $amazonhl_ad_sold = 0;
+        $amazonhl_missing_ads = 0;
+        
+        $ebay_l30_sales = 0;
+        $ebay_spent = 0;
+        $ebay_clicks = 0;
+        $ebay_ad_sales = 0;
+        $ebay_ad_sold = 0;
+        $ebay_missing_ads = 0;
+        
+        $ebaykw_l30_sales = 0;
+        $ebaykw_spent = 0;
+        $ebaykw_clicks = 0;
+        $ebaykw_ad_sales = 0;
+        $ebaykw_ad_sold = 0;
+        $ebaykw_missing_ads = 0;
+        
+        $ebaypmt_l30_sales = 0;
+        $ebaypmt_spent = 0;
+        $ebaypmt_clicks = 0;
+        $ebaypmt_ad_sales = 0;
+        $ebaypmt_ad_sold = 0;
+        $ebaypmt_missing_ads = 0;
+        
+        $ebay2_l30_sales = 0;
+        $ebay2_spent = 0;
+        $ebay2_clicks = 0;
+        $ebay2_ad_sales = 0;
+        $ebay2_ad_sold = 0;
+        $ebay2_missing_ads = 0;
+        
+        $ebay2pmt_l30_sales = 0;
+        $ebay2pmt_spent = 0;
+        $ebay2pmt_clicks = 0;
+        $ebay2pmt_ad_sales = 0;
+        $ebay2pmt_ad_sold = 0;
+        $ebay2pmt_missing_ads = 0;
+        
+        $ebay3_l30_sales = 0;
+        $ebay3_spent = 0;
+        $ebay3_clicks = 0;
+        $ebay3_ad_sales = 0;
+        $ebay3_ad_sold = 0;
+        $ebay3_missing_ads = 0;
+        
+        $ebay3kw_l30_sales = 0;
+        $ebay3kw_spent = 0;
+        $ebay3kw_clicks = 0;
+        $ebay3kw_ad_sales = 0;
+        $ebay3kw_ad_sold = 0;
+        $ebay3kw_missing_ads = 0;
+        
+        $ebay3pmt_l30_sales = 0;
+        $ebay3pmt_spent = 0;
+        $ebay3pmt_clicks = 0;
+        $ebay3pmt_ad_sales = 0;
+        $ebay3pmt_ad_sold = 0;
+        $ebay3pmt_missing_ads = 0;
+        
+        $walmart_l30_sales = 0;
+        $walmart_spent = 0;
+        $walmart_clicks = 0;
+        $walmart_ad_sales = 0;
+        $walmart_ad_sold = 0;
+        $walmart_missing_ads = 0;
+        
+        $gshoping_l30_sales = 0;
+        $gshoping_spent = 0;
+        $gshoping_clicks = 0;
+        $gshoping_ad_sales = 0;
+        $gshoping_ad_sold = 0;
+        $gshoping_missing_ads = 0;
+        
         $total_l30_sales = 0;
         $total_spent = 0;
         $total_clicks = 0;
         $total_ad_sales = 0;
         $total_ad_sold = 0;
         $total_missing = 0;
+        
         foreach($advMasterDatas as $data)
         {
+            // Handle null values from database by using null coalescing operator
             if($data->channel == 'AMAZON')
             {
-                $amazon_l30_sales = $data->l30_sales;
-                $amazon_spent = $data->spent;
-                $amazon_clicks = $data->clicks;
-                $amazon_ad_sales = $data->ad_sales;
-                $amazon_ad_sold = $data->ad_sold;
-                $amazon_missing_ads = $data->missing_ads;
+                $amazon_l30_sales = $data->l30_sales ?? 0;
+                $amazon_spent = $data->spent ?? 0;
+                $amazon_clicks = $data->clicks ?? 0;
+                $amazon_ad_sales = $data->ad_sales ?? 0;
+                $amazon_ad_sold = $data->ad_sold ?? 0;
+                $amazon_missing_ads = $data->missing_ads ?? 0;
 
             }else if($data->channel == 'AMZ KW'){
-                $amazonkw_l30_sales = $data->l30_sales;
-                $amazonkw_spent = $data->spent;
-                $amazonkw_clicks = $data->clicks;
-                $amazonkw_ad_sales = $data->ad_sales;
-                $amazonkw_ad_sold = $data->ad_sold;
-                $amazonkw_missing_ads = $data->missing_ads;
+                $amazonkw_l30_sales = $data->l30_sales ?? 0;
+                $amazonkw_spent = $data->spent ?? 0;
+                $amazonkw_clicks = $data->clicks ?? 0;
+                $amazonkw_ad_sales = $data->ad_sales ?? 0;
+                $amazonkw_ad_sold = $data->ad_sold ?? 0;
+                $amazonkw_missing_ads = $data->missing_ads ?? 0;
 
             }else if($data->channel == 'AMZ PT'){
-                $amazonpt_l30_sales = $data->l30_sales;
-                $amazonpt_spent = $data->spent;
-                $amazonpt_clicks = $data->clicks;
-                $amazonpt_ad_sales = $data->ad_sales;
-                $amazonpt_ad_sold = $data->ad_sold;
-                $amazonpt_missing_ads = $data->missing_ads;
+                $amazonpt_l30_sales = $data->l30_sales ?? 0;
+                $amazonpt_spent = $data->spent ?? 0;
+                $amazonpt_clicks = $data->clicks ?? 0;
+                $amazonpt_ad_sales = $data->ad_sales ?? 0;
+                $amazonpt_ad_sold = $data->ad_sold ?? 0;
+                $amazonpt_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'AMZ HL'){
-                $amazonhl_l30_sales = $data->l30_sales;
-                $amazonhl_spent = $data->spent;
-                $amazonhl_clicks = $data->clicks;
-                $amazonhl_ad_sales = $data->ad_sales;
-                $amazonhl_ad_sold = $data->ad_sold;
-                $amazonhl_missing_ads = $data->missing_ads;
+                $amazonhl_l30_sales = $data->l30_sales ?? 0;
+                $amazonhl_spent = $data->spent ?? 0;
+                $amazonhl_clicks = $data->clicks ?? 0;
+                $amazonhl_ad_sales = $data->ad_sales ?? 0;
+                $amazonhl_ad_sold = $data->ad_sold ?? 0;
+                $amazonhl_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EBAY'){
-                $ebay_l30_sales = $data->l30_sales;
-                $ebay_spent = $data->spent;
-                $ebay_clicks = $data->clicks;
-                $ebay_ad_sales = $data->ad_sales;
-                $ebay_ad_sold = $data->ad_sold;
-                $ebay_missing_ads = $data->missing_ads;
+                $ebay_l30_sales = $data->l30_sales ?? 0;
+                $ebay_spent = $data->spent ?? 0;
+                $ebay_clicks = $data->clicks ?? 0;
+                $ebay_ad_sales = $data->ad_sales ?? 0;
+                $ebay_ad_sold = $data->ad_sold ?? 0;
+                $ebay_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EB KW'){
-                $ebaykw_l30_sales = $data->l30_sales;
-                $ebaykw_spent = $data->spent;
-                $ebaykw_clicks = $data->clicks;
-                $ebaykw_ad_sales = $data->ad_sales;
-                $ebaykw_ad_sold = $data->ad_sold;
-                $ebaykw_missing_ads = $data->missing_ads;
+                $ebaykw_l30_sales = $data->l30_sales ?? 0;
+                $ebaykw_spent = $data->spent ?? 0;
+                $ebaykw_clicks = $data->clicks ?? 0;
+                $ebaykw_ad_sales = $data->ad_sales ?? 0;
+                $ebaykw_ad_sold = $data->ad_sold ?? 0;
+                $ebaykw_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EB PMT'){
-                $ebaypmt_l30_sales = $data->l30_sales;
-                $ebaypmt_spent = $data->spent;
-                $ebaypmt_clicks = $data->clicks;
-                $ebaypmt_ad_sales = $data->ad_sales;
-                $ebaypmt_ad_sold = $data->ad_sold;
-                $ebaypmt_missing_ads = $data->missing_ads;
+                $ebaypmt_l30_sales = $data->l30_sales ?? 0;
+                $ebaypmt_spent = $data->spent ?? 0;
+                $ebaypmt_clicks = $data->clicks ?? 0;
+                $ebaypmt_ad_sales = $data->ad_sales ?? 0;
+                $ebaypmt_ad_sold = $data->ad_sold ?? 0;
+                $ebaypmt_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EBAY 2'){
-                $ebay2_l30_sales = $data->l30_sales;
-                $ebay2_spent = $data->spent;
-                $ebay2_clicks = $data->clicks;
-                $ebay2_ad_sales = $data->ad_sales;
-                $ebay2_ad_sold = $data->ad_sold;
-                $ebay2_missing_ads = $data->missing_ads;
+                $ebay2_l30_sales = $data->l30_sales ?? 0;
+                $ebay2_spent = $data->spent ?? 0;
+                $ebay2_clicks = $data->clicks ?? 0;
+                $ebay2_ad_sales = $data->ad_sales ?? 0;
+                $ebay2_ad_sold = $data->ad_sold ?? 0;
+                $ebay2_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EB PMT2'){
-                $ebay2pmt_l30_sales = $data->l30_sales;
-                $ebay2pmt_spent = $data->spent;
-                $ebay2pmt_clicks = $data->clicks;
-                $ebay2pmt_ad_sales = $data->ad_sales;
-                $ebay2pmt_ad_sold = $data->ad_sold;
-                $ebay2pmt_missing_ads = $data->missing_ads;
+                $ebay2pmt_l30_sales = $data->l30_sales ?? 0;
+                $ebay2pmt_spent = $data->spent ?? 0;
+                $ebay2pmt_clicks = $data->clicks ?? 0;
+                $ebay2pmt_ad_sales = $data->ad_sales ?? 0;
+                $ebay2pmt_ad_sold = $data->ad_sold ?? 0;
+                $ebay2pmt_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EBAY 3'){
-                $ebay3_l30_sales = $data->l30_sales;
-                $ebay3_spent = $data->spent;
-                $ebay3_clicks = $data->clicks;
-                $ebay3_ad_sales = $data->ad_sales;
-                $ebay3_ad_sold = $data->ad_sold;
-                $ebay3_missing_ads = $data->missing_ads;
+                $ebay3_l30_sales = $data->l30_sales ?? 0;
+                $ebay3_spent = $data->spent ?? 0;
+                $ebay3_clicks = $data->clicks ?? 0;
+                $ebay3_ad_sales = $data->ad_sales ?? 0;
+                $ebay3_ad_sold = $data->ad_sold ?? 0;
+                $ebay3_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EB KW3'){
-                $ebay3kw_l30_sales = $data->l30_sales;
-                $ebay3kw_spent = $data->spent;
-                $ebay3kw_clicks = $data->clicks;
-                $ebay3kw_ad_sales = $data->ad_sales;
-                $ebay3kw_ad_sold = $data->ad_sold;
-                $ebay3kw_missing_ads = $data->missing_ads;
+                $ebay3kw_l30_sales = $data->l30_sales ?? 0;
+                $ebay3kw_spent = $data->spent ?? 0;
+                $ebay3kw_clicks = $data->clicks ?? 0;
+                $ebay3kw_ad_sales = $data->ad_sales ?? 0;
+                $ebay3kw_ad_sold = $data->ad_sold ?? 0;
+                $ebay3kw_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EB PMT3'){
-                $ebay3pmt_l30_sales = $data->l30_sales;
-                $ebay3pmt_spent = $data->spent;
-                $ebay3pmt_clicks = $data->clicks;
-                $ebay3pmt_ad_sales = $data->ad_sales;
-                $ebay3pmt_ad_sold = $data->ad_sold;
-                $ebay3pmt_missing_ads = $data->missing_ads;
+                $ebay3pmt_l30_sales = $data->l30_sales ?? 0;
+                $ebay3pmt_spent = $data->spent ?? 0;
+                $ebay3pmt_clicks = $data->clicks ?? 0;
+                $ebay3pmt_ad_sales = $data->ad_sales ?? 0;
+                $ebay3pmt_ad_sold = $data->ad_sold ?? 0;
+                $ebay3pmt_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'WALMART'){
-                $walmart_l30_sales = $data->l30_sales;
-                $walmart_spent = $data->spent;
-                $walmart_clicks = $data->clicks;
-                $walmart_ad_sales = $data->ad_sales;
-                $walmart_ad_sold = $data->ad_sold;
-                $walmart_missing_ads = $data->missing_ads;
+                $walmart_l30_sales = $data->l30_sales ?? 0;
+                $walmart_spent = $data->spent ?? 0;
+                $walmart_clicks = $data->clicks ?? 0;
+                $walmart_ad_sales = $data->ad_sales ?? 0;
+                $walmart_ad_sold = $data->ad_sold ?? 0;
+                $walmart_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'SHOPIFY'){
-
+                // Channel exists but no data assignment needed currently
                 
             }else if($data->channel == 'G SHOPPING'){
-                $gshoping_l30_sales = $data->l30_sales;
-                $gshoping_spent = $data->spent;
-                $gshoping_clicks = $data->clicks;
-                $gshoping_ad_sales = $data->ad_sales;
-                $gshoping_ad_sold = $data->ad_sold;
-                $gshoping_missing_ads = $data->missing_ads;
+                $gshoping_l30_sales = $data->l30_sales ?? 0;
+                $gshoping_spent = $data->spent ?? 0;
+                $gshoping_clicks = $data->clicks ?? 0;
+                $gshoping_ad_sales = $data->ad_sales ?? 0;
+                $gshoping_ad_sold = $data->ad_sold ?? 0;
+                $gshoping_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'G SERP'){
-
+                // Channel exists but no data assignment needed currently
                 
             }else if($data->channel == 'FB CARAOUSAL'){
-
+                // Channel exists but no data assignment needed currently
                 
             }else if($data->channel == 'FB VIDEO'){
-
+                // Channel exists but no data assignment needed currently
                 
             }else if($data->channel == 'INSTA CARAOUSAL'){
-
+                // Channel exists but no data assignment needed currently
                 
             }else if($data->channel == 'INSTA VIDEO'){
-
+                // Channel exists but no data assignment needed currently
                 
             }else if($data->channel == 'YOUTUBE'){
-
+                // Channel exists but no data assignment needed currently
                 
             }else if($data->channel == 'TIKTOK'){
-
+                // Channel exists but no data assignment needed currently
                 
             }
         }
@@ -3600,12 +3702,13 @@ class AdsMasterController extends Controller
             }
         }
 
-        $total_l30_sales = ($amazon_l30_sales ?? 0) + ($amazonkw_l30_sales ?? 0) + ($amazonpt_l30_sales ?? 0) + ($amazonhl_l30_sales ?? 0) + ($ebay_l30_sales ?? 0) + ($ebaykw_l30_sales ?? 0) + ($ebaypmt_l30_sales ?? 0) + ($ebay2_l30_sales ?? 0) + ($ebay2pmt_l30_sales ?? 0) + ($ebay3_l30_sales ?? 0) + ($ebay3kw_l30_sales ?? 0) + ($ebay3pmt_l30_sales ?? 0) + ($walmart_l30_sales ?? 0) + ($gshoping_l30_sales ?? 0);
-        $total_spent = ($amazon_spent ?? 0) + ($amazonkw_spent ?? 0) + ($amazonpt_spent ?? 0) + ($amazonhl_spent ?? 0) + ($ebay_spent ?? 0) + ($ebaykw_spent ?? 0) + ($ebaypmt_spent ?? 0) + ($ebay2_spent ?? 0) + ($ebay2pmt_spent ?? 0) + ($ebay3_spent ?? 0) + ($ebay3kw_spent ?? 0) + ($ebay3pmt_spent ?? 0) + ($walmart_spent ?? 0) + ($gshoping_spent ?? 0);
-        $total_clicks = ($amazon_clicks ?? 0) + ($amazonkw_clicks ?? 0) + ($amazonpt_clicks ?? 0) + ($amazonhl_clicks ?? 0) + ($ebay_clicks ?? 0) + ($ebaykw_clicks ?? 0) + ($ebaypmt_clicks ?? 0) + ($ebay2_clicks ?? 0) + ($ebay2pmt_clicks ?? 0) + ($ebay3_clicks ?? 0) + ($ebay3kw_clicks ?? 0) + ($ebay3pmt_clicks ?? 0) + ($walmart_clicks ?? 0) + ($gshoping_clicks ?? 0);
-        $total_ad_sales = ($amazon_ad_sales ?? 0) + ($amazonkw_ad_sales ?? 0) + ($amazonpt_ad_sales ?? 0) + ($amazonhl_ad_sales ?? 0) + ($ebay_ad_sales ?? 0) + ($ebaykw_ad_sales ?? 0) + ($ebaypmt_ad_sales ?? 0) + ($ebay2_ad_sales ?? 0) + ($ebay2pmt_ad_sales ?? 0) + ($ebay3_ad_sales ?? 0) + ($ebay3kw_ad_sales ?? 0) + ($ebay3pmt_ad_sales ?? 0) + ($walmart_ad_sales ?? 0) + ($gshoping_ad_sales ?? 0);
-        $total_ad_sold = ($amazon_ad_sold ?? 0) + ($amazonkw_ad_sold ?? 0) + ($amazonpt_ad_sold ?? 0) + ($amazonhl_ad_sold ?? 0) + ($ebay_ad_sold ?? 0) + ($ebaykw_ad_sold ?? 0) + ($ebaypmt_ad_sold ?? 0) + ($ebay2_ad_sold ?? 0) + ($ebay2pmt_ad_sold ?? 0) + ($ebay3_ad_sold ?? 0) + ($ebay3kw_ad_sold ?? 0) + ($ebay3pmt_ad_sold ?? 0) + ($walmart_ad_sold ?? 0) + ($gshoping_ad_sold ?? 0);
-        $total_missing =  ($amazon_missing_ads ?? 0) + ($amazonkw_missing_ads ?? 0) + ($amazonpt_missing_ads ?? 0) + ($amazonhl_missing_ads ?? 0) + ($ebay_missing_ads ?? 0) + ($ebaykw_missing_ads ?? 0) + ($ebaypmt_missing_ads ?? 0) + ($ebay2_missing_ads ?? 0) + ($ebay2pmt_missing_ads ?? 0) + ($ebay3_missing_ads ?? 0) + ($ebay3kw_missing_ads ?? 0) + ($ebay3pmt_missing_ads ?? 0) + ($walmart_missing_ads ?? 0) + ($gshoping_missing_ads ?? 0);  
+        // Calculate totals - all variables are initialized to 0, so safe to add directly
+        $total_l30_sales = $amazon_l30_sales + $amazonkw_l30_sales + $amazonpt_l30_sales + $amazonhl_l30_sales + $ebay_l30_sales + $ebaykw_l30_sales + $ebaypmt_l30_sales + $ebay2_l30_sales + $ebay2pmt_l30_sales + $ebay3_l30_sales + $ebay3kw_l30_sales + $ebay3pmt_l30_sales + $walmart_l30_sales + $gshoping_l30_sales;
+        $total_spent = $amazon_spent + $amazonkw_spent + $amazonpt_spent + $amazonhl_spent + $ebay_spent + $ebaykw_spent + $ebaypmt_spent + $ebay2_spent + $ebay2pmt_spent + $ebay3_spent + $ebay3kw_spent + $ebay3pmt_spent + $walmart_spent + $gshoping_spent;
+        $total_clicks = $amazon_clicks + $amazonkw_clicks + $amazonpt_clicks + $amazonhl_clicks + $ebay_clicks + $ebaykw_clicks + $ebaypmt_clicks + $ebay2_clicks + $ebay2pmt_clicks + $ebay3_clicks + $ebay3kw_clicks + $ebay3pmt_clicks + $walmart_clicks + $gshoping_clicks;
+        $total_ad_sales = $amazon_ad_sales + $amazonkw_ad_sales + $amazonpt_ad_sales + $amazonhl_ad_sales + $ebay_ad_sales + $ebaykw_ad_sales + $ebaypmt_ad_sales + $ebay2_ad_sales + $ebay2pmt_ad_sales + $ebay3_ad_sales + $ebay3kw_ad_sales + $ebay3pmt_ad_sales + $walmart_ad_sales + $gshoping_ad_sales;
+        $total_ad_sold = $amazon_ad_sold + $amazonkw_ad_sold + $amazonpt_ad_sold + $amazonhl_ad_sold + $ebay_ad_sold + $ebaykw_ad_sold + $ebaypmt_ad_sold + $ebay2_ad_sold + $ebay2pmt_ad_sold + $ebay3_ad_sold + $ebay3kw_ad_sold + $ebay3pmt_ad_sold + $walmart_ad_sold + $gshoping_ad_sold;
+        $total_missing = $amazon_missing_ads + $amazonkw_missing_ads + $amazonpt_missing_ads + $amazonhl_missing_ads + $ebay_missing_ads + $ebaykw_missing_ads + $ebaypmt_missing_ads + $ebay2_missing_ads + $ebay2pmt_missing_ads + $ebay3_missing_ads + $ebay3kw_missing_ads + $ebay3pmt_missing_ads + $walmart_missing_ads + $gshoping_missing_ads;  
 
         /** START AMZON GRAPH DATA **/
 
