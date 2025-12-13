@@ -45,6 +45,9 @@ use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Models\AliExpressSheetData;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\AmazonOrder;
+use App\Models\AmazonOrderItem;
+use App\Models\AmazonSpCampaignReport;
 use App\Models\ApiCentralWalmartApiData;
 use App\Models\ApiCentralWalmartMetric;
 use App\Models\BestbuyUsaProduct;
@@ -310,89 +313,310 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $query = AmazonDatasheet::where('sku', 'not like', '%Parent%');
+        // Use actual order data instead of datasheet (same as AmazonSalesController)
+        $l30OrdersQuery = AmazonOrder::where('period', 'l30')
+            ->where('status', '!=', 'Canceled');
+        $l60OrdersQuery = AmazonOrder::where('period', 'l60')
+            ->where('status', '!=', 'Canceled');
 
-        $l30Orders = $query->sum('units_ordered_l30');
-        $l60Orders = $query->sum('units_ordered_l60');
+        $l30Orders = $l30OrdersQuery->count();
+        $l60Orders = $l60OrdersQuery->count();
 
-        $l30Sales  = (clone $query)->selectRaw('SUM(units_ordered_l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(units_ordered_l60 * price) as total')->value('total') ?? 0;
+        // For L60, we need to calculate based on order dates (last 60 days vs last 30 days)
+        $sixtyDaysAgo = now()->subDays(60);
+        $thirtyDaysAgo = now()->subDays(30);
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
-
-        // Get Amazon marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Amazon')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
-
-        // Load product masters (lp, ship) keyed by SKU
+        // Load product masters (lp, ship, weightAct) keyed by SKU
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
-        // Calculate GProfit
-        $amazonRows   = $query->get(['sku', 'price', 'units_ordered_l30','units_ordered_l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
+        // Calculate total profit from actual orders using same format as AmazonSalesController
+        $l30OrderItems = AmazonOrder::where('period', 'l30')
+            ->where('status', '!=', 'Canceled')
+            ->join('amazon_order_items', 'amazon_orders.id', '=', 'amazon_order_items.amazon_order_id')
+            ->select('amazon_order_items.sku', 'amazon_order_items.price', 'amazon_order_items.quantity')
+            ->get();
 
-        foreach ($amazonRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->units_ordered_l30;
-            $unitsL60  = (int) $row->units_ordered_l60;
+        $l60OrderItems = AmazonOrder::where('order_date', '>=', $sixtyDaysAgo)
+            ->where('order_date', '<', $thirtyDaysAgo)
+            ->where('status', '!=', 'Canceled')
+            ->join('amazon_order_items', 'amazon_orders.id', '=', 'amazon_order_items.amazon_order_id')
+            ->select('amazon_order_items.sku', 'amazon_order_items.price', 'amazon_order_items.quantity')
+            ->get();
 
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
+        $totalProfit = 0;
+        $totalProfitL60 = 0;
+        $totalCogs = 0;
+        $totalCogsL60 = 0;
+        $l30Sales = 0; // Recalculate L30 Sales using same method as view
+        $l60Sales = 0; // Recalculate L60 Sales using same method as view
+
+        foreach ($l30OrderItems as $item) {
+            // Skip rows with empty SKU (same as view)
+            if (!$item->sku || $item->sku === '') {
                 continue;
             }
 
-            $lp   = 0;
+            $sku = strtoupper($item->sku);
+            $price = (float) $item->price; // This is total price (sale_amount)
+            $quantity = (float) $item->quantity;
+
+            // Skip if quantity is 0 (same as view)
+            if ($quantity === 0) {
+                continue;
+            }
+
+            $lp = 0;
             $ship = 0;
+            $weightAct = 0;
 
             if (isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
-
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
 
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+                // Extract LP (same as AmazonSalesController)
+                $lp = 0;
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+
+                // Extract Ship and Weight Act
+                $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
             }
 
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
 
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
+            // Ship Cost calculation (same as AmazonSalesController):
+            // If quantity is 1: ship_cost = ship
+            // If quantity > 1 and t_weight < 20: ship_cost = ship / quantity
+            // Otherwise: ship_cost = ship
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
 
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
+            // COGS = LP * quantity
+            $cogs = $lp * $quantity;
+
+            // PFT Each = (unitPrice * 0.75) - lp - ship_cost (Amazon uses 75% margin)
+            $unitPrice = $quantity > 0 ? $price / $quantity : 0;
+            $pftEach = ($unitPrice * 0.75) - $lp - $shipCost;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+
+            // L30 Sales = unitPrice * quantity (same as view: basePrice * quantity)
+            $l30Sales += $unitPrice * $quantity;
+
+            $totalProfit += $pft;
+            $totalCogs += $cogs;
         }
 
-        // --- FIX: Calculate total LP from JSON/column ---
-        $amazonSkus   = $amazonRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $amazonPMs    = ProductMaster::whereIn('sku', $amazonSkus)->get();
+        foreach ($l60OrderItems as $item) {
+            // Skip rows with empty SKU (same as view)
+            if (!$item->sku || $item->sku === '') {
+                continue;
+            }
 
-        $totalLpValue = 0;
-        foreach ($amazonPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+            $sku = strtoupper($item->sku);
+            $price = (float) $item->price; // This is total price (sale_amount)
+            $quantity = (float) $item->quantity;
 
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
+            // Skip if quantity is 0 (same as view)
+            if ($quantity === 0) {
+                continue;
+            }
+
+            $lp = 0;
+            $ship = 0;
+            $weightAct = 0;
+
+            if (isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                // Extract LP (same as AmazonSalesController)
+                $lp = 0;
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+
+                // Extract Ship and Weight Act
+                $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
+            }
+
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation (same as AmazonSalesController):
+            // If quantity is 1: ship_cost = ship
+            // If quantity > 1 and t_weight < 20: ship_cost = ship / quantity
+            // Otherwise: ship_cost = ship
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // COGS = LP * quantity
+            $cogs = $lp * $quantity;
+
+            // PFT Each = (unitPrice * 0.75) - lp - ship_cost (Amazon uses 75% margin)
+            $unitPrice = $quantity > 0 ? $price / $quantity : 0;
+            $pftEach = ($unitPrice * 0.75) - $lp - $shipCost;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+
+            // L60 Sales = unitPrice * quantity (same as view: basePrice * quantity)
+            $l60Sales += $unitPrice * $quantity;
+
+            $totalProfitL60 += $pft;
+            $totalCogsL60 += $cogs;
         }
 
-        // Use L30 Sales for denominator
+        // Calculate growth
+        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+
+        // Calculate percentages - GPFT % = (Total PFT / Total Sales) * 100 (same as view)
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
 
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
+
+        // Calculate KW Spent and PT Spent for L30 (same as AmazonSalesController)
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(31)->format('Y-m-d');
+        $yesterday = \Carbon\Carbon::now()->subDay()->format('Y-m-d');
+        
+        // Calculate KW Spent (from amazon_sp_campaign_reports - campaigns without PT)
+        $kwSpent = DB::table('amazon_sp_campaign_reports')
+            ->whereNotNull('report_date_range')
+            ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
+            ->whereDate('report_date_range', '<=', $yesterday)
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
+            ->where(function($query) {
+                $query->whereRaw("campaignName NOT LIKE '%PT'")
+                    ->whereRaw("campaignName NOT LIKE '%PT.'");
+            })
+            ->sum('spend') ?? 0;
+        $kwSpent = (float) $kwSpent;
+
+        // Calculate PT Spent (from amazon_sp_campaign_reports - campaigns ending with PT)
+        $ptSpent = DB::table('amazon_sp_campaign_reports')
+            ->whereNotNull('report_date_range')
+            ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
+            ->whereDate('report_date_range', '<=', $yesterday)
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
+            ->where(function($query) {
+                $query->whereRaw("campaignName LIKE '%PT'")
+                    ->orWhereRaw("campaignName LIKE '%PT.'");
+            })
+            ->sum('spend') ?? 0;
+        $ptSpent = (float) $ptSpent;
+
+        // Get unique SKUs from L30 orders
+        $l30Skus = [];
+        foreach ($l30OrderItems as $item) {
+            if ($item->sku) {
+                $l30Skus[] = strtoupper(trim($item->sku));
+            }
+        }
+        $l30Skus = array_unique($l30Skus);
+
+        // Calculate KW Spent per SKU (from amazon_sp_campaign_reports)
+        $kwSpentBySku = [];
+        foreach ($l30Skus as $sku) {
+            $skuUpper = strtoupper(trim($sku));
+            $spReports = AmazonSpCampaignReport::whereNotNull('report_date_range')
+                ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
+                ->whereDate('report_date_range', '<=', $yesterday)
+                ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
+                ->where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '')
+                ->where('campaignName', 'NOT LIKE', '%PT')
+                ->where('campaignName', 'NOT LIKE', '%PT.')
+                ->whereRaw('UPPER(TRIM(campaignName)) = ?', [$skuUpper])
+                ->get();
+            
+            foreach ($spReports as $report) {
+                $spent = (float) ($report->spend ?? 0);
+                $kwSpentBySku[$sku] = ($kwSpentBySku[$sku] ?? 0) + $spent;
+            }
+        }
+
+        // Calculate PT Spent per SKU (from amazon_sp_campaign_reports)
+        $ptSpentBySku = [];
+        foreach ($l30Skus as $sku) {
+            $skuUpper = strtoupper(trim($sku));
+            $ptReports = AmazonSpCampaignReport::whereNotNull('report_date_range')
+                ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
+                ->whereDate('report_date_range', '<=', $yesterday)
+                ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
+                ->where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '')
+                ->where(function($q) use ($skuUpper) {
+                    $q->whereRaw('UPPER(TRIM(campaignName)) = ?', [$skuUpper . ' PT'])
+                      ->orWhereRaw('UPPER(TRIM(campaignName)) = ?', [$skuUpper . 'PT'])
+                      ->orWhereRaw('UPPER(TRIM(campaignName)) = ?', [$skuUpper . ' PT.'])
+                      ->orWhereRaw('UPPER(TRIM(campaignName)) = ?', [$skuUpper . 'PT.']);
+                })
+                ->get();
+            
+            foreach ($ptReports as $report) {
+                $spent = (float) ($report->spend ?? 0);
+                $ptSpentBySku[$sku] = ($ptSpentBySku[$sku] ?? 0) + $spent;
+            }
+        }
+
+        // Calculate unique SKU spend (KW + PT per SKU) - only count once per SKU
+        $uniqueSkuSpend = [];
+        foreach ($l30Skus as $sku) {
+            if (!isset($uniqueSkuSpend[$sku])) {
+                $kwSpentForSku = $kwSpentBySku[$sku] ?? 0;
+                $ptSpentForSku = $ptSpentBySku[$sku] ?? 0;
+                $uniqueSkuSpend[$sku] = $kwSpentForSku + $ptSpentForSku;
+            }
+        }
+
+        // Calculate total unique SKU spend
+        $totalUniqueSkuSpend = array_sum($uniqueSkuSpend);
+
+        // Calculate TACOS % = ((KW Spent + PT Spent) / Total Sales) * 100
+        $tacosPercentage = $l30Sales > 0 ? (($kwSpent + $ptSpent) / $l30Sales) * 100 : 0;
+
+        // Calculate N PFT = GPFT % - TACOS %
+        $nPft = $gProfitPct - $tacosPercentage;
+
+        // Calculate Ads % = (Sum of unique SKU KW+PT / Total Sales) * 100
+        $adsPercentage = $l30Sales > 0 ? ($totalUniqueSkuSpend / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Amazon')->first();
@@ -408,6 +632,9 @@ class ChannelMasterController extends Controller
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'Total PFT'   => round($totalProfit, 2), // GPFT Total (same as view)
+            'N PFT'      => round($nPft, 2) . '%',
+            'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
