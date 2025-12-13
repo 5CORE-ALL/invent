@@ -118,23 +118,33 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:fetch-google-ads-campaigns')
             ->dailyAt('09:00')
             ->timezone('Asia/Kolkata');
-        
+
         // Sync Meta (Facebook & Instagram) Ads data from Meta API
         $schedule->command('meta:sync-all-ads')
             ->dailyAt('10:00')
             ->timezone('Asia/Kolkata')
             ->name('meta-ads-sync-daily')
             ->withoutOverlapping();
-        
+
         $schedule->command('app:ebay-campaign-reports')
             ->dailyAt('05:00')
             ->timezone('UTC');
         $schedule->command('app:fetch-doba-metrics')
             ->dailyAt('00:00')
             ->timezone('UTC');
-        
+
         // Collect FBA metrics for historical tracking
-     
+
+
+        $schedule->command('app:fetch-amazon-orders')
+            ->dailyAt('00:00')
+            ->timezone('UTC');
+
+        $schedule->command('app:fetch-ebay-orders')->dailyAt('00:00')
+            ->timezone('UTC');
+
+
+
         // Collect eBay metrics for historical tracking
         $schedule->command('ebay:collect-metrics')
             ->dailyAt('23:35')
@@ -156,29 +166,29 @@ class Kernel extends ConsoleKernel
             ->dailyAt('02:30')
             ->timezone('UTC');
 
-            // Sync mercari-wo-ship sheet update command
+        // Sync mercari-wo-ship sheet update command
         $schedule->command('app:sync-mercari-wo-ship-sheet')
             ->dailyAt('03:00')
             ->timezone('UTC');
 
         // Sync fbshop sheet update command
         $schedule->command('app:sync-fb-shop-sheet')
-        ->dailyAt('03:00')
-        ->timezone('UTC');
+            ->dailyAt('03:00')
+            ->timezone('UTC');
 
         // Sync fb marketplace sheet update command
         $schedule->command('app:sync-fb-marketplace-sheet')
-        ->dailyAt('03:00')
-        ->timezone('UTC');
+            ->dailyAt('03:00')
+            ->timezone('UTC');
         // Sync Temu sheet command
 
 
         $schedule->command('app:fetch-pls-data')->twiceDaily(1, 13);
-      
+
         $schedule->command('sync:neweegg-sheet')->twiceDaily(1, 13);
         // Wayfair sheet sync disabled - using API instead
         // $schedule->command('sync:wayfair-sheet')->twiceDaily(2, 14);
-        
+
         // Wayfair L30/L60 sync from API - runs daily at 1 PM (13:00) America/Los_Angeles timezone
         $schedule->command('sync:wayfair-l30-api')
             ->dailyAt('13:00')
@@ -197,12 +207,12 @@ class Kernel extends ConsoleKernel
 
         // Sync Shopify sheet command
         $schedule->command('sync:shopify-quantity')->twiceDaily(1, 13);
-          
+
 
         $schedule->command('app:fetch-ebay-three-metrics')
             ->dailyAt('02:00')
             ->timezone('America/Los_Angeles');
-            
+
         $schedule->command('app:ebay3-campaign-reports')
             ->dailyAt('04:00')
             ->timezone('America/Los_Angeles');
@@ -211,7 +221,7 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles');
         $schedule->command('app:fetch-ebay-two-metrics')
             ->dailyAt('01:00')
-            ->timezone('America/Los_Angeles');   
+            ->timezone('America/Los_Angeles');
         $schedule->command('app:ebay2-campaign-reports')
             ->dailyAt('01:15')
             ->timezone('America/Los_Angeles');
@@ -221,7 +231,7 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata');
         $schedule->command('amazon:auto-update-over-pt-bids')
             ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata'); 
+            ->timezone('Asia/Kolkata');
         $schedule->command('amazon:auto-update-over-hl-bids')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
@@ -230,20 +240,20 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata');
         $schedule->command('amazon:auto-update-under-pt-bids')
             ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata'); 
+            ->timezone('Asia/Kolkata');
         $schedule->command('amazon:auto-update-under-hl-bids')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
         // amazon acos bgt update commands
         $schedule->command('amazon:auto-update-amz-bgt-kw')
             ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata'); 
+            ->timezone('Asia/Kolkata');
         $schedule->command('amazon:auto-update-amz-bgt-pt')
             ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata'); 
+            ->timezone('Asia/Kolkata');
         $schedule->command('amazon:auto-update-amz-bgt-hl')
             ->dailyAt('12:00')
-            ->timezone('Asia/Kolkata'); 
+            ->timezone('Asia/Kolkata');
         // Pink Dil ads update command
         $schedule->command('amazon:auto-update-pink-dil-kw-ads')
             ->dailyAt('12:00')
@@ -309,41 +319,41 @@ class Kernel extends ConsoleKernel
                 ->update(['sbid_status' => 0]);
         })->dailyAt('00:00');
         $schedule->command('sbid:update')
-            ->dailyAt('00:01') 
+            ->dailyAt('00:01')
             ->timezone('Asia/Kolkata');
-        
+
         // SERP (SEARCH) SBID Update - runs after SHOPPING SBID update
         $schedule->command('sbid:update-serp')
-            ->dailyAt('00:02') 
+            ->dailyAt('00:02')
             ->timezone('Asia/Kolkata');
-        
+
         // SHOPPING Budget Update - based on ACOS (L30 data)
         $schedule->command('budget:update-shopping')
-            ->dailyAt('00:03') 
+            ->dailyAt('00:03')
             ->timezone('Asia/Kolkata');
-        
+
         // SERP (SEARCH) Budget Update - based on ACOS (L30 data)
         $schedule->command('budget:update-serp')
-            ->dailyAt('00:04') 
+            ->dailyAt('00:04')
             ->timezone('Asia/Kolkata');
-        
+
         // Store Amazon Utilization Counts - Daily
         $schedule->command('amazon:store-utilization-counts')
-            ->dailyAt('00:10') 
+            ->dailyAt('00:10')
             ->timezone('Asia/Kolkata');
-        
+
         // Amazon FBA Keyword Budget Update - based on ACOS (L30 data)
         $schedule->command('budget:update-amazon-fba-kw')
-            ->dailyAt('00:05') 
+            ->dailyAt('00:05')
             ->timezone('Asia/Kolkata');
-        
+
         // Amazon FBA Product Target Budget Update - based on ACOS (L30 data)
         $schedule->command('budget:update-amazon-fba-pt')
-            ->dailyAt('00:06') 
+            ->dailyAt('00:06')
             ->timezone('Asia/Kolkata');
 
         $schedule->command('app:sync-cp-master-to-sheet')->hourly();
-                
+
         // FBA Commands - Daily Updates
         $schedule->command('app:fetch-fba-reports')
             ->dailyAt('01:00')
@@ -393,16 +403,16 @@ class Kernel extends ConsoleKernel
             ->name('sync-meta-all-ads-from-google-sheets')
             ->withoutOverlapping();
 
-            // test scheduler for task manager report
-//               $schedule->call(function () {
-//     \Illuminate\Support\Facades\Log::info('Test Scheduler Executed at ' . now());
+        // test scheduler for task manager report
+        //               $schedule->call(function () {
+        //     \Illuminate\Support\Facades\Log::info('Test Scheduler Executed at ' . now());
 
-//     // Optional: visible for testing
-//     file_put_contents(storage_path('logs/test_scheduler_output.txt'), now() . " - Test scheduler executed\n", FILE_APPEND);
-// })
-// ->everyMinute()
-// ->name('test-scheduler')
-// ->withoutOverlapping();
+        //     // Optional: visible for testing
+        //     file_put_contents(storage_path('logs/test_scheduler_output.txt'), now() . " - Test scheduler executed\n", FILE_APPEND);
+        // })
+        // ->everyMinute()
+        // ->name('test-scheduler')
+        // ->withoutOverlapping();
     }
 
     /**
@@ -414,4 +424,3 @@ class Kernel extends ConsoleKernel
         require base_path('routes/console.php');
     }
 }
- 
