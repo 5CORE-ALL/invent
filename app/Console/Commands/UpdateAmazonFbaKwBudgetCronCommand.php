@@ -25,8 +25,9 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
     {
         $this->info('Starting budget update cron for Amazon FBA keyword campaigns (ACOS-based)...');
 
-        // Get all FBA records
+        // Get all FBA records with inventory > 0
         $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+            ->where('quantity_available', '>', 0)
             ->orderBy('seller_sku', 'asc')
             ->get();
 
@@ -53,9 +54,10 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
                 return trim(strtoupper($item->sku));
             });
 
-        // Fetch L30 campaign reports for keywords (not ending with PT)
+        // Fetch L30 campaign reports for keywords (not ending with PT) - only ENABLED campaigns
         $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
+            ->where('campaignStatus', 'ENABLED')
             ->where(function ($q) use ($sellerSkus) {
                 foreach ($sellerSkus as $sku) {
                     $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
@@ -81,28 +83,52 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
 
             $shopify = $shopifyData[$baseSkuUpper] ?? null;
             
-            // Skip if zero inventory (use FBA table's quantity_available)
-            if (($fba->quantity_available ?? 0) <= 0) {
+            // Double check: Skip if zero inventory (use FBA table's quantity_available)
+            $quantityAvailable = (int)($fba->quantity_available ?? 0);
+            if ($quantityAvailable <= 0) {
+                $this->warn("Skipping SKU {$sellerSku} - Zero inventory (quantity_available: {$quantityAvailable})");
                 continue;
             }
 
-            // Match campaigns for this FBA SKU (keywords only - not ending with PT)
+            // Match campaigns for this FBA SKU (keywords only - not ending with PT) - only ENABLED
+            // Use exact match or campaign name starts/ends with SKU to avoid partial matches
             $matchedCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
 
+                // Exact match OR campaign name equals SKU OR campaign name starts with SKU followed by space/end
+                $exactMatch = ($cleanName === $sellerSkuUpper);
+                $startsWithMatch = (str_starts_with($cleanName, $sellerSkuUpper . ' ') || str_starts_with($cleanName, $sellerSkuUpper . '.'));
+                $endsWithMatch = (str_ends_with($cleanName, ' ' . $sellerSkuUpper) || str_ends_with($cleanName, '.' . $sellerSkuUpper));
+                
+                // Also check if campaign name contains SKU as a whole word (not substring)
+                $containsAsWord = preg_match('/\b' . preg_quote($sellerSkuUpper, '/') . '\b/', $cleanName);
+
                 return (
-                    str_contains($cleanName, $sellerSkuUpper)
+                    ($exactMatch || $startsWithMatch || $endsWithMatch || $containsAsWord)
                     && !str_ends_with($cleanName, ' PT')
                     && !str_ends_with($cleanName, ' PT.')
+                    && strtoupper($item->campaignStatus) === 'ENABLED'
                 );
             });
 
             if ($matchedCampaignsL30->isEmpty()) {
+                $this->warn("No ENABLED campaign found for SKU: {$sellerSku}");
                 continue;
             }
 
-            // Get the first matched campaign for budget update
+            // Warn if multiple campaigns match
+            if ($matchedCampaignsL30->count() > 1) {
+                $this->warn("Multiple campaigns found for SKU {$sellerSku}:");
+                foreach ($matchedCampaignsL30 as $camp) {
+                    $this->warn("  - {$camp->campaignName} (ID: {$camp->campaign_id}, Budget: \${$camp->campaignBudgetAmount})");
+                }
+            }
+
+            // Get the first matched ENABLED campaign for budget update
             $matchedCampaign = $matchedCampaignsL30->first();
+            
+            // Log which campaign is being matched for debugging
+            $this->line("Matching campaign for SKU {$sellerSku}: {$matchedCampaign->campaignName} (ID: {$matchedCampaign->campaign_id}, Status: {$matchedCampaign->campaignStatus}, Current Budget: \${$matchedCampaign->campaignBudgetAmount})");
 
             $campaignId = $matchedCampaign->campaign_id ?? '';
             $currentBudget = floatval($matchedCampaign->campaignBudgetAmount ?? 0);
@@ -136,6 +162,12 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
                 $newBudget = 1;
             }
 
+            // CRITICAL: Validate budget is only 1, 2, or 3 - prevent any other values
+            if (!in_array($newBudget, [1, 2, 3], true)) {
+                $this->error("INVALID BUDGET VALUE for SKU {$sellerSku} Campaign {$campaignId}: {$newBudget}. Skipping update!");
+                continue;
+            }
+
             // Avoid duplicate updates for same campaign
             if (!isset($campaignUpdates[$campaignId])) {
                 $campaignUpdates[$campaignId] = true;
@@ -145,13 +177,42 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
                     'campaign_id' => $campaignId,
                     'campaign_name' => $matchedCampaign->campaignName ?? '',
                     'old_budget' => $currentBudget,
-                    'new_budget' => $newBudget
+                    'new_budget' => $newBudget,
+                    'acos' => $acos,
+                    'sales' => $sales,
+                    'spend' => $spend
                 ];
+                
+                // Log the budget calculation details
+                $this->line("SKU: {$sellerSku} | Inventory: {$quantityAvailable} | Campaign: {$matchedCampaign->campaignName} | ACOS: {$acos}% | Current Budget: \${$currentBudget} | New Budget: \${$newBudget}");
+            } else {
+                $this->warn("Skipping duplicate campaign ID: {$campaignId} for SKU: {$sellerSku}");
             }
         }
 
         // Batch update all campaigns in one call
         if (!empty($campaignIdsToUpdate)) {
+            // CRITICAL: Validate arrays are aligned and all budgets are valid (1, 2, or 3)
+            if (count($campaignIdsToUpdate) !== count($budgetsToUpdate)) {
+                $this->error("ARRAY MISALIGNMENT: campaignIds count (" . count($campaignIdsToUpdate) . ") != budgets count (" . count($budgetsToUpdate) . "). Aborting update!");
+                return 1;
+            }
+
+            // Validate all budget values are 1, 2, or 3
+            $invalidBudgets = array_filter($budgetsToUpdate, function($budget) {
+                return !in_array($budget, [1, 2, 3], true);
+            });
+
+            if (!empty($invalidBudgets)) {
+                $this->error("INVALID BUDGET VALUES FOUND: " . implode(', ', $invalidBudgets) . ". Only 1, 2, or 3 allowed. Aborting update!");
+                $this->error("Campaign IDs: " . implode(', ', $campaignIdsToUpdate));
+                $this->error("Budgets: " . implode(', ', $budgetsToUpdate));
+                return 1;
+            }
+
+            // Log what will be sent
+            $this->info("About to update " . count($campaignIdsToUpdate) . " campaigns with budgets: " . implode(', ', $budgetsToUpdate));
+
             try {
                 $result = $this->acosController->updateAutoAmazonCampaignBgt($campaignIdsToUpdate, $budgetsToUpdate);
                 
