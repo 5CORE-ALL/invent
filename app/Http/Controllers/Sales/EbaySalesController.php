@@ -9,6 +9,7 @@ use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\EbayGeneralReport;
 use App\Models\EbayPriorityReport;
+use App\Models\EbayMetric;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -48,17 +49,51 @@ class EbaySalesController extends Controller
 
         \Log::info('Found ' . $orders->count() . ' orders');
 
-        // Get unique SKUs
+        // Get unique SKUs and item_ids
         $skus = [];
+        $itemIds = [];
         foreach ($orders as $order) {
             foreach ($order->items as $item) {
                 $skus[] = $item->sku;
+                if ($item->item_id) {
+                    $itemIds[] = $item->item_id;
+                }
             }
         }
         $skus = array_unique($skus);
+        $itemIds = array_unique($itemIds);
 
         // Fetch ProductMaster data for LP and Ship
         $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Calculate PMT Spent per item_id (from ebay_general_reports)
+        // PMT spent is tied to listing_id (which is item_id)
+        $generalReports = EbayGeneralReport::whereIn('listing_id', $itemIds)
+            ->where('report_range', 'L30')
+            ->get();
+        
+        $pmtSpentByItemId = [];
+        foreach ($generalReports as $report) {
+            $spent = (float) preg_replace('/[^\d.]/', '', $report->ad_fees ?? '0');
+            $pmtSpentByItemId[$report->listing_id] = ($pmtSpentByItemId[$report->listing_id] ?? 0) + $spent;
+        }
+
+        // Calculate KW Spent per SKU (from ebay_priority_reports)
+        // Match campaigns where campaign_name exactly matches SKU (case-insensitive)
+        $kwSpentBySku = [];
+        foreach ($skus as $sku) {
+            $skuUpper = strtoupper(trim($sku));
+            $priorityReports = EbayPriorityReport::where('report_range', 'L30')
+                ->whereNotNull('campaign_name')
+                ->where('campaign_name', '!=', '')
+                ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$skuUpper])
+                ->get();
+            
+            foreach ($priorityReports as $report) {
+                $spent = (float) str_replace(['USD ', ','], '', $report->cpc_ad_fees_payout_currency ?? '0');
+                $kwSpentBySku[$sku] = ($kwSpentBySku[$sku] ?? 0) + $spent;
+            }
+        }
 
         // Get marketplace percentage and ad_updates
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay')->first();
@@ -125,6 +160,10 @@ class EbaySalesController extends Controller
                 // ROI = (PFT / LP) * 100
                 $roi = $lp > 0 ? ($pft / $lp) * 100 : 0;
 
+                // Get PMT Spent for this item_id and KW Spent for this SKU
+                $pmtSpent = $pmtSpentByItemId[$item->item_id] ?? 0;
+                $kwSpent = $kwSpentBySku[$item->sku] ?? 0;
+
                 $data[] = [
                     'order_id' => $order->ebay_order_id,
                     'item_id' => $item->item_id,
@@ -146,6 +185,8 @@ class EbaySalesController extends Controller
                     'pft_each_pct' => round($pftEachPct, 2),
                     'pft' => round($pft, 2),
                     'roi' => round($roi, 2),
+                    'kw_spent' => round($kwSpent, 2),
+                    'pmt_spent' => round($pmtSpent, 2),
                 ];
             }
         }
@@ -177,6 +218,8 @@ class EbaySalesController extends Controller
             'pft_each_pct' => true,
             'pft' => true,
             'roi' => true,
+            'kw_spent' => true,
+            'pmt_spent' => true,
         ];
 
         $saved = session('ebay_sales_column_visibility', $defaultVisibility);

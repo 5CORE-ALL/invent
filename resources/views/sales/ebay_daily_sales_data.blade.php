@@ -116,6 +116,8 @@
                         <span class="badge fs-6 p-2" id="kw-spent-badge" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>
                         <span class="badge fs-6 p-2" id="tacos-percentage-badge" style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0%</span>
                         <span class="badge fs-6 p-2" id="m-pft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="ads-percentage-badge" style="background-color: #20c997; color: white; font-weight: bold; display: none;">Ads %: 0%</span>
+                        <span class="badge fs-6 p-2" id="pft-percentage-filtered-badge" style="background-color: #17a2b8; color: white; font-weight: bold; display: none;">PFT %: 0%</span>
                     </div>
                 </div>
             </div>
@@ -451,6 +453,34 @@
                         
                         return `<span style="color: ${color}; font-weight: bold;">${parseFloat(value).toFixed(0)}%</span>`;
                     }
+                },
+                {
+                    title: "KW Spent",
+                    field: "kw_spent",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 100,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
+                },
+                {
+                    title: "PMT Spent",
+                    field: "pmt_spent",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 100,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
                 }
             ]
         });
@@ -459,6 +489,10 @@
         $('#sku-search').on('keyup', function() {
             const value = $(this).val();
             table.setFilter("sku", "like", value);
+            // Update summary after filter is applied
+            setTimeout(function() {
+                updateSummary();
+            }, 100);
         });
 
         // Update summary stats (matching Amazon pattern exactly)
@@ -472,6 +506,9 @@
             let totalWeightedPrice = 0;
             let totalQuantityForPrice = 0;
             let totalCogs = 0;
+            
+            // Track unique SKUs and their KW/PMT spent (to avoid double counting)
+            const uniqueSkuSpend = {};
 
             data.forEach(row => {
                 // Skip rows with empty SKU or order_id
@@ -508,6 +545,13 @@
                 // L30 Sales = Quantity * price
                 const l30Sales = quantity * basePrice;
                 totalL30Sales += l30Sales;
+                
+                // Track unique SKU spend (KW + PMT) - only count once per SKU
+                if (row.sku && !uniqueSkuSpend[row.sku]) {
+                    const kwSpent = parseFloat(row.kw_spent) || 0;
+                    const pmtSpent = parseFloat(row.pmt_spent) || 0;
+                    uniqueSkuSpend[row.sku] = kwSpent + pmtSpent;
+                }
             });
 
             // Calculate average price (weighted by quantity)
@@ -524,6 +568,20 @@
 
             // Calculate N PFT: GPFT % - TACOS %
             const mPft = pftPercentage - tacosPercentage;
+            
+            // Calculate Ads %: (Sum of unique SKU KW+PMT / Total Sales) * 100
+            const totalUniqueSkuSpend = Object.values(uniqueSkuSpend).reduce((sum, spend) => sum + spend, 0);
+            const adsPercentage = totalRevenue > 0 ? (totalUniqueSkuSpend / totalRevenue) * 100 : 0;
+            
+            // Calculate PFT %: GPFT % - Ads %
+            const pftPercentageFiltered = pftPercentage - adsPercentage;
+            
+            // Check if data is filtered (compare active data with total data or check for filters)
+            const totalDataCount = table.getDataCount();
+            const activeDataCount = data.length;
+            const skuSearchValue = $('#sku-search').val() || '';
+            const hasTableFilters = table.modules.filter && table.modules.filter.getFilters().length > 0;
+            const isFiltered = activeDataCount < totalDataCount || hasTableFilters || skuSearchValue.trim() !== '';
 
             // Update badges (matching Amazon format exactly)
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
@@ -547,6 +605,15 @@
             $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
             $('#tacos-percentage-badge').text('TACOS %: ' + Math.round(tacosPercentage) + '%');
             $('#m-pft-badge').text('N PFT: ' + Math.round(mPft) + '%');
+            
+            // Show/hide Ads % and PFT % badges based on filter status
+            if (isFiltered) {
+                $('#ads-percentage-badge').show().text('Ads %: ' + Math.round(adsPercentage) + '%');
+                $('#pft-percentage-filtered-badge').show().text('PFT %: ' + Math.round(pftPercentageFiltered) + '%');
+            } else {
+                $('#ads-percentage-badge').hide();
+                $('#pft-percentage-filtered-badge').hide();
+            }
         }
 
         // Build Column Visibility Dropdown
@@ -644,6 +711,11 @@
 
         // Update summary when table is rendered
         table.on('renderComplete', function() {
+            updateSummary();
+        });
+        
+        // Update summary when filters change
+        table.on('dataFiltered', function() {
             updateSummary();
         });
 
