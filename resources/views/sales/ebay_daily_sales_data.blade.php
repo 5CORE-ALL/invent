@@ -621,7 +621,7 @@
             const menu = document.getElementById("column-dropdown-menu");
             menu.innerHTML = '';
 
-            fetch('/ebay-column-visibility', {
+            fetch('/ebay-daily-sales-column-visibility', {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -663,7 +663,7 @@
                 }
             });
 
-            fetch('/ebay-column-visibility', {
+            fetch('/ebay-daily-sales-column-visibility', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -676,7 +676,7 @@
         }
 
         function applyColumnVisibilityFromServer() {
-            fetch('/ebay-column-visibility', {
+            fetch('/ebay-daily-sales-column-visibility', {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
