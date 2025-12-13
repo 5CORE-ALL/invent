@@ -80,7 +80,18 @@ class ForecastAnalysisController extends Controller
             }
         }
 
-        $forecastMap = DB::table('forecast_analysis')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        // Key forecastMap by SKU only for easier matching
+        // If multiple records exist for same SKU, prefer the one with non-empty nr value
+        $forecastMap = DB::table('forecast_analysis')->get()->groupBy(function($item) use ($normalizeSku) {
+            return $normalizeSku($item->sku);
+        })->map(function($group) {
+            // If multiple records, prefer one with non-empty nr, otherwise take first
+            $withNr = $group->firstWhere('nr', '!=', null);
+            if ($withNr && !empty(trim($withNr->nr))) {
+                return $withNr;
+            }
+            return $group->first();
+        });
         $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
         $readyToShipMap = DB::table('ready_to_ship')->where('transit_inv_status', 0)->whereNull('deleted_at')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
         $mfrg = DB::table('mfrg_progress')->get()->keyBy(fn($item) => $normalizeSku($item->sku));
@@ -186,11 +197,27 @@ class ForecastAnalysisController extends Controller
             //     $item->scout_data = json_decode(json_encode($jungleScoutData[$item->Parent]), true);
             // }
 
+            // Initialize nr field to empty string first
+            $item->nr = '';
+            
+            // Match forecast record by SKU only
             if ($forecastMap->has($sheetSku)) {
                 $forecast = $forecastMap->get($sheetSku);
                 $item->{'s-msl'} = $forecast->s_msl ?? 0;
                 $item->{'Approved QTY'} = $forecast->approved_qty ?? 0;
-                $item->nr = $forecast->nr ?? '';
+                
+                // Get and normalize nr value - preserve the value even if it's empty
+                $nrValue = $forecast->nr ?? null;
+                if ($nrValue !== null && $nrValue !== '') {
+                    $item->nr = strtoupper(trim((string)$nrValue));
+                    // Ensure it's a valid value
+                    if (!in_array($item->nr, ['REQ', 'NR', 'LATER'])) {
+                        $item->nr = 'REQ'; // Default to REQ if invalid
+                    }
+                } else {
+                    $item->nr = ''; // Keep as empty string, formatter will default to REQ
+                }
+                
                 $item->req = $forecast->req ?? '';
                 $item->hide = $forecast->hide ?? '';
                 $item->notes = $forecast->notes ?? '';
@@ -200,6 +227,38 @@ class ForecastAnalysisController extends Controller
                 $item->rfq_report = $forecast->rfq_report ?? '';
                 $item->date_apprvl = $forecast->date_apprvl ?? '';
                 $item->stage = $forecast->stage ?? '';
+            } else {
+                // If key not found in map, try direct database lookup by SKU only
+                $forecastRecord = DB::table('forecast_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($sheetSku))])
+                    ->first();
+                
+                if ($forecastRecord) {
+                    $item->{'s-msl'} = $forecastRecord->s_msl ?? 0;
+                    $item->{'Approved QTY'} = $forecastRecord->approved_qty ?? 0;
+                    
+                    // Get and normalize nr value
+                    $nrValue = $forecastRecord->nr ?? null;
+                    if ($nrValue !== null && $nrValue !== '') {
+                        $item->nr = strtoupper(trim((string)$nrValue));
+                        // Ensure it's a valid value
+                        if (!in_array($item->nr, ['REQ', 'NR', 'LATER'])) {
+                            $item->nr = 'REQ'; // Default to REQ if invalid
+                        }
+                    } else {
+                        $item->nr = ''; // Keep as empty string, formatter will default to REQ
+                    }
+                    
+                    $item->req = $forecastRecord->req ?? '';
+                    $item->hide = $forecastRecord->hide ?? '';
+                    $item->notes = $forecastRecord->notes ?? '';
+                    $item->{'Clink'} = $forecastRecord->clink ?? '';
+                    $item->{'Olink'} = $forecastRecord->olink ?? '';
+                    $item->rfq_form_link = $forecastRecord->rfq_form_link ?? '';
+                    $item->rfq_report = $forecastRecord->rfq_report ?? '';
+                    $item->date_apprvl = $forecastRecord->date_apprvl ?? '';
+                    $item->stage = $forecastRecord->stage ?? '';
+                }
             }
 
             $item->containerName = $transitContainer[$normalizeSku($prodData->sku)]->tab_name ?? '';
@@ -212,6 +271,7 @@ class ForecastAnalysisController extends Controller
                 $item->readyToShipQty = $readyToShipQty;
             }
 
+            // MIP column should ONLY come from mfrg_progress table, no fallback to purchases
             $order_given = 0;
             if($mfrg->has($sheetSku)){
                 $isReadyToShip = $mfrg->get($sheetSku)->ready_to_ship ?? 'No';
@@ -219,14 +279,7 @@ class ForecastAnalysisController extends Controller
                     $order_given = (float) ($mfrg->get($sheetSku)->qty ?? 0);
                 }
             }
-
-            if ($purchases->has($sheetSku)) {
-                $p = $purchases->get($sheetSku);
-                $purchase_qty = (float)($p->qty ?? 0);
-                if ($purchase_qty > 0) {
-                    $order_given = $purchase_qty;
-                }
-            }
+            // Removed purchases table fallback - MIP should only show mfrg_progress data
             $item->order_given = $order_given;
 
             if ($movementMap->has($sheetSku)) {
@@ -326,12 +379,23 @@ class ForecastAnalysisController extends Controller
         ]);
     }
 
+    public function transit(Request $request)
+    {
+        $mode = $request->query('mode');
+        $demo = $request->query('demo');
+
+        return view('purchase-master.transit', [
+            'mode' => $mode,
+            'demo' => $demo,
+        ]);
+    }
+
     public function updateForcastSheet(Request $request)
     {        
         $sku = trim($request->input('sku'));
         $parent = trim($request->input('parent'));
         $column = trim($request->input('column'));
-        $value = $request->input('value');
+        $value = trim($request->input('value')); // Trim the value to remove whitespace
 
         // Handle MOQ updates separately - save to ProductMaster
         if (strtoupper($column) === 'MOQ') {
@@ -385,6 +449,15 @@ class ForecastAnalysisController extends Controller
 
         if ($existing) {
             $currentValue = $existing->{$columnKey} ?? null;
+            
+            // Normalize NR values to uppercase
+            if ($columnKey === 'nr' && !empty($value)) {
+                $value = strtoupper(trim($value));
+                // Ensure value is one of the valid options
+                if (!in_array($value, ['REQ', 'NR', 'LATER'])) {
+                    $value = 'REQ'; // Default to REQ if invalid
+                }
+            }
 
             if ((string)$currentValue !== (string)$value) {
                 DB::table('forecast_analysis')
@@ -468,6 +541,15 @@ class ForecastAnalysisController extends Controller
 
             return response()->json(['success' => true, 'message' => 'Updated or already up-to-date']);
         } else {
+            // Normalize NR values to uppercase before inserting
+            if ($columnKey === 'nr' && !empty($value)) {
+                $value = strtoupper(trim($value));
+                // Ensure value is one of the valid options
+                if (!in_array($value, ['REQ', 'NR', 'LATER'])) {
+                    $value = 'REQ'; // Default to REQ if invalid
+                }
+            }
+            
             DB::table('forecast_analysis')->insert([
                 'sku' => $sku,
                 'parent' => $parent,
@@ -611,8 +693,18 @@ class ForecastAnalysisController extends Controller
                 }
             }
 
-            // Forecast, Movement, Mfrg, ReadyToShip
-            $forecastMap = DB::table('forecast_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->parent)) . '|' . strtoupper(trim($item->sku)));
+            // Forecast, Movement, Mfrg, ReadyToShip - key by SKU only for easier matching
+            // If multiple records exist for same SKU, prefer the one with non-empty nr value
+            $forecastMap = DB::table('forecast_analysis')->get()->groupBy(function($item) use ($normalizeSku) {
+                return $normalizeSku($item->sku);
+            })->map(function($group) {
+                // If multiple records, prefer one with non-empty nr, otherwise take first
+                $withNr = $group->firstWhere('nr', '!=', null);
+                if ($withNr && !empty(trim($withNr->nr))) {
+                    return $withNr;
+                }
+                return $group->first();
+            });
 
             $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->sku)));
 
@@ -687,14 +779,28 @@ class ForecastAnalysisController extends Controller
                 //     $item->scout_data = json_decode(json_encode($jungleScoutData[$item->Parent]), true);
                 // }
 
-                // Forecast
-                $forecastKey = $item->Parent.'|'.$prodData->sku;
-                if($forecastMap->has($forecastKey)){
-                    $forecast = $forecastMap->get($forecastKey);
+                // Initialize nr field to empty string first
+                $item->nr = '';
+                
+                // Forecast - match by SKU only
+                $normalizedSkuForForecast = $normalizeSku($prodData->sku);
+                
+                if($forecastMap->has($normalizedSkuForForecast)){
+                    $forecast = $forecastMap->get($normalizedSkuForForecast);
                     $item->{'s-msl'} = $forecast->s_msl ?? '';
                     $item->{'Approved QTY'} = $forecast->approved_qty ?? '';
                     $item->order_given = $mfrgProgressMap[strtoupper(trim($prodData->sku))]->total_qty ?? 0;
-                    $item->nr = $forecast->nr ?? '';
+                    // Get and normalize nr value - preserve the value even if it's empty
+                    $nrValue = $forecast->nr ?? null;
+                    if ($nrValue !== null && $nrValue !== '') {
+                        $item->nr = strtoupper(trim((string)$nrValue));
+                        // Ensure it's a valid value
+                        if (!in_array($item->nr, ['REQ', 'NR', 'LATER'])) {
+                            $item->nr = 'REQ'; // Default to REQ if invalid
+                        }
+                    } else {
+                        $item->nr = ''; // Keep as empty string, formatter will default to REQ
+                    }
                     $item->req = $forecast->req ?? '';
                     $item->hide = $forecast->hide ?? '';
                     $item->notes = $forecast->notes ?? '';
@@ -703,6 +809,40 @@ class ForecastAnalysisController extends Controller
                     $item->rfq_form_link = $forecast->rfq_form_link ?? '';
                     $item->rfq_report = $forecast->rfq_report ?? '';
                     $item->date_apprvl = $forecast->date_apprvl ?? '';
+                    $item->stage = $forecast->stage ?? '';
+                } else {
+                    // If key not found in map, try direct database lookup by SKU only
+                    $forecastRecord = DB::table('forecast_analysis')
+                        ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($normalizedSkuForForecast))])
+                        ->first();
+                    
+                    if ($forecastRecord) {
+                        $item->{'s-msl'} = $forecastRecord->s_msl ?? '';
+                        $item->{'Approved QTY'} = $forecastRecord->approved_qty ?? '';
+                        $item->order_given = $mfrgProgressMap[strtoupper(trim($prodData->sku))]->total_qty ?? 0;
+                        
+                        // Get and normalize nr value
+                        $nrValue = $forecastRecord->nr ?? null;
+                        if ($nrValue !== null && $nrValue !== '') {
+                            $item->nr = strtoupper(trim((string)$nrValue));
+                            // Ensure it's a valid value
+                            if (!in_array($item->nr, ['REQ', 'NR', 'LATER'])) {
+                                $item->nr = 'REQ'; // Default to REQ if invalid
+                            }
+                        } else {
+                            $item->nr = ''; // Keep as empty string, formatter will default to REQ
+                        }
+                        
+                        $item->req = $forecastRecord->req ?? '';
+                        $item->hide = $forecastRecord->hide ?? '';
+                        $item->notes = $forecastRecord->notes ?? '';
+                        $item->{'Clink'} = $forecastRecord->clink ?? '';
+                        $item->{'Olink'} = $forecastRecord->olink ?? '';
+                        $item->rfq_form_link = $forecastRecord->rfq_form_link ?? '';
+                        $item->rfq_report = $forecastRecord->rfq_report ?? '';
+                        $item->date_apprvl = $forecastRecord->date_apprvl ?? '';
+                        $item->stage = $forecastRecord->stage ?? '';
+                    }
                 }
 
                 $item->containerName = $transitContainer[strtoupper(trim($prodData->sku))]->tab_name ?? '';

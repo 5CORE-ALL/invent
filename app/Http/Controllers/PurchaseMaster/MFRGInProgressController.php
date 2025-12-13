@@ -116,12 +116,15 @@ class MFRGInProgressController extends Controller
                 $currencyFromPO = $skuToPriceMap[$sku]['currency'];
             }
 
-            // Get stage from forecast_analysis
+            // Get stage and nr from forecast_analysis
             $stage = '';
+            $nr = '';
             if (isset($forecastData[$sku])) {
                 $stage = $forecastData[$sku]->stage ?? '';
+                $nr = strtoupper(trim($forecastData[$sku]->nr ?? ''));
             }
             $row->stage = $stage;
+            $row->nr = $nr;
             $row->order_qty = $row->qty; // Add order_qty field for validation
 
             $row->Image = $image;
@@ -372,6 +375,40 @@ class MFRGInProgressController extends Controller
             return response()->json(['success' => true]);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function deleteBySkus(Request $request)
+    {
+        try {
+            $skus = $request->input('skus', []);
+            
+            if (empty($skus) || !is_array($skus)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No SKUs provided for deletion.'
+                ], 400);
+            }
+
+            // Normalize SKUs (uppercase and trim)
+            $normalizedSkus = array_map(function($sku) {
+                return strtoupper(trim($sku));
+            }, $skus);
+
+            // Delete records
+            $deletedCount = MfrgProgress::whereIn(DB::raw('UPPER(TRIM(sku))'), $normalizedSkus)->delete();
+
+            return response()->json([
+                'success' => true,
+                'deleted_count' => $deletedCount,
+                'message' => "Successfully deleted {$deletedCount} record(s)."
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error deleting MFRG Progress records: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while deleting records: ' . $e->getMessage()
+            ], 500);
         }
     }
 

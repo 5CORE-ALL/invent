@@ -600,27 +600,94 @@
                                 font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
                                 background-color: ${bgColor}; color: #000;">
                             <option value="">Select</option>
-                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''} style="background-color: #ffc107; color: #000;">2 Order</option>
+                            <option value="appr_req" ${value === 'appr_req' ? 'selected' : ''} style="background-color: #fff; color: #000;">Appr. Req</option>
                             <option value="mip" ${value === 'mip' ? 'selected' : ''} style="background-color: #0d6efd; color: #000;">MIP</option>
                             <option value="r2s" ${value === 'r2s' ? 'selected' : ''} style="background-color: #198754; color: #000;">R2S</option>
+                            <option value="transit" ${value === 'transit' ? 'selected' : ''} style="background-color: #fff; color: #000;">Transit</option>
+                            <option value="all_good" ${value === 'all_good' ? 'selected' : ''} style="background-color: #fff; color: #000;">😊 All Good</option>
+                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''} style="background-color: #ffc107; color: #000;">2 Order</option>
                         </select>
                     `;
                         }
                     },
                     {
                         title: "NRP",
-                        field: "nrl",
-                        formatter: function (cell) {
-                            const row = cell.getRow();
-                            const sku = row.getData().SKU;
+                        field: "nr",
+                        accessor: row => {
+                            const val = row?.["nr"];
+                            // Return null/undefined as empty string, but preserve actual values
+                            if (val === null || val === undefined) return '';
+                            // Convert to string and normalize
+                            const strVal = String(val);
+                            const normalized = strVal.trim().toUpperCase();
+                            // Return normalized value (even if empty string)
+                            return normalized;
+                        },
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            let value = cell.getValue();
+                            
+                            // Get raw value from row data as fallback - check both cell value and row data
+                            if (value === null || value === undefined || value === '') {
+                                value = rowData["nr"];
+                            }
+                            
+                            // Convert to string and normalize - handle all cases
+                            if (value === null || value === undefined) {
+                                value = '';
+                            } else {
+                                value = String(value).trim().toUpperCase();
+                            }
+                            
+                            const sku = rowData["SKU"] || '';
+                            const parent = rowData["Parent"] || '';
+
+                            let bgColor = '#ffffff'; // default white
+                            let textColor = '#000000'; // default black
+
+                            // ✅ If value is empty or null, treat as REQ by default
+                            if (!value || value === '') {
+                                value = 'REQ';
+                            }
+                            
+                            // Normalize value to match expected values
+                            if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
+                                value = 'REQ'; // Default to REQ if value doesn't match
+                            }
+
+                            // ✅ Set background and text color based on value
+                            if (value === 'NR') {
+                                bgColor = '#dc3545'; // red
+                                textColor = '#ffffff';
+                            } else if (value === 'REQ') {
+                                bgColor = '#28a745'; // green
+                                textColor = '#000000';
+                            } else if (value === 'LATER') {
+                                bgColor = '#ffc107'; // yellow
+                                textColor = '#000000';
+                            }
+
                             return `
-                                <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-column="nrl"
-                                    style="width: 75px;">
-                                    <option value="REQ" ${cell.getValue() === 'REQ' ? 'selected' : ''}>RE</option>
-                                    <option value="NR" ${cell.getValue() === 'NR' ? 'selected' : ''}>NR</option>
+                                <select class="form-select form-select-sm editable-select"
+                                    data-type="NR"
+                                    data-sku='${sku}'
+                                    data-parent='${parent}'
+                                    style="
+                                        width: auto; 
+                                        min-width: 85px; 
+                                        padding: 4px 8px;
+                                        font-size: 0.875rem; 
+                                        border-radius: 4px; 
+                                        border: 1px solid #dee2e6;
+                                        background-color: ${bgColor};
+                                        color: ${textColor};
+                                    ">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
+                                    <option value="NR" ${value === 'NR' ? 'selected' : ''}>2BDC</option>
+                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
                                 </select>
                             `;
-
                         },
                         hozAlign: "center"
                     },
@@ -632,7 +699,7 @@
                         let qty = parseFloat(item.approved_qty) || 0;
                         let isParent = item.SKU && item.SKU.startsWith("PARENT");
                         let isMfrg = item.stage && item.stage.trim().toLowerCase() === "mip";
-                        let isNR = item.nrl && item.nrl.trim().toUpperCase() === "NR";
+                        let isNR = item.nr && item.nr.trim().toUpperCase() === "NR";
 
                         return qty > 0 && !isParent && !isMfrg && !isNR;
                     });
@@ -762,8 +829,8 @@
                 const field = $el.data('type'); // For Stage column
                 const value = $el.val().trim();
                 
-                // Handle Stage column using updateForecastField
-                if (field === "Stage") {
+                // Handle Stage and NR columns using updateForecastField
+                if (field === "Stage" || field === "NR") {
                     // Update background color immediately
                     let bgColor = '#fff';
                     if (value === 'to_order_analysis') {
@@ -795,13 +862,24 @@
                         column: field,
                         value: value
                     }, function() {
-                        // Update cell color after successful save
+                        // Update cell after successful save
                         const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
                         if (table) {
                             const row = table.searchRows("SKU", "=", sku)[0];
                             if (row) {
-                                // Refresh the cell to update the color
-                                row.reformat();
+                                if (field === "Stage") {
+                                    // Update row data - this will automatically trigger formatter
+                                    row.update({ stage: value }, true);
+                                    // Filter table to show only rows with this stage
+                                    if (value && value !== '') {
+                                        table.setFilter("stage", "=", value);
+                                    } else {
+                                        table.clearFilter();
+                                    }
+                                } else if (field === "NR") {
+                                    // Update row data - this will automatically trigger formatter
+                                    row.update({ nr: value }, true);
+                                }
                             }
                         }
 
@@ -836,7 +914,26 @@
                             });
                         }
                     }, function() {
-                        alert('Failed to save Stage.');
+                        alert('Failed to save ' + field + '.');
+                    });
+                } else if (column === 'nrl') {
+                    // Legacy nrl column - convert to NR and use updateForecastField
+                    updateForecastField({
+                        sku,
+                        parent: parent || '',
+                        column: 'NR',
+                        value: value
+                    }, function() {
+                        const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                        if (table) {
+                            const row = table.searchRows("SKU", "=", sku)[0];
+                            if (row) {
+                                row.update({ nr: value });
+                                row.reformat();
+                            }
+                        }
+                    }, function() {
+                        alert('Failed to save NRP.');
                     });
                 } else {
                     // Handle other columns using existing /update-link endpoint
@@ -858,16 +955,6 @@
                         if (!result.success) {
                             console.error('Update failed:', result.message);
                             return;
-                        }
-
-                        if (value.trim().toUpperCase() === "NR") {
-                            const table = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                            if (table) {
-                                const targetRow = table.searchRows("SKU", "=", sku)[0];
-                                if (targetRow) {
-                                    targetRow.delete();
-                                }
-                            }
                         }
                     })
                     .catch(error => {

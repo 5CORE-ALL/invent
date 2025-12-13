@@ -101,22 +101,13 @@
                                 <i class="mdi mdi-eye-check-outline"></i>
                                 Show All
                             </button>
+                            
                             <div style="min-width: 120px; position: relative;">
                                 <select id="zoneFilter" class="form-select border-2 rounded-2 fw-bold">
                                     <option value="">select zone</option>
                                     <option value="GHZ">GHZ</option>
                                     <option value="Ningbo">Ningbo</option>
                                     <option value="Tianjin">Tianjin</option>
-                                </select>
-                            </div>
-                            <!-- Stage Filter -->
-                            <div class="col-auto">
-                                <label class="form-label fw-semibold mb-1 d-block">🎯 Stage</label>
-                                <select id="stage-filter" class="form-select form-select-sm" style="min-width: 160px;">
-                                    <option value="">All Stages</option>
-                                    <option value="to_order_analysis">2 Order</option>
-                                    <option value="mip">MIP</option>
-                                    <option value="r2s" selected>R2S</option>
                                 </select>
                             </div>
                             <div class="custom-select-wrapper" style="min-width: 220px; position: relative;">
@@ -173,7 +164,10 @@
                     <table class="wide-table">
                         <thead>
                             <tr>
-                                <th data-column="0">#</th>
+                                <th data-column="0" style="width: 50px;">
+                                    <input type="checkbox" id="selectAllCheckbox" title="Select All">
+                                    <div class="resizer"></div>
+                                </th>
                                 <th data-column="7" data-column-name="area">ZONE<div class="resizer"></div>
                                 </th>
                                 <th data-column="1">Image<div class="resizer"></div></th>
@@ -196,6 +190,7 @@
                                         style="position:relative; z-index:10;"></div>
                                 </th>
                                 <th data-column="21" data-column-name="stage" class="text-center">Stage<div class="resizer"></div></th>
+                                <th data-column="22" data-column-name="nr" class="text-center">NRP<div class="resizer"></div></th>
                                 <th data-column="4" data-column-name="qty" class="text-center">Or. QTY<div class="resizer"></div></th>
                                 <th data-column="20" data-column-name="rec_qty" class="text-center">Rec. QTY<div class="resizer"></div></th>
                                 <th data-column="18" data-column-name="qty" class="text-center" hidden>Rate<div class="resizer"></div></th>
@@ -237,7 +232,11 @@
                         </thead>
                         <tbody>
                             @foreach($readyToShipList as $item)
-                            <tr>
+                                @php
+                                    $nrValue = strtoupper(trim($item->nr ?? ''));
+                                @endphp
+                                @continue($nrValue === 'NR')
+                            <tr data-stage="{{ $item->stage ?? '' }}" class="stage-row">
                                 <td data-column="0">
                                     <input type="checkbox" class="row-checkbox" data-sku="{{ $item->sku }}">
                                 </td>
@@ -279,9 +278,47 @@
                                             font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
                                             background-color: {{ $bgColor }}; color: #000;">
                                         <option value="">Select</option>
-                                        <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                        <option value="appr_req" {{ $stageValue === 'appr_req' ? 'selected' : '' }}>Appr. Req</option>
                                         <option value="mip" {{ $stageValue === 'mip' ? 'selected' : '' }}>MIP</option>
                                         <option value="r2s" {{ $stageValue === 'r2s' ? 'selected' : '' }}>R2S</option>
+                                        <option value="transit" {{ $stageValue === 'transit' ? 'selected' : '' }}>Transit</option>
+                                        <option value="all_good" {{ $stageValue === 'all_good' ? 'selected' : '' }}>😊 All Good</option>
+                                        <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                    </select>
+                                </td>
+                                <td data-column="22" class="text-center">
+                                    @php
+                                        $nrValue = strtoupper(trim($item->nr ?? ''));
+                                        $bgColor = '#ffffff';
+                                        $textColor = '#000000';
+                                        if (!$nrValue || $nrValue === '') {
+                                            $nrValue = 'REQ';
+                                        }
+                                        // Normalize value to match expected values
+                                        if ($nrValue !== 'REQ' && $nrValue !== 'NR' && $nrValue !== 'LATER') {
+                                            $nrValue = 'REQ'; // Default to REQ if value doesn't match
+                                        }
+                                        if ($nrValue === 'NR') {
+                                            $bgColor = '#dc3545';
+                                            $textColor = '#ffffff';
+                                        } else if ($nrValue === 'REQ') {
+                                            $bgColor = '#28a745';
+                                            $textColor = '#000000';
+                                        } else if ($nrValue === 'LATER') {
+                                            $bgColor = '#ffc107';
+                                            $textColor = '#000000';
+                                        }
+                                    @endphp
+                                    <select class="form-select form-select-sm editable-select-nrp" 
+                                        data-type="NR"
+                                        data-sku="{{ $item->sku }}"
+                                        data-parent="{{ $item->parent ?? '' }}"
+                                        style="width: auto; min-width: 85px; padding: 4px 8px;
+                                            font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
+                                            background-color: {{ $bgColor }}; color: {{ $textColor }};">
+                                        <option value="REQ" {{ $nrValue === 'REQ' ? 'selected' : '' }}>REQ</option>
+                                        <option value="NR" {{ $nrValue === 'NR' ? 'selected' : '' }}>2BDC</option>
+                                        <option value="LATER" {{ $nrValue === 'LATER' ? 'selected' : '' }}>LATER</option>
                                     </select>
                                 </td>
                                 <td data-column="4" class="text-center" style="background-color: #e9ecef;">
@@ -601,6 +638,34 @@
             });
         }
 
+        // Reusable AJAX call for updating forecast_analysis table
+        function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
+            fetch('/update-forecast-data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(result => {
+                if (result.success) {
+                    console.log('Saved:', result.message);
+                    onSuccess();
+                } else {
+                    console.warn('Not saved:', result.message);
+                    onFail();
+                }
+            })
+            .catch(err => {
+                console.error('AJAX failed:', err);
+                alert('Error saving data.');
+                onFail();
+            });
+        }
+
         // Stage Update Handler
         function setupStageUpdate() {
             document.querySelectorAll('.editable-select-stage').forEach(function(select) {
@@ -639,49 +704,100 @@
                         column: 'Stage',
                         value: value
                     }, function() {
-                        // Success - color already updated
+                        // Success - update the select value to ensure it matches saved value
+                        this.value = value;
+                        // Color already updated
                     }, function() {
                         alert('Failed to save Stage.');
-                        // Revert color
+                        // Revert color and value
                         this.style.backgroundColor = '#fff';
+                        // Reload page to get correct value from database
+                        location.reload();
                     });
                 });
             });
         }
 
-        // Stage Filter
-        function setupStageFilter() {
-            const stageFilter = document.getElementById('stage-filter');
-            if (!stageFilter) return;
+        // NRP Update Handler
+        function setupNRPUpdate() {
+            document.querySelectorAll('.editable-select-nrp').forEach(function(select) {
+                select.addEventListener('change', function() {
+                    const sku = this.dataset.sku;
+                    const parent = this.dataset.parent;
+                    const value = this.value.trim();
+                    const row = this.closest('tr');
 
-            // Set default to "R2S"
-            stageFilter.value = 'r2s';
-            applyStageFilter();
+                    // Update background color immediately
+                    let bgColor = '#ffffff';
+                    let textColor = '#000000';
+                    if (value === 'NR') {
+                        bgColor = '#dc3545';
+                        textColor = '#ffffff';
+                    } else if (value === 'REQ') {
+                        bgColor = '#28a745';
+                        textColor = '#000000';
+                    } else if (value === 'LATER') {
+                        bgColor = '#ffc107';
+                        textColor = '#000000';
+                    }
+                    this.style.backgroundColor = bgColor;
+                    this.style.color = textColor;
 
-            stageFilter.addEventListener('change', function() {
-                applyStageFilter();
+                    updateForecastField({
+                        sku: sku,
+                        parent: parent,
+                        column: 'NR',
+                        value: value
+                    }, function() {
+                        // Success - update the select value to ensure it matches saved value
+                        this.value = value;
+                        // Color already updated
+                        
+                        // Hide/show row based on NRP value
+                        if (value === 'NR') {
+                            if (row) row.style.display = 'none';
+                        } else {
+                            if (row) row.style.display = '';
+                        }
+                    }, function() {
+                        alert('Failed to save NRP.');
+                        // Revert color and value
+                        this.style.backgroundColor = '#fff';
+                        this.style.color = '#000';
+                        // Reload page to get correct value from database
+                        location.reload();
+                    });
+                });
             });
         }
 
-        function applyStageFilter() {
-            const stageFilter = document.getElementById('stage-filter');
-            const selectedStage = stageFilter ? stageFilter.value.toLowerCase().trim() : '';
+        // Filter to show only R2S stage rows
+        function filterByR2SStage() {
             const zoneFilter = document.getElementById('zoneFilter');
             const selectedZone = zoneFilter ? zoneFilter.value.trim().toLowerCase() : '';
             const rows = document.querySelectorAll('.wide-table tbody tr');
             const visibleRows = [];
 
             rows.forEach(row => {
+                // Check stage from data attribute first (more reliable)
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                
+                // Also check from select dropdown value
                 const stageSelect = row.querySelector('.editable-select-stage');
-                const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-                const stageMatch = !selectedStage || rowStage === selectedStage;
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                
+                // Use select value if available, otherwise use data attribute
+                const rowStage = rowStageSelect || rowStageAttr;
+                
+                // Only show R2S stage rows
+                const isR2S = rowStage === 'r2s';
 
                 // Check zone filter
                 const selectInRow = row.querySelector('select[data-column="area"]');
                 const rowZone = selectInRow ? selectInRow.value.trim().toLowerCase() : '';
                 const zoneMatch = !selectedZone || rowZone === selectedZone;
 
-                if (stageMatch && zoneMatch) {
+                if (isR2S && zoneMatch) {
                     row.style.display = '';
                     visibleRows.push(row);
                 } else {
@@ -695,7 +811,9 @@
 
         // Initialize stage handlers
         setupStageUpdate();
-        setupStageFilter();
+        setupNRPUpdate();
+        // Filter to show only R2S stage on page load
+        filterByR2SStage();
 
         // Supplier to Zone mapping
         const supplierZoneMap = @json($supplierZoneMap ?? []);
@@ -714,9 +832,7 @@
                 }
             });
             // Reapply filter after auto-populating zones
-            if (typeof applyStageFilter === 'function') {
-                applyStageFilter();
-            }
+            filterByR2SStage();
         }
 
         // Run on page load
@@ -740,9 +856,7 @@
                         zoneSelect.dispatchEvent(new Event('change'));
                         // Reapply filter after zone is updated
                         setTimeout(() => {
-                            if (typeof applyStageFilter === 'function') {
-                                applyStageFilter();
-                            }
+                            filterByR2SStage();
                         }, 100);
                     }
                 }
@@ -750,9 +864,7 @@
                 // If zone is manually changed, reapply filter
                 if (column === 'area') {
                     setTimeout(() => {
-                        if (typeof applyStageFilter === 'function') {
-                            applyStageFilter();
-                        }
+                        filterByR2SStage();
                     }, 100);
                 }
 
@@ -777,13 +889,40 @@
             });
         });
 
-        // Button visibility for selected rows
+        // Select All functionality
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
         const deleteBtn = document.getElementById('delete-selected-btn');
         const deleteSelectedItemBtn = document.getElementById('delete-selected-item');
         const moveToTransitBtn = document.querySelector('.move-to-transit-btn');
         const checkboxes = document.querySelectorAll('.row-checkbox');
 
-        checkboxes.forEach(cb => cb.addEventListener('change', updateButtonVisibility));
+        // Select All checkbox handler
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function() {
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = this.checked;
+                });
+                updateButtonVisibility();
+                updateSelectAllState();
+            });
+        }
+
+        // Individual checkbox change handlers
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', function() {
+                updateButtonVisibility();
+                updateSelectAllState();
+            });
+        });
+
+        function updateSelectAllState() {
+            if (selectAllCheckbox && checkboxes.length > 0) {
+                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                const someChecked = Array.from(checkboxes).some(cb => cb.checked);
+                selectAllCheckbox.checked = allChecked;
+                selectAllCheckbox.indeterminate = someChecked && !allChecked;
+            }
+        }
 
         function updateButtonVisibility() {
             const anyChecked = document.querySelectorAll('.row-checkbox:checked').length > 0;
@@ -791,6 +930,9 @@
             moveToTransitBtn.classList.toggle('d-none', !anyChecked);
             deleteSelectedItemBtn.classList.toggle('d-none', !anyChecked);
         }
+
+        // Initialize select all state
+        updateSelectAllState();
 
         // Delete selected rows
         deleteBtn.addEventListener('click', function() {
@@ -815,6 +957,7 @@
                         if (row) row.remove();
                     });
                     updateButtonVisibility();
+                    updateSelectAllState();
                 } else {
                     alert('Revert failed');
                 }
@@ -850,6 +993,7 @@
                         }
                     });
                     updateButtonVisibility();
+                    updateSelectAllState();
                 } else {
                     alert('Move to Transit failed');
                 }
@@ -882,6 +1026,7 @@
                         if (row) row.remove();
                     });
                     updateButtonVisibility();
+                    updateSelectAllState();
                 } else {
                     alert('Delete failed');
                 }
@@ -1034,15 +1179,13 @@
         const zoneFilterElement = document.getElementById('zoneFilter');
         if (zoneFilterElement) {
             zoneFilterElement.addEventListener('change', function() {
-                applyStageFilter(); // Use the combined filter function
+                filterByR2SStage(); // Filter by R2S stage and zone
             });
         }
 
-        // Apply stage filter on page load
+        // Filter to show only R2S stage on page load
         setTimeout(() => {
-            if (document.getElementById('stage-filter')) {
-                applyStageFilter();
-            }
+            filterByR2SStage();
         }, 100);
 
     });
@@ -1066,6 +1209,25 @@
         });
     });
 
+    // Filter to show only R2S stage on page load
+    function filterByR2SStageOnLoad() {
+        const rows = document.querySelectorAll('tbody tr.stage-row');
+        rows.forEach(row => {
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            if (rowStage === 'r2s') {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+
+    // Initialize filter on page load
+    filterByR2SStageOnLoad();
 
 </script>
 @endsection

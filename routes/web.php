@@ -1132,6 +1132,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/costprice.analysis', action: [CostpriceAnalysisController::class, 'costpriceAnalysis'])->name('costprice.analysis');
     Route::get('/forecast.analysis', action: [ForecastAnalysisController::class, 'forecastAnalysis'])->name('forecast.analysis');
     Route::get('/approval.required', action: [ForecastAnalysisController::class, 'approvalRequired'])->name('approval.required');
+    Route::get('/transit', action: [ForecastAnalysisController::class, 'transit'])->name('transit');
 
     Route::get('/listing-master', action: [ListingManagerController::class, 'listingmaster'])->name('listing');
 
@@ -1197,6 +1198,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(MFRGInProgressController::class)->group(function () {
         Route::get('/mfrg-in-progress', 'index')->name('mfrg.in.progress');
         Route::post('/mfrg-progresses/inline-update-by-sku', 'inlineUpdateBySku');
+        Route::post('/mfrg-progresses/delete', 'deleteBySkus')->name('mfrg.progresses.delete');
         Route::get('/convert-currency', 'convert');
         Route::post('/ready-to-ship/insert', 'storeDataReadyToShip')->name('ready.to.ship.insert');
 

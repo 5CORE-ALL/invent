@@ -118,6 +118,11 @@
                                 <i class="mdi mdi-eye-check-outline"></i> Show All
                             </button>
 
+                            <!-- Delete Selected Button -->
+                            <button class="btn btn-danger d-flex align-items-center gap-1" id="deleteSelectedBtn" style="border-radius: 6px; display: none;">
+                                <i class="mdi mdi-delete"></i> Delete Selected (<span id="selectedCount">0</span>)
+                            </button>
+
                             <!-- Supplier Dropdown -->
                             <div class="custom-select-wrapper" style="min-width: 150px; position: relative;">
                                 <div class="custom-select-box d-flex align-items-center justify-content-between" id="customSelectBox"
@@ -138,17 +143,6 @@
                                         @endforeach
                                     </div>
                                 </div>
-                            </div>
-
-                            <!-- Stage Filter -->
-                            <div class="col-auto">
-                                <label class="form-label fw-semibold mb-1 d-block">🎯 Stage</label>
-                                <select id="stage-filter" class="form-select form-select-sm" style="min-width: 160px;">
-                                    <option value="">All Stages</option>
-                                    <option value="to_order_analysis">2 Order</option>
-                                    <option value="mip" selected>MIP</option>
-                                    <option value="r2s">R2S</option>
-                                </select>
                             </div>
 
                             <!-- 💰 Advance + Pending Summary -->
@@ -232,6 +226,10 @@
                     <table class="wide-table">
                         <thead>
                             <tr>
+                                <th data-column="0" style="width: 50px;">
+                                    <input type="checkbox" id="selectAllCheckbox" title="Select All">
+                                    <div class="resizer"></div>
+                                </th>
                                 <th data-column="1">Image<div class="resizer"></div></th>
                                 <th data-column="2" hidden>
                                     Parent
@@ -246,6 +244,7 @@
                                     <div class="search-results" data-results-column="3" style="position:relative; z-index:10;"></div>
                                 </th>
                                 <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
+                                <th data-column="18" class="text-center">NRP<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">Order<br/>QTY<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div></th>
@@ -272,10 +271,14 @@
                                 @php
                                     $readyToShip = $item->ready_to_ship ?? '';
                                     $stageValue = $item->stage ?? '';
+                                    $nrValue = strtoupper(trim($item->nr ?? ''));
                                 @endphp
                                 @continue($readyToShip === 'Yes')
-                                @continue($stageValue !== 'mip')
-                                <tr>
+                                @continue($nrValue === 'NR')
+                                <tr data-stage="{{ $stageValue ?? '' }}" class="stage-row" data-sku="{{ $item->sku }}">
+                                    <td data-column="0" class="text-center">
+                                        <input type="checkbox" class="row-checkbox" data-sku="{{ $item->sku }}">
+                                    </td>
                                     <td data-column="1">
                                         @if(!empty($item->Image))
                                             <img src="{{ $item->Image }}" class="hover-img" data-src="{{ $item->Image }}" alt="Image" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;">
@@ -309,9 +312,47 @@
                                                 font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
                                                 background-color: {{ $bgColor }}; color: #000;">
                                             <option value="">Select</option>
-                                            <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                            <option value="appr_req" {{ $stageValue === 'appr_req' ? 'selected' : '' }}>Appr. Req</option>
                                             <option value="mip" {{ $stageValue === 'mip' ? 'selected' : '' }}>MIP</option>
                                             <option value="r2s" {{ $stageValue === 'r2s' ? 'selected' : '' }}>R2S</option>
+                                            <option value="transit" {{ $stageValue === 'transit' ? 'selected' : '' }}>Transit</option>
+                                            <option value="all_good" {{ $stageValue === 'all_good' ? 'selected' : '' }}>😊 All Good</option>
+                                            <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                        </select>
+                                    </td>
+                                    <td data-column="18" class="text-center">
+                                        @php
+                                            $nrValue = strtoupper(trim($item->nr ?? ''));
+                                            $bgColor = '#ffffff';
+                                            $textColor = '#000000';
+                                            if (!$nrValue || $nrValue === '') {
+                                                $nrValue = 'REQ';
+                                            }
+                                            // Normalize value to match expected values
+                                            if ($nrValue !== 'REQ' && $nrValue !== 'NR' && $nrValue !== 'LATER') {
+                                                $nrValue = 'REQ'; // Default to REQ if value doesn't match
+                                            }
+                                            if ($nrValue === 'NR') {
+                                                $bgColor = '#dc3545';
+                                                $textColor = '#ffffff';
+                                            } else if ($nrValue === 'REQ') {
+                                                $bgColor = '#28a745';
+                                                $textColor = '#000000';
+                                            } else if ($nrValue === 'LATER') {
+                                                $bgColor = '#ffc107';
+                                                $textColor = '#000000';
+                                            }
+                                        @endphp
+                                        <select class="form-select form-select-sm editable-select-nrp" 
+                                            data-type="NR"
+                                            data-sku="{{ $item->sku }}"
+                                            data-parent="{{ $item->parent ?? '' }}"
+                                            style="width: auto; min-width: 85px; padding: 4px 8px;
+                                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
+                                                background-color: {{ $bgColor }}; color: {{ $textColor }};">
+                                            <option value="REQ" {{ $nrValue === 'REQ' ? 'selected' : '' }}>REQ</option>
+                                            <option value="NR" {{ $nrValue === 'NR' ? 'selected' : '' }}>2BDC</option>
+                                            <option value="LATER" {{ $nrValue === 'LATER' ? 'selected' : '' }}>LATER</option>
                                         </select>
                                     </td>
                                     <td data-column="4" data-qty="{{ $item->qty ?? 0 }}" style="text-align: end; background-color: #e9ecef;">
@@ -584,9 +625,10 @@
 
         // Stage Update Handler
         setupStageUpdate();
+        setupNRPUpdate();
 
-        // Stage Filter
-        setupStageFilter();
+        // Filter to show only MIP stage on page load
+        filterByMIPStage();
 
         // Currency Conversion
         setupCurrencyConversion();
@@ -606,11 +648,12 @@
         //total amount
         calculateTotalAmount();
 
-        // Apply stage filter on page load
+        // Delete with checkbox functionality
+        setupDeleteWithCheckbox();
+
+        // Filter to show only MIP stage on page load
         setTimeout(() => {
-            if (document.getElementById('stage-filter')) {
-                applyStageFilter();
-            }
+            filterByMIPStage();
         }, 100);
 
         // ========= FUNCTIONS ========= //
@@ -781,13 +824,26 @@
             searchInput.addEventListener('input', function () {
                 const search = this.value.trim().toLowerCase();
                 rows.forEach(row => {
+                    // Check if stage is MIP
+                    const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                    const stageSelect = row.querySelector('.editable-select-stage');
+                    const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                    const rowStage = rowStageSelect || rowStageAttr;
+                    const isMIP = rowStage === 'mip';
+                    
+                    // Only show MIP stage rows
+                    if (!isMIP) {
+                        row.style.display = 'none';
+                        return;
+                    }
+                    
                     const match = Array.from(row.querySelectorAll('td')).some(td => td.textContent.toLowerCase().includes(search));
                     row.style.display = match ? '' : 'none';
                 });
             });
         }
 
-        // ✅ Fixed version of column search (supports multiple filters)
+        // ✅ Fixed version of column search (supports multiple filters) - Only MIP stage
         function setupColumnSearch() {
             document.querySelectorAll('.column-search').forEach(input => {
                 input.addEventListener('input', function () {
@@ -801,6 +857,19 @@
                     });
 
                     rows.forEach(row => {
+                        // Check if stage is MIP
+                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                        const stageSelect = row.querySelector('.editable-select-stage');
+                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                        const rowStage = rowStageSelect || rowStageAttr;
+                        const isMIP = rowStage === 'mip';
+                        
+                        // Only show MIP stage rows
+                        if (!isMIP) {
+                            row.style.display = 'none';
+                            return;
+                        }
+                        
                         let show = true;
                         for (const col in filters) {
                             const cell = row.querySelector(`td[data-column="${col}"]`);
@@ -938,6 +1007,34 @@
             });
         }
 
+        // Reusable AJAX call for updating forecast_analysis table
+        function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
+            fetch('/update-forecast-data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(result => {
+                if (result.success) {
+                    console.log('Saved:', result.message);
+                    onSuccess();
+                } else {
+                    console.warn('Not saved:', result.message);
+                    onFail();
+                }
+            })
+            .catch(err => {
+                console.error('AJAX failed:', err);
+                alert('Error saving data.');
+                onFail();
+            });
+        }
+
         function setupStageUpdate() {
             document.querySelectorAll('.editable-select-stage').forEach(function(select) {
                 select.addEventListener('change', function() {
@@ -975,44 +1072,99 @@
                         column: 'Stage',
                         value: value
                     }, function() {
-                        // Success - color already updated
+                        // Success - update the select value to ensure it matches saved value
+                        this.value = value;
+                        // Color already updated
                     }, function() {
                         alert('Failed to save Stage.');
-                        // Revert color
+                        // Revert color and value
                         this.style.backgroundColor = '#fff';
+                        // Reload page to get correct value from database
+                        location.reload();
                     });
                 });
             });
         }
 
-        function setupStageFilter() {
-            const stageFilter = document.getElementById('stage-filter');
-            if (!stageFilter) return;
+        function setupNRPUpdate() {
+            document.querySelectorAll('.editable-select-nrp').forEach(function(select) {
+                select.addEventListener('change', function() {
+                    const sku = this.dataset.sku;
+                    const parent = this.dataset.parent;
+                    const value = this.value.trim();
+                    const row = this.closest('tr');
 
-            // Set default to "MIP"
-            stageFilter.value = 'mip';
-            applyStageFilter();
+                    // Update background color immediately
+                    let bgColor = '#ffffff';
+                    let textColor = '#000000';
+                    if (value === 'NR') {
+                        bgColor = '#dc3545';
+                        textColor = '#ffffff';
+                    } else if (value === 'REQ') {
+                        bgColor = '#28a745';
+                        textColor = '#000000';
+                    } else if (value === 'LATER') {
+                        bgColor = '#ffc107';
+                        textColor = '#000000';
+                    }
+                    this.style.backgroundColor = bgColor;
+                    this.style.color = textColor;
 
-            stageFilter.addEventListener('change', function() {
-                applyStageFilter();
+                    updateForecastField({
+                        sku: sku,
+                        parent: parent,
+                        column: 'NR',
+                        value: value
+                    }, function() {
+                        // Success - update the select value to ensure it matches saved value
+                        this.value = value;
+                        // Color already updated
+                        
+                        // Hide/show row based on NRP value
+                        if (value === 'NR') {
+                            if (row) row.style.display = 'none';
+                        } else {
+                            if (row) row.style.display = '';
+                        }
+                    }, function() {
+                        alert('Failed to save NRP.');
+                        // Revert color and value
+                        this.style.backgroundColor = '#fff';
+                        this.style.color = '#000';
+                        // Reload page to get correct value from database
+                        location.reload();
+                    });
+                });
             });
         }
 
-        function applyStageFilter() {
-            const stageFilter = document.getElementById('stage-filter');
-            const selectedStage = stageFilter ? stageFilter.value.toLowerCase().trim() : '';
+        // Filter to show only MIP stage rows
+        function filterByMIPStage() {
             const rows = document.querySelectorAll('.wide-table tbody tr');
 
             rows.forEach(row => {
+                // Check stage from data attribute first (more reliable)
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                
+                // Also check from select dropdown value
                 const stageSelect = row.querySelector('.editable-select-stage');
-                const rowStage = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
-
-                if (!selectedStage || rowStage === selectedStage) {
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                
+                // Use select value if available, otherwise use data attribute
+                const rowStage = rowStageSelect || rowStageAttr;
+                
+                // Only show MIP stage rows
+                if (rowStage === 'mip') {
                     row.style.display = '';
                 } else {
                     row.style.display = 'none';
                 }
             });
+            
+            // Recalculate totals after filtering
+            calculateTotalCBM();
+            calculateTotalAmount();
+            calculateTotalOrderQty();
         }
 
         function setupAutoUpload() {
@@ -1134,6 +1286,117 @@
                     });
                 });
             });
+        }
+
+        function setupDeleteWithCheckbox() {
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+            const deleteBtn = document.getElementById('deleteSelectedBtn');
+            const selectedCountSpan = document.getElementById('selectedCount');
+
+            // Select All functionality
+            if (selectAllCheckbox) {
+                selectAllCheckbox.addEventListener('change', function() {
+                    rowCheckboxes.forEach(checkbox => {
+                        checkbox.checked = this.checked;
+                    });
+                    updateDeleteButton();
+                });
+            }
+
+            // Individual checkbox change
+            rowCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    updateSelectAllState();
+                    updateDeleteButton();
+                });
+            });
+
+            function updateSelectAllState() {
+                if (selectAllCheckbox && rowCheckboxes.length > 0) {
+                    const allChecked = Array.from(rowCheckboxes).every(cb => cb.checked);
+                    const someChecked = Array.from(rowCheckboxes).some(cb => cb.checked);
+                    selectAllCheckbox.checked = allChecked;
+                    selectAllCheckbox.indeterminate = someChecked && !allChecked;
+                }
+            }
+
+            function updateDeleteButton() {
+                const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+                const count = checkedBoxes.length;
+                
+                if (deleteBtn && selectedCountSpan) {
+                    if (count > 0) {
+                        deleteBtn.style.display = 'flex';
+                        selectedCountSpan.textContent = count;
+                    } else {
+                        deleteBtn.style.display = 'none';
+                    }
+                }
+            }
+
+            // Delete button click handler
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', function() {
+                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+                    if (checkedBoxes.length === 0) {
+                        alert('Please select at least one item to delete.');
+                        return;
+                    }
+
+                    if (!confirm(`Are you sure you want to delete ${checkedBoxes.length} item(s)? This action cannot be undone.`)) {
+                        return;
+                    }
+
+                    const skus = Array.from(checkedBoxes).map(cb => cb.dataset.sku);
+                    
+                    fetch('/mfrg-progresses/delete', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ skus: skus })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Remove deleted rows from table
+                            checkedBoxes.forEach(checkbox => {
+                                const row = checkbox.closest('tr');
+                                if (row) {
+                                    row.remove();
+                                }
+                            });
+                            
+                            // Reset select all checkbox
+                            if (selectAllCheckbox) {
+                                selectAllCheckbox.checked = false;
+                                selectAllCheckbox.indeterminate = false;
+                            }
+                            
+                            // Hide delete button
+                            updateDeleteButton();
+                            
+                            // Recalculate totals
+                            calculateTotalCBM();
+                            calculateTotalAmount();
+                            calculateTotalOrderQty();
+                            
+                            alert(`Successfully deleted ${data.deleted_count} item(s).`);
+                        } else {
+                            alert('Error: ' + (data.message || 'Failed to delete items.'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An error occurred while deleting items.');
+                    });
+                });
+            }
+
+            // Initialize button state
+            updateDeleteButton();
         }
 
         function setupSupplierAdvanceCalculation() {
@@ -1558,6 +1821,29 @@
 
         document.getElementById('total-order-qty').textContent = totalOrderQty;
     }
+
+    // Filter to show only MIP stage on page load
+    function filterByMIPStageOnLoad() {
+        const rows = document.querySelectorAll('tbody tr.stage-row');
+        rows.forEach(row => {
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            if (rowStage === 'mip') {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        calculateTotalCBM();
+        calculateTotalAmount();
+        calculateTotalOrderQty();
+    }
+
+    // Initialize filter on page load
+    filterByMIPStageOnLoad();
 
 </script>
 

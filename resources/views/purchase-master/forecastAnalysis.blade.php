@@ -805,9 +805,12 @@
                                 font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
                                 background-color: #fff;">
                             <option value="">Select</option>
-                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>2 Order</option>
+                            <option value="appr_req" ${value === 'appr_req' ? 'selected' : ''}>Appr. Req</option>
                             <option value="mip" ${value === 'mip' ? 'selected' : ''}>MIP</option>
                             <option value="r2s" ${value === 'r2s' ? 'selected' : ''}>R2S</option>
+                            <option value="transit" ${value === 'transit' ? 'selected' : ''}>Transit</option>
+                            <option value="all_good" ${value === 'all_good' ? 'selected' : ''}>😊 All Good</option>
+                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>2 Order</option>
                         </select>
                     `;
                     }
@@ -820,10 +823,33 @@
                 {
                     title: "NRP",
                     field: "nr",
+                    accessor: row => {
+                        const val = row?.["nr"];
+                        // Return null/undefined as empty string, but preserve actual values
+                        if (val === null || val === undefined) return '';
+                        // Convert to string and normalize
+                        const strVal = String(val);
+                        const normalized = strVal.trim().toUpperCase();
+                        // Return normalized value (even if empty string)
+                        return normalized;
+                    },
                     headerSort: false,
                     formatter: function(cell) {
-                        let value = cell.getValue() ?? '';
                         const rowData = cell.getRow().getData();
+                        let value = cell.getValue();
+                        
+                        // Get raw value from row data as fallback - check both cell value and row data
+                        if (value === null || value === undefined || value === '') {
+                            value = rowData["nr"];
+                        }
+                        
+                        // Convert to string and normalize - handle all cases
+                        if (value === null || value === undefined) {
+                            value = '';
+                        } else {
+                            value = String(value).trim().toUpperCase();
+                        }
+                        
                         const sku = rowData["SKU"] || '';
                         const parent = rowData["Parent"] || '';
 
@@ -833,6 +859,11 @@
                         // ✅ If value is empty or null, treat as REQ by default
                         if (!value || value === '') {
                             value = 'REQ';
+                        }
+                        
+                        // Normalize value to match expected values
+                        if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
+                            value = 'REQ'; // Default to REQ if value doesn't match
                         }
 
                         // ✅ Set background and text color based on value
@@ -1882,11 +1913,31 @@
                                 const row = table.getRows().find(r =>
                                     r.getData().SKU === sku && r.getData().Parent === parent
                                 );
-                                if (row) row.update({
-                                    nr: newValue
-                                });
+                                if (row) {
+                                    // Update the row data - this will automatically trigger formatter
+                                    row.update({
+                                        nr: newValue
+                                    }, true); // true = update existing row data
+                                }
 
                                 setCombinedFilters();
+                            }
+                            if (field === 'Stage') {
+                                // Update the row data
+                                const row = table.getRows().find(r =>
+                                    r.getData().SKU === sku && r.getData().Parent === parent
+                                );
+                                if (row) {
+                                    // Update the row data - this will automatically trigger formatter
+                                    row.update({
+                                        stage: newValue
+                                    }, true); // true = update existing row data
+                                    
+                                    // Don't auto-filter - let the stage filter dropdown control visibility
+                                    // The row should remain visible after stage change
+                                    // Only apply filters if stage filter dropdown is set
+                                    setCombinedFilters();
+                                }
                             }
                         },
                         function() {
