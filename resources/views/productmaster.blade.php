@@ -1249,9 +1249,9 @@
                                             placeholder="Search SKU">
                                     </th>
                                     <th>UPC</th>
+                                    <th>Status</th>
                                     <th>INV</th>
                                     <th>OV L30</th>
-                                    {{-- <th>STATUS</th> --}}
                                     <th>Unit</th>
                                     <th>LP</th>
                                     <th>CP$</th>
@@ -1615,8 +1615,8 @@
 
                 // All available columns
                 const allColumns = [
-                    "Image", "Parent", "SKU", "UPC", "INV", "OV L30", "Unit", "LP", "CP$",
-                "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
+                    "Image", "Parent", "SKU", "UPC", "Status", "INV", "OV L30", "Unit", "LP", "CP$",
+                    "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
                     "CBM", "L(2)", "Action"
                 ];
 
@@ -1704,9 +1704,9 @@
                                 case "OV L30":
                                     cell.innerHTML = `<b>${totals.ovl30}</b>`;
                                     break;
-                                // case "STATUS":
-                                //     cell.textContent = escapeHtml(item.status) || '-';
-                                //     break;
+                                case "STATUS":
+                                    cell.textContent = escapeHtml(item.status) || '-';
+                                    break;
                                 case "Unit":
                                     cell.textContent = item.unit || '-';
                                     break;
@@ -1831,6 +1831,9 @@
                     visibleColumns.forEach(col => {
                         let cell = document.createElement('td');
                         switch (col) {
+                            case "Status":
+                                cell.textContent = item.status || '-';
+                                break;
                             case "Image":
                             cell.innerHTML = item.image_path 
                                 ? `<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`
@@ -1874,9 +1877,9 @@
                                 break;
                                 // cell.textContent = escapeHtml(item.shopify_quantity) || '-';
                                 // break;
-                            // case "STATUS":
-                            //     cell.textContent = escapeHtml(item.status) || '-';
-                            //     break;
+                            case "STATUS":
+                                cell.textContent = escapeHtml(item.status) || '-';
+                                break;
                             case "Unit":
                                 cell.textContent = item.unit || '-';
                                 break;
@@ -2230,7 +2233,7 @@
 
                 // All available columns
                 const allColumns = [
-                    "Images", "Parent", "SKU", "UPC", "INV", "OV L30", "Unit", "LP", "CP$",
+                    "Images", "Parent", "SKU", "UPC","STATUS", "INV", "OV L30", "Unit", "LP", "CP$",
                     "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
                     "CBM", "L(2)", "Action"
                 ];
