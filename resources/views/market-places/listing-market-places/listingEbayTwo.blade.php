@@ -1523,11 +1523,45 @@
                     success: function (response) {
                         $('#importModal').modal('hide');
                         $('#importFile').val('');
-                        showNotification('success', response.success);
-                        location.reload(); // refresh your DataTable
+                        let message = 'File imported successfully!';
+                        if (response.success) {
+                            message = response.success;
+                            if (response.processed !== undefined) {
+                                message += ` (Processed: ${response.processed}`;
+                                if (response.skipped !== undefined) {
+                                    message += `, Skipped: ${response.skipped}`;
+                                }
+                                if (response.errors !== undefined && response.errors > 0) {
+                                    message += `, Errors: ${response.errors}`;
+                                }
+                                message += ')';
+                            }
+                        }
+                        showNotification('success', message);
+                        // Reload data instead of full page reload
+                        if (typeof loadData === 'function') {
+                            loadData();
+                        } else {
+                            location.reload();
+                        }
                     },
                     error: function (xhr) {
-                        showNotification('danger', xhr.responseJSON.error || 'Import failed');
+                        let errorMessage = 'Import failed';
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMessage = xhr.responseJSON.error;
+                        } else if (xhr.responseText) {
+                            try {
+                                const response = JSON.parse(xhr.responseText);
+                                errorMessage = response.error || response.message || errorMessage;
+                            } catch (e) {
+                                // If response is not JSON, try to extract error message
+                                const match = xhr.responseText.match(/error["\']?\s*[:=]\s*["\']?([^"']+)/i);
+                                if (match) {
+                                    errorMessage = match[1];
+                                }
+                            }
+                        }
+                        showNotification('danger', errorMessage);
                     }
                 });
             });
@@ -1570,17 +1604,19 @@
                 // --- BUYER LINK, SELLER LINK, AND PEN ICON IN ONE TD ---
                 const $linkCell = $('<td>');
 
-                // Buyer Link
-                if (parseFloat(item.INV) > 0 && item.buyer_link) {
+                // Buyer Link - check if link exists and is not empty
+                const buyerLink = item.buyer_link || item['buyer_link'] || '';
+                if (parseFloat(item.INV) > 0 && buyerLink && buyerLink.trim() !== '') {
                     $linkCell.append(
-                        `<a href="${item.buyer_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Buyer</a>`
+                        `<a href="${buyerLink}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Buyer</a>`
                     );
                 }
 
-                // Seller Link
-                if (parseFloat(item.INV) > 0 && item.seller_link) {
+                // Seller Link - check if link exists and is not empty
+                const sellerLink = item.seller_link || item['seller_link'] || '';
+                if (parseFloat(item.INV) > 0 && sellerLink && sellerLink.trim() !== '') {
                     $linkCell.append(
-                        `<a href="${item.seller_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Seller</a>`
+                        `<a href="${sellerLink}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Seller</a>`
                     );
                 }
 

@@ -434,14 +434,16 @@ class EbayController extends Controller
 
             $units_ordered_l30 = floatval($row["eBay L30"] ?? 0);
 
-            // Simplified Tacos Formula (no ad spend since using EbayMetric)
-            $row["TacosL30"] = 0;
-
             // Profit/Sales
             $row["Total_pft"] = round(($price * $percentage - $lp - $ship) * $units_ordered_l30, 2);
             $row["Profit"] = $row["Total_pft"]; // Add this for frontend compatibility
             $row["T_Sale_l30"] = round($price * $units_ordered_l30, 2);
             $row["Sales L30"] = $row["T_Sale_l30"]; // Add this for frontend compatibility
+            
+            // Tacos Formula: TOTAL AD SPENT / TOTAL SALES
+            // Total Sales = eBay L30 * eBay Price
+            $totalSales = $row["T_Sale_l30"]; // Already calculated as price * units_ordered_l30
+            $row["TacosL30"] = $totalSales > 0 ? round($AD_Spend_L30 / $totalSales, 4) : 0;
             
             // Calculate GPFT%
             $gpft = $price > 0 ? (($price * 0.86 - $ship - $lp) / $price) * 100 : 0;
@@ -450,16 +452,15 @@ class EbayController extends Controller
             $row["PFT %"] = round($gpft - $row["AD%"], 2);
             $totalPercentage = $percentage + $adUpdates; 
 
-            // ROI% = ((price * (0.86 - AD%/100) - ship - lp) / lp) * 100
-            $adDecimal = $row["AD%"] / 100;
+            // ROI% = ((price * percentage - lp - ship) / lp) * 100
             $row["ROI%"] = round(
-                $lp > 0 ? (($price * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                $lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) * 100 : 0,
                 2
             );
 
 
             $row["GPFT%"] = round(
-                $price  > 0 ? (($price * 0.86 - $ship - $lp) / $price) * 100 : 0,
+                $price  > 0 ? (($price * $percentage - $ship - $lp) / $price) * 100 : 0,
                 2
             );
             $row["percentage"] = $percentage;
@@ -552,7 +553,7 @@ class EbayController extends Controller
                 // Calculate SGPFT based on actual SPRICE being used
                 $sprice = $row['SPRICE'];
                 $sgpft = round(
-                    $sprice > 0 ? (($sprice * 0.86 - $ship - $lp) / $sprice) * 100 : 0,
+                    $sprice > 0 ? (($sprice * $percentage - $ship - $lp) / $sprice) * 100 : 0,
                     2
                 );
                 $row['SGPFT'] = $sgpft;
@@ -560,10 +561,9 @@ class EbayController extends Controller
                 // Calculate SPFT = SGPFT - AD%
                 $row['SPFT'] = round($sgpft - $row["AD%"], 2);
                 
-                // Calculate SROI using new formula: ((SPRICE * (0.86 - AD%/100) - ship - lp) / lp) * 100
-                $adDecimal = $row["AD%"] / 100;
+                // Calculate SROI: ((SPRICE * percentage - lp - ship) / lp) * 100
                 $row['SROI'] = round(
-                    $lp > 0 ? (($sprice * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                    $lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0,
                     2
                 );
             } else {

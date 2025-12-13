@@ -45,7 +45,12 @@ class ListingEbayTwoController extends Controller
             $item->buyer_link = null;
             $item->seller_link = null;
             if (isset($statusData[$childSku])) {
-                $status = $statusData[$childSku]->value;
+                // Handle value as array or JSON string
+                $statusValue = $statusData[$childSku]->value;
+                $status = is_array($statusValue) 
+                    ? $statusValue 
+                    : (json_decode($statusValue, true) ?? []);
+                
                 $item->nr_req = $status['nr_req'] ?? null;
                 $item->listed = $status['listed'] ?? null;
                 $item->buyer_link = $status['buyer_link'] ?? null;
@@ -73,7 +78,13 @@ class ListingEbayTwoController extends Controller
         $sku = $validated['sku'];
         $status = EbayTwoListingStatus::where('sku', $sku)->first();
 
-        $existing = $status ? $status->value : [];
+        // Handle existing value as array or JSON string
+        $existing = [];
+        if ($status && $status->value) {
+            $existing = is_array($status->value) 
+                ? $status->value 
+                : (json_decode($status->value, true) ?? []);
+        }
 
         // Only update the fields that are present in the request
         $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
@@ -149,7 +160,18 @@ class ListingEbayTwoController extends Controller
     {
         try {
             $request->validate([
-                'file' => 'required|mimes:csv,txt',
+                'file' => [
+                    'required',
+                    'file',
+                    function ($attribute, $value, $fail) {
+                        $extension = strtolower($value->getClientOriginalExtension());
+                        $allowedExtensions = ['csv', 'txt'];
+                        
+                        if (!in_array($extension, $allowedExtensions)) {
+                            $fail('The file must be a CSV or TXT file.');
+                        }
+                    }
+                ]
             ]);
 
             $file = $request->file('file');
@@ -218,7 +240,14 @@ class ListingEbayTwoController extends Controller
                     }
 
                     $status = EbayTwoListingStatus::where('sku', $sku)->first();
-                    $existing = $status ? $status->value : [];
+                    
+                    // Handle existing value as array or JSON string
+                    $existing = [];
+                    if ($status && $status->value) {
+                        $existing = is_array($status->value) 
+                            ? $status->value 
+                            : (json_decode($status->value, true) ?? []);
+                    }
 
                     $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
                     foreach ($fields as $field) {
@@ -263,7 +292,7 @@ class ListingEbayTwoController extends Controller
     {
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="listing_status.csv"',
+            'Content-Disposition' => 'attachment; filename="listing_ebaytwo_' . date('Y-m-d') . '.csv"',
         ];
 
         $columns = ['sku', 'nr_req', 'listed', 'buyer_link', 'seller_link'];
@@ -279,13 +308,21 @@ class ListingEbayTwoController extends Controller
 
             foreach ($productMasters as $sku) {
                 $status = EbayTwoListingStatus::where('sku', $sku)->first();
+                
+                // Handle value as array or JSON string
+                $value = [];
+                if ($status && $status->value) {
+                    $value = is_array($status->value) 
+                        ? $status->value 
+                        : (json_decode($status->value, true) ?? []);
+                }
 
                 $row = [
                     'sku'         => $sku,
-                    'nr_req'      => $status->value['nr_req'] ?? '',
-                    'listed'      => $status->value['listed'] ?? '',
-                    'buyer_link'  => $status->value['buyer_link'] ?? '',
-                    'seller_link' => $status->value['seller_link'] ?? '',
+                    'nr_req'      => $value['nr_req'] ?? '',
+                    'listed'      => $value['listed'] ?? '',
+                    'buyer_link'  => $value['buyer_link'] ?? '',
+                    'seller_link' => $value['seller_link'] ?? '',
                 ];
 
                 fputcsv($file, $row);
