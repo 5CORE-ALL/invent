@@ -15,6 +15,7 @@ use App\Models\ChannelMaster;
 use App\Models\Ebay2GeneralReport;
 use App\Models\ADVMastersData;
 use App\Models\Ebay2Metric;
+use App\Models\EbayTwoListingStatus;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -50,8 +51,8 @@ class EbayTwoController extends Controller
         $demo = $request->query('demo');
 
         // Get percentage directly from database
-        $marketplaceData = ChannelMaster::where('channel', 'EbayTwo')->first();
-        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 100;
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayTwo')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
 
         return view('market-places.ebayTwoAnalysis', [
             'mode' => $mode,
@@ -105,6 +106,14 @@ class EbayTwoController extends Controller
             ->keyBy("sku");  
 
         $nrValues = EbayTwoDataView::whereIn("sku", $skus)->pluck("value", "sku");
+        
+        // Fetch listing status data for nr_req field
+        // Key listing status by lowercase SKU for case-insensitive lookup (UI sends upper/lower mixed)
+        $listingStatusData = EbayTwoListingStatus::whereIn("sku", $skus)
+            ->get()
+            ->mapWithKeys(function ($item) {
+                return [strtolower($item->sku) => $item];
+            });
 
         // Mapping: item_id → sku
         $itemIdToSku = $ebayMetrics->pluck('sku', 'item_id')->toArray();
@@ -157,6 +166,8 @@ class EbayTwoController extends Controller
 
             $shopify = $shopifyData[$pm->sku] ?? null;
             $ebayMetric = $ebayMetrics[$pm->sku] ?? null;
+            // Try both lowercase and original case for listing status lookup
+            $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? $listingStatusData[$pm->sku] ?? null;
 
             $row = [];
             $row["Parent"] = $parent;
@@ -166,6 +177,18 @@ class EbayTwoController extends Controller
             // Shopify
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
+            
+            // NR/REQ status from listing status
+            if ($listingStatus) {
+                $statusValue = is_array($listingStatus->value) ? $listingStatus->value : json_decode($listingStatus->value, true);
+                $row['nr_req'] = $statusValue['nr_req'] ?? 'REQ';
+                $row['B Link'] = $statusValue['buyer_link'] ?? '';
+                $row['S Link'] = $statusValue['seller_link'] ?? '';
+            } else {
+                $row['nr_req'] = 'REQ';
+                $row['B Link'] = '';
+                $row['S Link'] = '';
+            }
 
             // eBay2 Metrics
             $row["eBay L30"] = $ebayMetric->ebay_l30 ?? 0;
@@ -191,6 +214,14 @@ class EbayTwoController extends Controller
             if ($ebayMetric && isset($extraClicksData[$ebayMetric->item_id])) {
                 $row["PmtClkL30"] += (int) $extraClicksData[$ebayMetric->item_id];
             }
+
+            // Calculate AD_Spend_L30 from GENERAL_SPENT (L30)
+            $pmt_spend_l30 = $adMetricsBySku[$sku]['L30']['GENERAL_SPENT'] ?? 0;
+            $row["AD_Spend_L30"] = round($pmt_spend_l30, 2);
+            $row["pmt_spend_L30"] = round($pmt_spend_l30, 2);
+            $row["kw_spend_L30"] = 0; // No keyword campaigns for ebay2
+            $row["AD_Sales_L30"] = 0; // Can be calculated if needed
+            $row["AD_Units_L30"] = 0; // Can be calculated if needed
 
             // Values: LP & Ship
             $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
@@ -353,13 +384,17 @@ class EbayTwoController extends Controller
     function extractNumber($value)
     {
         if (is_null($value)) {
-            return null;
+            return 0;
         }
 
-        // Match only digits
-        preg_match('/\d+/', $value, $matches);
+        // Handle string values like "USD 10.50" or "10.50"
+        if (is_string($value)) {
+            // Remove currency symbols and text, keep numbers and decimal point
+            $value = str_replace('USD ', '', $value);
+            $value = preg_replace('/[^0-9.]/', '', $value);
+        }
 
-        return $matches[0] ?? null;
+        return floatval($value) ?? 0;
     }
 
 
@@ -397,12 +432,35 @@ class EbayTwoController extends Controller
     public function importEbayTwoAnalytics(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv'
+            'excel_file' => [
+                'required',
+                'file',
+                function ($attribute, $value, $fail) {
+                    $extension = strtolower($value->getClientOriginalExtension());
+                    $allowedExtensions = ['xlsx', 'xls', 'csv'];
+                    
+                    if (!in_array($extension, $allowedExtensions)) {
+                        $fail('The excel file must be a file of type: xlsx, xls, csv.');
+                    }
+                }
+            ]
         ]);
 
         try {
             $file = $request->file('excel_file');
+            $extension = strtolower($file->getClientOriginalExtension());
+            
+            // Handle CSV files differently
+            if ($extension === 'csv') {
+                $reader = IOFactory::createReader('Csv');
+                $reader->setInputEncoding('UTF-8');
+                $reader->setDelimiter(',');
+                $reader->setEnclosure('"');
+                $reader->setSheetIndex(0);
+                $spreadsheet = $reader->load($file->getPathName());
+            } else {
             $spreadsheet = IOFactory::load($file->getPathName());
+            }
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
@@ -466,8 +524,23 @@ class EbayTwoController extends Controller
                 $importCount++;
             }
 
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "Successfully imported $importCount records!",
+                    'count' => $importCount
+                ]);
+            }
+
             return back()->with('success', "Successfully imported $importCount records!");
         } catch (\Exception $e) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error importing file: ' . $e->getMessage()
+                ], 400);
+            }
+            
             return back()->with('error', 'Error importing file: ' . $e->getMessage());
         }
     }

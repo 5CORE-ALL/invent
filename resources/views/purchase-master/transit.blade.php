@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Approval Required'])
+@extends('layouts.vertical', ['title' => 'Transit'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -42,8 +42,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Approval Required',
-        'sub_title' => 'Approval Required',
+        'page_title' => '🚢 Transit',
+        'sub_title' => 'Transit',
     ])
 
     <div class="alert alert-warning mb-3">
@@ -137,7 +137,11 @@
 
                             <!-- Stage Filter -->
                             <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
-                                <option value="appr_req">Appr Req</option>
+                                <option value="">All Stages</option>
+                                <option value="to_order_analysis">2 Order</option>
+                                <option value="mip">MIP</option>
+                                <option value="r2s">R2S</option>
+                                <option value="transit">Transit</option>
                             </select>
 
                             <!-- NRP Filter -->
@@ -789,16 +793,8 @@
                     accessor: row => row?.["stage"] ?? null,
                     headerSort: false,
                     formatter: function(cell) {
-                        let value = cell.getValue() ?? '';
+                        const value = cell.getValue() ?? '';
                         const rowData = cell.getRow().getData();
-                        
-                        // If to_order field is yellow (>= 0) and stage is empty or to_order_analysis, default to appr_req
-                        const toOrderValue = rowData["to_order"] ?? 0;
-                        const isToOrderYellow = toOrderValue >= 0;
-                        
-                        if ((!value || value === '' || value === 'to_order_analysis') && isToOrderYellow) {
-                            value = 'appr_req';
-                        }
 
                         return `
                         <select class="form-select form-select-sm editable-select"
@@ -903,6 +899,31 @@
                             </select>
                         `;
 
+                    }
+                },
+                {
+                    title: "Hide",
+                    field: "hide",
+                    accessor: row => row?.["hide"] ?? null,
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const value = cell.getValue() ?? '';
+                        const rowData = cell.getRow().getData();
+
+                        return `
+                        <select class="form-select form-select-sm editable-select"
+                            data-type="Hide"
+                            data-sku='${rowData["SKU"]}'
+                            data-parent='${rowData["Parent"]}'
+                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
+                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
+                                background-color: #fff;">
+                            <option value="">Select</option>
+                            <option value="@Need" ${value === '@Need' ? 'selected' : ''}>@Need</option>
+                            <option value="@Taken" ${value === '@Taken' ? 'selected' : ''}>@Taken</option>
+                            <option value="@Senior" ${value === '@Senior' ? 'selected' : ''}>@Senior</option>
+                        </select>
+                    `;
                     }
                 },
                 {
@@ -1137,12 +1158,12 @@
         });
 
         let currentParentFilter = null;
-        let currentColorFilter = 'yellow'; // Default to yellow filter
+        let currentColorFilter = null;
         let hideNRYes = true;
         let currentRowTypeFilter = 'all';
         let currentRestockFilter = false;
         let currentZeroInvFilter = false;
-        let currentStageFilter = 'appr_req'; // Default to Appr Req
+        let currentStageFilter = '';
         let currentNRPFilter = '';
 
         function setCombinedFilters() {
@@ -1193,14 +1214,6 @@
                             const transitValue = child.raw_data ? child.raw_data["transit"] : child["transit"];
                             const transit = parseFloat(transitValue) || 0;
                             stageMatch = transit > 0;
-                        } else if (currentStageFilter === 'appr_req') {
-                            // Appr Req: items with stage 'to_order_analysis' and yellow filter (to_order >= 0)
-                            const toOrderValue = child.raw_data ? child.raw_data["to_order"] : child["to_order"];
-                            const toOrder = parseFloat(toOrderValue) || 0;
-                            stageMatch = (childStage === 'to_order_analysis' || childStage === '') && toOrder >= 0;
-                        } else if (currentStageFilter === 'to_order_analysis') {
-                            // For 2 Order: include items with stage 'to_order_analysis' OR empty stage (items needing approval)
-                            stageMatch = (childStage === 'to_order_analysis' || childStage === '');
                         } else {
                             stageMatch = childStage === currentStageFilter;
                         }
@@ -1222,9 +1235,7 @@
                             child.to_order >= 0 :
                             true;
                     }
-                    // Exclude rows with stage 'to_order_analysis'
-                    const excludeToOrderAnalysis = childStage !== 'to_order_analysis';
-                    return nrMatch && nrpMatch && stageMatch && filterMatch && excludeToOrderAnalysis;
+                    return nrMatch && nrpMatch && stageMatch && filterMatch;
                 });
 
                 if (matchingChildren.length > 0) {
@@ -1274,33 +1285,22 @@
                         const transitValue = data.raw_data ? data.raw_data["transit"] : data["transit"];
                         const transit = parseFloat(transitValue) || 0;
                         stageMatch = transit > 0;
-                    } else if (currentStageFilter === 'appr_req') {
-                        // Appr Req: items with stage 'to_order_analysis' and yellow filter (to_order >= 0)
-                        const toOrderValue = data.raw_data ? data.raw_data["to_order"] : data["to_order"];
-                        const toOrder = parseFloat(toOrderValue) || 0;
-                        stageMatch = (dataStage === 'to_order_analysis' || dataStage === '') && toOrder >= 0;
-                    } else if (currentStageFilter === 'to_order_analysis') {
-                        // For 2 Order: include items with stage 'to_order_analysis' OR empty stage (items needing approval)
-                        stageMatch = (dataStage === 'to_order_analysis' || dataStage === '');
                     } else {
                         stageMatch = dataStage === currentStageFilter;
                     }
                 }
-
-                // Exclude rows with stage 'to_order_analysis'
-                const excludeToOrderAnalysis = dataStage !== 'to_order_analysis';
 
                 // 🎯 Force filter to one parent group if play mode is active
                 if (currentParentFilter) {
                     if (isParent) {
                         return data.Parent === currentParentFilter;
                     } else {
-                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && nrpMatch && stageMatch && excludeToOrderAnalysis;
+                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && nrpMatch && stageMatch;
                     }
                 }
-                
+
                 if (isChild) {
-                    const showChild = matchesFilter && matchesNR && nrpMatch && stageMatch && excludeToOrderAnalysis;
+                    const showChild = matchesFilter && matchesNR && nrpMatch && stageMatch;
                     if (currentRowTypeFilter === 'parent') return false;
                     if (currentRowTypeFilter === 'sku') return showChild;
                     return showChild;
@@ -1463,8 +1463,7 @@
             const yellowCount = visibleRows.filter(r =>
                 r.to_order >= 0 &&
                 !r.is_parent &&
-                r.nr !== 'NR' &&
-                r.stage !== 'to_order_analysis'
+                r.nr !== 'NR'
             ).length;
 
             document.getElementById('yellow-count-box').textContent = `Appr Req: ${yellowCount}`;
@@ -1918,12 +1917,13 @@
                                     // Update the row data - this will automatically trigger formatter
                                     row.update({
                                         nr: newValue
-                                    }, true);
+                                    }, true); // true = update existing row data
                                 }
 
                                 setCombinedFilters();
                             }
                             if (field === 'Stage') {
+                                // Update the row data
                                 const row = table.getRows().find(r =>
                                     r.getData().SKU === sku && r.getData().Parent === parent
                                 );
@@ -1931,12 +1931,14 @@
                                     // Update the row data - this will automatically trigger formatter
                                     row.update({
                                         stage: newValue
-                                    }, true);
+                                    }, true); // true = update existing row data
                                     
-                                    // Don't auto-filter - let the stage filter dropdown control visibility
-                                    // The row should remain visible after stage change
-                                    // Only apply filters if stage filter dropdown is set
-                                    setCombinedFilters();
+                                    // Filter table to show only rows with this stage
+                                    if (newValue && newValue !== '') {
+                                        table.setFilter("stage", "=", newValue);
+                                    } else {
+                                        table.clearFilter();
+                                    }
                                 }
                             }
                         },
@@ -2085,15 +2087,10 @@
             countContainer.classList.add('d-none');
 
             // Set yellow filter as default
-            currentColorFilter = 'yellow';
+            currentColorFilter = '';
             document.getElementById('yellow-count-container').classList.remove('d-none');
             document.getElementById('order-color-filter-dropdown').innerHTML =
-                '<i class="bi bi-funnel-fill text-dark"></i> <span class="text-dark fw-bold">🟡 Yellow</span>';
-            
-            // Set stage filter to 'appr_req' (Appr Req) as default
-            document.getElementById('stage-filter').value = 'appr_req';
-            currentStageFilter = 'appr_req';
-            
+                '<i class="bi bi-funnel-fill text-dark"></i> <span class="text-dark fw-bold">2 Ord</span>';
             setCombinedFilters();
 
             document.querySelectorAll('#order-color-filter-dropdown + .dropdown-menu [data-filter]').forEach(
@@ -2123,12 +2120,8 @@
 
                 if (currentColorFilter === 'yellow') {
                     const allData = table.getRows().map(r => r.getData());
-                    const yellowCount = allData.filter(r => 
-                        r.to_order >= 0 && 
-                        !r.is_parent && 
-                        (hideNRYes ? r.nr !== 'NR' : true) &&
-                        r.stage !== 'to_order_analysis'
-                    ).length;
+                    const yellowCount = allData.filter(r => r.to_order >= 0 && !r.is_parent && (hideNRYes ?
+                        r.nr !== 'NR' : true)).length;
                     document.getElementById('yellow-count-box').textContent =
                         `Appr Req: ${yellowCount}`;
                 }

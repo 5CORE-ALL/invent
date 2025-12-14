@@ -57,12 +57,12 @@ class FetchEbayOrders extends Command
 
         return [
             'l30' => [
-                'start' => $today->copy()->subDays(29),
-                'end' => $today->copy()->subDay(),
+                'start' => $today->copy()->subDays(30),  // 30 days ago
+                'end' => $today->copy()->subDay(),       // yesterday
             ],
             'l60' => [
-                'start' => $today->copy()->subDays(59),
-                'end' => $today->copy()->subDays(30),
+                'start' => $today->copy()->subDays(60),  // 60 days ago
+                'end' => $today->copy()->subDays(31),    // 31 days ago
             ],
         ];
     }

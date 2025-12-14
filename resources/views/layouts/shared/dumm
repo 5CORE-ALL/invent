@@ -148,6 +148,9 @@
                                 <a href="{{ route('ready.to.ship') }}">Ready To Ship</a>
                             </li>
                             <li>
+                                <a href="{{ route('transit') }}">🚢 Transit</a>
+                            </li>
+                            <li>
                                 <a href="{{ route('china.load') }}">China Load</a>
                             </li>
                             <li>

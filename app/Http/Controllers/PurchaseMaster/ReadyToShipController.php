@@ -80,12 +80,15 @@ class ReadyToShipController extends Controller
                 }
             }
 
-            // Get stage from forecast_analysis
+            // Get stage and nr from forecast_analysis
             $stage = '';
+            $nr = '';
             if (isset($forecastData[$sku])) {
                 $stage = $forecastData[$sku]->stage ?? '';
+                $nr = strtoupper(trim($forecastData[$sku]->nr ?? ''));
             }
             $item->stage = $stage;
+            $item->nr = $nr;
             $item->order_qty = $item->qty; // Add order_qty field for validation
 
             $item->Image = $image;

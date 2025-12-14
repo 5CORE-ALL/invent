@@ -158,6 +158,9 @@
                             <a href="{{ route('ready.to.ship') }}">Ready To Ship</a>
                         </li>
                         <li>
+                            <a href="{{ route('transit') }}">🚢 Transit</a>
+                        </li>
+                        <li>
                             <a href="{{ route('china.load') }}">China Load</a>
                         </li>
                         <li>
@@ -883,7 +886,7 @@
                             <a href="{{ route('ebay.daily.sales') }}">eBay Sales Data</a>
                         </li>
                         <li>
-                            <a href="{{ url('amazon-sales-tabulator-view') }}">Amazon Sales Data</a>
+                            <a href="{{ url('amazon/daily-sales') }}">Amazon Sales Data</a>
                         </li>
 
                         <li><a href="{{ url('temu-tabulator') }}">Temu Sales Data</a></li>
@@ -1665,7 +1668,7 @@
                                                         view</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ url('amazon-sales-tabulator-view') }}">Amazon Sales
+                                                    <a href="{{ url('amazon/daily-sales') }}">Amazon Sales
                                                         Data</a>
                                                 </li>
                                                 <li>

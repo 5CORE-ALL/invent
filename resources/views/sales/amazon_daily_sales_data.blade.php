@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Sales Data', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amazon Daily Sales Data', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -70,14 +70,14 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon Sales Data',
-        'sub_title' => 'Amazon Sales Data Analysis',
+        'page_title' => 'Amazon Daily Sales Data',
+        'sub_title' => 'Amazon Daily Sales Data Analysis (L30)',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Amazon Sales Data</h4>
+                <h4>Amazon Daily Sales Data (L30)</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -106,12 +106,18 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
+                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge fs-6 p-2" id="pt-spent-badge" style="background-color: #28a745; color: white; font-weight: bold;">PT Spent: ${{ number_format($ptSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="kw-spent-badge" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="tacos-percentage-badge" style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0%</span>
+                        <span class="badge fs-6 p-2" id="m-pft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="ads-percentage-badge" style="background-color: #20c997; color: white; font-weight: bold; display: none;">Ads %: 0%</span>
+                        <span class="badge fs-6 p-2" id="pft-percentage-filtered-badge" style="background-color: #17a2b8; color: white; font-weight: bold; display: none;">PFT %: 0%</span>
                     </div>
                 </div>
             </div>
@@ -130,9 +136,13 @@
 @endsection
 
 @section('script-bottom')
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
-    const COLUMN_VIS_KEY = "amazon_sales_tabulator_column_visibility";
+    const COLUMN_VIS_KEY = "amazon_sales_column_visibility";
     let table = null;
+    const KW_SPENT = {{ $kwSpent ?? 0 }};
+    const PT_SPENT = {{ $ptSpent ?? 0 }};
     
     // Toast notification function
     function showToast(message, type = 'info') {
@@ -165,8 +175,9 @@
         });
         
         // Initialize Tabulator
+        console.log("Initializing Tabulator for Amazon Daily Sales Data...");
         table = new Tabulator("#amazon-table", {
-            ajaxURL: "/amazon/shiphub-sales-data",
+            ajaxURL: "/amazon/daily-sales-data",
             ajaxSorting: false,
             layout: "fitDataStretch",
             pagination: true,
@@ -174,12 +185,25 @@
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: "rows",
             ajaxResponse: function(url, params, response) {
+                console.log("AJAX Response received:", response);
+                console.log("Response type:", typeof response);
+                console.log("Is array:", Array.isArray(response));
+                if (Array.isArray(response)) {
+                    console.log("Number of records:", response.length);
+                    if (response.length > 0) {
+                        console.log("First record:", response[0]);
+                    }
+                }
+                // Return the response as-is (should be an array)
                 return response;
             },
             ajaxError: function(error) {
+                console.error("AJAX Error:", error);
+                console.error("Error details:", JSON.stringify(error));
                 showToast("Error loading data: " + (error.message || "Unknown error"), "error");
             },
             dataLoaded: function(data) {
+                console.log("Data loaded:", data.length, "rows");
                 updateSummary();
             },
             langs: {
@@ -202,36 +226,22 @@
                     }
                 }
             },
-            rowFormatter: function(row) {
-                // No parent row logic for Amazon
-            },
             initialSort: [{
-                column: "updated_at",
+                column: "order_date",
                 dir: "desc"
             }],
             columns: [
                 {
-                    title: "ID",
-                    field: "id",
-                    width: 80,
-                    frozen: true
-                },
-                {
                     title: "Order ID",
                     field: "order_id",
-                    width: 100,
-                    frozen: true
-                },
-                {
-                    title: "Order Number",
-                    field: "order_number",
                     width: 180,
                     frozen: true
                 },
                 {
-                    title: "Order Item ID",
-                    field: "order_item_id",
-                    width: 180
+                    title: "ASIN",
+                    field: "asin",
+                    width: 120,
+                    frozen: true
                 },
                 {
                     title: "SKU",
@@ -242,41 +252,30 @@
                     cssClass: "text-primary fw-bold"
                 },
                 {
-                    title: "ASIN",
-                    field: "asin",
-                    width: 120
-                },
-                {
-                    title: "UPC",
-                    field: "upc",
-                    width: 120
-                },
-                {
-                    title: "Product Name",
-                    field: "product_name",
-                    width: 300,
+                    title: "Title",
+                    field: "title",
+                    width: 200,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '';
+                        // Truncate long titles
+                        return value.length > 50 ? value.substring(0, 50) + '...' : value;
+                    },
                     tooltip: true
                 },
                 {
-                    title: "Qty Ordered",
-                    field: "quantity_ordered",
+                    title: "Quantity",
+                    field: "quantity",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 120
+                    width: 50
                 },
                 {
-                    title: "Qty Shipped",
-                    field: "quantity_shipped",
-                    hozAlign: "center",
-                    sorter: "number",
-                    width: 120
-                },
-                {
-                    title: "Unit Price",
-                    field: "unit_price",
+                    title: "Price",
+                    field: "price",
                     hozAlign: "right",
                     sorter: "number",
-                    width: 120,
+                    width: 70,
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -286,11 +285,11 @@
                     }
                 },
                 {
-                    title: "Item Tax",
-                    field: "item_tax",
+                    title: "Sales AMT",
+                    field: "sale_amount",
                     hozAlign: "right",
                     sorter: "number",
-                    width: 120,
+                    width: 70,
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -300,39 +299,36 @@
                     }
                 },
                 {
-                    title: "Promotion Discount",
-                    field: "promotion_discount",
-                    hozAlign: "right",
-                    sorter: "number",
-                    width: 120,
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
+                    title: "Order Date",
+                    field: "order_date",
+                    sorter: "datetime",
+                    width: 20,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '';
+                        const date = new Date(value);
+                        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
                     }
                 },
                 {
-                    title: "Sales",
-                    field: "sales",
-                    hozAlign: "right",
-                    sorter: "number",
+                    title: "Status",
+                    field: "status",
                     width: 120,
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
-                    },
-                    mutator: function(value, data, type, params, component) {
-                        // Sales = unit_price * quantity_ordered
-                        const unitPrice = parseFloat(data.unit_price) || 0;
-                        const quantity = parseInt(data.quantity_ordered) || 0;
-                        const sales = unitPrice * quantity;
-                        return sales.toFixed(2);
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '';
+                        let color = 'secondary';
+                        if (value.toLowerCase().includes('shipped')) color = 'success';
+                        else if (value.toLowerCase().includes('pending')) color = 'warning';
+                        else if (value.toLowerCase().includes('cancelled')) color = 'danger';
+                        else if (value.toLowerCase().includes('unshipped')) color = 'info';
+                        return `<span class="badge bg-${color}">${value}</span>`;
                     }
+                },
+                {
+                    title: "Period",
+                    field: "period",
+                    width: 80
                 },
                 {
                     title: "LP",
@@ -346,14 +342,6 @@
                         thousand: ",",
                         symbol: "$",
                         precision: 2
-                    },
-                    mutator: function(value, data, type, params, component) {
-                        // Get LP from Product Master fields
-                        const lp = parseFloat(data.LP_productmaster) || 
-                                  parseFloat(data.lp) || 
-                                  parseFloat(data.landing_price) || 
-                                  parseFloat(data.cost_price) || 0;
-                        return lp;
                     }
                 },
                 {
@@ -362,39 +350,33 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        const rowData = cell.getRow().getData();
-                        // Check if this is an FBA SKU and has FBA ship calculation
-                        const isFbaSku = rowData.is_fba_sku || /FBA$/i.test(rowData.sku || '');
-                        const fbaShip = parseFloat(rowData.FBA_ship_calculation);
-                        
-                        // Use FBA ship calculation if available and SKU ends with FBA
-                        const displayValue = (isFbaSku && !isNaN(fbaShip)) ? fbaShip : value;
-                        const formattedValue = parseFloat(displayValue).toFixed(2);
-                        
-                        // Display in dark pink if FBA ship is used
-                        if (isFbaSku && !isNaN(fbaShip)) {
-                            return `<span style="color: #e91e63; font-weight: bold;">$${formattedValue}</span>`;
-                        }
-                        return `$${formattedValue}`;
-                    },
-                    mutator: function(value, data, type, params, component) {
-                        // Check if SKU ends with FBA and has FBA ship calculation
-                        const isFbaSku = data.is_fba_sku || /FBA$/i.test(data.sku || '');
-                        const fbaShip = parseFloat(data.FBA_ship_calculation);
-                        
-                        // Use FBA ship calculation if available, otherwise use Product Master ship
-                        if (isFbaSku && !isNaN(fbaShip)) {
-                            return fbaShip;
-                        }
-                        
-                        // Get Ship from Product Master fields
-                        const ship = parseFloat(data.Ship_productmaster) || 
-                                    parseFloat(data.ship) || 
-                                    parseFloat(data.shipping_cost) || 
-                                    parseFloat(data.temu_ship) || 0;
-                        return ship;
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
+                },
+                {
+                    title: "T Weight",
+                    field: "t_weight",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 100
+                },
+                {
+                    title: "Ship Cost",
+                    field: "ship_cost",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 100,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
                     }
                 },
                 {
@@ -402,24 +384,41 @@
                     field: "cogs",
                     hozAlign: "right",
                     sorter: "number",
-                    width: 120,
+                    width: 100,
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
                         thousand: ",",
                         symbol: "$",
                         precision: 2
-                    },
-                    mutator: function(value, data, type, params, component) {
-                        // COGS = Quantity * LP
-                        const quantity = parseInt(data.quantity_ordered) || 0;
-                        const lp = parseFloat(data.LP_productmaster) || parseFloat(data.lp) || 0;
-                        const cogs = quantity * lp;
-                        return cogs.toFixed(2);
                     }
                 },
                 {
-                    title: "PFT",
+                    title: "PFT Each",
+                    field: "pft_each",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 100,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const color = value >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">$${parseFloat(value).toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: "PFT Each %",
+                    field: "pft_each_pct",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 100,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const color = value >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">${parseFloat(value).toFixed(2)}%</span>`;
+                    }
+                },
+                {
+                    title: "T PFT",
                     field: "pft",
                     hozAlign: "right",
                     sorter: "number",
@@ -428,34 +427,6 @@
                         const value = cell.getValue();
                         const color = value >= 0 ? '#28a745' : '#dc3545';
                         return `<span style="color: ${color}; font-weight: bold;">$${parseFloat(value).toFixed(2)}</span>`;
-                    },
-                    mutator: function(value, data, type, params, component) {
-                        // Get values from row data
-                        const unitPrice = parseFloat(data.unit_price) || 0;
-                        const quantity = parseInt(data.quantity_ordered) || 0;
-                        // Backend sends marketplace_percentages as decimal, ad_updates as decimal
-                        let marketplace = parseFloat(data.marketplace_percentages) || 0;
-                        let adpercent = parseFloat(data.ad_updates) || 0;
-                        
-                        // Safety check: if marketplace > 1, it's stored as percentage, convert to decimal
-                        if (marketplace > 1) {
-                            marketplace = marketplace / 100;
-                        }
-                        // Safety check: if ad_updates > 1, it's stored as percentage, convert to decimal
-                        if (adpercent > 1) {
-                            adpercent = adpercent / 100;
-                        }
-                        const lp = parseFloat(data.LP_productmaster) || parseFloat(data.lp) || 0;
-                        // Check if SKU ends with FBA and use FBA ship calculation if available
-                        const isFbaSku = data.is_fba_sku || /FBA$/i.test(data.sku || '');
-                        const fbaShip = parseFloat(data.FBA_ship_calculation);
-                        const ship = (isFbaSku && !isNaN(fbaShip)) 
-                            ? fbaShip 
-                            : (parseFloat(data.Ship_productmaster) || parseFloat(data.temu_ship) || parseFloat(data.ship) || parseFloat(data.shipping_cost) || 0);
-                        
-                        // PFT = ((unitPrice * (marketplace - adpercent)) - lp - ship) * quantity
-                        const pft = ((unitPrice * (marketplace - adpercent)) - lp - ship) * quantity;
-                        return pft.toFixed(2);
                     }
                 },
                 {
@@ -475,136 +446,34 @@
                         else if (value > 125) color = '#e83e8c'; // pink
                         
                         return `<span style="color: ${color}; font-weight: bold;">${parseFloat(value).toFixed(0)}%</span>`;
-                    },
-                    mutator: function(value, data, type, params, component) {
-                        // Get LP for COGS calculation
-                        const lp = parseFloat(data.LP_productmaster) || parseFloat(data.lp) || 0;
-                        const quantity = parseInt(data.quantity_ordered) || 0;
-                        
-                        // Calculate COGS (LP * quantity_ordered)
-                        const cogs = lp * quantity;
-                        
-                        // Get PFT value - use the same calculation as PFT column to ensure consistency
-                        const unitPrice = parseFloat(data.unit_price) || 0;
-                        // Backend sends marketplace_percentages as decimal (0.66), ad_updates as decimal (0.10)
-                        let marketplace = parseFloat(data.marketplace_percentages);
-                        let adpercent = parseFloat(data.ad_updates);
-                        
-                        // Debug: Check if values need conversion (if > 1, they're percentages, convert to decimal)
-                        if (isNaN(marketplace)) marketplace = 0.66;
-                        if (isNaN(adpercent)) adpercent = 0;
-                        
-                        // Safety check: if marketplace > 1, it's stored as percentage, convert to decimal
-                        if (marketplace > 1) {
-                            marketplace = marketplace / 100;
-                        }
-                        // Safety check: if ad_updates > 1, it's stored as percentage, convert to decimal
-                        if (adpercent > 1) {
-                            adpercent = adpercent / 100;
-                        }
-                        
-                        // Check if SKU ends with FBA and use FBA ship calculation if available
-                        const isFbaSku = data.is_fba_sku || /FBA$/i.test(data.sku || '');
-                        const fbaShip = parseFloat(data.FBA_ship_calculation);
-                        const ship = (isFbaSku && !isNaN(fbaShip)) 
-                            ? fbaShip 
-                            : (parseFloat(data.Ship_productmaster) || parseFloat(data.temu_ship) || parseFloat(data.ship) || parseFloat(data.shipping_cost) || 0);
-                        
-                        // Calculate margin (marketplace - adpercent)
-                        const margin = marketplace - adpercent;
-                        
-                        // Calculate PFT using exact same formula as PFT column
-                        const pft = ((unitPrice * margin) - lp - ship) * quantity;
-                        
-                        // ROI = (PFT / COGS) * 100
-                        // Ensure we don't divide by zero
-                        if (cogs <= 0) {
-                            return '0.00';
-                        }
-                        
-                        const roi = (pft / cogs) * 100;
-                        return roi.toFixed(2);
                     }
                 },
                 {
-                    title: "Currency",
-                    field: "currency",
-                    width: 80
-                },
-                {
-                    title: "Is Gift",
-                    field: "is_gift",
-                    hozAlign: "center",
-                    width: 80,
-                    formatter: function(cell) {
-                        return cell.getValue() ? 'Yes' : 'No';
+                    title: "KW Spent",
+                    field: "kw_spent",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 100,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
                     }
                 },
                 {
-                    title: "Weight",
-                    field: "weight",
+                    title: "PT Spent",
+                    field: "pt_spent",
                     hozAlign: "right",
                     sorter: "number",
-                    width: 100
-                },
-                {
-                    title: "Length",
-                    field: "length",
-                    hozAlign: "right",
-                    sorter: "number",
-                    width: 100
-                },
-                {
-                    title: "Width",
-                    field: "width",
-                    hozAlign: "right",
-                    sorter: "number",
-                    width: 100
-                },
-                {
-                    title: "Height",
-                    field: "height",
-                    hozAlign: "right",
-                    sorter: "number",
-                    width: 100
-                },
-                {
-                    title: "Weight Unit",
-                    field: "weight_unit",
-                    width: 100
-                },
-                {
-                    title: "Dimensions",
-                    field: "dimensions",
-                    width: 120
-                },
-                {
-                    title: "Marketplace",
-                    field: "marketplace",
-                    width: 120
-                },
-                {
-                    title: "Created At",
-                    field: "created_at",
-                    sorter: "datetime",
-                    width: 160,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (!value) return '';
-                        const date = new Date(value);
-                        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-                    }
-                },
-                {
-                    title: "Updated At",
-                    field: "updated_at",
-                    sorter: "datetime",
-                    width: 160,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (!value) return '';
-                        const date = new Date(value);
-                        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                    width: 100,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
                     }
                 }
             ]
@@ -614,9 +483,13 @@
         $('#sku-search').on('keyup', function() {
             const value = $(this).val();
             table.setFilter("sku", "like", value);
+            // Update summary after filter is applied
+            setTimeout(function() {
+                updateSummary();
+            }, 100);
         });
 
-        // Update summary stats (matching Temu pattern exactly)
+        // Update summary stats (matching eBay pattern exactly)
         function updateSummary() {
             const data = table.getData("active");
             let totalOrders = 0;
@@ -627,89 +500,94 @@
             let totalWeightedPrice = 0;
             let totalQuantityForPrice = 0;
             let totalCogs = 0;
+            
+            // Track unique SKUs and their KW/PT spent (to avoid double counting)
+            const uniqueSkuSpend = {};
 
             data.forEach(row => {
-                // Skip rows with empty SKU or order_id (matching Temu pattern)
+                // Skip rows with empty SKU or order_id
                 if (!row.sku || row.sku === '' || !row.order_id || row.order_id === '') {
                     return;
                 }
                 
                 totalOrders++;
-                const quantity = parseInt(row.quantity_ordered) || 0;
-                const basePrice = parseFloat(row.unit_price) || 0;
+                const quantity = parseInt(row.quantity) || 0;
+                const basePrice = parseFloat(row.price) || 0;
                 
                 // Skip if quantity is 0
                 if (quantity === 0) {
                     return;
                 }
                 
-                // Total revenue = basePrice * quantity (matching Temu pattern)
+                // Total revenue = basePrice * quantity
                 totalQuantity += quantity;
                 totalRevenue += basePrice * quantity;
                 
-                // Calculate weighted price (matching Temu pattern)
+                // Calculate weighted price
                 if (quantity > 0 && basePrice > 0) {
                     totalWeightedPrice += basePrice * quantity;
                     totalQuantityForPrice += quantity;
                 }
                 
-                // Get marketplace and ad percentages from data
-                // Backend sends marketplace_percentages as decimal, ad_updates as decimal
-                let marketplace = parseFloat(row.marketplace_percentages) || 0;
-                let adpercent = parseFloat(row.ad_updates) || 0;
+                // Get PFT and COGS from row data
+                const pft = parseFloat(row.pft) || 0;
+                const cogs = parseFloat(row.cogs) || 0;
                 
-                // Safety check: if marketplace > 1, it's stored as percentage, convert to decimal
-                if (marketplace > 1) {
-                    marketplace = marketplace / 100;
-                }
-                // Safety check: if ad_updates > 1, it's stored as percentage, convert to decimal
-                if (adpercent > 1) {
-                    adpercent = adpercent / 100;
-                }
-                
-                // Get LP and Ship from Product Master (backend sends as LP_productmaster, Ship_productmaster)
-                const lp = parseFloat(row.LP_productmaster) || parseFloat(row.lp) || 0;
-                
-                // Check if SKU ends with FBA and use FBA ship calculation if available
-                const isFbaSku = row.is_fba_sku || /FBA$/i.test(row.sku || '');
-                const fbaShip = parseFloat(row.FBA_ship_calculation);
-                const ship = (isFbaSku && !isNaN(fbaShip)) 
-                    ? fbaShip 
-                    : (parseFloat(row.Ship_productmaster) || parseFloat(row.ship) || parseFloat(row.temu_ship) || parseFloat(row.shipping_cost) || 0);
-                
-                // PFT = ((unitPrice * (marketplace - adpercent)) - lp - ship) * quantity_ordered
-                const pft = ((basePrice * (marketplace - adpercent)) - lp - ship) * quantity;
                 totalPft += pft;
+                totalCogs += cogs;
                 
-                // L30 Sales = Quantity * unitPrice
+                // L30 Sales = Quantity * price
                 const l30Sales = quantity * basePrice;
                 totalL30Sales += l30Sales;
                 
-                // COGS = Quantity * LP
-                const cogs = quantity * lp;
-                totalCogs += cogs;
+                // Track unique SKU spend (KW + PT) - only count once per SKU
+                if (row.sku && !uniqueSkuSpend[row.sku]) {
+                    const kwSpent = parseFloat(row.kw_spent) || 0;
+                    const ptSpent = parseFloat(row.pt_spent) || 0;
+                    uniqueSkuSpend[row.sku] = kwSpent + ptSpent;
+                }
             });
 
-            // Calculate average price (weighted by quantity, matching Temu)
+            // Calculate average price (weighted by quantity)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
 
-            // Calculate PFT Percentage: (PFT Total / Total Revenue) * 100
-            const pftPercentage = totalRevenue > 0 ? (totalPft / totalRevenue) * 100 : 0;
+            // Calculate PFT Percentage: (Sum of T PFT / Sum of Total Sales) * 100
+            const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
             
             // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
-            // Update badges (matching Temu format exactly)
+            // Calculate TACOS Percentage: ((KW Spent + PT Spent) / Total Sales) * 100
+            const tacosPercentage = totalRevenue > 0 ? ((KW_SPENT + PT_SPENT) / totalRevenue) * 100 : 0;
+
+            // Calculate N PFT: GPFT % - TACOS %
+            const mPft = pftPercentage - tacosPercentage;
+            
+            // Calculate Ads %: (Sum of unique SKU KW+PT / Total Sales) * 100
+            const totalUniqueSkuSpend = Object.values(uniqueSkuSpend).reduce((sum, spend) => sum + spend, 0);
+            const adsPercentage = totalRevenue > 0 ? (totalUniqueSkuSpend / totalRevenue) * 100 : 0;
+            
+            // Calculate PFT %: GPFT % - Ads %
+            const pftPercentageFiltered = pftPercentage - adsPercentage;
+            
+            // Check if data is filtered (compare active data with total data or check for filters)
+            const totalDataCount = table.getDataCount();
+            const activeDataCount = data.length;
+            const skuSearchValue = $('#sku-search').val() || '';
+            const hasTableFilters = table.modules.filter && table.modules.filter.getFilters().length > 0;
+            const isFiltered = activeDataCount < totalDataCount || hasTableFilters || skuSearchValue.trim() !== '';
+
+            // Update badges (matching eBay format exactly)
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#total-sales-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-            $('#pft-percentage-badge').text('PFT %: ' + Math.round(pftPercentage) + '%');
+            $('#pft-percentage-badge').text('GPFT %: ' + Math.round(pftPercentage) + '%');
             $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-            $('#pft-total-badge').text('PFT Total: $' + totalPft.toFixed(2));
+            $('#pft-total-badge').text('GPFT Total: $' + totalPft.toFixed(2));
             
-            // Color code PFT Total badge (matching Temu pattern)
+            // Color code PFT Total badge
             const pftBadge = $('#pft-total-badge');
             if (totalPft >= 0) {
                 pftBadge.removeClass('bg-danger').addClass('bg-dark');
@@ -719,8 +597,20 @@
             
             $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
             $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+            $('#tacos-percentage-badge').text('TACOS %: ' + Math.round(tacosPercentage) + '%');
+            $('#m-pft-badge').text('N PFT: ' + Math.round(mPft) + '%');
+            
+            // Show/hide Ads % and PFT % badges based on filter status
+            if (isFiltered) {
+                $('#ads-percentage-badge').show().text('Ads %: ' + Math.round(adsPercentage) + '%');
+                $('#pft-percentage-filtered-badge').show().text('PFT %: ' + Math.round(pftPercentageFiltered) + '%');
+            } else {
+                $('#ads-percentage-badge').hide();
+                $('#pft-percentage-filtered-badge').hide();
+            }
         }
 
+        // Build Column Visibility Dropdown
         function buildColumnDropdown() {
             const menu = document.getElementById("column-dropdown-menu");
             menu.innerHTML = '';
@@ -817,6 +707,11 @@
         table.on('renderComplete', function() {
             updateSummary();
         });
+        
+        // Update summary when filters change
+        table.on('dataFiltered', function() {
+            updateSummary();
+        });
 
         // Toggle column from dropdown
         document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
@@ -842,9 +737,9 @@
         });
 
         // Export functionality
-        // $('#export-btn').on('click', function() {
-        //     table.download("csv", "amazon_sales_data.csv");
-        // });
+        $('#export-btn').on('click', function() {
+            table.download("csv", "amazon_daily_sales_data.csv");
+        });
     });
 </script>
 @endsection
