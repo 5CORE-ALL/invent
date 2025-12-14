@@ -1506,6 +1506,13 @@
                                             <div class="metric-total" id="lDil-total">0</div>
                                         </div>
                                     </th>
+                                    <th data-field="mercari_sku" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                Mercari SKU <span class="sort-arrow">↓</span>
+                                            </div>
+                                        </div>
+                                    </th>
                                     <th data-field="w_dil" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -2263,6 +2270,7 @@
                                     '', // Get R&A value from server data
                                     INV: item.INV || 0,
                                     L30: item.L30 || 0,
+                                    Mercari_SKU: item.Mercari_SKU || '',
 
                                     is_parent: item.Sku ? item.Sku
                                         .toUpperCase().includes("PARENT") : false,
@@ -2451,6 +2459,8 @@
                 </div>
             </div>
         `));
+                    // Mercari SKU column
+                    $row.append($('<td>').text(item.Mercari_SKU || ''));
 
                     // S DIL with color coding - using the calculated S_DIL value
                     const sheetDilValue = item.dil || 0;

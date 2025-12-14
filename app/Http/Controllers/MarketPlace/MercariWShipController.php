@@ -8,9 +8,12 @@ use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\MercariWShipDataView;
+use App\Models\MercariDailyData;
 use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -58,6 +61,199 @@ class MercariWShipController extends Controller
         ]);
     }
 
+    /**
+     * Extract potential SKUs from item title and match with ProductMaster
+     * Returns the matched ProductMaster SKU or null
+     * Examples: 
+     * - "Speaker Stand Tripod... SS ECO 2PK BLK WoB" -> matches "ECO 2PK BLK WoB"
+     * - "... GRack 3N1" -> matches "GRack 3N1" or "GRACK 3N1"
+     * - "... 20R WoB" -> matches "20R WoB"
+     */
+    private function extractAndMatchSkuFromTitle($itemTitle, $productMastersBySku)
+    {
+        if (empty($itemTitle)) {
+            return null;
+        }
+
+        $variations = [];
+        
+        // Pattern 1: Extract last sequence (highest priority)
+        // Match last sequence that contains letters/numbers/dashes/spaces (3+ chars)
+        // This handles: "ECO 2PK BLK WoB", "SS ECO 2PK BLK WoB", "GRack 3N1", "20R WoB"
+        if (preg_match('/\b([A-Za-z0-9\s\-]{3,})\s*$/', $itemTitle, $matches)) {
+            $lastPart = trim($matches[1]);
+            
+            // Try the full last part first (preserve original case)
+            $variations[] = $lastPart; // "GRack 3N1", "20R WoB", "SS ECO 2PK BLK WoB"
+            $variations[] = strtoupper($lastPart); // "GRACK 3N1", "20R WOB"
+            $variations[] = str_replace(' ', '', $lastPart); // "GRack3N1"
+            $variations[] = str_replace(' ', '', strtoupper($lastPart)); // "GRACK3N1"
+            $variations[] = str_replace([' ', '-'], '', strtoupper($lastPart)); // "GRACK3N1"
+            
+            // If last part has multiple words, try without the first word (in case of prefix like "SS")
+            $words = explode(' ', $lastPart);
+            if (count($words) > 1) {
+                // Remove first word if it's short (likely a prefix like "SS")
+                if (strlen($words[0]) <= 3) {
+                    $withoutPrefix = trim(implode(' ', array_slice($words, 1)));
+                    if (strlen($withoutPrefix) >= 3) {
+                        $variations[] = $withoutPrefix; // "ECO 2PK BLK WoB", "3N1"
+                        $variations[] = strtoupper($withoutPrefix); // "ECO 2PK BLK WOB"
+                        $variations[] = str_replace(' ', '', $withoutPrefix);
+                        $variations[] = str_replace(' ', '', strtoupper($withoutPrefix));
+                        $variations[] = str_replace([' ', '-'], '', strtoupper($withoutPrefix));
+                    }
+                }
+            }
+        }
+
+        // Pattern 2: Extract mixed case patterns (e.g., "GRack 3N1", "20R WoB")
+        // Match sequences with letters (mixed case) and numbers
+        if (preg_match_all('/\b([A-Za-z]{1,}[a-z]*\s*[A-Z0-9]{1,}(?:\s+[A-Za-z0-9]+){0,3})\b/', $itemTitle, $allMatches)) {
+            foreach ($allMatches[1] as $match) {
+                $trimmed = trim($match);
+                if (strlen($trimmed) >= 3) {
+                    $variations[] = $trimmed; // "GRack 3N1"
+                    $variations[] = strtoupper($trimmed); // "GRACK 3N1"
+                    $variations[] = str_replace(' ', '', $trimmed); // "GRack3N1"
+                    $variations[] = str_replace(' ', '', strtoupper($trimmed)); // "GRACK3N1"
+                }
+            }
+        }
+
+        // Pattern 3: Extract patterns starting with numbers (e.g., "20R WoB")
+        // Match sequences starting with digits followed by letters and words
+        if (preg_match_all('/\b(\d+[A-Za-z]+\s+[A-Za-z0-9]+(?:\s+[A-Za-z0-9]+){0,2})\b/', $itemTitle, $allMatches)) {
+            foreach ($allMatches[1] as $match) {
+                $trimmed = trim($match);
+                if (strlen($trimmed) >= 3) {
+                    $variations[] = $trimmed; // "20R WoB"
+                    $variations[] = strtoupper($trimmed); // "20R WOB"
+                    $variations[] = str_replace(' ', '', $trimmed); // "20RWoB"
+                    $variations[] = str_replace(' ', '', strtoupper($trimmed)); // "20RWOB"
+                }
+            }
+        }
+
+        // Pattern 4: Extract product code patterns (e.g., "SS ECO 2PK BLK", "HW 405 WH")
+        // Match sequences like "XX XXX" or "XXX XX" (2+ uppercase letters followed by alphanumeric)
+        if (preg_match_all('/\b([A-Z]{2,}\s+[A-Z0-9]{1,}(?:\s+[A-Z0-9]+){0,4})\b/', $itemTitle, $allMatches)) {
+            foreach ($allMatches[1] as $match) {
+                $trimmed = trim($match);
+                if (strlen($trimmed) >= 4) {
+                    $variations[] = $trimmed; // "SS ECO 2PK BLK"
+                    $variations[] = str_replace(' ', '', $trimmed); // "SSECO2PKBLK"
+                }
+            }
+        }
+
+        // Pattern 5: Extract all alphanumeric sequences (potential SKUs)
+        if (preg_match_all('/\b([A-Za-z0-9\-]{4,})\b/', $itemTitle, $allMatches)) {
+            foreach ($allMatches[1] as $match) {
+                $trimmed = trim($match);
+                $variations[] = $trimmed;
+                $variations[] = strtoupper($trimmed);
+            }
+        }
+
+        // Remove duplicates and empty values
+        $variations = array_values(array_unique(array_filter($variations)));
+
+        // Try to match each variation with ProductMaster SKUs
+        foreach ($variations as $variation) {
+            $normalized = strtoupper(trim($variation));
+            $normalizedNoSpaces = str_replace([' ', '-', '_'], '', $normalized);
+
+            // Try exact match first
+            if (isset($productMastersBySku[$normalized])) {
+                return $productMastersBySku[$normalized]->sku;
+            }
+            if (isset($productMastersBySku[$normalizedNoSpaces])) {
+                return $productMastersBySku[$normalizedNoSpaces]->sku;
+            }
+
+            // Try partial match with ProductMaster SKUs
+            foreach ($productMastersBySku as $pmSku => $pm) {
+                $pmSkuUpper = strtoupper(trim($pmSku));
+                $pmSkuNoSpaces = str_replace([' ', '-', '_'], '', $pmSkuUpper);
+                
+                // Exact match
+                if ($normalized === $pmSkuUpper || $normalizedNoSpaces === $pmSkuNoSpaces) {
+                    return $pm->sku;
+                }
+                
+                // Partial match (if variation contains or is contained in SKU)
+                if (strlen($normalized) >= 3) {
+                    if (stripos($pmSkuUpper, $normalized) !== false || 
+                        stripos($normalized, $pmSkuUpper) !== false ||
+                        stripos($pmSkuNoSpaces, $normalizedNoSpaces) !== false ||
+                        stripos($normalizedNoSpaces, $pmSkuNoSpaces) !== false) {
+                        return $pm->sku;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get L30 order counts from MercariDailyData for all SKUs
+     * Returns an array mapping SKU to order count and matched SKUs
+     */
+    private function getL30OrderCounts($skus, $productMastersBySku)
+    {
+        // Get last 30 days date
+        $thirtyDaysAgo = Carbon::now()->subDays(30);
+
+        // Get all Mercari daily data from last 30 days where buyer_shipping_fee is NOT null, excluding cancelled orders
+        $mercariOrders = MercariDailyData::whereNotNull('buyer_shipping_fee')
+            ->where('sold_date', '>=', $thirtyDaysAgo)
+            ->whereNull('canceled_date')
+            ->where(function($query) {
+                $query->whereNull('order_status')
+                      ->orWhere('order_status', 'not like', '%cancelled%')
+                      ->orWhere('order_status', 'not like', '%canceled%');
+            })
+            ->get();
+
+        // Create SKU lookup map (normalized versions)
+        $skuLookup = [];
+        foreach ($skus as $sku) {
+            $skuUpper = strtoupper(trim($sku));
+            $skuNoSpaces = str_replace([' ', '-', '_'], '', $skuUpper);
+            $skuLookup[$skuUpper] = $sku;
+            $skuLookup[$skuNoSpaces] = $sku;
+        }
+
+        // Initialize order counts
+        $orderCounts = array_fill_keys($skus, 0);
+        // Store matched SKUs for each ProductMaster SKU
+        $matchedSkus = [];
+
+        // Process each order
+        foreach ($mercariOrders as $order) {
+            if (empty($order->item_title)) {
+                continue;
+            }
+
+            // Extract and match SKU from title with ProductMaster
+            $matchedSku = $this->extractAndMatchSkuFromTitle($order->item_title, $productMastersBySku);
+
+            // Increment count for matched SKU and store the matched SKU
+            if ($matchedSku && isset($orderCounts[$matchedSku])) {
+                $orderCounts[$matchedSku]++;
+                // Store the exact matched ProductMaster SKU
+                $matchedSkus[$matchedSku] = $matchedSku;
+            }
+        }
+
+        return [
+            'orderCounts' => $orderCounts,
+            'matchedSkus' => $matchedSkus
+        ];
+    }
+
     public function getViewMercariWshipData(Request $request)
     {
         // Get percentage from cache or database
@@ -88,6 +284,21 @@ class MercariWShipController extends Controller
             $listedValues[$sku] = isset($value['Listed']) ? (int) $value['Listed'] : false;
             $liveValues[$sku] = isset($value['Live']) ? (int) $value['Live'] : false;
         }
+
+        // Create ProductMaster lookup map for SKU matching
+        $productMastersBySku = ProductMaster::all()->mapWithKeys(function($pm) {
+            $sku = strtoupper(trim($pm->sku));
+            $skuNoSpaces = str_replace([' ', '-', '_'], '', $sku);
+            return [
+                $sku => $pm,
+                $skuNoSpaces => $pm,
+            ];
+        });
+
+        // Get L30 order counts from MercariDailyData for all SKUs at once
+        $mercariData = $this->getL30OrderCounts($skus, $productMastersBySku);
+        $mercariOrderCounts = $mercariData['orderCounts'];
+        $matchedSkus = $mercariData['matchedSkus'];
 
         // Process data from product master and shopify tables
         $processedData = [];
@@ -121,11 +332,18 @@ class MercariWShipController extends Controller
             if (isset($shopifyData[$sku])) {
                 $shopifyItem = $shopifyData[$sku];
                 $processedItem['INV'] = $shopifyItem->inv ?? 0;
-                $processedItem['L30'] = $shopifyItem->quantity ?? 0;
+                // Use Mercari order count if available, otherwise use Shopify quantity
+                $processedItem['L30'] = isset($mercariOrderCounts[$sku]) && $mercariOrderCounts[$sku] > 0 
+                    ? $mercariOrderCounts[$sku] 
+                    : ($shopifyItem->quantity ?? 0);
             } else {
                 $processedItem['INV'] = 0;
-                $processedItem['L30'] = 0;
+                // Use Mercari order count if available
+                $processedItem['L30'] = $mercariOrderCounts[$sku] ?? 0;
             }
+
+            // Add matched SKU from Mercari orders (if found), otherwise use ProductMaster SKU
+            $processedItem['Mercari_SKU'] = isset($matchedSkus[$sku]) ? $matchedSkus[$sku] : $sku;
 
             // Fetch NR value if available
             $processedItem['NR'] = $nrValues[$sku] ?? false;

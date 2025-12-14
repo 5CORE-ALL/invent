@@ -863,6 +863,8 @@
                         <li><a href="{{ url('temu-tabulator') }}">Temu Sales Data</a></li>
 
                         <li><a href="{{ url('shein-tabulator') }}">Shein Sales Data</a></li>
+
+                        <li><a href="{{ url('mercari-tabulator') }}">Mercari Sales Data</a></li>
                     </ul>
                 </div>
             </li>
