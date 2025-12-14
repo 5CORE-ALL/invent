@@ -1183,6 +1183,34 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //Catategory routes
     Route::get('/category.list', [CategoryController::class, 'categoryList'])->name('category.list');
+    Route::get('/category-master', [CategoryController::class, 'categoryMaster'])->name('category.master');
+    Route::get('/category-master-data-view', [CategoryController::class, 'getCategoryMasterData'])->name('category.master.data');
+    Route::get('/id-master', [CategoryController::class, 'idMaster'])->name('id.master');
+    Route::get('/id-master-data-view', [CategoryController::class, 'getIdMasterData'])->name('id.master.data');
+    Route::get('/dim-wt-master', [CategoryController::class, 'dimWtMaster'])->name('dim.wt.master');
+    Route::get('/dim-wt-master-data-view', [CategoryController::class, 'getDimWtMasterData'])->name('dim.wt.master.data');
+    Route::get('/shipping-master', [CategoryController::class, 'shippingMaster'])->name('shipping.master');
+    Route::get('/shipping-master-data-view', [CategoryController::class, 'getShippingMasterData'])->name('shipping.master.data');
+    Route::get('/general-specific-master', [CategoryController::class, 'generalSpecificMaster'])->name('general.specific.master');
+    Route::get('/general-specific-master-data-view', [CategoryController::class, 'getGeneralSpecificMasterData'])->name('general.specific.master.data');
+    Route::get('/general-specific-master/skus', [CategoryController::class, 'getSkusForDropdown'])->name('general.specific.master.skus');
+    Route::post('/general-specific-master/store', [CategoryController::class, 'storeGeneralSpecificMaster'])->name('general.specific.master.store');
+    Route::post('/general-specific-master/update', [CategoryController::class, 'updateGeneralSpecificMaster'])->name('general.specific.master.update');
+    Route::get('/compliance-master', [CategoryController::class, 'complianceMaster'])->name('compliance.master');
+    Route::get('/compliance-master-data-view', [CategoryController::class, 'getComplianceMasterData'])->name('compliance.master.data');
+    Route::post('/compliance-master/store', [CategoryController::class, 'storeComplianceMaster'])->name('compliance.master.store');
+    Route::get('/extra-features-master', [CategoryController::class, 'extraFeaturesMaster'])->name('extra.features.master');
+    Route::get('/extra-features-master-data-view', [CategoryController::class, 'getExtraFeaturesMasterData'])->name('extra.features.master.data');
+    Route::post('/extra-features-master/store', [CategoryController::class, 'storeExtraFeaturesMaster'])->name('extra.features.master.store');
+    Route::get('/a-plus-images-master', [CategoryController::class, 'aPlusImagesMaster'])->name('a.plus.images.master');
+    Route::get('/a-plus-images-master-data-view', [CategoryController::class, 'getAPlusImagesMasterData'])->name('a.plus.images.master.data');
+    Route::post('/a-plus-images-master/store', [CategoryController::class, 'storeAPlusImagesMaster'])->name('a.plus.images.master.store');
+    Route::get('/keywords-master', [CategoryController::class, 'keywordsMaster'])->name('keywords.master');
+    Route::get('/keywords-master-data-view', [CategoryController::class, 'getKeywordsMasterData'])->name('keywords.master.data');
+    Route::post('/keywords-master/store', [CategoryController::class, 'storeKeywordsMaster'])->name('keywords.master.store');
+    Route::get('/competitors-master', [CategoryController::class, 'competitorsMaster'])->name('competitors.master');
+    Route::get('/competitors-master-data-view', [CategoryController::class, 'getCompetitorsMasterData'])->name('competitors.master.data');
+    Route::post('/competitors-master/store', [CategoryController::class, 'storeCompetitorsMaster'])->name('competitors.master.store');
     Route::post('/category.create', [CategoryController::class, 'postCategory'])->name('category.create');
     Route::delete('/category/delete/{id}', [CategoryController::class, 'destroy'])->name('category.delete');
     Route::post('/category/bulk-delete', [CategoryController::class, 'bulkDelete'])->name('category.bulk-delete');
