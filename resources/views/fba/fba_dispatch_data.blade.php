@@ -31,6 +31,19 @@
             padding-right: 0px !important;
         }
         
+        /* Ensure all modals have proper z-index */
+        .modal {
+            z-index: 1050 !important;
+        }
+        .modal.show {
+            z-index: 1050 !important;
+        }
+        .modal-backdrop {
+            z-index: 1040 !important;
+        }
+        .modal-backdrop.show {
+            z-index: 1040 !important;
+        }
         /* Ensure missing fields modal is visible */
         #missingFieldsModal {
             z-index: 1060 !important;
@@ -38,8 +51,16 @@
         #missingFieldsModal .modal-dialog {
             z-index: 1061 !important;
         }
-        .modal-backdrop {
-            z-index: 1059 !important;
+        /* Fix modal stacking issues */
+        body.modal-open {
+            overflow: hidden;
+        }
+        body.modal-open .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
         }
     </style>
 @endsection
@@ -493,7 +514,42 @@
                     });
             }
 
+            // Toast notification function
+            function showToast(message, type = 'info') {
+                const toastContainer = document.querySelector('.toast-container');
+                if (!toastContainer) return;
+                
+                const toast = document.createElement('div');
+                toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} border-0`;
+                toast.setAttribute('role', 'alert');
+                toast.setAttribute('aria-live', 'assertive');
+                toast.setAttribute('aria-atomic', 'true');
+                toast.innerHTML = `
+                    <div class="d-flex">
+                        <div class="toast-body">${message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                `;
+                toastContainer.appendChild(toast);
+                const bsToast = new bootstrap.Toast(toast);
+                bsToast.show();
+                toast.addEventListener('hidden.bs.toast', () => toast.remove());
+            }
+
             $(document).ready(function() {
+                // Fix modal backdrop z-index issues globally
+                $(document).on('shown.bs.modal', '.modal', function() {
+                    $(this).css('z-index', '1050');
+                    $('.modal-backdrop').not('.stacked').css('z-index', '1040').addClass('stacked');
+                });
+                
+                $(document).on('hidden.bs.modal', '.modal', function() {
+                    // Remove backdrop if no other modals are open
+                    if ($('.modal.show').length === 0) {
+                        $('.modal-backdrop').remove();
+                    }
+                });
+                
                 // Initialize SKU metrics chart
                 initSkuMetricsChart();
 
@@ -519,7 +575,15 @@
                     $('#sku-chart-days-filter').val('7');
                     $('#chart-no-data-message').hide();
                     loadSkuMetricsData(sku, 7);
-                    $('#skuMetricsModal').modal('show');
+                    
+                    // Fix modal z-index and backdrop issues
+                    const modal = $('#skuMetricsModal');
+                    modal.appendTo('body');
+                    modal.css('z-index', '1050');
+                    modal.modal('show');
+                    
+                    // Ensure backdrop is properly configured
+                    $('.modal-backdrop').css('z-index', '1040');
                 });
 
                 const table = new Tabulator("#fba-table", {
@@ -946,18 +1010,28 @@
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
+                                
+                                // Handle empty values - send empty string if cleared
+                                if (value === null || value === undefined) {
+                                    value = '';
+                                } else {
+                                    value = String(value).trim();
+                                }
 
                                 $.ajax({
                                     url: '/update-fba-manual-data',
                                     method: 'POST',
                                     data: {
-                                        sku: data.FBA_SKU,
+                                        sku: data.FBA_SKU || data.SKU,
                                         field: 'length',
                                         value: value,
                                         _token: '{{ csrf_token() }}'
                                     },
                                     success: function() {
                                         table.replaceData();
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving Length:', xhr);
                                     }
                                 });
                             }
@@ -972,18 +1046,28 @@
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
+                                
+                                // Handle empty values - send empty string if cleared
+                                if (value === null || value === undefined) {
+                                    value = '';
+                                } else {
+                                    value = String(value).trim();
+                                }
 
                                 $.ajax({
                                     url: '/update-fba-manual-data',
                                     method: 'POST',
                                     data: {
-                                        sku: data.FBA_SKU,
+                                        sku: data.FBA_SKU || data.SKU,
                                         field: 'width',
                                         value: value,
                                         _token: '{{ csrf_token() }}'
                                     },
                                     success: function() {
                                         table.replaceData();
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving Width:', xhr);
                                     }
                                 });
                             }
@@ -998,18 +1082,28 @@
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
+                                
+                                // Handle empty values - send empty string if cleared
+                                if (value === null || value === undefined) {
+                                    value = '';
+                                } else {
+                                    value = String(value).trim();
+                                }
 
                                 $.ajax({
                                     url: '/update-fba-manual-data',
                                     method: 'POST',
                                     data: {
-                                        sku: data.FBA_SKU,
+                                        sku: data.FBA_SKU || data.SKU,
                                         field: 'height',
                                         value: value,
                                         _token: '{{ csrf_token() }}'
                                     },
                                     success: function() {
                                         table.replaceData();
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving Height:', xhr);
                                     }
                                 });
                             }
@@ -1021,7 +1115,35 @@
                             field: "Quantity_in_each_box",
                             hozAlign: "center",
                             visible: false,
-                            editor: "input"
+                            editor: "input",
+                            cellEdited: function(cell) {
+                                var data = cell.getRow().getData();
+                                var value = cell.getValue();
+                                
+                                // Handle empty values - send empty string if cleared
+                                if (value === null || value === undefined) {
+                                    value = '';
+                                } else {
+                                    value = String(value).trim();
+                                }
+
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.FBA_SKU || data.SKU,
+                                        field: 'quantity_in_each_box',
+                                        value: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function() {
+                                        table.replaceData();
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving Quantity_in_each_box:', xhr);
+                                    }
+                                });
+                            }
                         },
 
                         {
@@ -1029,7 +1151,35 @@
                             field: "GW_CTN",
                             hozAlign: "center",
                             visible: false,
-                            editor: "input"
+                            editor: "input",
+                            cellEdited: function(cell) {
+                                var data = cell.getRow().getData();
+                                var value = cell.getValue();
+                                
+                                // Handle empty values - send empty string if cleared
+                                if (value === null || value === undefined) {
+                                    value = '';
+                                } else {
+                                    value = String(value).trim();
+                                }
+
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.FBA_SKU || data.SKU,
+                                        field: 'gw_ctn',
+                                        value: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function() {
+                                        table.replaceData();
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving GW_CTN:', xhr);
+                                    }
+                                });
+                            }
                         },
 
                         {
@@ -1037,7 +1187,35 @@
                             field: "Shipping_Amount",
                             hozAlign: "center",
                             visible: false,
-                            editor: "input"
+                            editor: "input",
+                            cellEdited: function(cell) {
+                                var data = cell.getRow().getData();
+                                var value = cell.getValue();
+                                
+                                // Handle empty values - send empty string if cleared
+                                if (value === null || value === undefined) {
+                                    value = '';
+                                } else {
+                                    value = String(value).trim();
+                                }
+
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        sku: data.FBA_SKU || data.SKU,
+                                        field: 'shipping_amount',
+                                        value: value,
+                                        _token: '{{ csrf_token() }}'
+                                    },
+                                    success: function() {
+                                        table.replaceData();
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error saving Shipping_Amount:', xhr);
+                                    }
+                                });
+                            }
                         },
 
                         {
@@ -1331,29 +1509,47 @@
                     var field = cell.getColumn().getField();
                     var value = cell.getValue();
 
+                    // Skip fields that have specific cellEdited handlers (Length, Width, Height, Quantity_in_each_box, GW_CTN, Shipping_Amount)
+                    if (field === 'Length' || field === 'Width' || field === 'Height' || 
+                        field === 'Quantity_in_each_box' || field === 'GW_CTN' || field === 'Shipping_Amount') {
+                        return; // These fields have specific handlers, skip general handler
+                    }
+                    
                     if (field === 'Barcode' || field === 'Done' || field === 'Listed' || field === 'Live' ||
-                        field === 'Dispatch_Date' || field === 'Weight' || field === 'WH_ACT' || field ===
-                        'Quantity_in_each_box' || field === 'GW_CTN' ||
+                        field === 'Dispatch_Date' || field === 'Weight' || field === 'WH_ACT' ||
                         field === 'Total_quantity_sent' || field ===
                         'IN_Charges' ||
-                        field === 'Warehouse_INV_Reduction' || field === 'Shipping_Amount' || field ===
+                        field === 'Warehouse_INV_Reduction' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field ===
                         'FBA_Fee_Manual' || field === 'MSL' || field === 'Correct_Cost' || field ===
-                        'Approval' || field === 'Profit_is_ok') {
+                        'Approval' || field === 'Profit_is_ok' || field === 'UPC_Codes') {
+                        
+                        // Convert field name to lowercase for backend (UPC_Codes -> upc_codes)
+                        var fieldName = field.toLowerCase();
+                        
+                        // Handle empty values properly - send empty string if cleared
+                        var processedValue = value;
+                        if (processedValue === null || processedValue === undefined) {
+                            processedValue = '';
+                        } else if (typeof processedValue === 'string') {
+                            processedValue = processedValue.trim();
+                        }
+                        
                         $.ajax({
                             url: '/update-fba-manual-data',
                             method: 'POST',
                             data: {
-                                sku: data.FBA_SKU,
-                                field: field.toLowerCase(),
-                                value: value,
+                                sku: data.FBA_SKU || data.SKU,
+                                field: fieldName,
+                                value: processedValue,
                                 _token: '{{ csrf_token() }}'
                             },
                             success: function(response) {
-                                console.log('Data saved successfully');
+                                console.log('Data saved successfully for field:', fieldName, 'value:', processedValue);
                             },
                             error: function(xhr) {
-                                console.error('Error saving data');
+                                console.error('Error saving data for field:', fieldName, 'Error:', xhr.responseText);
+                                alert('Failed to save ' + field + '. Please try again.');
                             }
                         });
                     }
@@ -1497,6 +1693,12 @@
 
                 // Apply filters on initial load (to hide parents by default)
                 applyFilters();
+
+                // Fix import modal z-index when opened
+                $('#importModal').on('show.bs.modal', function() {
+                    $(this).appendTo('body');
+                    $(this).css('z-index', '1050');
+                });
 
                 // AJAX Import Handler
                 $('#importForm').on('submit', function(e) {
@@ -1741,7 +1943,15 @@
                 });
                 console.log('Generated HTML:', html);
                 $('#lmpDataList').html(html);
-                $('#lmpModal').appendTo('body').modal('show');
+                
+                // Fix modal z-index and backdrop issues
+                const modal = $('#lmpModal');
+                modal.appendTo('body');
+                modal.css('z-index', '1050');
+                modal.modal('show');
+                
+                // Ensure backdrop is properly configured
+                $('.modal-backdrop').css('z-index', '1040');
                 console.log('Modal shown');
             }
 
@@ -1779,9 +1989,13 @@
                 // Use the same pattern as other modals in this file
                 const modal = $('#missingFieldsModal');
                 modal.appendTo('body');
+                modal.css('z-index', '1060');
                 
                 // Show modal using Bootstrap/jQuery modal
                 modal.modal('show');
+                
+                // Ensure backdrop is properly configured
+                $('.modal-backdrop').css('z-index', '1059');
                 
                 console.log('Modal shown, fields count:', fields.length);
             });
@@ -1789,6 +2003,7 @@
             // Monthly sales modal handler (twelve-month breakdown)
             $(document).on('click', '.monthly-eye', function(e) {
                 e.preventDefault();
+                e.stopPropagation();
                 try {
                     // data-months is url-encoded JSON
                     const raw = $(this).attr('data-months') || '';
@@ -1813,11 +2028,18 @@
                         html += `<td class='text-end' style="vertical-align:middle;">${formatted}</td>`;
                     });
                     html += '</tr></tbody></table></div>';
-                    html += '</tbody></table>';
 
                     $('#monthlyModalSku').text(sku);
                     $('#monthlySalesModalBody').html(html);
-                    $('#monthlySalesModal').appendTo('body').modal('show');
+                    
+                    // Fix modal z-index and backdrop issues
+                    const modal = $('#monthlySalesModal');
+                    modal.appendTo('body');
+                    modal.css('z-index', '1050');
+                    modal.modal('show');
+                    
+                    // Ensure backdrop is properly configured
+                    $('.modal-backdrop').css('z-index', '1040');
                 } catch (err) {
                     console.error('Failed to show monthly sales modal', err);
                     alert('Failed to load monthly sales details');

@@ -300,8 +300,52 @@
                     <ul class="side-nav-second-level">
 
                         <li>
-                            <a href="{{ route('product.master') }}">CP
-                                Masters</a>
+                            <a href="{{ route('product.master') }}">CP Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('category.master') }}">Category Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('id.master') }}">ID Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('dim.wt.master') }}">Dim & Wt Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('shipping.master') }}">Shipping Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('general.specific.master') }}">General Specific Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('compliance.master') }}">Compliance Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('extra.features.master') }}">Extra Features Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('a.plus.images.master') }}">A+ Images Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('keywords.master') }}">Keywords Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('competitors.master') }}">Competitors Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('target.keywords.master') }}">Target Keywords Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('target.products.master') }}">Target Products Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('tag.lines.master') }}">Tag lines Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('group.master') }}">Group Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('seo.keywords.master') }}">SEO Keywords master</a>
                         </li>
                         <li>
                             <a href="{{ route('title.master') }}">Title Master</a>
@@ -863,6 +907,8 @@
                         <li><a href="{{ url('temu-tabulator') }}">Temu Sales Data</a></li>
 
                         <li><a href="{{ url('shein-tabulator') }}">Shein Sales Data</a></li>
+
+                        <li><a href="{{ url('mercari-tabulator') }}">Mercari Sales Data</a></li>
                     </ul>
                 </div>
             </li>
