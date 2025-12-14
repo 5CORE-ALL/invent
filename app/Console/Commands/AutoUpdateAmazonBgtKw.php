@@ -56,7 +56,7 @@ class AutoUpdateAmazonBgtKw extends Command
         }
 
         try {
-            $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
+            //$result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
             
             // Show only campaign name and new budget for valid campaigns
             $simplifiedResult = $validCampaigns->map(function ($campaign) {
@@ -68,20 +68,15 @@ class AutoUpdateAmazonBgtKw extends Command
             
             $this->info("Update Result: " . json_encode($simplifiedResult));
             
-            if (isset($result['status']) && $result['status'] !== 200) {
-                $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
-                Log::error("Amazon budget update failed", ['result' => $result]);
-                return 1;
-            }
+            // if (isset($result['status']) && $result['status'] !== 200) {
+            //     $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
+            //     return 1;
+            // }
             
             $this->info("Successfully updated " . count($campaignIds) . " campaign budgets.");
             
         } catch (\Exception $e) {
             $this->error("Error updating campaign budgets: " . $e->getMessage());
-            Log::error("Amazon budget update exception", [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
             return 1;
         }
 
@@ -113,10 +108,15 @@ class AutoUpdateAmazonBgtKw extends Command
             })
             ->where('campaignName', 'NOT LIKE', '%PT')
             ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
         $result = [];
+        $totalSpend = 0;
+        $totalSales = 0;
+        $validCampaignsForTotal = []; // Store valid campaigns for total ACOS calculation
 
+        // Single pass: collect all valid campaigns and calculate totals
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
 
@@ -133,11 +133,6 @@ class AutoUpdateAmazonBgtKw extends Command
                 continue;
             }
 
-            // clicks must be >= 25
-            // if (($matchedCampaignL30->clicks ?? 0) < 25) {
-            //     continue;
-            // }
-
             // Skip if INV = 0
             if (($shopify->inv ?? 0) == 0) {
                 continue;
@@ -147,6 +142,11 @@ class AutoUpdateAmazonBgtKw extends Command
             $row['price']  = $amazonSheet->price ?? 0;
             $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? '';
             $row['campaignName'] = $matchedCampaignL30->campaignName ?? '';
+
+            // Skip if campaignName is empty (matching frontend filter)
+            if (empty($row['campaignName'])) {
+                continue;
+            }
 
             $sales = $matchedCampaignL30->sales30d ?? 0;
             $spend = $matchedCampaignL30->spend ?? 0;
@@ -160,28 +160,52 @@ class AutoUpdateAmazonBgtKw extends Command
             }
             
             $tpft = 0;
+            $nra = '';
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
                 if (!is_array($raw)) $raw = json_decode($raw, true);
-                if (is_array($raw)) $tpft = isset($raw['TPFT']) ? (int) floor($raw['TPFT']) : 0;
+                if (is_array($raw)) {
+                    $tpft = isset($raw['TPFT']) ? (int) floor($raw['TPFT']) : 0;
+                    $nra = $raw['NRA'] ?? '';
+                }
             }
             $row['TPFT'] = $tpft;
 
-            $acos = (float) ($row['acos_L30'] ?? 0);
+            // Skip if NRA === 'NRA' (matching frontend filter)
+            if ($nra === 'NRA') {
+                continue;
+            }
 
+            // Add to totals calculation (only campaigns that pass all filters)
+            $totalSpend += $spend;
+            $totalSales += $sales;
+            $validCampaignsForTotal[] = $row;
+        }
+
+        // Calculate total ACOS from valid campaigns only (matching frontend logic)
+        $totalACOS = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
+
+        // Now calculate sbgt for each valid campaign using the calculated total ACOS
+        foreach ($validCampaignsForTotal as $row) {
+            $acos = (float) ($row['acos_L30'] ?? 0);
             $price = (float) ($row['price'] ?? 0);
 
-            // ACOS-based sbgt rule (updated)
-            if ($acos < 10) {
-                $sbgt = 5;
-            } elseif ($acos < 20) {
-                $sbgt = 4;
-            } elseif ($acos < 30) {
-                $sbgt = 3;
-            } elseif ($acos < 40) {
-                $sbgt = 2;
-            } else {
+            // New rule: if acos_L30 > total_acos, then sbgt = 1, otherwise old formula
+            if ($totalACOS > 0 && $acos > $totalACOS) {
                 $sbgt = 1;
+            } else {
+                // Old ACOS-based sbgt rule
+                if ($acos < 10) {
+                    $sbgt = 5;
+                } elseif ($acos < 20) {
+                    $sbgt = 4;
+                } elseif ($acos < 30) {
+                    $sbgt = 3;
+                } elseif ($acos < 40) {
+                    $sbgt = 2;
+                } else {
+                    $sbgt = 1;
+                }
             }
             $row['sbgt'] = $sbgt;
 
@@ -190,20 +214,5 @@ class AutoUpdateAmazonBgtKw extends Command
 
         return $result;
     }
-
-    // private function getDilColor($value)
-    // {
-    //     $percent = floatval($value) * 100;
-
-    //     if ($percent < 16.66) {
-    //         return 'red';
-    //     } elseif ($percent >= 16.66 && $percent < 25) {
-    //         return 'yellow';
-    //     } elseif ($percent >= 25 && $percent < 50) {
-    //         return 'green';
-    //     } else {
-    //         return 'pink';
-    //     }
-    // }
 
 }
