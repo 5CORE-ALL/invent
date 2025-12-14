@@ -1098,22 +1098,7 @@
                             <i class="fa fa-pen"></i>
                         </button>
                     </div>
-
-                    <div class="d-inline-flex align-items-center ms-2">
-                        <div class="badge bg-danger text-white px-3 py-2 me-2" style="font-size: 1rem; border-radius: 8px;">
-                            0 SOLD - <span id="zero-sold-count">0</span>
-                        </div>
-                        <div class="badge bg-primary text-white px-3 py-2 me-2"
-                            style="font-size: 1rem; border-radius: 8px;">
-                            SOLD - <span id="sold-count">0</span>
-                        </div>
-                        <div class="badge bg-danger text-white px-3 py-2 me-2" style="font-size: 1rem; border-radius: 8px;">
-                            RED MARGIN - <span id="red-margin-count">0</span>
-                        </div>
-                        <div class="badge bg-warning text-dark px-3 py-2" style="font-size: 1rem; border-radius: 8px;">
-                            NRA - <span id="nra-count">0</span>
-                        </div>
-                    </div>
+                    
                     <div id="" class="d-flex align-items-right">
                         <button id="hideSkuBtn" class="btn btn-outline-danger ms-2">
                             <i class="fa fa-eye-slash"></i> Hide SKU
@@ -1627,11 +1612,16 @@
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                         <h6 class="mb-3">All Calculations Summary</h6>
                         <div class="d-flex flex-wrap gap-2">
-                            <span class="badge bg-success fs-5 p-2" id="total-pft-summary-badge" style="color: black; font-weight: bold;">Total PFT: $0.00</span>
                             <span class="badge bg-primary fs-5 p-2" id="total-sales-summary-badge" style="color: black; font-weight: bold;">Total Sales: $0.00</span>
+                            <span class="badge bg-success fs-5 p-2" id="total-pft-summary-badge" style="color: black; font-weight: bold;">Total PFT: 0%</span>
                             <span class="badge bg-info fs-5 p-2" id="total-grpft-summary-badge" style="color: black; font-weight: bold;">Total GRPFT: 0%</span>
                             <span class="badge bg-warning fs-5 p-2" id="total-ad-spend-summary-badge" style="color: black; font-weight: bold;">Total AD Spend: $0.00</span>
                             <span class="badge bg-danger fs-5 p-2" id="total-el30-summary-badge" style="color: black; font-weight: bold;">Total EL 30: 0</span>
+                            <span class="badge bg-danger fs-5 p-2" id="zero-sold-count-summary" style="color: white; font-weight: bold;">0 SOLD: 0</span>
+                            <span class="badge bg-primary fs-5 p-2" id="sold-count-summary" style="color: white; font-weight: bold;">SOLD: 0</span>
+                            <span class="badge bg-danger fs-5 p-2" id="red-margin-count-summary" style="color: white; font-weight: bold;">RED MARGIN: 0</span>
+                            <span class="badge bg-warning fs-5 p-2" id="nra-count-summary" style="color: black; font-weight: bold;">NRA: 0</span>
+                            <span class="badge bg-secondary fs-5 p-2" id="nrl-count-summary" style="color: white; font-weight: bold;">NRL: 0</span>
                         </div>
                     </div>
                 </div>
@@ -2692,6 +2682,7 @@
                 let totalSku = 0;
                 let lowProfitCount = 0;
                 let nraCount = 0;
+                let nrlCount = 0;
 
                 filteredData.forEach(item => {
                     if (!item.is_parent) {
@@ -2708,6 +2699,9 @@
                         if (item.NR === 'NRA') {
                             nraCount++;
                         }
+                        if (item.nr_req === 'NR') {
+                            nrlCount++;
+                        }
                     }
                 });
 
@@ -2715,6 +2709,13 @@
                 $('#sold-count').text(totalSku - zeroSold);
                 $('#red-margin-count').text(lowProfitCount);
                 $('#nra-count').text(nraCount);
+                
+                // Update summary badges
+                $('#zero-sold-count-summary').text('0 SOLD: ' + zeroSold);
+                $('#sold-count-summary').text('SOLD: ' + (totalSku - zeroSold));
+                $('#red-margin-count-summary').text('RED MARGIN: ' + lowProfitCount);
+                $('#nra-count-summary').text('NRA: ' + nraCount);
+                $('#nrl-count-summary').text('NRL: ' + nrlCount);
 
                 updateRedMarginDataToChannelMaster(lowProfitCount);
             }
@@ -2813,7 +2814,7 @@
                     };
 
                     const getRoiColor = (value) => {
-                        const percent = parseFloat(value) * 100;
+                        const percent = parseFloat(value);
                         if (percent < 50) return 'red';
                         if (percent >= 50 && percent < 75) return 'yellow';
                         if (percent >= 75 && percent <= 125) return 'green';
@@ -3121,7 +3122,7 @@
                     // ROI with color coding
                     $row.append($('<td>').attr('data-field', 'roi').html(
                         typeof item.Roi === 'number' && !isNaN(item.Roi) ?
-                        `<span class="dil-percent-value ${getRoiColor(item.Roi)}">${Math.round(item.Roi * 100)}%</span>` :
+                        `<span class="dil-percent-value ${getRoiColor(item.Roi)}">${Math.round(item.Roi)}%</span>` :
                         ''
                     ));
 
@@ -5566,7 +5567,9 @@
                         profitSum: 0, // <-- new
                         salesL30Sum: 0, // <-- new
                         roiSum: 0,
+                        roiCount: 0, // <-- ROI count for average calculation
                         tacosTotal: 0,
+                        tacosCount: 0, // <-- Tacos count for average calculation
                         scvrSum: 0,
                         rowCount: 0,
                         listedCount: 0,
@@ -5577,8 +5580,11 @@
                         nraColCount: 0, // <-- NRA column counter
                         raColCount: 0, // <-- RA column counter
                         grpftTotal: 0, // <-- GRPFT total
+                        grpftCount: 0, // <-- GRPFT count for average calculation
                         pftTotal: 0, // <-- PFT total
+                        pftCount: 0, // <-- PFT count for average calculation
                         tprftTotal: 0, // <-- TPRFT total
+                        tprftCount: 0, // <-- TPRFT count for average calculation
                         totalPftAmount: 0, // <-- Total PFT Amount
                         totalAdSpend: 0, // <-- Total AD Spend
                         totalGrpftAmount: 0 // <-- Total GRPFT Amount
@@ -5644,8 +5650,19 @@
                         if (item.NR !== 'NRA') {
                             metrics.viewsTotal += views;
                         }
-                        metrics.roiSum += parseFloat(item.Roi) || 0;
-                        metrics.tacosTotal += parseFloat(item.Tacos30) || 0;
+                        // Only count ROI when we have valid price and LP (similar to PFT/GRPFT)
+                        const itemPriceForRoi = parseFloat(item['eBay Price']) || 0;
+                        const itemLpForRoi = parseFloat(item.LP || item.LP_productmaster) || 0;
+                        const roiValue = parseFloat(item.Roi) || 0;
+                        if (itemPriceForRoi > 0 && itemLpForRoi > 0 && !isNaN(roiValue) && isFinite(roiValue)) {
+                            metrics.roiSum += roiValue;
+                            metrics.roiCount++;
+                        }
+                        const tacosValue = parseFloat(item.Tacos30) || 0;
+                        if (!isNaN(tacosValue) && isFinite(tacosValue)) {
+                            metrics.tacosTotal += tacosValue;
+                            metrics.tacosCount++;
+                        }
                         metrics.totalSalesTotal += ((item['eBay L30']) * (parseFloat(item['eBay Price']) || 0));
                         metrics.scvrSum += (Number(item['views']) > 0) ?
                             (Number(item['eBay L30']) / Number(item['views'])) :
@@ -5670,9 +5687,11 @@
                             
                             if (!isNaN(itemPft) && isFinite(itemPft)) {
                                 metrics.pftTotal += itemPft * 100;
+                                metrics.pftCount++;
                             }
                             if (!isNaN(itemGrpft) && isFinite(itemGrpft)) {
                                 metrics.grpftTotal += itemGrpft * 100;
+                                metrics.grpftCount++;
                                 // Calculate GRPFT amount: (price * ebayAdPercentage / 100 - ship - lp) * L30
                                 const itemL30 = parseFloat(item['eBay L30']) || 0;
                                 const grpftAmount = ((itemPrice * (ebayAdPct / 100)) - itemShip - itemLp) * itemL30;
@@ -5682,6 +5701,7 @@
                             }
                             if (!isNaN(itemTprft) && isFinite(itemTprft)) {
                                 metrics.tprftTotal += itemTprft * 100;
+                                metrics.tprftCount++;
                             }
                         }
                         
@@ -5762,21 +5782,23 @@
                     }
 
                     // Calculate averages for GRPFT, PFT, and TPRFT
-                    const grpftAvg = divisor > 0 ? (metrics.grpftTotal / divisor) : 0;
-                    const pftAvg = divisor > 0 ? (metrics.pftTotal / divisor) : 0;
-                    const tprftAvg = divisor > 0 ? (metrics.tprftTotal / divisor) : 0;
+                    const grpftAvg = metrics.grpftCount > 0 ? (metrics.grpftTotal / metrics.grpftCount) : 0;
+                    const pftAvg = metrics.pftCount > 0 ? (metrics.pftTotal / metrics.pftCount) : 0;
+                    const tprftAvg = metrics.tprftCount > 0 ? (metrics.tprftTotal / metrics.tprftCount) : 0;
 
                     $('#grpft-total').text(grpftAvg.toFixed(0) + '%');
                     $('#pft-total').text(pftAvg.toFixed(0) + '%');
                     $('#tprft-total').text(tprftAvg.toFixed(0) + '%');
-                    $('#roi-total').text(Math.round((metrics.roiSum / divisor) * 100) + '%');
-                    $('#tacos-total').text(Math.round((metrics.tacosTotal / divisor) * 100) + '%');
+                    const roiAvg = metrics.roiCount > 0 ? (metrics.roiSum / metrics.roiCount) : 0;
+                    $('#roi-total').text(Math.round(roiAvg) + '%');
+                    const tacosAvg = metrics.tacosCount > 0 ? (metrics.tacosTotal / metrics.tacosCount) : 0;
+                    $('#tacos-total').text(Math.round(tacosAvg * 100) + '%');
                     $('#cvr-total').text(Math.round((metrics.scvrSum / divisor) * 100) + '%');
                     
                     // Update Summary Stats badges
-                    $('#total-pft-summary-badge').text('Total PFT: $' + metrics.totalPftAmount.toFixed(2));
+                    $('#total-pft-summary-badge').text('Total PFT: ' + pftAvg.toFixed(0) + '%');
                     $('#total-sales-summary-badge').text('Total Sales: $' + metrics.totalSalesTotal.toFixed(2));
-                    $('#total-grpft-summary-badge').text('Total GRPFT: $' + metrics.totalGrpftAmount.toFixed(2));
+                    $('#total-grpft-summary-badge').text('Total GRPFT: ' + grpftAvg.toFixed(0) + '%');
                     $('#total-ad-spend-summary-badge').text('Total AD Spend: $' + metrics.totalAdSpend.toFixed(2));
                     $('#total-el30-summary-badge').text('Total EL 30: ' + metrics.el30Total.toLocaleString());
 
@@ -5804,11 +5826,16 @@
                 $('#live-total').text('0');
                 
                 // Reset Summary Stats badges
-                $('#total-pft-summary-badge').text('Total PFT: $0.00');
+                $('#total-pft-summary-badge').text('Total PFT: 0%');
                 $('#total-sales-summary-badge').text('Total Sales: $0.00');
-                $('#total-grpft-summary-badge').text('Total GRPFT: $0.00');
+                $('#total-grpft-summary-badge').text('Total GRPFT: 0%');
                 $('#total-ad-spend-summary-badge').text('Total AD Spend: $0.00');
                 $('#total-el30-summary-badge').text('Total EL 30: 0');
+                $('#zero-sold-count-summary').text('0 SOLD: 0');
+                $('#sold-count-summary').text('SOLD: 0');
+                $('#red-margin-count-summary').text('RED MARGIN: 0');
+                $('#nra-count-summary').text('NRA: 0');
+                $('#nrl-count-summary').text('NRL: 0');
                 $('#req-total').text('0');
             }
 
