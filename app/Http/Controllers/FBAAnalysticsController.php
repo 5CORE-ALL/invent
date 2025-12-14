@@ -312,7 +312,58 @@ class FBAAnalysticsController extends Controller
       }
 
       $data = $manual->data ?? [];
-      $data[$field] = $value;
+      
+      // Handle empty values - remove field from data array if value is empty/null
+      // Fields that should be removable: length, width, height, quantity_in_each_box, gw_ctn, shipping_amount
+      $removableFields = ['length', 'width', 'height', 'quantity_in_each_box', 'gw_ctn', 'shipping_amount'];
+      
+      // Check if value is empty (null, empty string, or just whitespace)
+      $isEmpty = ($value === null || $value === '' || trim($value) === '');
+      
+      if ($isEmpty && in_array($field, $removableFields)) {
+         // Remove the field from data array
+         unset($data[$field]);
+         
+         // Special handling for dimension fields - update dimensions string
+         if (in_array($field, ['length', 'width', 'height'])) {
+            $length = $data['length'] ?? '';
+            $width = $data['width'] ?? '';
+            $height = $data['height'] ?? '';
+            
+            // Reconstruct dimensions, removing empty parts
+            $dimParts = array_filter([$length, $width, $height], function($part) {
+               return !empty(trim($part));
+            });
+            
+            if (empty($dimParts)) {
+               unset($data['dimensions']);
+            } else {
+               $data['dimensions'] = implode('x', $dimParts);
+            }
+         }
+      } else {
+         // Set the value (trim whitespace for string fields)
+         $data[$field] = is_string($value) ? trim($value) : $value;
+         
+         // Special handling for dimension fields - reconstruct combined dimensions
+         if (in_array($field, ['length', 'width', 'height'])) {
+            $length = $data['length'] ?? '';
+            $width = $data['width'] ?? '';
+            $height = $data['height'] ?? '';
+            
+            // Reconstruct dimensions, removing empty parts
+            $dimParts = array_filter([$length, $width, $height], function($part) {
+               return !empty(trim($part));
+            });
+            
+            if (empty($dimParts)) {
+               unset($data['dimensions']);
+            } else {
+               $data['dimensions'] = implode('x', $dimParts);
+            }
+         }
+      }
+      
       $manual->data = $data;
       $manual->save();
 
