@@ -696,7 +696,7 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                 formatter: function (cell) {
                 const value = cell.getValue();
                 if (value === "pieces")
-                  return '<span class="badge bg-primary" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">Pcs</span>';
+                  return '<span class="badge bg-info text-dark" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">Pcs</span>';
                 if (value === "pair")
                   return '<span class="badge bg-info text-dark" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">Pair</span>';
                 return `<span class="badge bg-secondary" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">${value || "—"}</span>`;

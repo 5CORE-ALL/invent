@@ -104,6 +104,40 @@
             margin-top: 4px;
         }
 
+        /* Success Toast Styles */
+        /* Success Modal Styles */
+        #successModal .modal-content {
+            border: none;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+        }
+
+        #successModal .modal-header {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            padding: 1.25rem 1.5rem;
+        }
+
+        #successModal .modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        #successModal .modal-body {
+            padding: 2rem 1.5rem;
+        }
+
+        #successModal .modal-footer {
+            border-top: 1px solid #e9ecef;
+            padding: 1rem 1.5rem;
+        }
+
+        #successModal .btn-success {
+            min-width: 120px;
+            font-weight: 600;
+            padding: 0.75rem 2rem;
+        }
 
     </style>
 @endsection
@@ -398,6 +432,30 @@
             </div>
         </div>
     </div>
+
+    <!-- Success Popup Modal (Centered) -->
+    <div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="successModalLabel">
+                        <i class="fas fa-check-circle me-2"></i>Success
+                    </h5>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <div class="mb-3">
+                        <i class="fas fa-check-circle text-success" style="font-size: 48px;"></i>
+                    </div>
+                    <p id="successModalMessage" class="mb-0" style="font-size: 16px; font-weight: 500;"></p>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-success btn-lg px-5" id="successModalOkBtn">
+                        <i class="fas fa-check me-2"></i>OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -553,7 +611,7 @@
                                 url: url,
                                 method: method,
                                 data: data,
-                                timeout: 20000,
+                                timeout: 95000, // Increased to 95 seconds to match backend timeout
                                 success: function (response) {
                                     console.log(`✓ Success on attempt ${attempt}`, response);
                                     resolve(response);
@@ -617,8 +675,18 @@
                     }
                 }
 
-                $('#incomingForm').on('submit', function (e) {
+                // Prevent duplicate form submissions
+                let isSubmitting = false;
+                
+                // Remove any existing submit handlers to prevent duplicates
+                $('#incomingForm').off('submit').on('submit', function (e) {
                     e.preventDefault();
+
+                    // Prevent multiple submissions
+                    if (isSubmitting) {
+                        console.log('Form submission already in progress, ignoring duplicate request');
+                        return false;
+                    }
 
                     $('.error-message').remove();
                     $('input, select').removeClass('is-invalid');
@@ -644,6 +712,12 @@
                     });
 
                     if (hasError) return; // stop if validation fails
+
+                    // Set submitting flag and disable submit button
+                    isSubmitting = true;
+                    const submitBtn = $(this).find('button[type="submit"]');
+                    const originalBtnText = submitBtn.html();
+                    submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Processing...');
 
                     // Create overlay loader dynamically
                     const overlay = document.createElement("div");
@@ -675,14 +749,22 @@
                         .then(function (response) {
                             document.getElementById("processing-overlay")?.remove();
                             
-                            // Show success message from server (inline)
+                            // Show green success popup (centered modal with OK button)
                             const message = response.message || 'Incoming inventory stored and updated in Shopify successfully!';
-                            $('#incoming-errors').html(`<div class="text-success" style="font-size:18px;font-weight:700">${escapeHtml(message)}</div>`);
+                            
+                            // Clear form and close incoming modal first
+                            $('#incoming-errors').html('');
                             $('#addWarehouseModal').modal('hide');
                             $('#incomingForm')[0].reset();
                             $('#parent').val('');
-                            // Reload after a short delay so user sees success briefly
-                            setTimeout(() => location.reload(), 600);
+                            $('#sku').val(null).trigger('change'); // Reset select2
+                            
+                            // Reset submit button
+                            submitBtn.prop('disabled', false).html(originalBtnText);
+                            isSubmitting = false;
+                            
+                            // Show success modal - page will reload only when OK is clicked
+                            showSuccessPopup(message);
                         })
                         .catch(function (error) {
                             document.getElementById("processing-overlay")?.remove();
@@ -703,6 +785,10 @@
 
                             // Display big red error inside modal area
                             $('#incoming-errors').html(`<div style="color:#b00020;font-size:20px;font-weight:800">${escapeHtml(errorMsg)}<br><small style=\"font-size:13px;color:#6b0b15\">(Attempted ${error.attempt} times)</small></div>`);
+
+                            // Reset submit button on error
+                            submitBtn.prop('disabled', false).html(originalBtnText);
+                            isSubmitting = false;
 
                             // Also log details to console for debugging
                             console.log('Error details:', {
@@ -732,6 +818,12 @@
                     $('#incomingForm')[0].reset(); // Only resets for add
                     $('#warehouseId').val('');
                     $('#warehouseModalLabel').text('Create Incoming');
+                    $('#incoming-errors').html(''); // Clear any error messages
+                    // Reset submission flag when opening modal
+                    isSubmitting = false;
+                    // Reset submit button state
+                    const submitBtn = $('#incomingForm').find('button[type="submit"]');
+                    submitBtn.prop('disabled', false).html('Save Incoming');
                     // $('#warehouseGroup').val('').trigger('change');
 
                     // Auto-fill PO number and date when modal is shown
@@ -755,6 +847,14 @@
                     $('#date').val(formattedDate);
 
                     $('#addWarehouseModal').modal('show');
+                });
+
+                // Reset submission flag when modal is closed
+                $('#addWarehouseModal').on('hidden.bs.modal', function () {
+                    isSubmitting = false;
+                    const submitBtn = $('#incomingForm').find('button[type="submit"]');
+                    submitBtn.prop('disabled', false).html('Save Incoming');
+                    $('#incoming-errors').html('');
                 });
 
             });
@@ -1157,6 +1257,43 @@
                     .replace(/>/g, '&gt;')
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#39;');
+            }
+
+            function showSuccessPopup(message) {
+                const modalElement = document.getElementById('successModal');
+                const modalMessage = document.getElementById('successModalMessage');
+                const okButton = document.getElementById('successModalOkBtn');
+                
+                if (modalElement && modalMessage) {
+                    // Set the message
+                    modalMessage.textContent = message || 'Stock updated successfully in Shopify!';
+                    
+                    // Initialize Bootstrap modal if not already done
+                    const modal = new bootstrap.Modal(modalElement, {
+                        backdrop: 'static',
+                        keyboard: false
+                    });
+                    
+                    // Remove any existing event listeners on OK button
+                    const newOkButton = okButton.cloneNode(true);
+                    okButton.parentNode.replaceChild(newOkButton, okButton);
+                    
+                    // Add click handler to OK button - reload page when clicked
+                    newOkButton.addEventListener('click', function() {
+                        modal.hide();
+                        // Reload page after modal is hidden
+                        setTimeout(() => {
+                            location.reload();
+                        }, 300);
+                    });
+                    
+                    // Show the modal
+                    modal.show();
+                } else {
+                    // Fallback: use alert if modal elements don't exist
+                    alert(message || 'Stock updated successfully in Shopify!');
+                    location.reload();
+                }
             }
 
             function formatNumber(num, decimals) {

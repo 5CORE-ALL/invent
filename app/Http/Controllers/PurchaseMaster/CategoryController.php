@@ -1938,4 +1938,509 @@ class CategoryController extends Controller
         }
     }
 
+    public function targetKeywordsMaster()
+    {
+        return view('target-keywords-master');
+    }
+
+    public function getTargetKeywordsMasterData(Request $request)
+    {
+        // Fetch all products from the database ordered by parent and SKU
+        $products = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
+        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+            // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
+            return str_replace("\u{00a0}", ' ', $item->sku);
+        });
+
+        // Prepare data in the same format as your sheet (flatten Values)
+        $result = [];
+        foreach ($products as $product) {
+            $row = [
+                'id' => $product->id,
+                'Parent' => $product->parent,
+                'SKU' => $product->sku,
+                'title150' => $product->title150,
+                'title100' => $product->title100,
+                'title80' => $product->title80,
+                'title60' => $product->title60,
+                'bullet1' => $product->bullet1,
+                'bullet2' => $product->bullet2,
+                'bullet3' => $product->bullet3,
+                'bullet4' => $product->bullet4,
+                'bullet5' => $product->bullet5,
+                'product_description' => $product->product_description,
+                'feature1' => $product->feature1,
+                'feature2' => $product->feature2,
+                'feature3' => $product->feature3,
+                'feature4' => $product->feature4,
+                'main_image' => $product->main_image,
+                'main_image_brand' => $product->main_image_brand,
+                'image1' => $product->image1,
+                'image2' => $product->image2,
+                'image3' => $product->image3,
+                'image4' => $product->image4,
+                'image5' => $product->image5,
+                'image6' => $product->image6,
+                'image7' => $product->image7,
+                'image8' => $product->image8,
+                'image9' => $product->image9,
+                'image10' => $product->image10,
+                'image11' => $product->image11,
+                'image12' => $product->image12,
+            ];
+
+            // Merge the Values array (if not null)
+            if (is_array($product->Values)) {
+                $row = array_merge($row, $product->Values);
+            } elseif (is_string($product->Values)) {
+                $values = json_decode($product->Values, true);
+                if (is_array($values)) {
+                    $row = array_merge($row, $values);
+                }
+            }
+
+            // Add Shopify inv and quantity if available
+            // Normalize the product SKU for lookup
+            $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
+            
+            if (isset($shopifySkus[$normalizedSku])) {
+                $shopifyData = $shopifySkus[$normalizedSku];
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $shopifyImage = $shopifyData->image_src ?? null;
+            } else {
+                $row['shopify_inv'] = 0;
+                $row['shopify_quantity'] = 0;
+                $shopifyImage = null;
+            }
+
+            // image_path is inside $row (from Values JSON)
+            $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
+            if ($shopifyImage) {
+                $row['image_path'] = $shopifyImage; // Use Shopify URL
+            } elseif ($localImage) {
+                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+            } else {
+                $row['image_path'] = null;
+            }
+
+            $result[] = $row;
+        }
+
+        return response()->json([
+            'message' => 'Data loaded from database',
+            'data' => $result,
+            'status' => 200
+        ]);
+    }
+
+    public function targetProductsMaster()
+    {
+        return view('target-products-master');
+    }
+
+    public function getTargetProductsMasterData(Request $request)
+    {
+        // Fetch all products from the database ordered by parent and SKU
+        $products = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
+        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+            // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
+            return str_replace("\u{00a0}", ' ', $item->sku);
+        });
+
+        // Prepare data in the same format as your sheet (flatten Values)
+        $result = [];
+        foreach ($products as $product) {
+            $row = [
+                'id' => $product->id,
+                'Parent' => $product->parent,
+                'SKU' => $product->sku,
+                'title150' => $product->title150,
+                'title100' => $product->title100,
+                'title80' => $product->title80,
+                'title60' => $product->title60,
+                'bullet1' => $product->bullet1,
+                'bullet2' => $product->bullet2,
+                'bullet3' => $product->bullet3,
+                'bullet4' => $product->bullet4,
+                'bullet5' => $product->bullet5,
+                'product_description' => $product->product_description,
+                'feature1' => $product->feature1,
+                'feature2' => $product->feature2,
+                'feature3' => $product->feature3,
+                'feature4' => $product->feature4,
+                'main_image' => $product->main_image,
+                'main_image_brand' => $product->main_image_brand,
+                'image1' => $product->image1,
+                'image2' => $product->image2,
+                'image3' => $product->image3,
+                'image4' => $product->image4,
+                'image5' => $product->image5,
+                'image6' => $product->image6,
+                'image7' => $product->image7,
+                'image8' => $product->image8,
+                'image9' => $product->image9,
+                'image10' => $product->image10,
+                'image11' => $product->image11,
+                'image12' => $product->image12,
+            ];
+
+            // Merge the Values array (if not null)
+            if (is_array($product->Values)) {
+                $row = array_merge($row, $product->Values);
+            } elseif (is_string($product->Values)) {
+                $values = json_decode($product->Values, true);
+                if (is_array($values)) {
+                    $row = array_merge($row, $values);
+                }
+            }
+
+            // Add Shopify inv and quantity if available
+            // Normalize the product SKU for lookup
+            $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
+            
+            if (isset($shopifySkus[$normalizedSku])) {
+                $shopifyData = $shopifySkus[$normalizedSku];
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $shopifyImage = $shopifyData->image_src ?? null;
+            } else {
+                $row['shopify_inv'] = 0;
+                $row['shopify_quantity'] = 0;
+                $shopifyImage = null;
+            }
+
+            // image_path is inside $row (from Values JSON)
+            $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
+            if ($shopifyImage) {
+                $row['image_path'] = $shopifyImage; // Use Shopify URL
+            } elseif ($localImage) {
+                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+            } else {
+                $row['image_path'] = null;
+            }
+
+            $result[] = $row;
+        }
+
+        return response()->json([
+            'message' => 'Data loaded from database',
+            'data' => $result,
+            'status' => 200
+        ]);
+    }
+
+    public function tagLinesMaster()
+    {
+        return view('tag-lines-master');
+    }
+
+    public function getTagLinesMasterData(Request $request)
+    {
+        // Fetch all products from the database ordered by parent and SKU
+        $products = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
+        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+            // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
+            return str_replace("\u{00a0}", ' ', $item->sku);
+        });
+
+        // Prepare data in the same format as your sheet (flatten Values)
+        $result = [];
+        foreach ($products as $product) {
+            $row = [
+                'id' => $product->id,
+                'Parent' => $product->parent,
+                'SKU' => $product->sku,
+                'title150' => $product->title150,
+                'title100' => $product->title100,
+                'title80' => $product->title80,
+                'title60' => $product->title60,
+                'bullet1' => $product->bullet1,
+                'bullet2' => $product->bullet2,
+                'bullet3' => $product->bullet3,
+                'bullet4' => $product->bullet4,
+                'bullet5' => $product->bullet5,
+                'product_description' => $product->product_description,
+                'feature1' => $product->feature1,
+                'feature2' => $product->feature2,
+                'feature3' => $product->feature3,
+                'feature4' => $product->feature4,
+                'main_image' => $product->main_image,
+                'main_image_brand' => $product->main_image_brand,
+                'image1' => $product->image1,
+                'image2' => $product->image2,
+                'image3' => $product->image3,
+                'image4' => $product->image4,
+                'image5' => $product->image5,
+                'image6' => $product->image6,
+                'image7' => $product->image7,
+                'image8' => $product->image8,
+                'image9' => $product->image9,
+                'image10' => $product->image10,
+                'image11' => $product->image11,
+                'image12' => $product->image12,
+            ];
+
+            // Merge the Values array (if not null)
+            if (is_array($product->Values)) {
+                $row = array_merge($row, $product->Values);
+            } elseif (is_string($product->Values)) {
+                $values = json_decode($product->Values, true);
+                if (is_array($values)) {
+                    $row = array_merge($row, $values);
+                }
+            }
+
+            // Add Shopify inv and quantity if available
+            // Normalize the product SKU for lookup
+            $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
+            
+            if (isset($shopifySkus[$normalizedSku])) {
+                $shopifyData = $shopifySkus[$normalizedSku];
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $shopifyImage = $shopifyData->image_src ?? null;
+            } else {
+                $row['shopify_inv'] = 0;
+                $row['shopify_quantity'] = 0;
+                $shopifyImage = null;
+            }
+
+            // image_path is inside $row (from Values JSON)
+            $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
+            if ($shopifyImage) {
+                $row['image_path'] = $shopifyImage; // Use Shopify URL
+            } elseif ($localImage) {
+                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+            } else {
+                $row['image_path'] = null;
+            }
+
+            $result[] = $row;
+        }
+
+        return response()->json([
+            'message' => 'Data loaded from database',
+            'data' => $result,
+            'status' => 200
+        ]);
+    }
+
+    public function groupMaster()
+    {
+        return view('group-master');
+    }
+
+    public function getGroupMasterData(Request $request)
+    {
+        // Fetch all products from the database ordered by parent and SKU
+        $products = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
+        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+            // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
+            return str_replace("\u{00a0}", ' ', $item->sku);
+        });
+
+        // Prepare data in the same format as your sheet (flatten Values)
+        $result = [];
+        foreach ($products as $product) {
+            $row = [
+                'id' => $product->id,
+                'Parent' => $product->parent,
+                'SKU' => $product->sku,
+                'title150' => $product->title150,
+                'title100' => $product->title100,
+                'title80' => $product->title80,
+                'title60' => $product->title60,
+                'bullet1' => $product->bullet1,
+                'bullet2' => $product->bullet2,
+                'bullet3' => $product->bullet3,
+                'bullet4' => $product->bullet4,
+                'bullet5' => $product->bullet5,
+                'product_description' => $product->product_description,
+                'feature1' => $product->feature1,
+                'feature2' => $product->feature2,
+                'feature3' => $product->feature3,
+                'feature4' => $product->feature4,
+                'main_image' => $product->main_image,
+                'main_image_brand' => $product->main_image_brand,
+                'image1' => $product->image1,
+                'image2' => $product->image2,
+                'image3' => $product->image3,
+                'image4' => $product->image4,
+                'image5' => $product->image5,
+                'image6' => $product->image6,
+                'image7' => $product->image7,
+                'image8' => $product->image8,
+                'image9' => $product->image9,
+                'image10' => $product->image10,
+                'image11' => $product->image11,
+                'image12' => $product->image12,
+            ];
+
+            // Merge the Values array (if not null)
+            if (is_array($product->Values)) {
+                $row = array_merge($row, $product->Values);
+            } elseif (is_string($product->Values)) {
+                $values = json_decode($product->Values, true);
+                if (is_array($values)) {
+                    $row = array_merge($row, $values);
+                }
+            }
+
+            // Add Shopify inv and quantity if available
+            // Normalize the product SKU for lookup
+            $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
+            
+            if (isset($shopifySkus[$normalizedSku])) {
+                $shopifyData = $shopifySkus[$normalizedSku];
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $shopifyImage = $shopifyData->image_src ?? null;
+            } else {
+                $row['shopify_inv'] = 0;
+                $row['shopify_quantity'] = 0;
+                $shopifyImage = null;
+            }
+
+            // image_path is inside $row (from Values JSON)
+            $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
+            if ($shopifyImage) {
+                $row['image_path'] = $shopifyImage; // Use Shopify URL
+            } elseif ($localImage) {
+                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+            } else {
+                $row['image_path'] = null;
+            }
+
+            $result[] = $row;
+        }
+
+        return response()->json([
+            'message' => 'Data loaded from database',
+            'data' => $result,
+            'status' => 200
+        ]);
+    }
+
+    public function seoKeywordsMaster()
+    {
+        return view('seo-keywords-master');
+    }
+
+    public function getSeoKeywordsMasterData(Request $request)
+    {
+        // Fetch all products from the database ordered by parent and SKU
+        $products = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
+        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+            // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
+            return str_replace("\u{00a0}", ' ', $item->sku);
+        });
+
+        // Prepare data in the same format as your sheet (flatten Values)
+        $result = [];
+        foreach ($products as $product) {
+            $row = [
+                'id' => $product->id,
+                'Parent' => $product->parent,
+                'SKU' => $product->sku,
+                'title150' => $product->title150,
+                'title100' => $product->title100,
+                'title80' => $product->title80,
+                'title60' => $product->title60,
+                'bullet1' => $product->bullet1,
+                'bullet2' => $product->bullet2,
+                'bullet3' => $product->bullet3,
+                'bullet4' => $product->bullet4,
+                'bullet5' => $product->bullet5,
+                'product_description' => $product->product_description,
+                'feature1' => $product->feature1,
+                'feature2' => $product->feature2,
+                'feature3' => $product->feature3,
+                'feature4' => $product->feature4,
+                'main_image' => $product->main_image,
+                'main_image_brand' => $product->main_image_brand,
+                'image1' => $product->image1,
+                'image2' => $product->image2,
+                'image3' => $product->image3,
+                'image4' => $product->image4,
+                'image5' => $product->image5,
+                'image6' => $product->image6,
+                'image7' => $product->image7,
+                'image8' => $product->image8,
+                'image9' => $product->image9,
+                'image10' => $product->image10,
+                'image11' => $product->image11,
+                'image12' => $product->image12,
+            ];
+
+            // Merge the Values array (if not null)
+            if (is_array($product->Values)) {
+                $row = array_merge($row, $product->Values);
+            } elseif (is_string($product->Values)) {
+                $values = json_decode($product->Values, true);
+                if (is_array($values)) {
+                    $row = array_merge($row, $values);
+                }
+            }
+
+            // Add Shopify inv and quantity if available
+            // Normalize the product SKU for lookup
+            $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
+            
+            if (isset($shopifySkus[$normalizedSku])) {
+                $shopifyData = $shopifySkus[$normalizedSku];
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $shopifyImage = $shopifyData->image_src ?? null;
+            } else {
+                $row['shopify_inv'] = 0;
+                $row['shopify_quantity'] = 0;
+                $shopifyImage = null;
+            }
+
+            // image_path is inside $row (from Values JSON)
+            $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
+            if ($shopifyImage) {
+                $row['image_path'] = $shopifyImage; // Use Shopify URL
+            } elseif ($localImage) {
+                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+            } else {
+                $row['image_path'] = null;
+            }
+
+            $result[] = $row;
+        }
+
+        return response()->json([
+            'message' => 'Data loaded from database',
+            'data' => $result,
+            'status' => 200
+        ]);
+    }
+
 }

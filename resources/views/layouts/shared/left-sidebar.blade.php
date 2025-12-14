@@ -333,6 +333,21 @@
                             <a href="{{ route('competitors.master') }}">Competitors Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('target.keywords.master') }}">Target Keywords Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('target.products.master') }}">Target Products Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('tag.lines.master') }}">Tag lines Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('group.master') }}">Group Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('seo.keywords.master') }}">SEO Keywords master</a>
+                        </li>
+                        <li>
                             <a href="{{ route('title.master') }}">Title Master</a>
                         </li>
                         <li>

@@ -236,8 +236,9 @@ class IncomingController extends Controller
 
     public function store(Request $request)
     {
-        // Set execution time limit
-        set_time_limit(25);
+        // Set execution time limit to 90 seconds to handle slow API responses
+        set_time_limit(90);
+        ini_set('max_execution_time', 90);
         
         try {
             // Validate input
@@ -287,8 +288,12 @@ class IncomingController extends Controller
                     Log::info('Incoming: trying fast-path variant lookup', ['sku' => $sku, 'variant_id' => $shopifyRow->variant_id]);
                     try {
                         $variantResp = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                            ->timeout(15)
-                            ->retry(3, 2000)
+                            ->timeout(30)
+                            ->retry(5, 2000, function ($exception, $request) {
+                                return $exception instanceof \Illuminate\Http\Client\ConnectionException || 
+                                       ($exception->getCode() >= 500 && $exception->getCode() < 600) ||
+                                       $exception->getCode() === 429;
+                            })
                             ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$shopifyRow->variant_id}.json");
 
                         if ($variantResp->successful()) {
@@ -304,74 +309,158 @@ class IncomingController extends Controller
             }
 
             // Quick attempt: query /variants.json?sku=... which is faster than full pagination
+            // This is the PRIMARY method - should work if SKU exists
             if (!$inventoryItemId) {
-                try {
-                    $vResp = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                        ->timeout(15)
-                        ->retry(2, 1500)
-                        ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants.json", [
-                            'sku' => $sku,
-                        ]);
+                $variantRetries = 0;
+                $maxVariantRetries = 5;
+                
+                while ($variantRetries < $maxVariantRetries && !$inventoryItemId) {
+                    $variantRetries++;
+                    try {
+                        Log::info("Incoming: Attempting variants endpoint lookup (attempt {$variantRetries}/{$maxVariantRetries})", ['sku' => $sku]);
+                        
+                        $vResp = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
+                            ->timeout(30)
+                            ->retry(3, 2000, function ($exception, $request) {
+                                return $exception instanceof \Illuminate\Http\Client\ConnectionException || 
+                                       ($exception->getCode() >= 500 && $exception->getCode() < 600) ||
+                                       $exception->getCode() === 429;
+                            })
+                            ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants.json", [
+                                'sku' => $sku,
+                            ]);
 
-                    if ($vResp->successful()) {
-                        $variants = $vResp->json('variants') ?? [];
-                        if (!empty($variants) && !empty($variants[0]['inventory_item_id'])) {
-                            $inventoryItemId = $variants[0]['inventory_item_id'];
-                            Log::info('Incoming: Found inventory_item_id via variants endpoint', ['sku' => $sku, 'inventory_item_id' => $inventoryItemId]);
+                        if ($vResp->successful()) {
+                            $variants = $vResp->json('variants') ?? [];
+                            if (!empty($variants) && !empty($variants[0]['inventory_item_id'])) {
+                                $inventoryItemId = $variants[0]['inventory_item_id'];
+                                Log::info('Incoming: Found inventory_item_id via variants endpoint', ['sku' => $sku, 'inventory_item_id' => $inventoryItemId, 'attempt' => $variantRetries]);
+                                break;
+                            } else {
+                                Log::warning('Incoming: Variants endpoint returned empty results', ['sku' => $sku, 'attempt' => $variantRetries]);
+                            }
+                        } else {
+                            Log::warning('Incoming: Variants endpoint request failed', ['sku' => $sku, 'status' => $vResp->status(), 'attempt' => $variantRetries]);
+                            if ($vResp->status() === 429) {
+                                // Rate limited - wait longer
+                                sleep(5);
+                            } elseif ($vResp->status() >= 500) {
+                                // Server error - retry
+                                sleep(2);
+                            } else {
+                                // Client error - don't retry
+                                break;
+                            }
+                        }
+                    } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                        Log::warning('Incoming: Connection timeout on variants endpoint', ['sku' => $sku, 'attempt' => $variantRetries, 'error' => $e->getMessage()]);
+                        if ($variantRetries < $maxVariantRetries) {
+                            sleep(3);
+                            continue;
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Incoming: variants endpoint quick lookup failed', ['error' => $e->getMessage(), 'attempt' => $variantRetries]);
+                        if ($variantRetries < $maxVariantRetries) {
+                            sleep(2);
+                            continue;
                         }
                     }
-                } catch (\Exception $e) {
-                    Log::warning('Incoming: variants endpoint quick lookup failed', ['error' => $e->getMessage()]);
                 }
             }
 
-            do {
-                $pageCount++;
-                if ($pageCount > $maxPages) break;
-
-                $url = "https://{$shopifyDomain}/admin/api/2025-01/products.json?limit=250";
-                if ($pageInfo) {
-                    $url .= "&page_info={$pageInfo}";
-                }
-
-                try {
-                    $response = Http::withHeaders([
-                        'X-Shopify-Access-Token' => $accessToken,
-                    ])->timeout(10)->get($url);
-
-                    if ($response->successful()) {
-
-                        $products = $response->json('products') ?? [];
-
-                        foreach ($products as $product) {
-                            foreach ($product['variants'] as $variant) {
-                                if (trim(strtolower($variant['sku'] ?? '')) === strtolower($sku)) {
-                                    $inventoryItemId = $variant['inventory_item_id'];
-                                    Log::info("Found inventory item for SKU", ['sku' => $sku, 'inventory_item_id' => $inventoryItemId]);
-                                    break 2;
-                                }
-                            }
-                        }
-
-                        // Handle pagination
-                        $linkHeader = $response->header('Link');
-                        $pageInfo = null;
-                        if ($linkHeader && preg_match('/<([^>]+)>; rel="next"/', $linkHeader, $matches)) {
-                            $parsedUrl = parse_url($matches[1]);
-                            parse_str($parsedUrl['query'] ?? '', $query);
-                            $pageInfo = $query['page_info'] ?? null;
-                        }
-                    } else {
-                        Log::warning("Failed to fetch Shopify products page", ['status' => $response->status(), 'page_count' => $pageCount]);
-                        $pageInfo = null;
+            // Fallback: paginated products.json search (only if variants endpoint didn't work)
+            if (!$inventoryItemId) {
+                Log::info("Incoming: Falling back to paginated products search", ['sku' => $sku]);
+                
+                do {
+                    $pageCount++;
+                    if ($pageCount > $maxPages) {
+                        Log::warning("Incoming: Max pages reached in pagination", ['sku' => $sku, 'max_pages' => $maxPages]);
+                        break;
                     }
-                } catch (\Exception $e) {
-                    Log::warning("Exception fetching Shopify products: " . $e->getMessage(), ['page_count' => $pageCount]);
-                    sleep(1);
-                    continue;
-                }
 
-            } while (!$inventoryItemId && $pageInfo);
+                    $url = "https://{$shopifyDomain}/admin/api/2025-01/products.json?limit=250";
+                    if ($pageInfo) {
+                        $url .= "&page_info={$pageInfo}";
+                    }
+
+                    $pageRetries = 0;
+                    $maxPageRetries = 3;
+                    
+                    while ($pageRetries < $maxPageRetries) {
+                        $pageRetries++;
+                        try {
+                            $response = Http::withHeaders([
+                                'X-Shopify-Access-Token' => $accessToken,
+                            ])
+                            ->timeout(30)
+                            ->retry(2, 2000, function ($exception, $request) {
+                                return $exception instanceof \Illuminate\Http\Client\ConnectionException || 
+                                       ($exception->getCode() >= 500 && $exception->getCode() < 600) ||
+                                       $exception->getCode() === 429;
+                            })
+                            ->get($url);
+
+                            if ($response->successful()) {
+                                $products = $response->json('products') ?? [];
+
+                                foreach ($products as $product) {
+                                    foreach ($product['variants'] as $variant) {
+                                        if (trim(strtolower($variant['sku'] ?? '')) === strtolower($sku)) {
+                                            $inventoryItemId = $variant['inventory_item_id'];
+                                            Log::info("Found inventory item for SKU via pagination", ['sku' => $sku, 'inventory_item_id' => $inventoryItemId, 'page' => $pageCount]);
+                                            break 3; // Break out of all loops
+                                        }
+                                    }
+                                }
+
+                                // Handle pagination
+                                $linkHeader = $response->header('Link');
+                                $pageInfo = null;
+                                if ($linkHeader && preg_match('/<([^>]+)>; rel="next"/', $linkHeader, $matches)) {
+                                    $parsedUrl = parse_url($matches[1]);
+                                    parse_str($parsedUrl['query'] ?? '', $query);
+                                    $pageInfo = $query['page_info'] ?? null;
+                                }
+                                break; // Success, exit retry loop
+                            } else {
+                                if ($response->status() === 429) {
+                                    Log::warning("Rate limited on products page", ['status' => $response->status(), 'page_count' => $pageCount, 'retry' => $pageRetries]);
+                                    if ($pageRetries < $maxPageRetries) {
+                                        sleep(5);
+                                        continue;
+                                    }
+                                } elseif ($response->status() >= 500) {
+                                    Log::warning("Server error on products page", ['status' => $response->status(), 'page_count' => $pageCount, 'retry' => $pageRetries]);
+                                    if ($pageRetries < $maxPageRetries) {
+                                        sleep(2);
+                                        continue;
+                                    }
+                                }
+                                $pageInfo = null;
+                                break;
+                            }
+                        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                            Log::warning("Connection timeout fetching Shopify products page", ['page_count' => $pageCount, 'retry' => $pageRetries, 'error' => $e->getMessage()]);
+                            if ($pageRetries < $maxPageRetries) {
+                                sleep(3);
+                                continue;
+                            }
+                            $pageInfo = null;
+                            break;
+                        } catch (\Exception $e) {
+                            Log::warning("Exception fetching Shopify products: " . $e->getMessage(), ['page_count' => $pageCount, 'retry' => $pageRetries]);
+                            if ($pageRetries < $maxPageRetries) {
+                                sleep(2);
+                                continue;
+                            }
+                            $pageInfo = null;
+                            break;
+                        }
+                    }
+
+                } while (!$inventoryItemId && $pageInfo);
+            }
 
             if (!$inventoryItemId) {
                 Log::warning("SKU not found in Shopify: {$sku}");
@@ -393,7 +482,14 @@ class IncomingController extends Controller
                 try {
                     $locationResponse = Http::withHeaders([
                         'X-Shopify-Access-Token' => $accessToken,
-                    ])->timeout(10)->get("https://{$shopifyDomain}/admin/api/2025-01/locations.json");
+                    ])
+                    ->timeout(30)
+                    ->retry(3, 2000, function ($exception, $request) {
+                        return $exception instanceof \Illuminate\Http\Client\ConnectionException || 
+                               ($exception->getCode() >= 500 && $exception->getCode() < 600) ||
+                               $exception->getCode() === 429;
+                    })
+                    ->get("https://{$shopifyDomain}/admin/api/2025-01/locations.json");
 
                     if ($locationResponse->successful()) {
 
@@ -416,10 +512,21 @@ class IncomingController extends Controller
                     } else {
                         Log::warning("Failed to fetch locations", ['attempt' => $attempt, 'status' => $locationResponse->status()]);
                         if ($attempt < $maxRetries) {
-                            sleep($attempt);
+                            if ($locationResponse->status() === 429) {
+                                sleep(5);
+                            } else {
+                                sleep($attempt);
+                            }
                             continue;
                         }
                     }
+                } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                    Log::warning("Connection timeout fetching locations: " . $e->getMessage(), ['attempt' => $attempt]);
+                    if ($attempt < $maxRetries) {
+                        sleep(3);
+                        continue;
+                    }
+                    throw $e;
                 } catch (\Exception $e) {
                     Log::warning("Exception fetching locations: " . $e->getMessage(), ['attempt' => $attempt]);
                     if ($attempt < $maxRetries) {
@@ -483,7 +590,14 @@ class IncomingController extends Controller
                     $adjustResponse = Http::withHeaders([
                         'X-Shopify-Access-Token' => $accessToken,
                         'Content-Type' => 'application/json',
-                    ])->timeout(10)->post("https://{$shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
+                    ])
+                    ->timeout(30)
+                    ->retry(5, 2000, function ($exception, $request) {
+                        return $exception instanceof \Illuminate\Http\Client\ConnectionException || 
+                               ($exception->getCode() >= 500 && $exception->getCode() < 600) ||
+                               $exception->getCode() === 429;
+                    })
+                    ->post("https://{$shopifyDomain}/admin/api/2025-01/inventory_levels/adjust.json", [
                         'location_id' => $locationId,
                         'inventory_item_id' => $inventoryItemId,
                         'available_adjustment' => $qty,
@@ -495,13 +609,24 @@ class IncomingController extends Controller
                     } elseif ($adjustResponse->status() >= 500 || $adjustResponse->status() == 429) {
                         Log::warning("Adjust failed, retrying...", ['status' => $adjustResponse->status(), 'attempt' => $adjustAttempt]);
                         if ($adjustAttempt < $maxRetries) {
-                            sleep($adjustAttempt);
+                            if ($adjustResponse->status() === 429) {
+                                sleep(5);
+                            } else {
+                                sleep($adjustAttempt);
+                            }
                             continue;
                         }
                     } else {
-                        Log::error("Adjust failed with non-retryable error", ['sku' => $sku, 'status' => $adjustResponse->status()]);
+                        Log::error("Adjust failed with non-retryable error", ['sku' => $sku, 'status' => $adjustResponse->status(), 'body' => $adjustResponse->body()]);
                         break;
                     }
+                } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                    Log::warning("Connection timeout adjusting inventory: " . $e->getMessage(), ['attempt' => $adjustAttempt]);
+                    if ($adjustAttempt < $maxRetries) {
+                        sleep(3);
+                        continue;
+                    }
+                    throw $e;
                 } catch (\Exception $e) {
                     Log::warning("Exception adjusting inventory: " . $e->getMessage(), ['attempt' => $adjustAttempt]);
                     if ($adjustAttempt < $maxRetries) {
@@ -568,16 +693,22 @@ class IncomingController extends Controller
                 'details' => $e->errors()
             ], 422);
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            Log::error("Connection timeout: {$e->getMessage()}");
+            Log::error("Connection timeout: {$e->getMessage()}", [
+                'sku' => $sku ?? 'unknown',
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'error' => 'Connection Timeout',
-                'details' => 'Request took too long. Please try again.'
+                'details' => 'The request to Shopify took too long. The SKU may exist but the API is slow. Please try again in a moment.'
             ], 504);
         } catch (\Exception $e) {
-            Log::error("Incoming store failed: " . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            Log::error("Incoming store failed: " . $e->getMessage(), [
+                'sku' => $sku ?? 'unknown',
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'error' => 'An unexpected error occurred',
-                'details' => 'Please try again or contact support if the problem persists.'
+                'details' => 'Please try again or contact support if the problem persists. Error: ' . $e->getMessage()
             ], 500);
         }
     }

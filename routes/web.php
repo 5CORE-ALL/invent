@@ -1203,6 +1203,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/competitors-master', [CategoryController::class, 'competitorsMaster'])->name('competitors.master');
     Route::get('/competitors-master-data-view', [CategoryController::class, 'getCompetitorsMasterData'])->name('competitors.master.data');
     Route::post('/competitors-master/store', [CategoryController::class, 'storeCompetitorsMaster'])->name('competitors.master.store');
+    Route::get('/target-keywords-master', [CategoryController::class, 'targetKeywordsMaster'])->name('target.keywords.master');
+    Route::get('/target-keywords-master-data-view', [CategoryController::class, 'getTargetKeywordsMasterData'])->name('target.keywords.master.data');
+    Route::get('/target-products-master', [CategoryController::class, 'targetProductsMaster'])->name('target.products.master');
+    Route::get('/target-products-master-data-view', [CategoryController::class, 'getTargetProductsMasterData'])->name('target.products.master.data');
+    Route::get('/tag-lines-master', [CategoryController::class, 'tagLinesMaster'])->name('tag.lines.master');
+    Route::get('/tag-lines-master-data-view', [CategoryController::class, 'getTagLinesMasterData'])->name('tag.lines.master.data');
+    Route::get('/group-master', [CategoryController::class, 'groupMaster'])->name('group.master');
+    Route::get('/group-master-data-view', [CategoryController::class, 'getGroupMasterData'])->name('group.master.data');
+    Route::get('/seo-keywords-master', [CategoryController::class, 'seoKeywordsMaster'])->name('seo.keywords.master');
+    Route::get('/seo-keywords-master-data-view', [CategoryController::class, 'getSeoKeywordsMasterData'])->name('seo.keywords.master.data');
     Route::post('/category.create', [CategoryController::class, 'postCategory'])->name('category.create');
     Route::delete('/category/delete/{id}', [CategoryController::class, 'destroy'])->name('category.delete');
     Route::post('/category/bulk-delete', [CategoryController::class, 'bulkDelete'])->name('category.bulk-delete');
