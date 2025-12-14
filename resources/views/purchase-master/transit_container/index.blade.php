@@ -177,6 +177,16 @@
                         </select>
                     </div>
 
+                    <!-- 🔽 Changes Column Filter Dropdown -->
+                    <div class="d-flex align-items-center gap-2">
+                        <label for="filter-changes" class="fw-semibold mb-0" style="font-size: 0.95rem;">Changes:</label>
+                        <select id="filter-changes" class="form-select form-select-sm" style="width: 80px;">
+                            <option value="">All</option>
+                            <option value="old">Old</option>
+                            <option value="new">New</option>
+                        </select>
+                    </div>
+
                     <!-- 🔍 Search Input -->
                     <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search by SKU, Supplier, Parent..." 
                         style="max-width: 150px; border: 2px solid #2185ff; font-size: 0.95rem;">
@@ -440,15 +450,15 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
             const rowId = rowData.id;
 
             // The pushed flag should already be set in your controller for this exact combination
-            if (rowData.pushed == 1) {
-                const cell = row.getCell("our_sku");
-                if (cell) {
-                    const el = cell.getElement();
-                    el.style.boxShadow = "0 0 10px 2px #4CAF50"; // green shadow
-                    el.style.borderRadius = "6px";
-                    el.style.padding = "3px";
-                }
-            }
+            // if (rowData.pushed == 1) {
+            //     const cell = row.getCell("our_sku");
+            //     if (cell) {
+            //         const el = cell.getElement();
+            //         el.style.boxShadow = "0 0 10px 2px #4CAF50"; // green shadow
+            //         el.style.borderRadius = "6px";
+            //         el.style.padding = "3px";
+            //     }
+            // }
         },
 
         columns: [{
@@ -571,9 +581,9 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                 style="height:40px;border-radius:4px;border:1px solid #ccc;cursor:zoom-in;">`;
               }
             },
-            { title: "Parent", field: "parent"},
+            // { title: "Parent", field: "parent"},
             { title: "Sku", field: "our_sku" },
-            { title: "Supplier", field: "supplier_name", editor: "input" },
+            // { title: "Supplier", field: "supplier_name", editor: "input" },
             {
               title: "Status",
               field: "push_status",
@@ -595,7 +605,7 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                 }
               }
             },
-            { title: "Rec Qty", field: "rec_qty"},
+            // { title: "Rec Qty", field: "rec_qty"},
             { title: "Qty / Ctns", field: "no_of_units", editor: "input" },
             { title: "Qty Ctns", field: "total_ctn", editor: "input" },
             { 
@@ -619,7 +629,7 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                   let values = data.Values;
 
                   if (!values) {
-                      return "0.00";
+                      return "0.000";
                   }
 
                   if (typeof values === "string") {
@@ -632,7 +642,7 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                   }
 
                   const cbm = parseFloat(values?.cbm) || 0;
-                  return cbm ? cbm.toFixed(2) : "0.00";
+                  return cbm ? cbm.toFixed(3) : "0.000";
               }
             },
             {
@@ -698,18 +708,18 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                 cell.edit(true);
                 },
               },
-            {
-              title: "Amt($)", 
-              field: "amount", 
-              editor: false,
-              mutator: false,  // Don't store in data
-              formatter: function(cell) {
-                const data = cell.getRow().getData();
-                const rate = parseFloat(data.rate) || 0;
-                const pcs_qty = parseFloat(data.no_of_units || 0) * parseFloat(data.total_ctn || 0);
-                return Math.round(rate * pcs_qty);
-              }
-            },
+            // {
+            //   title: "Amt($)", 
+            //   field: "amount", 
+            //   editor: false,
+            //   mutator: false,  // Don't store in data
+            //   formatter: function(cell) {
+            //     const data = cell.getRow().getData();
+            //     const rate = parseFloat(data.rate) || 0;
+            //     const pcs_qty = parseFloat(data.no_of_units || 0) * parseFloat(data.total_ctn || 0);
+            //     return Math.round(rate * pcs_qty);
+            //   }
+            // },
             { title: "Changes", field: "changes", editor: "input" },
             { 
               title: "Spec.",
@@ -1122,7 +1132,7 @@ document.getElementById("push-inventory-btn").addEventListener("click", async fu
     if (alreadyPushedRows.length > 0) {
         confirmMessage += `⚠️ ${alreadyPushedRows.length} item(s) are already pushed and will be skipped.\n`;
     }
-    confirmMessage += `\nOnly ${rowsToPush.length} item(s) will be pushed/retried.\n\nContinue?`;
+    confirmMessage += `\nOnly ${rowsToPush.length} item(s) will be pushed.\n\nContinue?`;
 
     if (!confirm(confirmMessage)) return;
 
@@ -1352,7 +1362,7 @@ function updateActiveTabSummary(index, table) {
   document.getElementById("total-cartons-display").textContent = totalCtn;
   document.getElementById("total-qty-display").textContent = totalQty;
   document.getElementById("total-amount-display").textContent = Math.round(totalAmount);
-  document.getElementById("total-cbm-display").textContent = totalCBM.toFixed(0);
+  document.getElementById("total-cbm-display").textContent = totalCBM.toFixed(3);
 
 }
 
@@ -1365,7 +1375,7 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach((btn, index) => {
 });
 
 document.getElementById('search-input').addEventListener('input', function () {
-    const value = this.value.toLowerCase();
+    const searchValue = this.value.toLowerCase();
 
     const activeTab = document.querySelector('.nav-link.active[data-bs-toggle="tab"]');
     if (!activeTab) return;
@@ -1374,20 +1384,51 @@ document.getElementById('search-input').addEventListener('input', function () {
     const activeTable = window.tabTables[activeIndex];
 
     if (activeTable) {
-        activeTable.setFilter([
-            [
-                { field: "our_sku", type: "like", value: value },
-                { field: "supplier_name", type: "like", value: value },
-                { field: "parent", type: "like", value: value }
-            ]
-        ]);
+        const filterType = document.getElementById("filter-type").value;
+        const filterChanges = document.getElementById("filter-changes").value;
+
+        // Apply combined filters including search
+        activeTable.setFilter(function(data) {
+            let passFilterType = true;
+            let passFilterChanges = true;
+            let passSearch = true;
+
+            // Search filter
+            if (searchValue) {
+                const sku = (data.our_sku || "").toLowerCase();
+                const supplier = (data.supplier_name || "").toLowerCase();
+                const parent = (data.parent || "").toLowerCase();
+                passSearch = sku.includes(searchValue) || supplier.includes(searchValue) || parent.includes(searchValue);
+            }
+
+            // Filter Type logic
+            if (filterType === "new") {
+                const parent = (data.parent || "").toUpperCase().trim();
+                passFilterType = parent === "SOURCING";
+            } else if (filterType === "changes") {
+                const parent = (data.parent || "").toUpperCase().trim();
+                passFilterType = parent !== "SOURCING";
+            }
+
+            // Changes column filter logic
+            if (filterChanges === "old") {
+                const changes = (data.changes || "").toLowerCase().trim();
+                passFilterChanges = changes.includes("old");
+            } else if (filterChanges === "new") {
+                const changes = (data.changes || "").toLowerCase().trim();
+                passFilterChanges = changes.includes("new");
+            }
+
+            return passFilterType && passFilterChanges && passSearch;
+        });
+
+        activeTable.redraw();
     }
 });
 
   document.addEventListener("DOMContentLoaded", function () {
-    document.getElementById("filter-type").addEventListener("change", function () {
-        const selected = this.value;
-
+    // Function to apply all filters together
+    function applyFilters() {
         const activeTab = document.querySelector('.nav-link.active[data-bs-toggle="tab"]');
         if (!activeTab) return;
 
@@ -1399,23 +1440,54 @@ document.getElementById('search-input').addEventListener('input', function () {
             return;
         }
 
-        if (selected === "new") {
-            activeTable.setFilter((data) => {
+        const filterType = document.getElementById("filter-type").value;
+        const filterChanges = document.getElementById("filter-changes").value;
+        const searchValue = document.getElementById("search-input").value.toLowerCase();
+
+        // Apply combined filters
+        activeTable.setFilter(function(data) {
+            let passFilterType = true;
+            let passFilterChanges = true;
+            let passSearch = true;
+
+            // Search filter
+            if (searchValue) {
+                const sku = (data.our_sku || "").toLowerCase();
+                const supplier = (data.supplier_name || "").toLowerCase();
+                const parent = (data.parent || "").toLowerCase();
+                passSearch = sku.includes(searchValue) || supplier.includes(searchValue) || parent.includes(searchValue);
+            }
+
+            // Filter Type logic
+            if (filterType === "new") {
                 const parent = (data.parent || "").toUpperCase().trim();
-                return parent === "SOURCING";
-            });
-        } else if (selected === "changes") {
-            activeTable.setFilter((data) => {
+                passFilterType = parent === "SOURCING";
+            } else if (filterType === "changes") {
                 const parent = (data.parent || "").toUpperCase().trim();
-                return parent !== "SOURCING";
-            });
-        } else {
-            activeTable.clearFilter();
-        }
+                passFilterType = parent !== "SOURCING";
+            }
+
+            // Changes column filter logic
+            if (filterChanges === "old") {
+                const changes = (data.changes || "").toLowerCase().trim();
+                passFilterChanges = changes.includes("old");
+            } else if (filterChanges === "new") {
+                const changes = (data.changes || "").toLowerCase().trim();
+                passFilterChanges = changes.includes("new");
+            }
+
+            return passFilterType && passFilterChanges && passSearch;
+        });
 
         activeTable.redraw();
         console.log("Filtered data count:", activeTable.getDataCount("active"));
-    });
+    }
+
+    // Event listener for Filter Type
+    document.getElementById("filter-type").addEventListener("change", applyFilters);
+
+    // Event listener for Changes filter
+    document.getElementById("filter-changes").addEventListener("change", applyFilters);
 
     document.addEventListener("mouseover", function(e) {
       if (e.target && e.target.dataset.preview) {

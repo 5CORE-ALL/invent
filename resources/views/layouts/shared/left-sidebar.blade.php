@@ -297,8 +297,37 @@
                     <ul class="side-nav-second-level">
 
                         <li>
-                            <a href="{{ route('product.master') }}">CP
-                                Masters</a>
+                            <a href="{{ route('product.master') }}">CP Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('category.master') }}">Category Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('id.master') }}">ID Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('dim.wt.master') }}">Dim & Wt Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('shipping.master') }}">Shipping Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('general.specific.master') }}">General Specific Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('compliance.master') }}">Compliance Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('extra.features.master') }}">Extra Features Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('a.plus.images.master') }}">A+ Images Masters</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('keywords.master') }}">Keywords Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('competitors.master') }}">Competitors Master</a>
                         </li>
                         <li>
                             <a href="{{ route('title.master') }}">Title Master</a>
