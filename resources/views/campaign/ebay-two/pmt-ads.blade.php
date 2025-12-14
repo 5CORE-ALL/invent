@@ -2670,45 +2670,35 @@
 
                     $row.append($('<td data-field="esbid">').text(item.ESBID));
                     
-                    // Calculate CVR first (needed for SBID)
+                    // Calculate CVR first
                     let ebayL30 = Number(item['eBay L30']) || 0;
                     let views = Number(item.VIEWS) || 0;
-
                     let scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
 
-                    if(isNaN(scvr)){
-                        scvr = 0;
-                    }
+                    // Check if DIL is red (ov_dil < 0.1666, which is < 16.66%)
+                    let dilPercent = parseFloat(item.ov_dil || 0) * 100;
+                    let isDilRed = dilPercent < 16.66;
 
-                    // Calculate SBID based on CVR ranges - flat values
-                    let sbidValue = 2; // Default minimum
-                    let sbidColor = "";
-
-                    if (scvr < 0.01) {
-                        // For very low CVR, keep current ESBID
-                        sbidValue = item.ESBID || 0;
-                        sbidColor = "gray";
-                    } else if (scvr >= 0.01 && scvr <= 1) {
-                        sbidValue = 9; // Flat 10%
-                        sbidColor = "red";
+                    // Calculate SBID based on CVR ranges
+                    let sbidValue;
+                    
+                    // New rule: if SBID between 0.01-1% OR DIL red OR views < 100, set to 8%
+                    if ((scvr >= 0.01 && scvr <= 1) || isDilRed || views < 100) {
+                        sbidValue = 8; // Flat 8
+                    } else if (scvr < 0.01) {
+                        sbidValue = item.ESBID || 0; // Use ESBID for CVR < 0.01%
                     } else if (scvr >= 1.01 && scvr <= 2) {
-                        sbidValue = 8; // Flat 8%
-                        sbidColor = "red";
+                        sbidValue = 7; // Flat 8
                     } else if (scvr >= 2.01 && scvr <= 3) {
-                        sbidValue = 6; // Flat 6%
-                        sbidColor = "yellow";
+                        sbidValue = 6; // Flat 6
                     } else if (scvr >= 3.01 && scvr <= 5) {
-                        sbidValue = 5; // Flat 5%
-                        sbidColor = "yellow";
+                        sbidValue = 4; // Flat 5
                     } else if (scvr >= 5.01 && scvr <= 7) {
-                        sbidValue = 4; // Flat 4%
-                        sbidColor = "blue";
+                        sbidValue = 4; // Flat 4
                     } else if (scvr >= 7.01 && scvr <= 13) {
-                        sbidValue = 3; // Flat 3%
-                        sbidColor = "green";
-                    } else if (scvr > 13) {
-                        sbidValue = 2; // Flat 2%
-                        sbidColor = "green";
+                        sbidValue = 3; // Flat 3
+                    } else { // scvr > 13
+                        sbidValue = 2; // Flat 2
                     }
 
                     // Cap sbidValue to maximum of 15
@@ -2720,7 +2710,7 @@
                     }
 
                     $row.append($('<td data-field="sbid">').html(
-                        `<span class="dil-percent-value ${sbidColor}">
+                        `<span class="dil-percent-value">
                            ${sbidValue}
                         </span>`
                     ));
