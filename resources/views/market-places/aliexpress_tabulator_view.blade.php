@@ -446,42 +446,42 @@
                         return `<span style="color: ${color}; font-weight: bold;">${value.toFixed(2)}%</span>`;
                     }
                 },
-                {
-                    title: "Payment Method",
-                    field: "payment_method",
-                    width: 150
-                },
-                {
-                    title: "Buyer Country",
-                    field: "buyer_country",
-                    width: 120
-                },
-                {
-                    title: "State/Province",
-                    field: "state_province",
-                    width: 120
-                },
-                {
-                    title: "City",
-                    field: "city",
-                    width: 120
-                },
-                {
-                    title: "Tracking Number",
-                    field: "tracking_number",
-                    width: 150
-                },
-                {
-                    title: "Shipping Time",
-                    field: "shipping_time",
-                    width: 150,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (!value) return '';
-                        const date = new Date(value);
-                        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-                    }
-                }
+                // {
+                //     title: "Payment Method",
+                //     field: "payment_method",
+                //     width: 150
+                // },
+                // {
+                //     title: "Buyer Country",
+                //     field: "buyer_country",
+                //     width: 120
+                // },
+                // {
+                //     title: "State/Province",
+                //     field: "state_province",
+                //     width: 120
+                // },
+                // {
+                //     title: "City",
+                //     field: "city",
+                //     width: 120
+                // },
+                // {
+                //     title: "Tracking Number",
+                //     field: "tracking_number",
+                //     width: 150
+                // },
+                // {
+                //     title: "Shipping Time",
+                //     field: "shipping_time",
+                //     width: 150,
+                //     formatter: function(cell) {
+                //         const value = cell.getValue();
+                //         if (!value) return '';
+                //         const date = new Date(value);
+                //         return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                //     }
+                // }
             ]
         });
 
