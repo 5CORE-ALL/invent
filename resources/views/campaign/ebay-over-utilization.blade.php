@@ -751,6 +751,9 @@
                 return 'pink';
             };
 
+            // Variable to store total ACOS for use in filters and formatters
+            var totalACOSValue = 0;
+
             var table = new Tabulator("#budget-under-table", {
                 index: "Sku",
                 ajaxURL: "/ebay-over-uti/data",
@@ -882,17 +885,14 @@
                             var acosRaw = row.acos; 
                             var acos = parseFloat(acosRaw);
 
-                            if (isNaN(acos.toFixed(0))) {
-                                acos = 0;
+                            if (isNaN(acos)) {
+                                acos = 100;
                             }
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
 
-                            if (acos === 0) {
-                                td.classList.add('red-bg');
-                                return "100%"; 
-                            } else if (acos < 7) {
+                            if (acos < 7) {
                                 td.classList.add('pink-bg');
                             } else if (acos >= 7 && acos <= 14) {
                                 td.classList.add('green-bg');
@@ -923,10 +923,20 @@
                             var l7_spend = parseFloat(row.l7_spend) || 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                            
+                            // Get row's ACOS
+                            var rowAcos = parseFloat(row.acos) || 0;
+                            if (isNaN(rowAcos) || rowAcos === 0) {
+                                rowAcos = 100; // Treat 0 as 100 for comparison
+                            }
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 70 && ub7 <= 90) {
+                            
+                            // If acos > totalACOS, show pink (new rule)
+                            if (rowAcos > totalACOSValue) {
+                                td.classList.add('pink-bg');
+                            } else if (ub7 >= 70 && ub7 <= 90) {
                                 td.classList.add('green-bg');
                             } else if (ub7 > 90) {
                                 td.classList.add('pink-bg');
@@ -1074,7 +1084,30 @@
                     let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
-                    // if (!(ub7 > 90)) return false;
+                    // Get row's ACOS (backend already returns 100 when acos is 0)
+                    let rowAcos = parseFloat(acos) || 0;
+                    if (isNaN(rowAcos)) {
+                        rowAcos = 0;
+                    }
+
+                    // Calculate totalACOSValue if not already set (from all table data)
+                    if (totalACOSValue === 0 || isNaN(totalACOSValue)) {
+                        let allData = table.getData();
+                        let allTotalSpend = 0;
+                        let allTotalSales = 0;
+                        allData.forEach(function(row) {
+                            let spend = parseFloat(row.spend_l30 || 0);
+                            let sales = parseFloat(row.ad_sales_l30 || 0);
+                            allTotalSpend += spend;
+                            allTotalSales += sales;
+                        });
+                        totalACOSValue = allTotalSales > 0 ? (allTotalSpend / allTotalSales) * 100 : 0;
+                    }
+
+                    // Show campaigns where ub7 > 90 OR acos > totalACOS
+                    // Note: Backend already returns 100 when acos is 0, so we can directly compare
+                    let showCampaign = (rowAcos > totalACOSValue);
+                    if (!showCampaign) return false;
 
                     // Pink DIL filter (exclude pink rows)
                     let l30 = parseFloat(data.L30);
@@ -1157,6 +1190,17 @@
                     // Calculate Total ACOS = (Total L30 Spend / Total L30 Sales) * 100
                     let totalACOS = totalSales > 0 ? (totalSpend / totalSales) * 100 : 0;
                     document.getElementById("total-acos").innerText = totalACOS.toFixed(2) + "%";
+                    
+                    // Calculate total ACOS from ALL data for filter comparison
+                    let allTotalSpend = 0;
+                    let allTotalSales = 0;
+                    allData.forEach(function(row) {
+                        let spend = parseFloat(row.spend_l30 || 0);
+                        let sales = parseFloat(row.ad_sales_l30 || 0);
+                        allTotalSpend += spend;
+                        allTotalSales += sales;
+                    });
+                    totalACOSValue = allTotalSales > 0 ? (allTotalSpend / allTotalSales) * 100 : 0;
                 }
 
                 table.on("dataFiltered", function() {
