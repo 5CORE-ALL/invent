@@ -243,20 +243,88 @@ class EbayThreeController extends Controller
     // Save NR value for a SKU
     public function saveNrToDatabase(Request $request)
     {
-        $sku = $request->input('sku');
-        $nr = $request->input('nr');
+        $skus = $request->input("skus");
+        $hideValues = $request->input("hideValues");
+        $sku = $request->input("sku");
+        $nr = $request->input("nr");
+        $hide = $request->input("hide");
 
-        if (!$sku || $nr === null) {
-            return response()->json(['error' => 'SKU and nr are required.'], 400);
+        // Decode hideValues if it's a JSON string
+        if (is_string($hideValues)) {
+            $hideValues = json_decode($hideValues, true);
         }
 
-        $dataView = EbayThreeDataView::firstOrNew(['sku' => $sku]);
-        $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
-        $value['NR'] = $nr;
-        $dataView->value = $value;
-        $dataView->save();
+        // Bulk update with individual hide values
+        if (is_array($skus) && is_array($hideValues)) {
+            foreach ($skus as $skuItem) {
+                $ebayDataView = EbayThreeDataView::firstOrNew(["sku" => $skuItem]);
+                $value = is_array($ebayDataView->value)
+                    ? $ebayDataView->value
+                    : (json_decode($ebayDataView->value, true) ?: []);
+                // Use the value from hideValues for each SKU
+                $value["Hide"] = filter_var(
+                    $hideValues[$skuItem] ?? false,
+                    FILTER_VALIDATE_BOOLEAN
+                );
+                $ebayDataView->value = $value;
+                $ebayDataView->save();
+            }
+            return response()->json([
+                "success" => true,
+                "updated" => count($skus),
+            ]);
+        }
 
-        return response()->json(['success' => true, 'data' => $dataView]);
+        // Bulk update if 'skus' is present and 'hide' is a single value (legacy)
+        if (is_array($skus) && $hide !== null) {
+            foreach ($skus as $skuItem) {
+                $ebayDataView = EbayThreeDataView::firstOrNew(["sku" => $skuItem]);
+                $value = is_array($ebayDataView->value)
+                    ? $ebayDataView->value
+                    : (json_decode($ebayDataView->value, true) ?: []);
+                $value["Hide"] = filter_var($hide, FILTER_VALIDATE_BOOLEAN);
+                $ebayDataView->value = $value;
+                $ebayDataView->save();
+            }
+            return response()->json([
+                "success" => true,
+                "updated" => count($skus),
+            ]);
+        }
+
+        // Single update (existing logic)
+        if (!$sku || ($nr === null && $hide === null)) {
+            return response()->json(
+                ["error" => "SKU and at least one of NR or Hide is required."],
+                400
+            );
+        }
+
+        $ebayDataView = EbayThreeDataView::firstOrNew(["sku" => $sku]);
+        $value = is_array($ebayDataView->value)
+            ? $ebayDataView->value
+            : (json_decode($ebayDataView->value, true) ?: []);
+
+        if ($nr !== null) {
+            $value["NR"] = $nr;
+        }
+
+        if ($hide !== null) {
+            $value["Hide"] = filter_var($hide, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        $ebayDataView->value = $value;
+        $ebayDataView->save();
+
+        // Create a user-friendly message based on what was updated
+        $message = "Data updated successfully";
+        if ($nr !== null) {
+            $message = $nr === 'NRL' ? "NRL updated" : ($nr === 'REQ' ? "REQ updated" : "NR updated to {$nr}");
+        } elseif ($hide !== null) {
+            $message = "Hide status updated";
+        }
+
+        return response()->json(["success" => true, "data" => $ebayDataView, "message" => $message]);
     }
 
 
