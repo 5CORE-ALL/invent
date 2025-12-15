@@ -310,6 +310,10 @@
             display: block;
         }
 
+        .dropdown-menu.show {
+            display: block !important;
+        }
+
         .column-toggle-item {
             padding: 8px 16px;
             cursor: pointer;
@@ -1583,11 +1587,11 @@
                             <!-- Column Visibility Dropdown -->
                             <div class="dropdown d-inline-block">
                                 <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                                    id="hideColumnsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                    id="hideColumnsBtn" aria-expanded="false">
                                     <i class="fa fa-eye"></i> Columns
                                 </button>
                                 <ul class="dropdown-menu" aria-labelledby="hideColumnsBtn" id="columnToggleMenu"
-                                    style="max-height: 400px; overflow-y: auto;">
+                                    style="max-height: 400px; overflow-y: auto; display: none;">
                                     <!-- Will be populated by JavaScript -->
                                 </ul>
                             </div>
@@ -4941,12 +4945,12 @@
                     }
                 });
                 
-                localStorage.setItem('ebayTableColumnWidths', JSON.stringify(widths));
+                localStorage.setItem('ebayTwoTableColumnWidths', JSON.stringify(widths));
             }
             
             // Load column widths from localStorage
             function loadColumnWidths() {
-                const saved = localStorage.getItem('ebayTableColumnWidths');
+                const saved = localStorage.getItem('ebayTwoTableColumnWidths');
                 if (!saved) return;
                 
                 try {
@@ -5083,7 +5087,7 @@
 
             // Load hidden columns from localStorage
             function loadHiddenColumns() {
-                const stored = localStorage.getItem('hiddenColumns');
+                const stored = localStorage.getItem('ebayTwoHiddenColumns');
                 return stored ? new Set(JSON.parse(stored)) : new Set();
             }
 
@@ -5134,15 +5138,16 @@
                 // Apply hidden columns after table is rendered
                 applyColumnVisibility();
 
-                // Dropdown toggle
+                // Dropdown toggle - prevent Bootstrap from handling it, use custom logic
                 $dropdownBtn.off('click').on('click', function(e) {
+                    e.preventDefault();
                     e.stopPropagation();
                     $menu.toggleClass('show');
                 });
 
                 // Close menu if clicked outside
                 $(document).off('click.columnToggle').on('click.columnToggle', function(e) {
-                    if (!$(e.target).closest('.custom-dropdown').length) {
+                    if (!$(e.target).closest('.dropdown').length && !$(e.target).closest('#columnToggleMenu').length) {
                         $menu.removeClass('show');
                     }
                 });
@@ -5161,7 +5166,7 @@
                     if (!isVisible) hiddenColumns.add(field);
                     else hiddenColumns.delete(field);
 
-                    localStorage.setItem('hiddenColumns', JSON.stringify([...hiddenColumns]));
+                    localStorage.setItem('ebayTwoHiddenColumns', JSON.stringify([...hiddenColumns]));
                 });
 
                 $('#showAllColumns').on('click', function() {
@@ -5176,7 +5181,7 @@
                     
                     // Clear hiddenColumns and save
                     hiddenColumns.clear();
-                    localStorage.setItem('hiddenColumns', JSON.stringify([...hiddenColumns]));
+                    localStorage.setItem('ebayTwoHiddenColumns', JSON.stringify([...hiddenColumns]));
                 });
 
             }
