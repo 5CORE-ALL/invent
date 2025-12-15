@@ -1074,7 +1074,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'eBay', 'sub_title' => 'eBay Analysis'])
+    @include('layouts.shared/page-title', ['page_title' => 'eBay2', 'sub_title' => 'eBay2 Analysis'])
 
     <div class="row">
         <div class="col-12">
@@ -1133,7 +1133,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>eBay Product Analysis</h4>
+                <h4>eBay2 Product Analysis</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                         <!-- Left side: Filter buttons and Create Task -->
                         <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -2604,6 +2604,7 @@
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
                                     spend_l30: item.AD_Spend_L30 || 0,
+                                    'AD%': item['AD%'] || 0,
                                 };
                             });
 
@@ -2928,24 +2929,29 @@
                     ));
                     
                     const price = Number(item['eBay Price']) || 0;
-                    const ship = Number(item.SHIP) || 0;
-                    const lp = Number(item.LP) || 0;
+                    const ship = Number(item.SHIP || item.Ship_productmaster) || 0;
+                    const lp = Number(item.LP || item.LP_productmaster) || 0;
                     const spend = Number(item.spend_l30) || 0;
                     const eL30 = Number(item['eBay L30']) || 0;
+                    // Use percentage from item if available, otherwise use global percentage
                     const ebayPercentage = {{ $ebayTwoPercentage ?? 0}};
                     const totalSalesData = eL30 * price;
                     let tacos = Number(item.TacosL30) || 0;
+                    const adPercent = Number(item['AD%'] || 0) / 100; // Convert AD% to decimal
 
-                    let pft = ((price * (ebayPercentage / 100)) - lp - ship) / price;
-                    if(isNaN(pft) || !isFinite(pft)) {
-                        pft = 0;
-                    }
-
+                    // GRPFT% = ((Price * percentage - Ship - LP) / Price) * 100
                     let grpft = ((price * (ebayPercentage / 100)) - ship - lp) / price;
                     if(isNaN(grpft) || !isFinite(grpft)) {
                         grpft = 0;
                     }
 
+                    // PFT% = GRPFT% - AD%
+                    let pft = grpft - adPercent;
+                    if(isNaN(pft) || !isFinite(pft)) {
+                        pft = 0;
+                    }
+
+                    // TPRFT% = GRPFT% - TacosL30 (TacosL30 is already a decimal ratio)
                     let tprft = grpft - tacos;
                     
                     if(isNaN(tprft) || !isFinite(tprft)) {
@@ -3393,7 +3399,7 @@
                 const value = $cb.is(':checked') ? 1 : 0;
 
                 $.ajax({
-                    url: '/ebay/update-listed-live',
+                    url: '/ebay2/update-listed-live',
                     method: 'POST',
                     data: {
                         sku: sku,
@@ -5571,15 +5577,21 @@
                         
                         // Calculate GRPFT, PFT, and TPRFT for totals
                         const itemPrice = parseFloat(item['eBay Price']) || 0;
-                        const itemShip = parseFloat(item.SHIP) || 0;
-                        const itemLp = parseFloat(item.LP) || 0;
+                        const itemShip = parseFloat(item.SHIP || item.Ship_productmaster) || 0;
+                        const itemLp = parseFloat(item.LP || item.LP_productmaster) || 0;
                         const itemTacos = parseFloat(item.TacosL30) || 0;
-                        const ebayPct = {{ $ebayTwoPercentage ?? 0}};
-                        const ebayAdPct = 0;
+                        // Use percentage from item if available, otherwise use global percentage
+                        const itemPercentage = {{ $ebayTwoPercentage ?? 0}};
+                        const ebayPct = itemPercentage;
                         
                         if (itemPrice > 0) {
-                            const itemPft = (itemPrice * (ebayPct / 100) - itemLp - itemShip) / itemPrice;
-                            const itemGrpft = (itemPrice * (ebayAdPct / 100) - itemShip - itemLp) / itemPrice;
+                            // GRPFT% = ((Price * percentage - Ship - LP) / Price) * 100
+                            const itemGrpft = (itemPrice * (ebayPct / 100) - itemShip - itemLp) / itemPrice;
+                            // Get AD% from item (convert from percentage to decimal)
+                            const itemAdPercent = (parseFloat(item['AD%'] || 0) / 100);
+                            // PFT% = GRPFT% - AD%
+                            const itemPft = itemGrpft - itemAdPercent;
+                            // TPRFT% = GRPFT% - TacosL30 (both are decimals, so direct subtraction)
                             const itemTprft = itemGrpft - itemTacos;
                             
                             if (!isNaN(itemPft) && isFinite(itemPft)) {
@@ -5589,9 +5601,9 @@
                             if (!isNaN(itemGrpft) && isFinite(itemGrpft)) {
                                 metrics.grpftTotal += itemGrpft * 100;
                                 metrics.grpftCount++;
-                                // Calculate GRPFT amount: (price * ebayAdPercentage / 100 - ship - lp) * L30
+                                // Calculate GRPFT amount: (price * percentage - ship - lp) * L30
                                 const itemL30 = parseFloat(item['eBay L30']) || 0;
-                                const grpftAmount = ((itemPrice * (ebayAdPct / 100)) - itemShip - itemLp) * itemL30;
+                                const grpftAmount = ((itemPrice * (ebayPct / 100)) - itemShip - itemLp) * itemL30;
                                 if (!isNaN(grpftAmount) && isFinite(grpftAmount)) {
                                     metrics.totalGrpftAmount += grpftAmount;
                                 }
@@ -6324,7 +6336,7 @@
                 }
 
                 $.ajax({
-                    url: '/ebay-one/save-sprice',
+                    url: '/ebay/save-sprice',
                     type: 'POST',
                     data: {
                         _token: $('meta[name="csrf-token"]').attr('content'),
