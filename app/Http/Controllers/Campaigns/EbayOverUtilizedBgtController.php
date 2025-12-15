@@ -521,6 +521,10 @@ class EbayOverUtilizedBgtController extends Controller
                 $row['acos'] = $acos;
             }
 
+            // Add L30 spend and sales for totals calculation
+            $row['spend_l30'] = $adFees;
+            $row['ad_sales_l30'] = $sales;
+
             $row['l7_spend'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
             $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
             $row['l1_spend'] = (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0);

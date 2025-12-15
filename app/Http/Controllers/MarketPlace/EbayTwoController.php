@@ -236,7 +236,7 @@ class EbayTwoController extends Controller
                 $lp = floatval($pm->lp);
             }
 
-            $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            $ship = isset($values["ebay2_ship"]) ? floatval($values["ebay2_ship"]) : (isset($pm->ebay2_ship) ? floatval($pm->ebay2_ship) : 0);
 
             // Price and units for calculations
             $price = floatval($row["eBay Price"] ?? 0);

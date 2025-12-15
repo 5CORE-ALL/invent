@@ -284,6 +284,22 @@
                                     </select>
                                 </div>
                             </div>
+                            <div class="col-md-6">
+                                <div class="d-flex gap-3 justify-content-end align-items-center">
+                                    <div class="text-end">
+                                        <div class="text-muted small" style="font-size: 0.9rem;">Total L30 Spend</div>
+                                        <div class="fw-bold" style="font-size: 1.3rem;" id="total-l30-spend">$0.00</div>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="text-muted small" style="font-size: 0.9rem;">Total L30 Sales</div>
+                                        <div class="fw-bold" style="font-size: 1.3rem;" id="total-l30-sales">$0.00</div>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="text-muted small" style="font-size: 0.9rem;">Total ACOS</div>
+                                        <div class="fw-bold" style="font-size: 1.3rem;" id="total-acos">0.00%</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -857,6 +873,10 @@
                         title: "ACOS",
                         field: "acos",
                         hozAlign: "right",
+                        sorter: "number",
+                        sorterParams: {
+                            alignEmptyValues: "bottom"
+                        },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var acosRaw = row.acos; 
@@ -881,6 +901,17 @@
                             }
 
                             return acos.toFixed(0) + "%";
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            // Custom sorter: treat acos === 0 as 100 for sorting
+                            var acosA = parseFloat(aRow.getData().acos || 0);
+                            var acosB = parseFloat(bRow.getData().acos || 0);
+                            
+                            // If acos is 0, treat it as 100 for sorting
+                            if (acosA === 0) acosA = 100;
+                            if (acosB === 0) acosB = 100;
+                            
+                            return acosA - acosB;
                         }
                     },
                     {
@@ -1043,13 +1074,7 @@
                     let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
-                    if (!(ub7 > 90)) return false;
-
-                    // price < 20
-                    // let price = parseFloat(data.price || 0);
-                    // if (price < 30) {
-                    //     return false;
-                    // }
+                    // if (!(ub7 > 90)) return false;
 
                     // Pink DIL filter (exclude pink rows)
                     let l30 = parseFloat(data.L30);
@@ -1111,21 +1136,56 @@
                     document.getElementById("percentage-campaigns").innerText = percentage + "%";
                 }
 
-                table.on("dataFiltered", updateCampaignStats);
-                table.on("pageLoaded", updateCampaignStats);
-                table.on("dataProcessed", updateCampaignStats);
+                function updateL30Totals() {
+                    let allData = table.getData();
+                    let filteredData = allData.filter(combinedFilter);
+
+                    let totalSpend = 0;
+                    let totalSales = 0;
+
+                    filteredData.forEach(function(row) {
+                        let spend = parseFloat(row.spend_l30 || 0);
+                        let sales = parseFloat(row.ad_sales_l30 || 0);
+                        totalSpend += spend;
+                        totalSales += sales;
+                    });
+
+                    // Update display
+                    document.getElementById("total-l30-spend").innerText = "$" + totalSpend.toFixed(2);
+                    document.getElementById("total-l30-sales").innerText = "$" + totalSales.toFixed(2);
+
+                    // Calculate Total ACOS = (Total L30 Spend / Total L30 Sales) * 100
+                    let totalACOS = totalSales > 0 ? (totalSpend / totalSales) * 100 : 0;
+                    document.getElementById("total-acos").innerText = totalACOS.toFixed(2) + "%";
+                }
+
+                table.on("dataFiltered", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
+                table.on("pageLoaded", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
+                table.on("dataProcessed", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
 
                 $("#global-search").on("keyup", function() {
                     table.setFilter(combinedFilter);
                     updateCampaignStats(); // update count immediately
+                    updateL30Totals(); // update totals immediately
                 });
 
                 $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     updateCampaignStats(); // update count immediately
+                    updateL30Totals(); // update totals immediately
                 });
 
                 updateCampaignStats();
+                updateL30Totals();
             });
 
             document.addEventListener("click", function(e) {

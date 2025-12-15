@@ -1609,8 +1609,8 @@
                             <span class="badge bg-danger fs-5 p-2" id="zero-sold-count-summary" style="color: white; font-weight: bold;">0 SOLD: 0</span>
                             <span class="badge bg-primary fs-5 p-2" id="sold-count-summary" style="color: white; font-weight: bold;">SOLD: 0</span>
                             <span class="badge bg-danger fs-5 p-2" id="red-margin-count-summary" style="color: white; font-weight: bold;">RED MARGIN: 0</span>
-                            <span class="badge bg-warning fs-5 p-2" id="nra-count-summary" style="color: black; font-weight: bold;">NRA: 0</span>
                             <span class="badge bg-secondary fs-5 p-2" id="nrl-count-summary" style="color: white; font-weight: bold;">NRL: 0</span>
+                            <span class="badge bg-success fs-5 p-2" id="req-count-summary" style="color: white; font-weight: bold;">REQ: 0</span>
                         </div>
                     </div>
                 </div>
@@ -1698,16 +1698,6 @@
                                             <div class="metric-total" id="eDil-total">0%</div>
                                         </div>
                                     </th>
-                                    <th data-field="NRA" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                NRA
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="nra-col-count">0</div>
-                                        </div>
-                                    </th>
-
                                     <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap; min-width: 100px; width: 100px;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -1840,6 +1830,14 @@
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="sale-total">0</div>
+                                        </div>
+                                    </th>
+
+                                    <th data-field="ship" class="ship_col" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                Ebay 2 Ship
+                                            </div>
                                         </div>
                                     </th>
                                 </tr>
@@ -2342,8 +2340,11 @@
                     .removeClass('btn-success btn-warning btn-danger')
                     .addClass('btn-light');
 
-                // Show all products
-                filteredData = [...tableData];
+                // Show all products (filtered to REQ only)
+                filteredData = tableData.filter(item => {
+                    const nrReq = (item.nr_req || '').toUpperCase();
+                    return nrReq === 'REQ' || !item.nr_req; // Show REQ or items without nr_req set (defaults to REQ)
+                });
                 currentPage = 1;
                 renderTable();
                 calculateTotals();
@@ -2603,7 +2604,11 @@
                             });
 
 
-                            filteredData = [...tableData];
+                            // Filter to show only REQ data
+                            filteredData = tableData.filter(item => {
+                                const nrReq = (item.nr_req || '').toUpperCase();
+                                return nrReq === 'REQ' || !item.nr_req; // Show REQ or items without nr_req set (defaults to REQ)
+                            });
 
                         }
                     },
@@ -2622,8 +2627,8 @@
                 let zeroSold = 0;
                 let totalSku = 0;
                 let lowProfitCount = 0;
-                let nraCount = 0;
                 let nrlCount = 0;
+                let reqCount = 0;
 
                 filteredData.forEach(item => {
                     if (!item.is_parent) {
@@ -2637,11 +2642,11 @@
                         if (pftPercentage < 10) {
                             lowProfitCount++;
                         }
-                        if (item.NR === 'NRA') {
-                            nraCount++;
-                        }
                         if (item.nr_req === 'NR') {
                             nrlCount++;
+                        }
+                        if (item.nr_req === 'REQ' || !item.nr_req) {
+                            reqCount++;
                         }
                     }
                 });
@@ -2649,14 +2654,13 @@
                 $('#zero-sold-count').text(zeroSold);
                 $('#sold-count').text(totalSku - zeroSold);
                 $('#red-margin-count').text(lowProfitCount);
-                $('#nra-count').text(nraCount);
                 
                 // Update summary badges
                 $('#zero-sold-count-summary').text('0 SOLD: ' + zeroSold);
                 $('#sold-count-summary').text('SOLD: ' + (totalSku - zeroSold));
                 $('#red-margin-count-summary').text('RED MARGIN: ' + lowProfitCount);
-                $('#nra-count-summary').text('NRA: ' + nraCount);
                 $('#nrl-count-summary').text('NRL: ' + nrlCount);
+                $('#req-count-summary').text('REQ: ' + reqCount);
 
                 updateRedMarginDataToChannelMaster(lowProfitCount);
             }
@@ -2864,65 +2868,6 @@
                     $row.append($('<td>').attr('data-field', 'e_dil').html(
                         `<span class="dil-percent-value ${getEDilColor(item['E Dil%'])}">${Math.round(item['E Dil%'] * 100)}%</span>`
                     ));
-
-                    if (item.is_parent) {
-                        $row.append($('<td>').attr('data-field', 'NRA')); // Empty cell for parent
-                    } else {
-                        let currentNR = (item.NR === 'RA' || item.NR === 'NRA' || item.NR === 'LATER') ?
-                            item.NR : 'RA';
-
-                        const adilPercent = Math.round(item['E Dil%'] * 100);
-                        // Auto-set to NRA if E Dil% >= 50%, but only save if it's actually changing
-                        if (adilPercent >= 50 && currentNR !== 'NRA') {
-                            currentNR = 'NRA';
-
-                            // Only save if SKU exists and value is actually changing
-                            if (item['(Child) sku']) {
-                                $.ajax({
-                                    url: '/ebay2/save-nr',
-                                    type: 'POST',
-                                    data: {
-                                        sku: item['(Child) sku'],
-                                        nr: 'NRA',
-                                        _token: $('meta[name="csrf-token"]').attr('content')
-                                    },
-                                    success: function(res) {
-                                        // Update the item in tableData to prevent repeated saves
-                                        const foundItem = tableData.find(i => i['(Child) sku'] === item['(Child) sku']);
-                                        if (foundItem) {
-                                            foundItem.NR = 'NRA';
-                                            foundItem.UI_NR = 'NRA';
-                                        }
-                                    },
-                                    error: function(err) {
-                                        // Silent error - don't pollute console on every render
-                                    }
-                                });
-                            }
-                        }
-
-                        item.UI_NR = currentNR;
-
-                        const $select = $(`
-                            <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                                <option value="NRA" ${currentNR === 'NRA' ? 'selected' : ''}>NRA</option>
-                                <option value="RA" ${currentNR === 'RA' ? 'selected' : ''}>RA</option>
-                                <option value="LATER" ${currentNR === 'LATER' ? 'selected' : ''}>LATER</option>
-                            </select>
-                        `);
-
-                        // Set background color based on value
-                        if (currentNR === 'NRA') {
-                            $select.css('background-color', '#dc3545');
-                            $select.css('color', '#ffffff');
-                        } else if (currentNR === 'RA') {
-                            $select.css('background-color', '#28a745');
-                            $select.css('color', '#ffffff');
-                        }
-
-                        $select.data('sku', item['(Child) sku']);
-                        $row.append($('<td>').attr('data-field', 'NRA').append($select));
-                    }
 
                     // NRL/REQ dropdown - only for non-parent rows
                     if (item.is_parent) {
@@ -3169,8 +3114,15 @@
                     ));
 
                     $row.append($('<td>').attr('data-field', 'salesTotal').attr('id', `total-sales`).html(
-                        ((item['eBay L30']) * (parseFloat(item['eBay Price']) || 0).toFixed(2))
+                        ((item['eBay L30']) * (parseFloat(item['eBay Price']) || 0)).toFixed(2)
                     ));
+
+                    // Add Ebay 2 Ship column
+                    if (item.is_parent) {
+                        $row.append($('<td>').attr('data-field', 'ship').addClass('ship_col')); // Empty cell for parent
+                    } else {
+                        $row.append($('<td>').attr('data-field', 'ship').addClass('ship_col').text(item.SHIP || 0));
+                    }
 
                     $tbody.append($row);
                 });
@@ -5700,7 +5652,7 @@
                         }
                     }
                     
-                    $('#sale-total').text(metrics.totalSalesTotal.toLocaleString());
+                    $('#sale-total').text(metrics.totalSalesTotal.toFixed(2));
 
                     $.ajax({
                         url: "{{ route('adv-ebay2.total-sale.save-data') }}",
@@ -5775,7 +5727,6 @@
                 $('#zero-sold-count-summary').text('0 SOLD: 0');
                 $('#sold-count-summary').text('SOLD: 0');
                 $('#red-margin-count-summary').text('RED MARGIN: 0');
-                $('#nra-count-summary').text('NRA: 0');
                 $('#nrl-count-summary').text('NRL: 0');
                 $('#req-total').text('0');
             }
