@@ -222,6 +222,22 @@
                                     </select>
                                 </div>
                             </div>
+                            <div class="col-md-6">
+                                <div class="d-flex gap-4 align-items-center justify-content-end">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="fw-bold text-muted" style="font-size: 1.1rem;">Total L30 Spend:</span>
+                                        <span id="total-l30-spend" class="fw-bold text-primary" style="font-size: 1.3rem;">$0</span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="fw-bold text-muted" style="font-size: 1.1rem;">Total L30 Sales:</span>
+                                        <span id="total-l30-sales" class="fw-bold text-success" style="font-size: 1.3rem;">$0</span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="fw-bold text-muted" style="font-size: 1.1rem;">Total ACOS:</span>
+                                        <span id="total-acos" class="fw-bold text-danger" style="font-size: 1.3rem;">0%</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -262,6 +278,10 @@
                 if (percent >= 25 && percent < 50) return 'green';
                 return 'pink';
             };
+
+            // Store total ACOS globally for SBGT calculation
+            var globalTotalACOS = 0;
+            var isUpdatingTotals = false; // Flag to prevent infinite redraw loop
 
             var table = new Tabulator("#budget-under-table", {
                 index: "Sku",
@@ -498,7 +518,7 @@
                         sorter: "number",
                         formatter: function(cell) {
                             return `
-                                <span>${Math.floor(parseFloat(cell.getValue() || 0)) + "%"}</span>
+                                <span>${Math.floor(cell.getValue() || 0) + "%"}</span>
                             `;
                             
                         }
@@ -548,19 +568,29 @@
                         field: "sbgt",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var acos = Math.floor(parseFloat(row.acos_L30 || 0));
+                            var acos = parseFloat(row.acos_L30 || 0);
+                            var acosFloored = Math.floor(acos);
                             var sbgt;
-                            if (acos < 10) {
-                                sbgt = 5;
-                            } else if (acos < 20) {
-                                sbgt = 4;
-                            } else if (acos < 30) {
-                                sbgt = 3;
-                            } else if (acos < 40) {
-                                sbgt = 2;
-                            } else {
+                            
+                            // New rule: if acos_L30 > total_acos, then sbgt = 1
+                            // Compare raw decimal values for accuracy
+                            if (globalTotalACOS > 0 && acos > globalTotalACOS) {
                                 sbgt = 1;
+                            } else {
+                                // Old formula (using floored value for consistency)
+                                if (acosFloored < 10) {
+                                    sbgt = 5;
+                                } else if (acosFloored < 20) {
+                                    sbgt = 4;
+                                } else if (acosFloored < 30) {
+                                    sbgt = 3;
+                                } else if (acosFloored < 40) {
+                                    sbgt = 2;
+                                } else {
+                                    sbgt = 1;
+                                }
                             }
+                            
                             return `
                                 <input type="number" class="form-control form-control-sm text-center sbgt-input"  value="${sbgt}" min="1" max="5"  data-campaign-id="${row.campaign_id}">
                             `;
@@ -771,17 +801,14 @@
                     let clicksFilterVal = $("#clicks-filter").val();
                     let clicks_L30 = parseFloat(data.clicks_L30) || 0;
 
-                    if (!clicksFilterVal) {
-                        if (clicks_L30 <= 25) return false;
-                    } else {
-                        // When user selects a filter from dropdown
+                    if (clicksFilterVal) {
+                        // Only apply filter when user explicitly selects from dropdown
                         if (clicksFilterVal === "CLICKS_L30") {
                             if (clicks_L30 <= 25) return false;
-                        } else if (clicksFilterVal === "ALL") {
-                            // Show all rows
                         } else if (clicksFilterVal === "OTHERS") {
                             if (clicks_L30 > 25) return false;
                         }
+                        // If "ALL" is selected or no filter, show all rows
                     }
 
                     let invFilterVal = $("#inv-filter").val();
@@ -851,19 +878,84 @@
                     document.getElementById("percentage-campaigns").innerText = percentage + "%";
                 }
 
-                table.on("dataFiltered", updateCampaignStats);
-                table.on("pageLoaded", updateCampaignStats);
-                table.on("dataProcessed", updateCampaignStats);
+                function updateL30Totals() {
+                    // Prevent infinite loop
+                    if (isUpdatingTotals) return;
+                    
+                    let allRows = table.getData();
+                    let filteredRows = allRows.filter(combinedFilter);
+
+                    // Calculate totals for DISPLAY from filtered rows
+                    let filteredTotalSpend = 0;
+                    let filteredTotalSales = 0;
+
+                    filteredRows.forEach(function(row) {
+                        let spend = parseFloat(row.spend_l30) || 0;
+                        let sales = parseFloat(row.ad_sales_l30) || 0;
+                        filteredTotalSpend += spend;
+                        filteredTotalSales += sales;
+                    });
+
+                    // Update display with filtered totals
+                    document.getElementById("total-l30-spend").innerText = "$" + filteredTotalSpend.toFixed(2);
+                    document.getElementById("total-l30-sales").innerText = "$" + filteredTotalSales.toFixed(2);
+
+                    // Calculate total ACOS for DISPLAY from filtered rows
+                    let filteredTotalACOS = filteredTotalSales > 0 ? (filteredTotalSpend / filteredTotalSales) * 100 : 0;
+                    document.getElementById("total-acos").innerText = filteredTotalACOS.toFixed(2) + "%";
+
+                    // BUT: Calculate total ACOS for SBGT from ALL rows (not filtered) to keep SBGT consistent
+                    // This matches the command behavior where total ACOS is calculated from all valid campaigns
+                    let allTotalSpend = 0;
+                    let allTotalSales = 0;
+
+                    allRows.forEach(function(row) {
+                        let spend = parseFloat(row.spend_l30) || 0;
+                        let sales = parseFloat(row.ad_sales_l30) || 0;
+                        allTotalSpend += spend;
+                        allTotalSales += sales;
+                    });
+
+                    // Calculate total ACOS from ALL data for SBGT calculation (not filtered)
+                    let totalACOS = allTotalSales > 0 ? (allTotalSpend / allTotalSales) * 100 : 0;
+                    let previousTotalACOS = globalTotalACOS;
+                    globalTotalACOS = totalACOS; // Store globally for SBGT calculation (from all data)
+                    
+                    // Only redraw if total ACOS changed to avoid unnecessary redraws
+                    if (Math.abs(totalACOS - previousTotalACOS) > 0.01) {
+                        isUpdatingTotals = true;
+                        table.redraw(true);
+                        setTimeout(function() {
+                            isUpdatingTotals = false;
+                        }, 100);
+                    }
+                }
+
+                table.on("dataFiltered", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
+                table.on("pageLoaded", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
+                table.on("dataProcessed", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
 
                 $("#global-search").on("keyup", function() {
                     table.setFilter(combinedFilter);
+                    updateL30Totals();
                 });
 
                 $("#status-filter,#clicks-filter,#inv-filter, #nrl-filter, #nra-filter, #fba-filter").on("change", function() {
                     table.setFilter(combinedFilter);
+                    updateL30Totals();
                 });
 
                 updateCampaignStats();
+                updateL30Totals();
             });
 
             document.addEventListener("click", function(e) {

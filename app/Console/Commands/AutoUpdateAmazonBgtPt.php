@@ -38,11 +38,49 @@ class AutoUpdateAmazonBgtPt extends Command
             return 0;
         }
 
-        $campaignIds = collect($campaigns)->pluck('campaign_id')->toArray();
-        $newBgts = collect($campaigns)->pluck('sbgt')->toArray();
+        // Filter out campaigns with empty/null campaign_id or invalid sbgt
+        $validCampaigns = collect($campaigns)->filter(function ($campaign) {
+            return !empty($campaign->campaign_id) && isset($campaign->sbgt) && $campaign->sbgt > 0;
+        })->values();
 
-        $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
-        $this->info("Update Result: " . json_encode($result));
+        if ($validCampaigns->isEmpty()) {
+            $this->warn("No valid campaigns found (all have empty campaign_id or invalid budget).");
+            return 0;
+        }
+
+        $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
+        $newBgts = $validCampaigns->pluck('sbgt')->toArray();
+
+        // Ensure both arrays have the same length
+        if (count($campaignIds) !== count($newBgts)) {
+            $this->error("Error: Campaign IDs and budgets arrays have different lengths!");
+            return 1;
+        }
+
+        try {
+            $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
+            
+            // Show only campaign name and new budget for valid campaigns
+            $simplifiedResult = $validCampaigns->map(function ($campaign) {
+                return [
+                    'campaignName' => $campaign->campaignName ?? '',
+                    'newBudget' => $campaign->sbgt ?? 0
+                ];
+            })->toArray();
+            
+            $this->info("Update Result: " . json_encode($simplifiedResult));
+            
+            if (isset($result['status']) && $result['status'] !== 200) {
+                $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
+                return 1;
+            }
+            
+            $this->info("Successfully updated " . count($campaignIds) . " campaign budgets.");
+            
+        } catch (\Exception $e) {
+            $this->error("Error updating campaign budgets: " . $e->getMessage());
+            return 1;
+        }
 
     }
 
@@ -70,10 +108,14 @@ class AutoUpdateAmazonBgtPt extends Command
                     $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
         $result = [];
+        $totalSpend = 0;
+        $totalSales = 0;
 
+        // First pass: collect all data and calculate totals
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
 
@@ -86,10 +128,33 @@ class AutoUpdateAmazonBgtPt extends Command
                 continue;
             }
 
-            // clicks must be >= 25
-            // if (($matchedCampaignL30->clicks ?? 0) < 25) {
-            //     continue;
-            // }
+            // Skip if INV = 0
+            if (($shopify->inv ?? 0) == 0) {
+                continue;
+            }
+
+            $sales = $matchedCampaignL30->sales30d ?? 0;
+            $spend = $matchedCampaignL30->spend ?? 0;
+
+            $totalSpend += $spend;
+            $totalSales += $sales;
+        }
+
+        // Calculate total ACOS
+        $totalACOS = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
+
+        // Second pass: calculate sbgt with new rule
+        foreach ($productMasters as $pm) {
+            $sku = strtoupper($pm->sku);
+
+            $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
+            $shopify = $shopifyData[$pm->sku] ?? null;
+
+            $matchedCampaignL30 = $this->matchCampaign($sku, $amazonSpCampaignReportsL30);
+
+            if (!$matchedCampaignL30) {
+                continue;
+            }
 
             // Skip if INV = 0
             if (($shopify->inv ?? 0) == 0) {
@@ -100,6 +165,7 @@ class AutoUpdateAmazonBgtPt extends Command
             $row['INV']         = $shopify->inv ?? 0;
             $row['price']  = $amazonSheet->price ?? 0;
             $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? '';
+            $row['campaignName'] = $matchedCampaignL30->campaignName ?? '';
 
             $sales = $matchedCampaignL30->sales30d ?? 0;
             $spend = $matchedCampaignL30->spend ?? 0;
@@ -126,17 +192,22 @@ class AutoUpdateAmazonBgtPt extends Command
 
             $price = (float) ($row['price'] ?? 0);
 
-            // ACOS-based sbgt rule (updated)
-            if ($acos < 10) {
-                $sbgt = 5;
-            } elseif ($acos < 20) {
-                $sbgt = 4;
-            } elseif ($acos < 30) {
-                $sbgt = 3;
-            } elseif ($acos < 40) {
-                $sbgt = 2;
-            } else {
+            // New rule: if acos_L30 > total_acos, then sbgt = 1, otherwise old formula
+            if ($totalACOS > 0 && $acos > $totalACOS) {
                 $sbgt = 1;
+            } else {
+                // Old ACOS-based sbgt rule
+                if ($acos < 10) {
+                    $sbgt = 5;
+                } elseif ($acos < 20) {
+                    $sbgt = 4;
+                } elseif ($acos < 30) {
+                    $sbgt = 3;
+                } elseif ($acos < 40) {
+                    $sbgt = 2;
+                } else {
+                    $sbgt = 1;
+                }
             }
             $row['sbgt'] = $sbgt;
 
@@ -145,21 +216,6 @@ class AutoUpdateAmazonBgtPt extends Command
 
         return $result;
     }
-
-    // private function getDilColor($value)
-    // {
-    //     $percent = floatval($value) * 100;
-
-    //     if ($percent < 16.66) {
-    //         return 'red';
-    //     } elseif ($percent >= 16.66 && $percent < 25) {
-    //         return 'yellow';
-    //     } elseif ($percent >= 25 && $percent < 50) {
-    //         return 'green';
-    //     } else {
-    //         return 'pink';
-    //     }
-    // }
 
     function matchCampaign($sku, $campaignReports) {
         $skuClean = preg_replace('/\s+/', ' ', strtoupper(trim($sku)));

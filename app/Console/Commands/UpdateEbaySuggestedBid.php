@@ -143,20 +143,30 @@ class UpdateEbaySuggestedBid extends Command
                         // Get ESBID (suggested bid from bid_percentage in campaign listing)
                         $esbid = (float) ($listing->suggested_bid ?? 0);
                         
+                        // Calculate ov_dil (OV DIL%) = L30 / INV (in decimal form)
+                        $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
+                        $l30 = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
+                        $ov_dil = $inv > 0 ? ($l30 / $inv) : 0;
+                        
+                        // Check if DIL is red (ov_dil < 0.1666, which is < 16.66%)
+                        $dilPercent = $ov_dil * 100;
+                        $isDilRed = $dilPercent < 16.66;
+                        
                         // Determine new bid based on CVR ranges - flat values
                         $newBid = 2; // Default minimum
                         
-                        if ($cvr < 0.01) {
+                        // New rule: if CVR between 0.01-1% OR DIL red OR views < 100, set to 8%
+                        if (($cvr >= 0.01 && $cvr <= 1) || $isDilRed || $views < 100) {
+                            $newBid = 8; // Flat 8%
+                        } elseif ($cvr < 0.01) {
                             // For very low CVR, keep current ESBID (matches frontend logic)
                             $newBid = $esbid;
-                        } elseif ($cvr >= 0.01 && $cvr <= 1) {
-                            $newBid = 9; // Flat 9%
                         } elseif ($cvr >= 1.01 && $cvr <= 2) {
-                            $newBid = 8; // Flat 8%
+                            $newBid = 7; // Flat 8%
                         } elseif ($cvr >= 2.01 && $cvr <= 3) {
                             $newBid = 6; // Flat 6%
                         } elseif ($cvr >= 3.01 && $cvr <= 5) {
-                            $newBid = 5; // Flat 5%
+                            $newBid = 4; // Flat 5%
                         } elseif ($cvr >= 5.01 && $cvr <= 7) {
                             $newBid = 4; // Flat 4%
                         } elseif ($cvr >= 7.01 && $cvr <= 13) {
@@ -168,12 +178,7 @@ class UpdateEbaySuggestedBid extends Command
                         // Cap newBid to maximum of 15
                         $newBid = min($newBid, 15);
                         
-                        // Calculate ov_dil (OV DIL%) = L30 / INV (in decimal form)
-                        $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
-                        $l30 = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
-                        $ov_dil = $inv > 0 ? ($l30 / $inv) : 0;
-                        
-                        // If ov_dil is greater than 100%, set newBid to 0
+                        // If ov_dil is greater than 100%, set newBid to 2
                         if ($ov_dil > 1) {
                             $newBid = 2;
                         }

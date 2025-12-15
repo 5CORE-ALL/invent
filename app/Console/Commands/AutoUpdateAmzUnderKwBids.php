@@ -37,12 +37,92 @@ class AutoUpdateAmzUnderKwBids extends Command
             return 0;
         }
 
-        $campaignIds = collect($campaigns)->pluck('campaign_id')->toArray();
-        $newBids = collect($campaigns)->pluck('sbid')->toArray();
+        // Filter out campaigns with invalid data
+        $validCampaigns = collect($campaigns)->filter(function ($campaign) {
+            return !empty($campaign->campaign_id) && 
+                   isset($campaign->sbid) && 
+                   is_numeric($campaign->sbid) && 
+                   $campaign->sbid > 0;
+        })->values();
 
-        $result = $updateKwBids->updateAutoCampaignKeywordsBid($campaignIds, $newBids);
-        $this->info("Update Result: " . json_encode($result));
+        if ($validCampaigns->isEmpty()) {
+            $this->warn("No valid campaigns found (missing campaign_id or invalid bid).");
+            return 0;
+        }
 
+        $this->info("Found " . $validCampaigns->count() . " valid campaigns to update.");
+        $this->line("");
+
+        // Log campaigns before update
+        $this->info("Campaigns to be updated:");
+        foreach ($validCampaigns as $campaign) {
+            $campaignName = $campaign->campaignName ?? 'N/A';
+            $newBid = $campaign->sbid ?? 0;
+            $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+        }
+        $this->line("");
+
+        $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
+        $newBids = $validCampaigns->pluck('sbid')->toArray();
+
+        // Validate arrays are aligned
+        if (count($campaignIds) !== count($newBids)) {
+            $this->error("✗ Array mismatch: campaign IDs and bids count don't match!");
+            return 1;
+        }
+
+        try {
+            //$result = $updateKwBids->updateAutoCampaignKeywordsBid($campaignIds, $newBids);
+
+            // Handle Response object (when no keywords found)
+            // if (is_object($result) && method_exists($result, 'getData')) {
+            //     $result = $result->getData(true);
+            // }
+
+            // Check for errors
+            // if (is_array($result) && isset($result['status'])) {
+            //     if ($result['status'] == 200) {
+            //         $this->info("✓ Bid update completed successfully!");
+            //         $this->line("");
+            //         $this->info("Updated campaigns:");
+            //         foreach ($validCampaigns as $campaign) {
+            //             $campaignName = $campaign->campaignName ?? 'N/A';
+            //             $newBid = $campaign->sbid ?? 0;
+            //             $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+            //         }
+            //     } else {
+            //         $this->error("✗ Bid update failed!");
+            //         $this->error("Status: " . $result['status']);
+            //         if (isset($result['message'])) {
+            //             $this->error("Message: " . $result['message']);
+            //         }
+            //         if (isset($result['error'])) {
+            //             $this->error("Error: " . $result['error']);
+            //         }
+            //         return 1;
+            //     }
+            // } else {
+            //     // Handle unexpected response format
+            //     $this->warn("Unexpected response format from update method.");
+            //     if (is_array($result) || is_object($result)) {
+            //         $this->line("Response: " . json_encode($result));
+            //     } else {
+            //         $this->line("Response type: " . gettype($result));
+            //     }
+            // }
+
+            $this->info('Campaings to be updated: ' . count($campaigns));
+
+        } catch (\Exception $e) {
+            $this->error("✗ Exception occurred during bid update:");
+            $this->error($e->getMessage());
+            Log::error("AutoUpdateAmzUnderKwBids Error: " . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            return 1;
+        }
+
+        return 0;
     }
 
     public function getAutomateAmzUtilizedBgtKw()
@@ -67,6 +147,7 @@ class AutoUpdateAmzUnderKwBids extends Command
             })
             ->where('campaignName', 'NOT LIKE', '%PT')
             ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
         $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
@@ -78,6 +159,7 @@ class AutoUpdateAmzUnderKwBids extends Command
             })
             ->where('campaignName', 'NOT LIKE', '%PT')
             ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
         $result = [];
@@ -106,6 +188,7 @@ class AutoUpdateAmzUnderKwBids extends Command
             $row = [];
             $row['INV']    = $shopify->inv ?? 0;
             $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
+            $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
             $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
@@ -127,10 +210,12 @@ class AutoUpdateAmzUnderKwBids extends Command
             $l7_cpc = floatval($row['l7_cpc']);
             $budget = floatval($row['campaignBudgetAmount']);
             $l7_spend = floatval($row['l7_spend']);
+            $l1_spend = floatval($row['l1_spend']);
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+            $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // New SBID rule
-            if ($row['INV'] > 0 && $row['NRA'] !== 'NRA' && $ub7 < 70) {
+            // New SBID rule - matching page filter: INV > 0, NRA !== 'NRA', campaignName !== '', ub7 < 70 && ub1 < 70
+            if ($row['INV'] > 0 && $row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 70 && $ub1 < 70)) {
                 if ($ub7 < 10 || $l7_cpc == 0) {
                     $row['sbid'] = 0.75;
                 } else if ($l7_cpc > 0 && $l7_cpc < 0.30) {
