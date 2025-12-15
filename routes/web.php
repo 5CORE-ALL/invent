@@ -1208,6 +1208,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/keywords-master', [CategoryController::class, 'keywordsMaster'])->name('keywords.master');
     Route::get('/keywords-master-data-view', [CategoryController::class, 'getKeywordsMasterData'])->name('keywords.master.data');
     Route::post('/keywords-master/store', [CategoryController::class, 'storeKeywordsMaster'])->name('keywords.master.store');
+    Route::get('/qa-master', [CategoryController::class, 'qaMaster'])->name('qa.master');
+    Route::get('/qa-master-data-view', [CategoryController::class, 'getQAMasterData'])->name('qa.master.data');
+    Route::post('/qa-master/store', [CategoryController::class, 'storeQAMaster'])->name('qa.master.store');
     Route::get('/competitors-master', [CategoryController::class, 'competitorsMaster'])->name('competitors.master');
     Route::get('/competitors-master-data-view', [CategoryController::class, 'getCompetitorsMasterData'])->name('competitors.master.data');
     Route::post('/competitors-master/store', [CategoryController::class, 'storeCompetitorsMaster'])->name('competitors.master.store');

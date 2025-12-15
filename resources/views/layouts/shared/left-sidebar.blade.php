@@ -330,6 +330,9 @@
                             <a href="{{ route('keywords.master') }}">Keywords Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('qa.master') }}">Q&A Master</a>
+                        </li>
+                        <li>
                             <a href="{{ route('competitors.master') }}">Competitors Master</a>
                         </li>
                         <li>
