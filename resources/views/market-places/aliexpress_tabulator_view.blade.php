@@ -54,81 +54,93 @@
             <div class="card-body py-3">
                 <h4>Aliexpress Daily Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <input type="text" id="sku-search" class="form-control" placeholder="Search by SKU" style="max-width: 200px;">
-                    
-                    <button id="upload-data-btn" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
-                        <i class="fas fa-upload"></i> Upload Data
-                    </button>
-                    
-                    <div class="dropdown">
-                        <button class="btn btn-secondary dropdown-toggle" type="button" id="columnDropdown" data-bs-toggle="dropdown">
-                            <i class="fas fa-columns"></i> Columns
+                    <!-- Column Visibility Dropdown -->
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa fa-eye"></i> Columns
                         </button>
-                        <ul class="dropdown-menu" id="column-dropdown-menu" style="max-height: 300px; overflow-y: auto;">
-                            <!-- Will be populated by JS -->
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
+                            style="max-height: 400px; overflow-y: auto;">
                         </ul>
                     </div>
-
-                    <button id="show-all-columns-btn" class="btn btn-info">
-                        <i class="fas fa-eye"></i> Show All
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
+                        <i class="fa fa-eye"></i> Show All
                     </button>
-                    
-                    <button id="export-btn" class="btn btn-success">
-                        <i class="fas fa-download"></i> Export
+
+                    <button type="button" class="btn btn-sm btn-success" id="export-btn">
+                        <i class="fa fa-file-excel"></i> Export
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
+                        <i class="fa fa-upload"></i> Upload Daily Data
                     </button>
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
+                    <h6 class="mb-3">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <span id="total-orders-badge" class="badge bg-primary">Total Orders: 0</span>
-                        <span id="total-quantity-badge" class="badge bg-info">Total Quantity: 0</span>
-                        <span id="total-revenue-badge" class="badge bg-success">Total Revenue: $0.00</span>
-                        <span id="pft-percentage-badge" class="badge bg-warning text-dark">PFT %: 0%</span>
-                        <span id="roi-percentage-badge" class="badge bg-secondary">ROI %: 0%</span>
-                        <span id="avg-price-badge" class="badge bg-dark">Avg Price: $0.00</span>
-                        <span id="pft-total-badge" class="badge bg-dark">PFT Total: $0.00</span>
-                        <span id="total-cogs-badge" class="badge bg-secondary">Total COGS: $0.00</span>
-                        <span id="total-commission-badge" class="badge bg-info">Commission: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-commission-badge" style="color: white; font-weight: bold;">Commission: $0.00</span>
                     </div>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="aliexpress-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <div id="loading-indicator" style="display: none; padding: 20px; text-align: center;">
-                        <div class="spinner-border" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
+                    <!-- SKU Search -->
+                    <div class="p-2 bg-light border-bottom">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU...">
                     </div>
+                    <!-- Table body (scrollable section) -->
                     <div id="aliexpress-table" style="flex: 1;"></div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Upload Modal -->
-    <div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
+    <!-- Upload Daily Data Modal -->
+    <div class="modal fade" id="uploadDailyDataModal" tabindex="-1" aria-labelledby="uploadDailyDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="uploadModalLabel">Upload Aliexpress Daily Data</h5>
+                    <h5 class="modal-title" id="uploadDailyDataModalLabel">
+                        <i class="fa fa-upload me-2"></i>Upload Aliexpress Daily Data
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label for="file-input" class="form-label">Choose Excel/CSV File</label>
-                        <input type="file" class="form-control" id="file-input" accept=".xlsx,.xls,.csv">
-                        <small class="text-muted">Supported formats: Excel (.xlsx, .xls), CSV</small>
+                        <label for="dailyDataFile" class="form-label">Select Excel File</label>
+                        <input type="file" class="form-control" id="dailyDataFile" accept=".xlsx,.xls,.csv">
+                        <div class="form-text">
+                            Supported formats: Excel (.xlsx, .xls) or CSV
+                        </div>
                     </div>
-                    <div id="upload-progress" class="progress" style="display: none;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
-                             style="width: 0%;" id="progress-bar">0%</div>
+                    
+                    <div id="uploadProgressContainer" style="display: none;">
+                        <div class="mb-2">
+                            <strong>Upload Progress:</strong>
+                        </div>
+                        <div class="progress mb-2" style="height: 25px;">
+                            <div id="uploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" style="width: 0%">0%</div>
+                        </div>
+                        <div id="uploadStatus" class="text-muted small"></div>
                     </div>
-                    <div id="upload-status" class="mt-2"></div>
+
+                    <div id="uploadResult" class="alert" style="display: none;"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="upload-btn">Upload</button>
+                    <button type="button" class="btn btn-primary" id="startUploadBtn">
+                        <i class="fa fa-upload me-1"></i>Start Upload
+                    </button>
                 </div>
             </div>
         </div>
@@ -136,6 +148,8 @@
 @endsection
 
 @section('script-bottom')
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     const COLUMN_VIS_KEY = "aliexpress_tabulator_column_visibility";
     let table = null;
@@ -182,10 +196,20 @@
             paginationCounter: "rows",
             ajaxResponse: function(url, params, response) {
                 console.log("AJAX Response received:", response);
+                console.log("Response type:", typeof response);
+                console.log("Is array:", Array.isArray(response));
+                if (Array.isArray(response)) {
+                    console.log("Number of records:", response.length);
+                    if (response.length > 0) {
+                        console.log("First record:", response[0]);
+                    }
+                }
+                // Return the response as-is (should be an array)
                 return response;
             },
             ajaxError: function(error) {
                 console.error("AJAX Error:", error);
+                console.error("Error details:", JSON.stringify(error));
                 showToast("Error loading data: " + (error.message || "Unknown error"), "error");
             },
             dataLoaded: function(data) {
@@ -195,7 +219,7 @@
             langs: {
                 "default": {
                     "pagination": {
-                        "page_size": "Rows per page",
+                        "page_size": "Show",
                         "first": "First",
                         "first_title": "First Page",
                         "last": "Last",
@@ -221,6 +245,7 @@
                     title: "Order ID",
                     field: "order_id",
                     width: 180,
+                    frozen: true,
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search..."
                 },
@@ -230,6 +255,7 @@
                     width: 150,
                     frozen: true,
                     headerFilter: "input",
+                    headerFilterPlaceholder: "Search SKU...",
                     cssClass: "text-primary fw-bold"
                 },
                 {
@@ -237,6 +263,7 @@
                     field: "quantity",
                     width: 80,
                     hozAlign: "center",
+                    sorter: "number",
                     formatter: function(cell) {
                         return cell.getValue() || 1;
                     }
@@ -244,7 +271,17 @@
                 {
                     title: "Order Status",
                     field: "order_status",
-                    width: 120
+                    width: 120,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '';
+                        let color = 'secondary';
+                        if (value.toLowerCase().includes('delivered')) color = 'success';
+                        else if (value.toLowerCase().includes('shipped')) color = 'info';
+                        else if (value.toLowerCase().includes('cancelled') || value.toLowerCase().includes('cancel')) color = 'danger';
+                        else if (value.toLowerCase().includes('pending')) color = 'warning';
+                        return `<span class="badge bg-${color}">${value}</span>`;
+                    }
                 },
                 {
                     title: "Buyer Name",
@@ -255,13 +292,34 @@
                     title: "Order Date",
                     field: "order_date",
                     width: 150,
-                    sorter: "date"
+                    sorter: "datetime",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '';
+                        const date = new Date(value);
+                        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                    }
                 },
                 {
                     title: "Product Price",
                     field: "product_total",
                     width: 100,
                     hozAlign: "right",
+                    sorter: "number",
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
+                },
+                {
+                    title: "Unit Price",
+                    field: "unit_price",
+                    width: 100,
+                    hozAlign: "right",
+                    sorter: "number",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -275,6 +333,7 @@
                     field: "order_amount",
                     width: 100,
                     hozAlign: "right",
+                    sorter: "number",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -286,8 +345,9 @@
                 {
                     title: "Platform Coupon",
                     field: "platform_coupon",
-                    width: 100,
+                    width: 120,
                     hozAlign: "right",
+                    sorter: "number",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -301,6 +361,7 @@
                     field: "lp",
                     width: 80,
                     hozAlign: "right",
+                    sorter: "number",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -314,6 +375,7 @@
                     field: "ship",
                     width: 80,
                     hozAlign: "right",
+                    sorter: "number",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -327,6 +389,7 @@
                     field: "cogs",
                     width: 80,
                     hozAlign: "right",
+                    sorter: "number",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -336,29 +399,51 @@
                     }
                 },
                 {
-                    title: "PFT Total",
-                    field: "pft_total",
+                    title: "PFT Each",
+                    field: "pft_each",
                     width: 100,
                     hozAlign: "right",
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
-                    },
-                    mutator: function(value, data) {
-                        const productPrice = parseFloat(data.product_total) || 0;
-                        const lp = parseFloat(data.lp) || 0;
-                        const ship = parseFloat(data.ship) || 0;
-                        const quantity = parseInt(data.quantity) || 1;
-                        
-                        // Formula: (Product Price × 0.89 - LP - Ship) × Quantity
-                        return ((productPrice * 0.89) - lp - ship) * quantity;
-                    },
-                    cssClass: function(cell) {
-                        const value = cell.getValue();
-                        return value >= 0 ? 'text-success fw-bold' : 'text-danger fw-bold';
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const color = value >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">$${value.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: "PFT Each %",
+                    field: "pft_each_pct",
+                    width: 100,
+                    hozAlign: "right",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const color = value >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">${value.toFixed(2)}%</span>`;
+                    }
+                },
+                {
+                    title: "T PFT",
+                    field: "pft",
+                    width: 100,
+                    hozAlign: "right",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const color = value >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">$${value.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: "ROI %",
+                    field: "roi",
+                    width: 80,
+                    hozAlign: "right",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const color = value >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">${value.toFixed(2)}%</span>`;
                     }
                 },
                 {
@@ -372,7 +457,7 @@
                     width: 120
                 },
                 {
-                    title: "State",
+                    title: "State/Province",
                     field: "state_province",
                     width: 120
                 },
@@ -389,7 +474,13 @@
                 {
                     title: "Shipping Time",
                     field: "shipping_time",
-                    width: 150
+                    width: 150,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '';
+                        const date = new Date(value);
+                        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                    }
                 }
             ]
         });
@@ -429,23 +520,24 @@
                 const quantity = parseInt(row.quantity) || 1;
                 totalQuantity += quantity;
                 
-                const productPrice = parseFloat(row.product_total) || 0;
                 const orderAmount = parseFloat(row.order_amount) || 0;
                 const platformCoupon = parseFloat(row.platform_coupon) || 0;
                 
+                // Use order_amount for revenue (it's already total)
                 totalRevenue += orderAmount;
                 totalCommission += platformCoupon;
                 
-                // For weighted average price
-                totalWeightedPrice += productPrice * quantity;
-                totalQuantityForPrice += quantity;
+                // For weighted average price - use unit_price from backend
+                const unitPrice = parseFloat(row.unit_price) || 0;
+                if (quantity > 0 && unitPrice > 0) {
+                    totalWeightedPrice += unitPrice * quantity;
+                    totalQuantityForPrice += quantity;
+                }
                 
-                const lp = parseFloat(row.lp) || 0;
-                const ship = parseFloat(row.ship) || 0;
-                const cogs = lp + ship;
+                // Use backend-calculated values
+                const pft = parseFloat(row.pft) || 0;
+                const cogs = parseFloat(row.cogs) || 0;
                 
-                // PFT calculation: (Product Price × 0.89 - LP - Ship) × Quantity
-                const pft = ((productPrice * 0.89) - lp - ship) * quantity;
                 totalPft += pft;
                 totalCogs += cogs;
             });
@@ -485,72 +577,76 @@
             menu.innerHTML = '';
 
             fetch('/aliexpress-column-visibility', {
-                method: 'GET',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(savedVisibility => {
-                table.getColumns().forEach(col => {
-                    const field = col.getField();
-                    const title = col.getDefinition().title;
-                    if (!field || !title) return;
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                })
+                .then(response => response.json())
+                .then(savedVisibility => {
+                    table.getColumns().forEach(col => {
+                        const def = col.getDefinition();
+                        if (!def.field) return;
 
-                    const isVisible = col.isVisible();
-                    const li = document.createElement("li");
-                    li.className = "dropdown-item";
-                    li.innerHTML = `
-                        <label style="cursor: pointer;">
-                            <input type="checkbox" value="${field}" ${isVisible ? 'checked' : ''}> ${title}
-                        </label>
-                    `;
-                    menu.appendChild(li);
+                        const li = document.createElement("li");
+                        const label = document.createElement("label");
+                        label.style.display = "block";
+                        label.style.padding = "5px 10px";
+                        label.style.cursor = "pointer";
+
+                        const checkbox = document.createElement("input");
+                        checkbox.type = "checkbox";
+                        checkbox.value = def.field;
+                        checkbox.checked = savedVisibility[def.field] !== false;
+                        checkbox.style.marginRight = "8px";
+
+                        label.appendChild(checkbox);
+                        label.appendChild(document.createTextNode(def.title));
+                        li.appendChild(label);
+                        menu.appendChild(li);
+                    });
                 });
-            });
         }
 
         function saveColumnVisibilityToServer() {
             const visibility = {};
             table.getColumns().forEach(col => {
-                const field = col.getField();
-                if (field) {
-                    visibility[field] = col.isVisible();
+                const def = col.getDefinition();
+                if (def.field) {
+                    visibility[def.field] = col.isVisible();
                 }
             });
 
             fetch('/aliexpress-column-visibility', {
                 method: 'POST',
                 headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
-                body: JSON.stringify({ visibility })
+                body: JSON.stringify({
+                    visibility: visibility
+                })
             });
         }
 
         function applyColumnVisibilityFromServer() {
             fetch('/aliexpress-column-visibility', {
-                method: 'GET',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(visibility => {
-                table.getColumns().forEach(col => {
-                    const field = col.getField();
-                    if (field && visibility.hasOwnProperty(field)) {
-                        if (visibility[field]) {
-                            col.show();
-                        } else {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                })
+                .then(response => response.json())
+                .then(savedVisibility => {
+                    table.getColumns().forEach(col => {
+                        const def = col.getDefinition();
+                        if (def.field && savedVisibility[def.field] === false) {
                             col.hide();
                         }
-                    }
+                    });
                 });
-            });
         }
 
         // Wait for table to be built
@@ -563,11 +659,12 @@
             updateSummary();
         });
 
-        // Update summary when data changes
+        // Update summary when data changes (filters, pagination, etc.)
         table.on('dataProcessed', function() {
             updateSummary();
         });
 
+        // Update summary when table is rendered
         table.on('renderComplete', function() {
             updateSummary();
         });
@@ -577,10 +674,12 @@
             if (e.target.type === 'checkbox') {
                 const field = e.target.value;
                 const col = table.getColumn(field);
-                if (col) {
-                    e.target.checked ? col.show() : col.hide();
-                    saveColumnVisibilityToServer();
+                if (e.target.checked) {
+                    col.show();
+                } else {
+                    col.hide();
                 }
+                saveColumnVisibilityToServer();
             }
         });
 
@@ -598,64 +697,133 @@
             table.download("csv", "aliexpress_daily_data.csv");
         });
 
-        // Upload functionality
-        $('#upload-btn').on('click', function() {
-            const fileInput = document.getElementById('file-input');
+        // Upload Daily Data Handler
+        $('#startUploadBtn').on('click', function() {
+            const fileInput = document.getElementById('dailyDataFile');
             const file = fileInput.files[0];
-            
+
             if (!file) {
-                showToast('Please select a file first', 'error');
+                showToast('Please select a file to upload', 'error');
                 return;
             }
 
+            // Validate file type
+            const validTypes = [
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/vnd.ms-excel',
+                'text/csv'
+            ];
+            if (!validTypes.includes(file.type)) {
+                showToast('Please select a valid Excel or CSV file', 'error');
+                return;
+            }
+
+            // Show progress container
+            $('#uploadProgressContainer').show();
+            $('#uploadResult').hide();
+            $('#startUploadBtn').prop('disabled', true);
+
+            // Chunk settings
+            const totalChunks = 1; // Single chunk for Aliexpress
             const uploadId = 'aliexpress_' + Date.now();
-            const totalChunks = 1; // Process in single chunk for simplicity
-            
-            $('#upload-progress').show();
-            $('#upload-btn').prop('disabled', true);
-            
-            uploadChunk(file, 0, totalChunks, uploadId);
+            let currentChunk = 0;
+            let totalImported = 0;
+
+            function uploadChunk() {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('chunk', currentChunk);
+                formData.append('totalChunks', totalChunks);
+                formData.append('uploadId', uploadId);
+                formData.append('_token', '{{ csrf_token() }}');
+
+                $.ajax({
+                    url: '/aliexpress/upload-daily-data',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success) {
+                            totalImported += response.imported || 0;
+                            const progress = Math.round(((currentChunk + 1) / totalChunks) * 100);
+
+                            $('#uploadProgressBar')
+                                .css('width', progress + '%')
+                                .text(Math.round(progress) + '%');
+
+                            $('#uploadStatus').text(
+                                `Processing chunk ${currentChunk + 1} of ${totalChunks}... (${totalImported} records imported so far)`
+                            );
+
+                            if (currentChunk < totalChunks - 1) {
+                                currentChunk++;
+                                setTimeout(uploadChunk, 500);
+                            } else {
+                                $('#uploadProgressBar')
+                                    .removeClass('progress-bar-animated')
+                                    .addClass('bg-success');
+
+                                $('#uploadResult')
+                                    .removeClass('alert-danger')
+                                    .addClass('alert-success')
+                                    .html(`<i class="fa fa-check-circle me-2"></i>Upload completed successfully! ${totalImported} records imported.`)
+                                    .show();
+
+                                $('#startUploadBtn').prop('disabled', false);
+                                showToast(`Upload completed! ${totalImported} records imported.`, 'success');
+
+                                setTimeout(function() {
+                                    $('#uploadDailyDataModal').modal('hide');
+                                    resetUploadForm();
+                                    table.setData('/aliexpress/daily-data'); // Refresh table data
+                                }, 2000);
+                            }
+                        } else {
+                            throw new Error(response.message || 'Upload failed');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        let errorMessage = 'Upload failed. Please try again.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMessage = xhr.responseJSON.message;
+                        }
+
+                        $('#uploadProgressBar')
+                            .removeClass('progress-bar-animated')
+                            .addClass('bg-danger');
+
+                        $('#uploadResult')
+                            .removeClass('alert-success')
+                            .addClass('alert-danger')
+                            .html(`<i class="fa fa-exclamation-circle me-2"></i>${errorMessage}`)
+                            .show();
+
+                        $('#startUploadBtn').prop('disabled', false);
+                        showToast(errorMessage, 'error');
+                    }
+                });
+            }
+
+            uploadChunk();
         });
 
-        function uploadChunk(file, chunk, totalChunks, uploadId) {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('chunk', chunk);
-            formData.append('totalChunks', totalChunks);
-            formData.append('uploadId', uploadId);
+        // Reset upload form when modal is hidden
+        $('#uploadDailyDataModal').on('hidden.bs.modal', function() {
+            resetUploadForm();
+        });
 
-            $.ajax({
-                url: '/aliexpress/upload-daily-data',
-                type: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function(response) {
-                    if (response.success) {
-                        const progress = Math.round(((chunk + 1) / totalChunks) * 100);
-                        $('#progress-bar').css('width', progress + '%').text(progress + '%');
-                        
-                        if (response.isLastChunk) {
-                            showToast('Upload completed successfully!', 'success');
-                            $('#upload-progress').hide();
-                            $('#upload-btn').prop('disabled', false);
-                            $('#uploadModal').modal('hide');
-                            table.replaceData(); // Reload table data
-                        } else {
-                            uploadChunk(file, chunk + 1, totalChunks, uploadId);
-                        }
-                    } else {
-                        showToast('Upload failed: ' + response.message, 'error');
-                        $('#upload-progress').hide();
-                        $('#upload-btn').prop('disabled', false);
-                    }
-                },
-                error: function(xhr) {
-                    showToast('Upload error: ' + (xhr.responseJSON?.message || 'Unknown error'), 'error');
-                    $('#upload-progress').hide();
-                    $('#upload-btn').prop('disabled', false);
-                }
-            });
+        function resetUploadForm() {
+            $('#dailyDataFile').val('');
+            $('#uploadProgressContainer').hide();
+            $('#uploadResult').hide();
+            $('#uploadProgressBar')
+                .removeClass('bg-success bg-danger')
+                .addClass('progress-bar-animated')
+                .css('width', '0%')
+                .text('0%');
+            $('#uploadStatus').text('');
+            $('#startUploadBtn').prop('disabled', false);
         }
     });
 </script>
