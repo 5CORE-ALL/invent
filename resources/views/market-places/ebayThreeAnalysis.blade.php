@@ -2024,7 +2024,7 @@
 
                     // Ad Updates
                     $.ajax({
-                        url: '/update-all-ebay1-skus',
+                        url: '/update-all-ebay3-skus',
                         type: 'POST',
                         data: {
                             type: 'ad_updates',

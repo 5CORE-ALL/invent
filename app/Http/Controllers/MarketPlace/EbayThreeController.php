@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Marketplace;
+namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
@@ -36,15 +36,16 @@ class EbayThreeController extends Controller
         //     return $marketplaceData ? $marketplaceData->percentage : 100; // Default to 100 if not set
         // });
 
-        $marketplaceData = ChannelMaster::where('channel', 'EbayThree')->first();
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay3')->first();
 
-        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 100;
-        $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
+        $ebayPercentage = $marketplaceData ? $marketplaceData->percentage : 100;
+        $ebayAdUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
 
         return view('market-places.ebayThreeAnalysis', [
             'mode' => $mode,
             'demo' => $demo,
-            'percentage' => $percentage
+            'ebayPercentage' => $ebayPercentage,
+            'ebayAdUpdates' => $ebayAdUpdates
         ]);
     }
 
@@ -177,19 +178,45 @@ class EbayThreeController extends Controller
     public function updateAllEbay3Skus(Request $request)
     {
         try {
-            $percent = $request->input('percent');
+            $type = $request->input('type');
+            $value = $request->input('value');
 
-            if (!is_numeric($percent) || $percent < 0 || $percent > 100) {
-                return response()->json([
-                    'status' => 400,
-                    'message' => 'Invalid percentage value. Must be between 0 and 100.'
-                ], 400);
+            // Current record fetch
+            $marketplace = MarketplacePercentage::where('marketplace', 'Ebay3')->first();
+
+            $percent = $marketplace->percentage ?? 100;
+            $adUpdates = $marketplace->ad_updates ?? 0;
+
+            // Handle percentage update
+            if ($type === 'percentage' || $request->has('percent')) {
+                $percentValue = $request->input('percent') ?? $value;
+                if (!is_numeric($percentValue) || $percentValue < 0 || $percentValue > 100) {
+                    return response()->json([
+                        'status' => 400,
+                        'message' => 'Invalid percentage value. Must be between 0 and 100.'
+                    ], 400);
+                }
+                $percent = $percentValue;
             }
 
-            // Update database
-            MarketplacePercentage::updateOrCreate(
+            // Handle ad_updates update
+            if ($type === 'ad_updates') {
+                if (!is_numeric($value) || $value < 0) {
+                    return response()->json([
+                        'status' => 400,
+                        'message' => 'Invalid ad_updates value. Must be a positive number.'
+                    ], 400);
+                }
+                $adUpdates = $value;
+            }
+
+            // Save both fields
+            $marketplace = MarketplacePercentage::updateOrCreate(
                 ['marketplace' => 'Ebay3'],
-                ['percentage' => $percent]
+                [
+                    'percentage' => $percent,
+                    'ad_updates' => $adUpdates,
+                ]
             );
 
             // Store in cache
@@ -197,16 +224,17 @@ class EbayThreeController extends Controller
 
             return response()->json([
                 'status' => 200,
-                'message' => 'Percentage updated successfully',
+                'message' => ucfirst($type ?? 'percentage') . ' updated successfully',
                 'data' => [
-                    'marketplace' => 'Wayfair',
-                    'percentage' => $percent
+                    'marketplace' => 'Ebay3',
+                    'percentage' => $marketplace->percentage,
+                    'ad_updates' => $marketplace->ad_updates
                 ]
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 500,
-                'message' => 'Error updating percentage',
+                'message' => 'Error updating Ebay3 marketplace values',
                 'error' => $e->getMessage()
             ], 500);
         }
