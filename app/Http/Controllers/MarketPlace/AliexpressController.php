@@ -541,28 +541,86 @@ class AliexpressController extends Controller
             // Fetch all data from aliexpress_daily_data
             $aliexpressData = AliexpressDailyData::orderBy('order_date', 'desc')->get();
 
-            // Get unique SKUs from the data
-            $skus = $aliexpressData->pluck('sku_code')->filter()->unique()->toArray();
+            Log::info('Aliexpress daily data fetched', [
+                'total_records' => $aliexpressData->count()
+            ]);
+
+            // Get unique SKUs from the data (filter out null/empty values)
+            $skus = $aliexpressData->pluck('sku_code')
+                ->filter(function($sku) {
+                    return !empty($sku);
+                })
+                ->unique()
+                ->values()
+                ->toArray();
+
+            Log::info('Unique SKUs found', [
+                'unique_skus_count' => count($skus)
+            ]);
 
             // Fetch LP and Ship from ProductMaster for these SKUs
-            $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+            $productMasters = [];
+            if (!empty($skus)) {
+                $productMasters = ProductMaster::whereIn('sku', $skus)
+                    ->get()
+                    ->keyBy('sku');
+            }
+
+            // Get marketplace percentage from ChannelMaster (like other channels)
+            $marketplaceData = ChannelMaster::where('channel', 'Aliexpress')->first();
+            $percentage = $marketplaceData ? ($marketplaceData->channel_percentage ?? 100) : 100;
+            $margin = $percentage / 100; // Convert % to fraction
 
             $data = [];
             foreach ($aliexpressData as $item) {
                 $sku = $item->sku_code;
                 $lp = 0;
                 $ship = 0;
-                $cogs = 0;
 
-                // Get LP and Ship from ProductMaster
-                if (isset($productMasters[$sku])) {
+                // Get LP and Ship from ProductMaster (using normal 'ship' field, not 'temu_ship')
+                // Pattern matches Temu extraction logic
+                if (!empty($sku) && isset($productMasters[$sku])) {
                     $productMaster = $productMasters[$sku];
-                    $values = $productMaster->Values ?? [];
+                    $values = is_array($productMaster->Values) 
+                        ? $productMaster->Values 
+                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
                     
-                    $lp = $values['lp'] ?? $productMaster->lp ?? 0;
-                    $ship = $values['ship'] ?? $productMaster->ship ?? 0;
-                    $cogs = $lp + $ship;
+                    // Get LP (similar to Temu extraction)
+                    foreach ($values as $k => $v) {
+                        if (strtolower($k) === "lp") {
+                            $lp = floatval($v);
+                            break;
+                        }
+                    }
+                    if ($lp === 0 && isset($productMaster->lp)) {
+                        $lp = floatval($productMaster->lp);
+                    }
+                    
+                    // Get Ship (normal ship field for Aliexpress, not temu_ship)
+                    $ship = isset($values["ship"]) 
+                        ? floatval($values["ship"]) 
+                        : (isset($productMaster->ship) ? floatval($productMaster->ship) : 0);
                 }
+
+                // Calculate unit price (price per item) - same as eBay
+                $quantity = floatval($item->quantity) ?: 1;
+                $productTotal = floatval($item->product_total) ?: 0;
+                $unitPrice = $quantity > 0 ? $productTotal / $quantity : 0;
+
+                // Calculate PFT Each (per unit) = (unit_price * 0.89) - lp - ship (same as eBay)
+                $pftEach = ($unitPrice * $margin) - $lp - $ship;
+
+                // Calculate PFT Each % = (pft_each / unit_price) * 100
+                $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
+
+                // Calculate Total PFT = pft_each * quantity
+                $tPft = $pftEach * $quantity;
+
+                // COGS = LP * quantity
+                $cogs = $lp * $quantity;
+
+                // ROI = (Total PFT / COGS) * 100
+                $roi = $cogs > 0 ? ($tPft / $cogs) * 100 : 0;
 
                 $data[] = [
                     'id' => $item->id,
@@ -574,14 +632,20 @@ class AliexpressController extends Controller
                     'payment_method' => $item->payment_method,
                     'supply_price' => $item->supply_price,
                     'product_total' => $item->product_total,
+                    'unit_price' => round($unitPrice, 2), // Price per unit (like eBay)
                     'shipping_cost' => $item->shipping_cost,
                     'order_amount' => $item->order_amount,
                     'platform_coupon' => $item->platform_coupon,
-                    'sku_code' => $item->sku_code,
-                    'quantity' => $item->quantity,
-                    'lp' => $lp,
-                    'ship' => $ship,
-                    'cogs' => $cogs,
+                    'sku_code' => $item->sku_code ?? '',
+                    'quantity' => $item->quantity ?? 1,
+                    'lp' => round($lp, 2),
+                    'ship' => round($ship, 2),
+                    'cogs' => round($cogs, 2),
+                    'pft_each' => round($pftEach, 2),
+                    'pft_each_pct' => round($pftEachPct, 2),
+                    'pft' => round($tPft, 2),
+                    'roi' => round($roi, 2),
+                    'margin' => (float)$margin, // Send margin to frontend for calculation
                     'buyer_country' => $item->buyer_country,
                     'state_province' => $item->state_province,
                     'city' => $item->city,
@@ -589,11 +653,18 @@ class AliexpressController extends Controller
                     'shipping_time' => $item->shipping_time ? $item->shipping_time->format('Y-m-d H:i') : null,
                 ];
             }
+
+            Log::info('Aliexpress daily data processed', [
+                'processed_records' => count($data)
+            ]);
             
-            return response()->json($data);
+            // Return JSON response with proper headers
+            return response()->json($data)->header('Content-Type', 'application/json');
         } catch (\Exception $e) {
-            Log::error('Error fetching Aliexpress daily data: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch data'], 500);
+            Log::error('Error fetching Aliexpress daily data: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
         }
     }
 

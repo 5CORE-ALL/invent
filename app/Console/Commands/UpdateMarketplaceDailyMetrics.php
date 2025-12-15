@@ -12,6 +12,7 @@ use App\Models\MercariDailyData;
 use App\Models\AliexpressDailyData;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
+use App\Models\ChannelMaster;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\EbayPromotedListingReport;
 use Carbon\Carbon;
@@ -829,10 +830,10 @@ class UpdateMarketplaceDailyMetrics extends Command
             return strtoupper($item->sku);
         });
 
-        // Get marketplace percentage
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'AliExpress')->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 92;
-        $margin = $percentage / 100;
+        // Get marketplace percentage from ChannelMaster (like other channels)
+        $marketplaceData = ChannelMaster::where('channel', 'Aliexpress')->first();
+        $percentage = $marketplaceData ? ($marketplaceData->channel_percentage ?? 100) : 100;
+        $margin = $percentage / 100; // Convert % to fraction
 
         $totalOrders = 0;
         $totalQuantity = 0;
@@ -843,37 +844,72 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalQuantityForPrice = 0;
 
         foreach ($data as $row) {
+            // Skip refunded, returned, cancelled orders
+            $status = strtolower($row->order_status ?? '');
+            if (strpos($status, 'refund') !== false || strpos($status, 'return') !== false || 
+                strpos($status, 'cancel') !== false || strpos($status, 'closed') !== false) {
+                continue;
+            }
+
+            // Skip rows with empty SKU or order_id
+            if (empty($row->sku_code) || empty($row->order_id)) {
+                continue;
+            }
+
             $totalOrders++;
             $quantity = (int) ($row->quantity ?? 1);
+            $productPrice = (float) ($row->product_total ?? 0);
             $orderAmount = (float) ($row->order_amount ?? 0);
             
             $totalQuantity += $quantity;
             $totalRevenue += $orderAmount;
 
-            if ($quantity > 0 && $orderAmount > 0) {
-                $totalWeightedPrice += $orderAmount;
+            // For average price calculation, use product price per unit
+            // product_total is TOTAL (not per-unit), so divide by quantity
+            if ($quantity > 0 && $productPrice > 0) {
+                $unitPriceForAvg = $productPrice / $quantity;
+                $totalWeightedPrice += $unitPriceForAvg * $quantity; // Sum of (unit_price × quantity)
                 $totalQuantityForPrice += $quantity;
             }
 
-            // Get LP and Ship from ProductMaster
+            // Get LP and Ship from ProductMaster (same extraction logic as sales page)
             $sku = strtoupper($row->sku_code ?? '');
             $lp = 0;
             $ship = 0;
 
             if ($sku && isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($pm->Values) 
+                    ? $pm->Values 
+                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
                 
-                if (isset($values['lp'])) $lp = (float) $values['lp'];
-                if (isset($values['ship'])) $ship = (float) $values['ship'];
+                // Get LP (similar to Temu extraction)
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                
+                // Get Ship
+                $ship = isset($values["ship"]) 
+                    ? floatval($values["ship"]) 
+                    : (isset($pm->ship) ? floatval($pm->ship) : 0);
             }
 
-            $cogs = ($lp + $ship) * $quantity;
+            // COGS = LP × Quantity (same as other channels, not LP + Ship)
+            $cogs = $lp * $quantity;
             $totalCogs += $cogs;
 
-            // Calculate PFT
-            $pft = ($orderAmount * $margin) - $cogs;
+            // Calculate unit price (product_total is TOTAL, not per-unit)
+            $unitPrice = $quantity > 0 ? $productPrice / $quantity : 0;
+            
+            // Calculate PFT: (Unit Price × Margin - LP - Ship) × Quantity
+            // Same formula as sales page and eBay
+            $pft = (($unitPrice * $margin) - $lp - $ship) * $quantity;
             $totalPft += $pft;
         }
 
