@@ -2933,7 +2933,6 @@
                     const spend = Number(item.spend_l30) || 0;
                     const eL30 = Number(item['eBay L30']) || 0;
                     const ebayPercentage = {{ $ebayTwoPercentage ?? 0}};
-                    const ebayAdPercentage = 0;
                     const totalSalesData = eL30 * price;
                     let tacos = Number(item.TacosL30) || 0;
 
@@ -2942,7 +2941,7 @@
                         pft = 0;
                     }
 
-                    let grpft = ((price * (ebayAdPercentage / 100)) - ship - lp) / price;
+                    let grpft = ((price * (ebayPercentage / 100)) - ship - lp) / price;
                     if(isNaN(grpft) || !isFinite(grpft)) {
                         grpft = 0;
                     }
