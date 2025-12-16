@@ -1995,18 +1995,19 @@
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
-                            if (response.status === 200) {
-                            showNotification('success', 'Percentage updated successfully!');
-                            $input.prop('disabled', true);
-                            $icon.removeClass('fa-check').addClass('fa-pen');
+                            console.log('Percentage update response:', response);
+                            if (response && response.status === 200) {
+                                showNotification('success', 'Percentage updated successfully!');
+                                $input.prop('disabled', true);
+                                $icon.removeClass('fa-check').addClass('fa-pen');
                                 // Update the input value with the new value from server
-                                if (response.data && response.data.percentage) {
+                                if (response.data && response.data.percentage !== undefined) {
                                     $input.val(response.data.percentage);
                                 }
-                            // Reload the data table if needed
-                            loadData();
+                                // Reload the data table if needed
+                                loadData();
                             } else {
-                                showNotification('danger', response.message || 'Error updating percentage.');
+                                showNotification('danger', (response && response.message) || 'Error updating percentage.');
                                 $input.val(originalValue);
                                 $input.prop('disabled', true);
                                 $icon.removeClass('fa-check').addClass('fa-pen');
@@ -2016,7 +2017,17 @@
                             var errorMsg = 'Error updating percentage.';
                             if (xhr.responseJSON && xhr.responseJSON.message) {
                                 errorMsg = xhr.responseJSON.message;
+                            } else if (xhr.responseText) {
+                                try {
+                                    var errorResponse = JSON.parse(xhr.responseText);
+                                    if (errorResponse.message) {
+                                        errorMsg = errorResponse.message;
+                                    }
+                                } catch (e) {
+                                    // If parsing fails, use default message
+                                }
                             }
+                            console.error('Error updating percentage:', xhr);
                             showNotification('danger', errorMsg);
                             $input.val(originalValue); // Restore original value
                             $input.prop('disabled', true);
@@ -2054,18 +2065,40 @@
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
-                            if (response.status === 200) {
+                            console.log('Ad Updates response:', response);
+                            if (response && response.status === 200) {
                                 showNotification('success', 'Ad Updates updated successfully!');
                                 $input.prop('disabled', true);
                                 $icon.removeClass('fa-check').addClass('fa-pen');
                                 // Update the input value with the new value from server
-                                $input.val(response.data.ad_updates);
+                                if (response.data && response.data.ad_updates !== undefined) {
+                                    $input.val(response.data.ad_updates);
+                                }
                                 // Reload the data table if needed
                                 loadData();
+                            } else {
+                                showNotification('danger', (response && response.message) || 'Error updating Ad Updates.');
+                                $input.val(originalValue);
+                                $input.prop('disabled', true);
+                                $icon.removeClass('fa-check').addClass('fa-pen');
                             }
                         },
-                        error: function() {
-                            showNotification('danger', 'Error updating Ad Updates.');
+                        error: function(xhr) {
+                            var errorMsg = 'Error updating Ad Updates.';
+                            if (xhr.responseJSON && xhr.responseJSON.message) {
+                                errorMsg = xhr.responseJSON.message;
+                            } else if (xhr.responseText) {
+                                try {
+                                    var errorResponse = JSON.parse(xhr.responseText);
+                                    if (errorResponse.message) {
+                                        errorMsg = errorResponse.message;
+                                    }
+                                } catch (e) {
+                                    // If parsing fails, use default message
+                                }
+                            }
+                            console.error('Error updating Ad Updates:', xhr);
+                            showNotification('danger', errorMsg);
                             $input.val(originalValue);
                             $input.prop('disabled', true);
                             $icon.removeClass('fa-check').addClass('fa-pen');

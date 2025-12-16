@@ -1119,7 +1119,14 @@
                     let condition1 = (rowAcos > totalACOSValue && ub7 > 33);
                     let condition2 = (rowAcos < totalACOSValue && ub7 > 90);
                     
-                    return condition1 || condition2;
+                    // Check if at least one condition matches
+                    // If condition1 OR condition2 is true, continue to other filters
+                    // If both are false, exclude this row
+                    let matchesCondition = condition1 || condition2;
+                    
+                    if (!matchesCondition) {
+                        return false;
+                    }
 
                     // Pink DIL filter (exclude pink rows)
                     let l30 = parseFloat(data.L30);
