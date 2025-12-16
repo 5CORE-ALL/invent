@@ -315,7 +315,7 @@ class ChannelMasterController extends Controller
         $result = [];
 
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
-        $metrics = MarketplaceDailyMetric::where('channel', 'amazon')->first();
+        $metrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
         
         // Get L60 data from orders for comparison
         $l60OrdersQuery = AmazonOrder::where('period', 'l60')
@@ -398,7 +398,7 @@ class ChannelMasterController extends Controller
         $result = [];
 
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
-        $metrics = MarketplaceDailyMetric::where('channel', 'ebay')->first();
+        $metrics = MarketplaceDailyMetric::where('channel', 'eBay')->latest('date')->first();
         
         // Get L60 data from orders for comparison
         $l60OrdersQuery = EbayOrder::where('period', 'l60');
@@ -1071,7 +1071,7 @@ class ChannelMasterController extends Controller
         $result = [];
 
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
-        $metrics = MarketplaceDailyMetric::where('channel', 'temu')->first();
+        $metrics = MarketplaceDailyMetric::where('channel', 'Temu')->latest('date')->first();
         
         // L60 will be 0 until we have historical data with proper dates
         $l60Orders = 0;
@@ -1834,7 +1834,7 @@ class ChannelMasterController extends Controller
         $result = [];
 
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
-        $metrics = MarketplaceDailyMetric::where('channel', 'shein')->first();
+        $metrics = MarketplaceDailyMetric::where('channel', 'Shein')->latest('date')->first();
         
         // L60 will be 0 until we have historical data with proper dates
         $l60Orders = 0;
@@ -2123,7 +2123,7 @@ class ChannelMasterController extends Controller
         $result = [];
 
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
-        $metrics = MarketplaceDailyMetric::where('channel', 'aliexpress')->first();
+        $metrics = MarketplaceDailyMetric::where('channel', 'AliExpress')->latest('date')->first();
 
         // Get L60 data from sheet data for comparison
         $query = AliExpressSheetData::where('sku', 'not like', '%Parent%');
@@ -2177,7 +2177,7 @@ class ChannelMasterController extends Controller
         $result = [];
 
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
-        $metrics = MarketplaceDailyMetric::where('channel', 'mercari')->first();
+        $metrics = MarketplaceDailyMetric::where('channel', 'Mercari')->latest('date')->first();
 
         // Get L60 data from sheet data for comparison
         $query = MercariWShipSheetdata::where('sku', 'not like', '%Parent%');

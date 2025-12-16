@@ -55,3 +55,4 @@ class MercariDailyData extends Model
     ];
 }
 
+
