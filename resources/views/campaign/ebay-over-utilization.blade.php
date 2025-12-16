@@ -751,8 +751,10 @@
                 return 'pink';
             };
 
-            // Variable to store total ACOS for use in filters and formatters
+            // Variables to store totals from ALL campaigns (these don't change with filters)
             var totalACOSValue = 0;
+            var totalL30Spend = 0;
+            var totalL30Sales = 0;
 
             var table = new Tabulator("#budget-under-table", {
                 index: "Sku",
@@ -1034,6 +1036,17 @@
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
+                    // Set totals from API response (all campaigns, not just table data)
+                    // These values don't change when filters are applied
+                    totalACOSValue = parseFloat(response.total_acos) || 0;
+                    totalL30Spend = parseFloat(response.total_l30_spend) || 0;
+                    totalL30Sales = parseFloat(response.total_l30_sales) || 0;
+                    
+                    // Update display with totals from all campaigns
+                    document.getElementById("total-l30-spend").innerText = "$" + totalL30Spend.toFixed(2);
+                    document.getElementById("total-l30-sales").innerText = "$" + totalL30Sales.toFixed(2);
+                    document.getElementById("total-acos").innerText = totalACOSValue.toFixed(2) + "%";
+                    
                     return response.data;
                 }
             });
@@ -1089,25 +1102,31 @@
                     if (isNaN(rowAcos)) {
                         rowAcos = 0;
                     }
-
-                    // Calculate totalACOSValue if not already set (from all table data)
+                    // Treat 0 as 100 for comparison (as per backend logic)
+                    if (rowAcos === 0) {
+                        rowAcos = 100;
+                    }
+                    // totalACOSValue is set from API response (all campaigns) and doesn't change
+                    // If not set yet, wait for API response
                     if (totalACOSValue === 0 || isNaN(totalACOSValue)) {
-                        let allData = table.getData();
-                        let allTotalSpend = 0;
-                        let allTotalSales = 0;
-                        allData.forEach(function(row) {
-                            let spend = parseFloat(row.spend_l30 || 0);
-                            let sales = parseFloat(row.ad_sales_l30 || 0);
-                            allTotalSpend += spend;
-                            allTotalSales += sales;
-                        });
-                        totalACOSValue = allTotalSales > 0 ? (allTotalSpend / allTotalSales) * 100 : 0;
+                        return false; // Don't show rows until totalACOSValue is loaded
                     }
 
-                    // Show campaigns where ub7 > 90 OR acos > totalACOS
-                    // Note: Backend already returns 100 when acos is 0, so we can directly compare
-                    let showCampaign = (rowAcos > totalACOSValue);
-                    if (!showCampaign) return false;
+                    // Filter logic:
+                    // 1. ACOS > TOTAL_ACOS AND UB7 > 33%
+                    // OR
+                    // 2. ACOS < TOTAL_ACOS AND UB7 > 90%
+                    let condition1 = (rowAcos > totalACOSValue && ub7 > 33);
+                    let condition2 = (rowAcos < totalACOSValue && ub7 > 90);
+                    
+                    // Check if at least one condition matches
+                    // If condition1 OR condition2 is true, continue to other filters
+                    // If both are false, exclude this row
+                    let matchesCondition = condition1 || condition2;
+                    
+                    if (!matchesCondition) {
+                        return false;
+                    }
 
                     // Pink DIL filter (exclude pink rows)
                     let l30 = parseFloat(data.L30);
@@ -1170,37 +1189,12 @@
                 }
 
                 function updateL30Totals() {
-                    let allData = table.getData();
-                    let filteredData = allData.filter(combinedFilter);
-
-                    let totalSpend = 0;
-                    let totalSales = 0;
-
-                    filteredData.forEach(function(row) {
-                        let spend = parseFloat(row.spend_l30 || 0);
-                        let sales = parseFloat(row.ad_sales_l30 || 0);
-                        totalSpend += spend;
-                        totalSales += sales;
-                    });
-
-                    // Update display
-                    document.getElementById("total-l30-spend").innerText = "$" + totalSpend.toFixed(2);
-                    document.getElementById("total-l30-sales").innerText = "$" + totalSales.toFixed(2);
-
-                    // Calculate Total ACOS = (Total L30 Spend / Total L30 Sales) * 100
-                    let totalACOS = totalSales > 0 ? (totalSpend / totalSales) * 100 : 0;
-                    document.getElementById("total-acos").innerText = totalACOS.toFixed(2) + "%";
-                    
-                    // Calculate total ACOS from ALL data for filter comparison
-                    let allTotalSpend = 0;
-                    let allTotalSales = 0;
-                    allData.forEach(function(row) {
-                        let spend = parseFloat(row.spend_l30 || 0);
-                        let sales = parseFloat(row.ad_sales_l30 || 0);
-                        allTotalSpend += spend;
-                        allTotalSales += sales;
-                    });
-                    totalACOSValue = allTotalSales > 0 ? (allTotalSpend / allTotalSales) * 100 : 0;
+                    // These totals are from ALL campaigns and don't change with filters
+                    // They are set from API response in ajaxResponse function
+                    // No need to recalculate from filtered data - always use static values from API
+                    document.getElementById("total-l30-spend").innerText = "$" + totalL30Spend.toFixed(2);
+                    document.getElementById("total-l30-sales").innerText = "$" + totalL30Sales.toFixed(2);
+                    document.getElementById("total-acos").innerText = totalACOSValue.toFixed(2) + "%";
                 }
 
                 table.on("dataFiltered", function() {

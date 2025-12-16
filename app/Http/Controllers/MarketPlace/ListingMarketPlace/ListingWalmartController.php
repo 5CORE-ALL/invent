@@ -33,7 +33,17 @@ class ListingWalmartController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $statusData = WalmartListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Get status data, handling duplicates by taking the most recent non-empty record
+        $statusData = WalmartListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->filter(function ($record) {
+                // Filter out records with empty or null values
+                $value = is_array($record->value) ? $record->value : (json_decode($record->value, true) ?? []);
+                return !empty($value) && (isset($value['nr_req']) || isset($value['listed']) || isset($value['buyer_link']) || isset($value['seller_link']));
+            })
+            ->keyBy('sku');
 
         $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData) {
             $childSku = $item->sku;
@@ -43,11 +53,22 @@ class ListingWalmartController extends Controller
             // If status exists, fill values from JSON
             if (isset($statusData[$childSku])) {
                 $status = $statusData[$childSku]->value;
-                // Use stored values or calculate defaults based on INV
-                $item->nr_req = $status['nr_req'] ?? (floatval($item->INV) > 0 ? 'REQ' : 'NR');
-                $item->listed = $status['listed'] ?? null;
-                $item->buyer_link = $status['buyer_link'] ?? null;
-                $item->seller_link = $status['seller_link'] ?? null;
+                if (is_string($status)) {
+                    $status = json_decode($status, true) ?? [];
+                }
+                if (is_array($status) && !empty($status)) {
+                    // Use stored values or calculate defaults based on INV
+                    $item->nr_req = $status['nr_req'] ?? (floatval($item->INV) > 0 ? 'REQ' : 'NR');
+                    $item->listed = $status['listed'] ?? null;
+                    $item->buyer_link = $status['buyer_link'] ?? null;
+                    $item->seller_link = $status['seller_link'] ?? null;
+                } else {
+                    // Empty status - set defaults
+                    $item->nr_req = floatval($item->INV) > 0 ? 'REQ' : 'NR';
+                    $item->listed = null;
+                    $item->buyer_link = null;
+                    $item->seller_link = null;
+                }
             } else {
                 // No status record exists - set defaults based on INV
                 $item->nr_req = floatval($item->INV) > 0 ? 'REQ' : 'NR';
@@ -70,27 +91,45 @@ class ListingWalmartController extends Controller
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',
             'listed' => 'nullable|string',
-            'buyer_link' => 'nullable|url',
-            'seller_link' => 'nullable|url',
+            'buyer_link' => 'nullable|string',
+            'seller_link' => 'nullable|string',
         ]);
 
-        $sku = $validated['sku'];
-        $status = WalmartListingStatus::where('sku', $sku)->first();
+        $sku = trim($validated['sku']);
+        
+        // Get the most recent non-empty record, or create new
+        $status = WalmartListingStatus::where('sku', $sku)
+            ->orderBy('updated_at', 'desc')
+            ->first();
 
-        $existing = $status ? $status->value : [];
+        // If we have a record, use its value, otherwise start fresh
+        if ($status) {
+            $existing = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+            
+            // If existing is empty array, start fresh
+            if (empty($existing)) {
+                $existing = [];
+            }
+        } else {
+            $existing = [];
+        }
 
-        // Only update the fields that are present in the request
+        // Only update the fields that are present in the request and not empty
         $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
         foreach ($fields as $field) {
-            if ($request->has($field)) {
+            if ($request->has($field) && $request->input($field) !== null && $request->input($field) !== '') {
                 $existing[$field] = $validated[$field];
             }
         }
 
-        WalmartListingStatus::updateOrCreate(
-            ['sku' => $validated['sku']],
-            ['value' => $existing]
-        );
+        // Clean up: Delete any duplicate records for this SKU before creating/updating
+        WalmartListingStatus::where('sku', $sku)->delete();
+
+        // Create a single clean record
+        WalmartListingStatus::create([
+            'sku' => $sku,
+            'value' => $existing
+        ]);
 
         return response()->json(['status' => 'success']);
     }
@@ -101,7 +140,17 @@ class ListingWalmartController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $statusData = WalmartListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Get status data, handling duplicates by taking the most recent non-empty record
+        $statusData = WalmartListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->filter(function ($record) {
+                // Filter out records with empty or null values
+                $value = is_array($record->value) ? $record->value : (json_decode($record->value, true) ?? []);
+                return !empty($value) && (isset($value['nr_req']) || isset($value['listed']) || isset($value['buyer_link']) || isset($value['seller_link']));
+            })
+            ->keyBy('sku');
 
         $reqCount = 0;
         $listedCount = 0;
@@ -114,19 +163,25 @@ class ListingWalmartController extends Controller
 
             if ($isParent || floatval($inv) <= 0) continue;
 
-            $status = $statusData[$sku]->value ?? null;
-            if (is_string($status)) {
-                $status = json_decode($status, true);
+            $status = null;
+            if (isset($statusData[$sku])) {
+                $status = $statusData[$sku]->value;
+                if (is_string($status)) {
+                    $status = json_decode($status, true);
+                }
+                if (is_array($status) && empty($status)) {
+                    $status = null;
+                }
             }
 
             // NR/REQ logic
-            $nrReq = $status['nr_req'] ?? (floatval($inv) > 0 ? 'REQ' : 'NR');
+            $nrReq = ($status && isset($status['nr_req'])) ? $status['nr_req'] : (floatval($inv) > 0 ? 'REQ' : 'NR');
             if ($nrReq === 'REQ') {
                 $reqCount++;
             }
 
             // Listed/Pending logic
-            $listed = $status['listed'] ?? (floatval($inv) > 0 ? 'Pending' : 'Listed');
+            $listed = ($status && isset($status['listed'])) ? $status['listed'] : (floatval($inv) > 0 ? 'Pending' : 'Listed');
             if ($listed === 'Listed') {
                 $listedCount++;
             } elseif ($listed === 'Pending') {
@@ -214,8 +269,19 @@ class ListingWalmartController extends Controller
                         continue;
                     }
 
-                    $status = WalmartListingStatus::where('sku', $sku)->first();
-                    $existing = $status ? $status->value : [];
+                    // Get the most recent non-empty record, or start fresh
+                    $status = WalmartListingStatus::where('sku', $sku)
+                        ->orderBy('updated_at', 'desc')
+                        ->first();
+
+                    if ($status) {
+                        $existing = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+                        if (empty($existing)) {
+                            $existing = [];
+                        }
+                    } else {
+                        $existing = [];
+                    }
 
                     $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
                     foreach ($fields as $field) {
@@ -224,10 +290,14 @@ class ListingWalmartController extends Controller
                         }
                     }
 
-                    WalmartListingStatus::updateOrCreate(
-                        ['sku' => $sku],
-                        ['value' => $existing]
-                    );
+                    // Clean up duplicates before creating/updating
+                    WalmartListingStatus::where('sku', $sku)->delete();
+
+                    // Create a single clean record
+                    WalmartListingStatus::create([
+                        'sku' => $sku,
+                        'value' => $existing
+                    ]);
                     
                     $processedCount++;
                     

@@ -4826,8 +4826,14 @@
             // Initialize sorting functionality
             function initSorting() {
                 $('th[data-field]').addClass('sortable').on('click', function(e) {
+                    // Prevent sorting when resizing
                     if (isResizing) {
                         e.stopPropagation();
+                        return;
+                    }
+                    
+                    // Prevent sorting when clicking on resize handle
+                    if ($(e.target).hasClass('resize-handle') || $(e.target).closest('.resize-handle').length) {
                         return;
                     }
 
@@ -4838,37 +4844,127 @@
 
                     const th = $(this).closest('th');
                     const thField = th.data('field');
-                    const dataField = thField === 'parent' ? 'Parent' : thField;
-
+                    let dataField = thField === 'parent' ? 'Parent' : thField;
+                    
+                    // Map field names to actual data property names
+                    const fieldMapping = {
+                        'inv': 'INV',
+                        'ov_l30': 'L30',
+                        'ov_dil': 'ov_dil',
+                        'el_30': 'eBay L30',
+                        'c_bid': 'CBID',
+                        's_bid': 'SBID', // S BID is calculated, not ESBID
+                        'total_views': 'VIEWS',
+                        'cvr': 'SCVR',
+                        'views': 'PmtClkL30',
+                        'price': 'eBay Price',
+                        'pft': 'PFT %',
+                        'roi': 'Roi',
+                        'tpft': 'TPFT',
+                        'troi': 'Roi'
+                    };
+                    
+                    // Use mapped field name if available
+                    const originalField = dataField;
+                    if (fieldMapping[dataField]) {
+                        dataField = fieldMapping[dataField];
+                    }
 
                     // Toggle direction if clicking same column, otherwise reset to ascending
-                    if (currentSort.field === dataField) {
+                    if (currentSort.field === thField) {
                         currentSort.direction *= -1;
                     } else {
-                        currentSort.field = dataField;
-                        currentSort.direction = 1;
+                        currentSort.field = thField;
+                        currentSort.direction = 1; // Start with ascending (lowest to highest)
                     }
 
                     // Update UI arrows
                     $('.sort-arrow').html('↓');
                     $(this).find('.sort-arrow').html(currentSort.direction === 1 ? '↑' : '↓');
 
-                    // Sort with fresh data
-                    const freshData = [...tableData];
-                    freshData.sort((a, b) => {
-                        const valA = a[dataField] || '';
-                        const valB = b[dataField] || '';
+                    // Function to calculate SBID (same logic as in renderTable)
+                    function calculateSBID(item) {
+                        // Calculate CVR first (same as renderTable)
+                        const ebayL30 = Number(item['eBay L30']) || 0;
+                        const views = Number(item.VIEWS) || 0;
+                        const scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
+                        
+                        // Check if DIL is red (ov_dil < 0.1666, which is < 16.66%)
+                        const dilPercent = (parseFloat(item.ov_dil || 0) * 100) || 0;
+                        const isDilRed = dilPercent < 16.66;
+                        
+                        let sbidValue;
+                        
+                        // New rule: if SBID between 0.01-1% OR DIL red OR views < 100, set to 8%
+                        if ((scvr >= 0.01 && scvr <= 1) || isDilRed || views < 100) {
+                            sbidValue = 8;
+                        } else if (scvr < 0.01) {
+                            sbidValue = parseFloat(item.ESBID || 0) || 0;
+                        } else if (scvr >= 1.01 && scvr <= 2) {
+                            sbidValue = 7;
+                        } else if (scvr >= 2.01 && scvr <= 3) {
+                            sbidValue = 6;
+                        } else if (scvr >= 3.01 && scvr <= 5) {
+                            sbidValue = 4;
+                        } else if (scvr >= 5.01 && scvr <= 7) {
+                            sbidValue = 4;
+                        } else if (scvr >= 7.01 && scvr <= 13) {
+                            sbidValue = 3;
+                        } else { // scvr > 13
+                            sbidValue = 2;
+                        }
+                        
+                        // Cap sbidValue to maximum of 15
+                        sbidValue = Math.min(sbidValue, 15);
+                        
+                        // If ov_dil is greater than 100%, set sbid to 2
+                        if (item.ov_dil > 1) {
+                            sbidValue = 2;
+                        }
+                        
+                        return sbidValue;
+                    }
 
-                        // Numeric comparison for numeric fields
-                        if (dataField === 'sl_no' || dataField === 'INV' || dataField === 'L30') {
-                            return (parseFloat(valA) - parseFloat(valB)) * currentSort.direction;
+                    // Pre-calculate if field is numeric (outside sort for performance)
+                    const numericFieldsSet = new Set([
+                        'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%', 
+                        'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 
+                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS',
+                        'CBID', 'ESBID', 'SBID', 'TPFT',
+                        'inv', 'ov_l30', 'el_30', 'c_bid', 's_bid', 'total_views',
+                        'cvr', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
+                    ]);
+                    const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
+                    
+                    // Determine value extraction function based on field type
+                    let getValue;
+                    if (dataField === 'ov_dil' || originalField === 'ov_dil') {
+                        getValue = (item) => parseFloat(item.ov_dil || 0) || 0;
+                    } else if (dataField === 'SBID' || originalField === 's_bid') {
+                        // S BID is calculated dynamically
+                        getValue = (item) => calculateSBID(item);
+                    } else if (isNumeric) {
+                        getValue = (item) => parseFloat(item[dataField] || 0) || 0;
+                    } else {
+                        getValue = (item) => item[dataField] || '';
+                    }
+
+                    // Sort with filtered data to maintain current filters
+                    const dataToSort = [...filteredData];
+                    dataToSort.sort((a, b) => {
+                        const valA = getValue(a);
+                        const valB = getValue(b);
+                        
+                        if (isNumeric) {
+                            // Numeric comparison: direction 1 = ascending (lowest to highest), -1 = descending (highest to lowest)
+                            return (valA - valB) * currentSort.direction;
                         }
 
-                        // String comparison for other fields
+                        // String comparison for non-numeric fields
                         return String(valA).localeCompare(String(valB)) * currentSort.direction;
                     });
 
-                    filteredData = freshData;
+                    filteredData = dataToSort;
                     currentPage = 1;
                     renderTable();
                 });

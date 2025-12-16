@@ -33,11 +33,20 @@ class SheinSheet extends Command
         $sheet = $controller->fetchDataFromSheinMasterGoogleSheet();
         $rows = collect($sheet->getData()->data ?? []);
 
+        $updatedCount = 0;
+        $createdCount = 0;
+        $viewsClicksCount = 0;
+
         foreach ($rows as $row) {
             $sku = trim($row->{'(Child) sku'} ?? '');
             if (!$sku) continue;
 
-            SheinSheetData::updateOrCreate(
+            $viewsClicksValue = $this->toIntOrNull($row->{'Views/clicks'} ?? null);
+            if ($viewsClicksValue !== null) {
+                $viewsClicksCount++;
+            }
+
+            $record = SheinSheetData::updateOrCreate(
                 ['sku' => $sku],
                 [
                     'price'     => $this->toDecimalOrNull($row->{'Main Price'} ?? null),
@@ -45,7 +54,7 @@ class SheinSheet extends Command
                     'l30'       => $this->toIntOrNull($row->{'Shein L30'} ?? null),
                     'buy_link'  => trim($row->{'BLink'} ?? ''),
                     's_link'    => trim($row->{'SLink'} ?? ''), 
-                    'views_clicks' => $this->toIntOrNull($row->{'Views/clicks'} ?? null),
+                    'views_clicks' => $viewsClicksValue,
                     'lmp'       => $this->toDecimalOrNull($row->{'LMP'} ?? null),
                     'link1'    => trim($row->{'Link1'} ?? ''),
                     'link2'    => trim($row->{'Link2'} ?? ''),
@@ -55,9 +64,15 @@ class SheinSheet extends Command
                     
                 ]
             );
+
+            if ($record->wasRecentlyCreated) {
+                $createdCount++;
+            } else {
+                $updatedCount++;
+            }
         }
 
-        $this->info('Shein sheet synced successfully!');
+        $this->info("Shein sheet synced successfully! Created: {$createdCount}, Updated: {$updatedCount}, Records with views_clicks: {$viewsClicksCount}");
 
         // Fetch L30 and L60 from Shopify for Shein SKUs
         $this->fetchShopifySheinData();

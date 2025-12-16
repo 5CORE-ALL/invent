@@ -36,9 +36,25 @@ class AliexpressSheetSync extends Command
         $this->info('Fetched ' . $rows->count() . ' rows from Google Sheet.');
 
         $count = 0;
+        $viewsCount = 0;
         foreach ($rows as $row) {
             $sku = trim($row->{'(Child) sku'} ?? '');
             if (!$sku) continue;
+
+            // Try multiple possible column name variations for Views
+            $viewsValue = null;
+            $possibleNames = ['Views', 'views', 'AE Views', 'AliExpress Views', 'Views/clicks'];
+            foreach ($possibleNames as $name) {
+                if (isset($row->{$name}) && $row->{$name} !== null && $row->{$name} !== '') {
+                    $viewsValue = $row->{$name};
+                    break;
+                }
+            }
+
+            $viewsInt = $this->toIntOrNull($viewsValue);
+            if ($viewsInt !== null) {
+                $viewsCount++;
+            }
 
             AliExpressSheetData::updateOrCreate(
                 ['sku' => $sku],
@@ -46,13 +62,13 @@ class AliexpressSheetSync extends Command
                     'price'     => $this->toDecimalOrNull($row->{'Main Price'} ?? null),
                     'aliexpress_l30' => $this->toIntOrNull($row->{'AEL30'} ?? null),
                     'aliexpress_l60' => $this->toDecimalOrNull($row->{'AEL60'} ?? null),
-
+                    'views'     => $viewsInt,
                 ]
             );
             $count++;
         }
 
-        $this->info('Synced ' . $count . ' SKUs successfully.');
+        $this->info('Synced ' . $count . ' SKUs successfully. Records with views: ' . $viewsCount);
     }
 
     private function toDecimalOrNull($value)

@@ -1670,7 +1670,7 @@
                                     </th>
                                     <th data-field="inv" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 INV <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1679,7 +1679,7 @@
                                     </th>
                                     <th data-field="ov_l30" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 OV L30 <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1688,7 +1688,7 @@
                                     </th>
                                     <th data-field="ov_dil" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 OV DIL <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1697,7 +1697,7 @@
                                     </th>
                                     <th data-field="el_30" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 EL 30 <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1706,7 +1706,7 @@
                                     </th>
                                     <th data-field="e_dil" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 E DIL <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1737,7 +1737,7 @@
 
                                     <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 views <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1747,15 +1747,15 @@
                                     <th data-field="price"
                                         style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
                                         <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 PRICE <span class="sort-arrow">↓</span>
                                             </div>
                                         </div>
                                     </th>
                                     <th data-field="grpft" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                GRPFT
+                                            <div class="d-flex align-items-center sortable-header">
+                                                GRPFT <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="grpft-total">0%</div>
@@ -1763,8 +1763,8 @@
                                     </th>
                                     <th data-field="pft" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                PFT
+                                            <div class="d-flex align-items-center sortable-header">
+                                                PFT <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="pft-total">0%</div>
@@ -1772,8 +1772,8 @@
                                     </th>
                                     <th data-field="tprft" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                TPRFT
+                                            <div class="d-flex align-items-center sortable-header">
+                                                TPRFT <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="tprft-total">0%</div>
@@ -1781,21 +1781,21 @@
                                     </th>
                                     <th data-field="ad-spend" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                Ad Spend
+                                            <div class="d-flex align-items-center sortable-header">
+                                                Ad Spend <span class="sort-arrow">↓</span>
                                             </div>
                                         </div>
                                     </th>
                                     <th data-field="cps" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                CPS
+                                            <div class="d-flex align-items-center sortable-header">
+                                                CPS <span class="sort-arrow">↓</span>
                                             </div>
                                         </div>
                                     </th>
                                     <th data-field="roi" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 ROI <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1804,7 +1804,7 @@
                                     </th>
                                     <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 TACOS <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1813,7 +1813,7 @@
                                     </th>
                                     <th data-field="cvr" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 SCVR <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1823,7 +1823,7 @@
 
                                     <th data-field="sprice" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 SPRICE <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1832,7 +1832,7 @@
                                     </th>
                                     <th data-field="sprofit" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 SPROFIT <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1841,7 +1841,7 @@
                                     </th>
                                     <th data-field="sroi" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 SROI <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1850,7 +1850,7 @@
                                     </th>
                                     <th data-field="salesTotal" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
+                                            <div class="d-flex align-items-center sortable-header">
                                                 TOTAL SALES <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
@@ -1995,18 +1995,19 @@
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
-                            if (response.status === 200) {
-                            showNotification('success', 'Percentage updated successfully!');
-                            $input.prop('disabled', true);
-                            $icon.removeClass('fa-check').addClass('fa-pen');
+                            console.log('Percentage update response:', response);
+                            if (response && response.status === 200) {
+                                showNotification('success', 'Percentage updated successfully!');
+                                $input.prop('disabled', true);
+                                $icon.removeClass('fa-check').addClass('fa-pen');
                                 // Update the input value with the new value from server
-                                if (response.data && response.data.percentage) {
+                                if (response.data && response.data.percentage !== undefined) {
                                     $input.val(response.data.percentage);
                                 }
-                            // Reload the data table if needed
-                            loadData();
+                                // Reload the data table if needed
+                                loadData();
                             } else {
-                                showNotification('danger', response.message || 'Error updating percentage.');
+                                showNotification('danger', (response && response.message) || 'Error updating percentage.');
                                 $input.val(originalValue);
                                 $input.prop('disabled', true);
                                 $icon.removeClass('fa-check').addClass('fa-pen');
@@ -2016,7 +2017,17 @@
                             var errorMsg = 'Error updating percentage.';
                             if (xhr.responseJSON && xhr.responseJSON.message) {
                                 errorMsg = xhr.responseJSON.message;
+                            } else if (xhr.responseText) {
+                                try {
+                                    var errorResponse = JSON.parse(xhr.responseText);
+                                    if (errorResponse.message) {
+                                        errorMsg = errorResponse.message;
+                                    }
+                                } catch (e) {
+                                    // If parsing fails, use default message
+                                }
                             }
+                            console.error('Error updating percentage:', xhr);
                             showNotification('danger', errorMsg);
                             $input.val(originalValue); // Restore original value
                             $input.prop('disabled', true);
@@ -2054,18 +2065,40 @@
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
-                            if (response.status === 200) {
+                            console.log('Ad Updates response:', response);
+                            if (response && response.status === 200) {
                                 showNotification('success', 'Ad Updates updated successfully!');
                                 $input.prop('disabled', true);
                                 $icon.removeClass('fa-check').addClass('fa-pen');
                                 // Update the input value with the new value from server
-                                $input.val(response.data.ad_updates);
+                                if (response.data && response.data.ad_updates !== undefined) {
+                                    $input.val(response.data.ad_updates);
+                                }
                                 // Reload the data table if needed
                                 loadData();
+                            } else {
+                                showNotification('danger', (response && response.message) || 'Error updating Ad Updates.');
+                                $input.val(originalValue);
+                                $input.prop('disabled', true);
+                                $icon.removeClass('fa-check').addClass('fa-pen');
                             }
                         },
-                        error: function() {
-                            showNotification('danger', 'Error updating Ad Updates.');
+                        error: function(xhr) {
+                            var errorMsg = 'Error updating Ad Updates.';
+                            if (xhr.responseJSON && xhr.responseJSON.message) {
+                                errorMsg = xhr.responseJSON.message;
+                            } else if (xhr.responseText) {
+                                try {
+                                    var errorResponse = JSON.parse(xhr.responseText);
+                                    if (errorResponse.message) {
+                                        errorMsg = errorResponse.message;
+                                    }
+                                } catch (e) {
+                                    // If parsing fails, use default message
+                                }
+                            }
+                            console.error('Error updating Ad Updates:', xhr);
+                            showNotification('danger', errorMsg);
                             $input.val(originalValue);
                             $input.prop('disabled', true);
                             $icon.removeClass('fa-check').addClass('fa-pen');
@@ -3250,7 +3283,7 @@
                     ));
 
                     $row.append($('<td>').attr('data-field', 'salesTotal').attr('id', `total-sales`).html(
-                        ((item['eBay L30']) * (parseFloat(item['eBay Price']) || 0).toFixed(2))
+                        ((item['eBay L30']) * (parseFloat(item['eBay Price']) || 0)).toFixed(2)
                     ));
 
                     $tbody.append($row);
@@ -5128,37 +5161,88 @@
 
                     const th = $(this).closest('th');
                     const thField = th.data('field');
-                    const dataField = thField === 'parent' ? 'Parent' : thField;
-
+                    let dataField = thField === 'parent' ? 'Parent' : thField;
+                    
+                    // Map field names to actual data property names
+                    const fieldMapping = {
+                        'inv': 'INV',
+                        'ov_l30': 'L30',
+                        'ov_dil': 'ov_dil', // Data is stored as ov_dil
+                        'el_30': 'eBay L30',
+                        'e_dil': 'E Dil%',
+                        'price': 'eBay Price',
+                        'pft': 'PFT %',
+                        'roi': 'Roi',
+                        'tacos': 'Tacos30',
+                        'cvr': 'SCVR',
+                        'views': 'views',
+                        'sprice': 'SPRICE',
+                        'sprofit': 'SPFT',
+                        'sroi': 'SROI',
+                        'salesTotal': 'Sales L30',
+                        'grpft': 'Profit',
+                        'tprft': 'Profit',
+                        'ad-spend': 'spend_l30',
+                        'cps': 'CPS'
+                    };
+                    
+                    // Use mapped field name if available
+                    const originalField = dataField;
+                    if (fieldMapping[dataField]) {
+                        dataField = fieldMapping[dataField];
+                    }
 
                     // Toggle direction if clicking same column, otherwise reset to ascending
-                    if (currentSort.field === dataField) {
+                    if (currentSort.field === thField) {
                         currentSort.direction *= -1;
                     } else {
-                        currentSort.field = dataField;
-                        currentSort.direction = 1;
+                        currentSort.field = thField;
+                        currentSort.direction = 1; // Start with ascending (lowest to highest)
                     }
 
                     // Update UI arrows
                     $('.sort-arrow').html('↓');
                     $(this).find('.sort-arrow').html(currentSort.direction === 1 ? '↑' : '↓');
 
-                    // Sort with fresh data
-                    const freshData = [...tableData];
-                    freshData.sort((a, b) => {
-                        const valA = a[dataField] || '';
-                        const valB = b[dataField] || '';
+                    // Pre-calculate if field is numeric (outside sort for performance)
+                    const numericFieldsSet = new Set([
+                        'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%', 
+                        'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'views', 
+                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'spend_l30',
+                        'inv', 'ov_l30', 'el_30', 'e_dil', 'price', 
+                        'pft', 'roi', 'tacos', 'cvr', 'sprice', 'sprofit', 
+                        'sroi', 'salesTotal', 'grpft', 'tprft', 'ad-spend', 'cps'
+                    ]);
+                    const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
+                    
+                    // Determine value extraction function based on field type
+                    let getValue;
+                    if (dataField === 'ov_dil' || originalField === 'ov_dil') {
+                        getValue = (item) => parseFloat(item.ov_dil || 0) || 0;
+                    } else if (dataField === 'Sales L30' || originalField === 'salesTotal') {
+                        getValue = (item) => (parseFloat(item['eBay L30']) || 0) * (parseFloat(item['eBay Price']) || 0);
+                    } else if (isNumeric) {
+                        getValue = (item) => parseFloat(item[dataField] || 0) || 0;
+                    } else {
+                        getValue = (item) => item[dataField] || '';
+                    }
 
-                        // Numeric comparison for numeric fields
-                        if (dataField === 'sl_no' || dataField === 'INV' || dataField === 'L30') {
-                            return (parseFloat(valA) - parseFloat(valB)) * currentSort.direction;
+                    // Sort with filtered data to maintain current filters
+                    const dataToSort = [...filteredData];
+                    dataToSort.sort((a, b) => {
+                        const valA = getValue(a);
+                        const valB = getValue(b);
+                        
+                        if (isNumeric) {
+                            // Numeric comparison: direction 1 = ascending (lowest to highest), -1 = descending (highest to lowest)
+                            return (valA - valB) * currentSort.direction;
                         }
 
-                        // String comparison for other fields
+                        // String comparison for non-numeric fields
                         return String(valA).localeCompare(String(valB)) * currentSort.direction;
                     });
 
-                    filteredData = freshData;
+                    filteredData = dataToSort;
                     currentPage = 1;
                     renderTable();
                 });

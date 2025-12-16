@@ -2333,20 +2333,6 @@
                 applyAllFilters();
             });
 
-            // Save NR/REQ or Listed/Pending when dropdown changes
-            $(document).on('change', '.nr-req-dropdown, .listed-dropdown', function() {
-                const $row = $(this).closest('tr');
-                const sku = $row.find('td').eq(2).text().trim(); // Adjust index if needed
-                const nr_req = $row.find('.nr-req-dropdown').val() || 'REQ';
-                const listed = $row.find('.listed-dropdown').val() || 'Pending';
-
-                // Optionally, get current links if you want to save them too
-                const buyer_link = $row.data('buyer-link') || '';
-                const seller_link = $row.data('seller-link') || '';
-
-                saveStatusToDB(sku, nr_req, listed, buyer_link, seller_link);
-            });
-
             // Save links when submitting the modal
             $('#submitLinks').on('click', function(e) {
                 e.preventDefault();
@@ -2391,7 +2377,7 @@
 
             $(document).on('change', '.nr-req-dropdown', function() {
                 const $row = $(this).closest('tr');
-                const sku = $row.find('td').eq(2).text().trim();
+                const sku = $row.find('td').eq(1).text().trim();
                 const nr_req = $(this).val();
                 
                 // Update color based on selection
@@ -2420,7 +2406,7 @@
 
             $(document).on('change', '.listed-dropdown', function() {
                 const $row = $(this).closest('tr');
-                const sku = $row.find('td').eq(2).text().trim();
+                const sku = $row.find('td').eq(1).text().trim();
                 const listed = $(this).val();
                 
                 // Update color based on selection

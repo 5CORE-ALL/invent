@@ -1504,8 +1504,8 @@
                                     const inv = parseFloat(item.INV) || 0;
                                     const isParent = item.sku && item.sku.toUpperCase().includes('PARENT');
                                     
-                                    // Default logic: if INV > 0 and not parent, default to REQ (RL), otherwise NR (NRL)
-                                    let defaultNrReq = 'NR';
+                                    // Default logic: if INV > 0 and not parent, default to REQ (RL), otherwise NRL
+                                    let defaultNrReq = 'NRL';
                                     if (inv > 0 && !isParent) {
                                         defaultNrReq = 'REQ';
                                     }
@@ -1718,8 +1718,8 @@
                                 .append('<option value="Pending" class="pending-option">Pending</option>')
                                 .append('<option value="NRL" class="nrl-option">NRL</option>');
 
-                            // If nr_req is 'NR', automatically set listed to 'NRL'
-                            const listedValue = (item.nr_req === 'NR') ? 'NRL' : (item.listed || 'Pending');
+                            // If nr_req is 'NRL', automatically set listed to 'NRL'
+                            const listedValue = (item.nr_req === 'NRL') ? 'NRL' : (item.listed || 'Pending');
                             $listedDropdown.val(listedValue);
 
                             if (listedValue === 'Listed') {
@@ -1953,8 +1953,8 @@
                                     
                                     // For RL/NRL: Count based on nr_req field
                                     // nr_req = 'REQ' means RL (green)
-                                    // nr_req = 'NR' means NRL (red)
-                                    if (item.nr_req === 'NR') {
+                                    // nr_req = 'NRL' means NRL (red)
+                                    if (item.nr_req === 'NRL') {
                                         metrics.nrlTotal++;
                                     } else {
                                         // Default to RL if nr_req is 'REQ' or any other value
@@ -2202,24 +2202,29 @@
                             applyAllFilters();
                         });
 
-                        // Save NR/REQ or Listed/Pending when dropdown changes
-                        $(document).on('change', '.nr-select, .listed-dropdown', function() {
+                        // Save Listed/Pending when dropdown changes (nr_req is handled separately)
+                        $(document).on('change', '.listed-dropdown', function() {
                             const $row = $(this).closest('tr');
                             const sku = $row.find('td').eq(1).text().trim();
-                            const nr_req = $row.find('.nr-select').val() || 'REQ';
-                            const listed = $row.find('.listed-dropdown').val() || 'Pending';
+                            const listed = $(this).val();
+                            
+                            // Update color based on selection
+                            if (listed === 'Listed') {
+                                $(this).css('background-color', '#28a745').css('color', 'white');
+                            } else if (listed === 'Pending') {
+                                $(this).css('background-color', '#dc3545').css('color', 'white');
+                            } else if (listed === 'NRL') {
+                                $(this).css('background-color', '#6c757d').css('color', 'white');
+                            }
 
-                            // Optionally, get current links if you want to save them too
-                            const buyer_link = $row.data('buyer-link') || '';
-                            const seller_link = $row.data('seller-link') || '';
-
-                            saveStatusToDB(sku, nr_req, listed, buyer_link, seller_link);
+                            saveStatusToDB(sku, '', listed, '', '');
                         });
 
                         // Handle nr_req dropdown color change
                         $(document).on('change', '.nr-select', function() {
-                            const nr_req = $(this).val();
                             const $row = $(this).closest('tr');
+                            const sku = $row.find('td').eq(1).text().trim();
+                            const nr_req = $(this).val();
                             const $listedDropdown = $row.find('.listed-dropdown');
                             const bgColor = nr_req === 'NRL' ? '#dc3545' : '#28a745';
                             const textColor = '#ffffff';
@@ -2232,21 +2237,16 @@
                                 // Automatically set listed to NRL when NRL is selected
                                 $listedDropdown.val('NRL');
                                 $listedDropdown.css('background-color', '#6c757d').css('color', 'white');
+                                
+                                // Update both nr_req and listed in the database
+                                saveStatusToDB(sku, nr_req, 'NRL', '', '');
+                                return; // Exit early since we're saving both values
                             }
+
+                            // Save only nr_req when REQ is selected
+                            saveStatusToDB(sku, nr_req, '', '', '');
                         });
 
-                        // Handle listed dropdown color change
-                        $(document).on('change', '.listed-dropdown', function() {
-                            const listed = $(this).val();
-
-                            if (listed === 'Listed') {
-                                $(this).css('background-color', '#28a745').css('color', 'white');
-                            } else if (listed === 'Pending') {
-                                $(this).css('background-color', '#dc3545').css('color', 'white');
-                            } else if (listed === 'NRL') {
-                                $(this).css('background-color', '#6c757d').css('color', 'white');
-                            }
-                        });
 
                         // Save links when submitting the modal
                         $('#submitLinks').on('click', function(e) {
@@ -2332,27 +2332,31 @@
 
                         // AJAX function to save to DB
                         function saveStatusToDB(sku, nr_req, listed, buyer_link, seller_link) {
+                            // Build data object with only non-empty values
+                            const data = {
+                                _token: $('meta[name="csrf-token"]').attr('content'),
+                                sku: sku
+                            };
+                            
+                            if (nr_req) data.nr_req = nr_req;
+                            if (listed) data.listed = listed;
+                            if (buyer_link) data.buyer_link = buyer_link;
+                            if (seller_link) data.seller_link = seller_link;
+                            
                             $.ajax({
                                 url: '/listing_ebay/update-status',
                                 type: 'POST',
-                                data: {
-                                    _token: $('meta[name="csrf-token"]').attr('content'),
-                                    sku: sku,
-                                    nr_req: nr_req,
-                                    listed: listed,
-                                    buyer_link: buyer_link,
-                                    seller_link: seller_link
-                                },
+                                data: data,
                                 success: function(response) {
                                     showNotification('success', response.message || 'Status updated successfully');
 
-                                    // Update the tableData array
+                                    // Update the tableData array with only provided values
                                     const itemIndex = tableData.findIndex(item => item.sku === sku);
                                     if (itemIndex !== -1) {
-                                        tableData[itemIndex].nr_req = nr_req;
-                                        tableData[itemIndex].listed = listed;
-                                        tableData[itemIndex].buyer_link = buyer_link;
-                                        tableData[itemIndex].seller_link = seller_link;
+                                        if (nr_req) tableData[itemIndex].nr_req = nr_req;
+                                        if (listed) tableData[itemIndex].listed = listed;
+                                        if (buyer_link) tableData[itemIndex].buyer_link = buyer_link;
+                                        if (seller_link) tableData[itemIndex].seller_link = seller_link;
                                     }
 
                                     // Re-render the table

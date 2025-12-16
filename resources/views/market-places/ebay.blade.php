@@ -1340,7 +1340,7 @@
                                             <span class="status-circle default"></span> All</a></li>
                                     <li><a class="dropdown-item nrl-req-filter" href="#" data-value="REQ">
                                             <span class="status-circle green"></span> REQ</a></li>
-                                    <li><a class="dropdown-item nrl-req-filter" href="#" data-value="NR">
+                                    <li><a class="dropdown-item nrl-req-filter" href="#" data-value="NRL">
                                             <span class="status-circle red"></span> NRL</a></li>
                                 </ul>
                             </div>
@@ -2699,7 +2699,7 @@
                         if (item.NR === 'NRA') {
                             nraCount++;
                         }
-                        if (item.nr_req === 'NR') {
+                        if (item.nr_req === 'NRL') {
                             nrlCount++;
                         }
                     }
@@ -2988,12 +2988,12 @@
                         $row.append($('<td>').attr('data-field', 'nr_req')); // Empty cell for parent
                     } else {
                         // Set default value for nr_req if missing
-                        let currentNrReq = (item.nr_req === 'REQ' || item.nr_req === 'NR') ? item.nr_req : 'REQ';
+                        let currentNrReq = (item.nr_req === 'REQ' || item.nr_req === 'NRL') ? item.nr_req : 'REQ';
 
                         const $nrReqSelect = $(`
                             <select class="form-select form-select-sm nr-req-dropdown" style="min-width: 100px;">
                                 <option value="REQ" class="req-option">REQ</option>
-                                <option value="NR" class="nr-option">NRL</option>
+                                <option value="NRL" class="nr-option">NRL</option>
                             </select>
                         `);
 
@@ -3004,7 +3004,7 @@
                         if (currentNrReq === 'REQ') {
                             $nrReqSelect.css('background-color', '#28a745');
                             $nrReqSelect.css('color', '#ffffff');
-                        } else if (currentNrReq === 'NR') {
+                        } else if (currentNrReq === 'NRL') {
                             $nrReqSelect.css('background-color', '#dc3545');
                             $nrReqSelect.css('color', '#ffffff');
                         }
@@ -3446,17 +3446,17 @@
             function initNRReqChangeHandler() {
                 $(document).on('change', '.nr-req-dropdown', function() {
                     const $select = $(this);
-                    const newValue = $select.val();
+                    const newValue = $select.val(); // 'REQ' or 'NRL'
                     const sku = $select.data('sku');
 
                     // Change background color based on selected value
                     if (newValue === 'REQ') {
                         $select.css('background-color', '#28a745').css('color', '#ffffff');
-                    } else if (newValue === 'NR') {
+                    } else if (newValue === 'NRL') {
                         $select.css('background-color', '#dc3545').css('color', '#ffffff');
                     }
 
-                    // Send AJAX to save NRL/REQ status
+                    // Send AJAX to save NRL/REQ status (Listing eBay controller expects 'REQ' or 'NRL')
                     $.ajax({
                         url: '/listing_ebay/save-status',
                         type: 'POST',
@@ -5106,37 +5106,89 @@
 
                     const th = $(this).closest('th');
                     const thField = th.data('field');
-                    const dataField = thField === 'parent' ? 'Parent' : thField;
-
+                    let dataField = thField === 'parent' ? 'Parent' : thField;
+                    
+                    // Map field names to actual data property names
+                    const fieldMapping = {
+                        'inv': 'INV',
+                        'ov_l30': 'L30',
+                        'ov_dil': 'ov_dil',
+                        'el_30': 'eBay L30',
+                        'e_dil': 'E Dil%',
+                        'price': 'eBay Price',
+                        'pft': 'PFT %',
+                        'roi': 'Roi',
+                        'tacos': 'Tacos30',
+                        'cvr': 'SCVR',
+                        'views': 'views',
+                        'sprice': 'SPRICE',
+                        'sprofit': 'SPFT',
+                        'sroi': 'SROI',
+                        'salesTotal': 'Sales L30',
+                        'grpft': 'Profit',
+                        'tprft': 'Profit',
+                        'ad-spend': 'Ad Spend',
+                        'cps': 'CPS'
+                    };
+                    
+                    // Use mapped field name if available
+                    const originalField = dataField;
+                    if (fieldMapping[dataField]) {
+                        dataField = fieldMapping[dataField];
+                    }
 
                     // Toggle direction if clicking same column, otherwise reset to ascending
-                    if (currentSort.field === dataField) {
+                    if (currentSort.field === thField) {
                         currentSort.direction *= -1;
                     } else {
-                        currentSort.field = dataField;
-                        currentSort.direction = 1;
+                        currentSort.field = thField;
+                        currentSort.direction = 1; // Start with ascending (lowest to highest)
                     }
 
                     // Update UI arrows
                     $('.sort-arrow').html('↓');
                     $(this).find('.sort-arrow').html(currentSort.direction === 1 ? '↑' : '↓');
 
-                    // Sort with fresh data
-                    const freshData = [...tableData];
-                    freshData.sort((a, b) => {
-                        const valA = a[dataField] || '';
-                        const valB = b[dataField] || '';
+                    // Pre-calculate if field is numeric (outside sort for performance)
+                    const numericFieldsSet = new Set([
+                        'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%', 
+                        'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'views', 
+                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'Ad Spend', 'CPS',
+                        'inv', 'ov_l30', 'el_30', 'e_dil', 'price', 
+                        'pft', 'roi', 'tacos', 'cvr', 'sprice', 'sprofit', 
+                        'sroi', 'salesTotal', 'grpft', 'tprft', 'ad-spend', 'cps'
+                    ]);
+                    const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
+                    
+                    // Determine value extraction function based on field type
+                    let getValue;
+                    if (dataField === 'ov_dil' || originalField === 'ov_dil') {
+                        getValue = (item) => parseFloat(item.ov_dil || 0) || 0;
+                    } else if (dataField === 'Sales L30' || originalField === 'salesTotal') {
+                        // Total Sales is calculated as (eBay L30) * (eBay Price)
+                        getValue = (item) => (parseFloat(item['eBay L30']) || 0) * (parseFloat(item['eBay Price']) || 0);
+                    } else if (isNumeric) {
+                        getValue = (item) => parseFloat(item[dataField] || 0) || 0;
+                    } else {
+                        getValue = (item) => item[dataField] || '';
+                    }
 
-                        // Numeric comparison for numeric fields
-                        if (dataField === 'sl_no' || dataField === 'INV' || dataField === 'L30') {
-                            return (parseFloat(valA) - parseFloat(valB)) * currentSort.direction;
+                    // Sort with filtered data to maintain current filters
+                    const dataToSort = [...filteredData];
+                    dataToSort.sort((a, b) => {
+                        const valA = getValue(a);
+                        const valB = getValue(b);
+                        
+                        if (isNumeric) {
+                            // Numeric comparison: direction 1 = ascending (lowest to highest), -1 = descending (highest to lowest)
+                            return (valA - valB) * currentSort.direction;
                         }
 
-                        // String comparison for other fields
+                        // String comparison for non-numeric fields
                         return String(valA).localeCompare(String(valB)) * currentSort.direction;
                     });
 
-                    filteredData = freshData;
+                    filteredData = dataToSort;
                     currentPage = 1;
                     renderTable();
                 });
@@ -5454,7 +5506,7 @@
                             }
                             
                             // Check nr_req for child rows
-                            const nrReq = item.nr_req || 'NR';
+                            const nrReq = item.nr_req || 'NRL';
                             return nrReq === filterValue;
                         });
                         return;
@@ -5617,10 +5669,10 @@
 
                         // Count NRL/REQ entries (only for non-parent rows)
                         if (!item.is_parent) {
-                            const nrReq = item.nr_req || 'NR';
+                            const nrReq = item.nr_req || 'NRL';
                             if (nrReq === 'REQ') {
                                 metrics.reqCount++;
-                            } else if (nrReq === 'NR') {
+                            } else if (nrReq === 'NRL') {
                                 metrics.nrCount++;
                             }
                         }
@@ -5730,7 +5782,7 @@
                     const nrlReqFilter = state.filters.NRL_REQ || 'all';
                     if (nrlReqFilter === 'REQ') {
                         $('#req-total').text(metrics.reqCount.toLocaleString());
-                    } else if (nrlReqFilter === 'NR') {
+                    } else if (nrlReqFilter === 'NRL') {
                         $('#req-total').text(metrics.nrCount.toLocaleString());
                     } else {
                         // When filter is 'all', show total REQ count
