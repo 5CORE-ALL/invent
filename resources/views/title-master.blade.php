@@ -218,10 +218,34 @@
                                         <input type="text" id="skuSearch" class="form-control-sm"
                                             placeholder="Search SKU">
                                     </th>
-                                    <th>Title 150</th>
-                                    <th>Title 100</th>
-                                    <th>Title 80</th>
-                                    <th>Title 60</th>
+                                    <th>
+                                        <div>Title 150 <span id="title150MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterTitle150" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Title 100 <span id="title100MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterTitle100" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Title 80 <span id="title80MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterTitle80" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Title 60 <span id="title60MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterTitle60" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -745,12 +769,17 @@
                 return;
             }
 
-            data.forEach(item => {
-                // Skip parent rows (rows with SKU containing 'PARENT')
-                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
-                    return;
-                }
+            // Filter out parent rows before rendering
+            const filteredData = data.filter(item => {
+                return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
+            });
 
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center">No products found</td></tr>';
+                return;
+            }
+
+            filteredData.forEach(item => {
                 const row = document.createElement('tr');
 
                 // Checkbox
@@ -1206,40 +1235,118 @@
             });
         }
 
-        function setupSearchHandlers() {
-            const parentSearch = document.getElementById('parentSearch');
-            const skuSearch = document.getElementById('skuSearch');
-
-            parentSearch.addEventListener('input', filterTable);
-            skuSearch.addEventListener('input', filterTable);
-        }
-
-        function filterTable() {
+        // Apply all filters
+        function applyFilters() {
             const parentFilter = document.getElementById('parentSearch').value.toLowerCase();
             const skuFilter = document.getElementById('skuSearch').value.toLowerCase();
+            const filterTitle150 = document.getElementById('filterTitle150').value;
+            const filterTitle100 = document.getElementById('filterTitle100').value;
+            const filterTitle80 = document.getElementById('filterTitle80').value;
+            const filterTitle60 = document.getElementById('filterTitle60').value;
 
             const filteredData = tableData.filter(item => {
-                const parentMatch = !parentFilter || (item.Parent && item.Parent.toLowerCase().includes(parentFilter));
-                const skuMatch = !skuFilter || (item.SKU && item.SKU.toLowerCase().includes(skuFilter));
-                return parentMatch && skuMatch;
+                // Skip parent rows
+                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
+                    return false;
+                }
+
+                // Parent search filter
+                if (parentFilter && !(item.Parent && item.Parent.toLowerCase().includes(parentFilter))) {
+                    return false;
+                }
+
+                // SKU search filter
+                if (skuFilter && !(item.SKU && item.SKU.toLowerCase().includes(skuFilter))) {
+                    return false;
+                }
+
+                // Title 150 filter
+                if (filterTitle150 === 'missing' && !isMissing(item.title150)) {
+                    return false;
+                }
+
+                // Title 100 filter
+                if (filterTitle100 === 'missing' && !isMissing(item.title100)) {
+                    return false;
+                }
+
+                // Title 80 filter
+                if (filterTitle80 === 'missing' && !isMissing(item.title80)) {
+                    return false;
+                }
+
+                // Title 60 filter
+                if (filterTitle60 === 'missing' && !isMissing(item.title60)) {
+                    return false;
+                }
+
+                return true;
             });
 
             renderTable(filteredData);
         }
 
+        function setupSearchHandlers() {
+            const parentSearch = document.getElementById('parentSearch');
+            const skuSearch = document.getElementById('skuSearch');
+
+            parentSearch.addEventListener('input', applyFilters);
+            skuSearch.addEventListener('input', applyFilters);
+
+            // Column filters
+            document.getElementById('filterTitle150').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterTitle100').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterTitle80').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterTitle60').addEventListener('change', function() {
+                applyFilters();
+            });
+        }
+
+        function filterTable() {
+            applyFilters();
+        }
+
+        // Check if value is missing (null, undefined, empty)
+        function isMissing(value) {
+            return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
+        }
+
         function updateCounts() {
             const parentSet = new Set();
             let skuCount = 0;
+            let title150MissingCount = 0;
+            let title100MissingCount = 0;
+            let title80MissingCount = 0;
+            let title60MissingCount = 0;
 
             tableData.forEach(item => {
                 if (item.Parent) parentSet.add(item.Parent);
                 if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
                     skuCount++;
+                    
+                    // Count missing data for each title column
+                    if (isMissing(item.title150)) title150MissingCount++;
+                    if (isMissing(item.title100)) title100MissingCount++;
+                    if (isMissing(item.title80)) title80MissingCount++;
+                    if (isMissing(item.title60)) title60MissingCount++;
                 }
             });
 
             document.getElementById('parentCount').textContent = `(${parentSet.size})`;
             document.getElementById('skuCount').textContent = `(${skuCount})`;
+            document.getElementById('title150MissingCount').textContent = `(${title150MissingCount})`;
+            document.getElementById('title100MissingCount').textContent = `(${title100MissingCount})`;
+            document.getElementById('title80MissingCount').textContent = `(${title80MissingCount})`;
+            document.getElementById('title60MissingCount').textContent = `(${title60MissingCount})`;
         }
 
         function escapeHtml(text) {

@@ -175,9 +175,62 @@
                             </div>
                         </div>
                         <div class="col-md-6 text-end">
-                            <button type="button" class="btn btn-success" id="downloadExcel">
+                            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+                                <i class="fas fa-upload me-1"></i> Import Excel
+                            </button>
+                            <button type="button" class="btn btn-success ms-2" id="downloadExcel">
                                 <i class="fas fa-file-excel me-1"></i> Download Excel
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- Import Modal -->
+                    <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                                    <h5 class="modal-title" id="importModalLabel">
+                                        <i class="fas fa-upload me-2"></i>Import Shipping Data
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Instructions:</strong>
+                                        <ol class="mb-0 mt-2">
+                                            <li>Download the sample file below</li>
+                                            <li>Fill in the shipping data (SHIP, TEMU SHIP, EBAY2 SHIP)</li>
+                                            <li>Upload the completed file</li>
+                                        </ol>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <button type="button" class="btn btn-outline-primary w-100" id="downloadSampleBtn">
+                                            <i class="fas fa-download me-2"></i>Download Sample File
+                                        </button>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="importFile" class="form-label fw-bold">Select Excel File</label>
+                                        <input type="file" class="form-control" id="importFile" accept=".xlsx,.xls,.csv">
+                                        <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
+                                        <div id="fileError" class="text-danger mt-2" style="display: none;"></div>
+                                    </div>
+
+                                    <div id="importProgress" class="progress mb-3" style="display: none;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                    </div>
+
+                                    <div id="importResult" class="alert" style="display: none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn btn-primary" id="importBtn" disabled>
+                                        <i class="fas fa-upload me-2"></i>Import
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -204,9 +257,27 @@
                                     </th>
                                     <th>Status</th>
                                     <th>INV</th>
-                                    <th>SHIP</th>
-                                    <th>TEMU SHIP</th>
-                                    <th>EBAY2 SHIP</th>
+                                    <th>
+                                        <div>SHIP <span id="shipMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterShip" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>TEMU SHIP <span id="temuShipMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterTemuShip" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>EBAY2 SHIP <span id="ebay2ShipMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterEbay2Ship" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -385,17 +456,84 @@
                 });
             }
 
+            // Check if value is missing (null, undefined, empty, or 0)
+            function isMissing(value) {
+                return value === null || value === undefined || value === '' || value === 0 || parseFloat(value) === 0;
+            }
+
             // Update counts
             function updateCounts() {
                 const parentSet = new Set();
                 let skuCount = 0;
+                let shipMissingCount = 0;
+                let temuShipMissingCount = 0;
+                let ebay2ShipMissingCount = 0;
+
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
+                    
+                    // Count missing data for each column
+                    if (isMissing(item.ship)) shipMissingCount++;
+                    if (isMissing(item.temu_ship)) temuShipMissingCount++;
+                    if (isMissing(item.ebay2_ship)) ebay2ShipMissingCount++;
                 });
+                
                 document.getElementById('parentCount').textContent = `(${parentSet.size})`;
                 document.getElementById('skuCount').textContent = `(${skuCount})`;
+                document.getElementById('shipMissingCount').textContent = `(${shipMissingCount})`;
+                document.getElementById('temuShipMissingCount').textContent = `(${temuShipMissingCount})`;
+                document.getElementById('ebay2ShipMissingCount').textContent = `(${ebay2ShipMissingCount})`;
+            }
+
+            // Apply all filters
+            function applyFilters() {
+                filteredData = tableData.filter(item => {
+                    // Parent search filter
+                    const parentSearch = document.getElementById('parentSearch').value.toLowerCase();
+                    if (parentSearch && !(item.Parent || '').toLowerCase().includes(parentSearch)) {
+                        return false;
+                    }
+
+                    // SKU search filter
+                    const skuSearch = document.getElementById('skuSearch').value.toLowerCase();
+                    if (skuSearch && !(item.SKU || '').toLowerCase().includes(skuSearch)) {
+                        return false;
+                    }
+
+                    // Custom search filter
+                    const customSearch = document.getElementById('customSearch').value.toLowerCase();
+                    if (customSearch) {
+                        const parent = (item.Parent || '').toLowerCase();
+                        const sku = (item.SKU || '').toLowerCase();
+                        const status = (item.status || '').toLowerCase();
+                        if (!parent.includes(customSearch) && !sku.includes(customSearch) && !status.includes(customSearch)) {
+                            return false;
+                        }
+                    }
+
+                    // SHIP filter
+                    const filterShip = document.getElementById('filterShip').value;
+                    if (filterShip === 'missing' && !isMissing(item.ship)) {
+                        return false;
+                    }
+
+                    // TEMU SHIP filter
+                    const filterTemuShip = document.getElementById('filterTemuShip').value;
+                    if (filterTemuShip === 'missing' && !isMissing(item.temu_ship)) {
+                        return false;
+                    }
+
+                    // EBAY2 SHIP filter
+                    const filterEbay2Ship = document.getElementById('filterEbay2Ship').value;
+                    if (filterEbay2Ship === 'missing' && !isMissing(item.ebay2_ship)) {
+                        return false;
+                    }
+
+                    return true;
+                });
+                renderTable(filteredData);
             }
 
             // Setup search functionality
@@ -403,36 +541,19 @@
                 // Parent search
                 const parentSearch = document.getElementById('parentSearch');
                 parentSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        return parent.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // SKU search
                 const skuSearch = document.getElementById('skuSearch');
                 skuSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const sku = (item.SKU || '').toLowerCase();
-                        return sku.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // Custom search
                 const customSearch = document.getElementById('customSearch');
                 customSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        const sku = (item.SKU || '').toLowerCase();
-                        const status = (item.status || '').toLowerCase();
-                        return parent.includes(searchTerm) || sku.includes(searchTerm) || status.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // Clear search
@@ -440,8 +561,24 @@
                     customSearch.value = '';
                     parentSearch.value = '';
                     skuSearch.value = '';
-                    filteredData = [...tableData];
-                    renderTable(filteredData);
+                    // Reset all column filters
+                    document.getElementById('filterShip').value = 'all';
+                    document.getElementById('filterTemuShip').value = 'all';
+                    document.getElementById('filterEbay2Ship').value = 'all';
+                    applyFilters();
+                });
+
+                // Column filters
+                document.getElementById('filterShip').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterTemuShip').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterEbay2Ship').addEventListener('change', function() {
+                    applyFilters();
                 });
             }
 
@@ -617,9 +754,180 @@
                 });
             }
 
+            // Setup import functionality
+            function setupImport() {
+                const importFile = document.getElementById('importFile');
+                const importBtn = document.getElementById('importBtn');
+                const downloadSampleBtn = document.getElementById('downloadSampleBtn');
+                const importModal = document.getElementById('importModal');
+                const fileError = document.getElementById('fileError');
+                const importProgress = document.getElementById('importProgress');
+                const importResult = document.getElementById('importResult');
+
+                // Enable/disable import button based on file selection
+                importFile.addEventListener('change', function() {
+                    if (this.files && this.files.length > 0) {
+                        const file = this.files[0];
+                        const fileName = file.name.toLowerCase();
+                        const validExtensions = ['.xlsx', '.xls', '.csv'];
+                        const isValid = validExtensions.some(ext => fileName.endsWith(ext));
+
+                        if (isValid) {
+                            importBtn.disabled = false;
+                            fileError.style.display = 'none';
+                        } else {
+                            importBtn.disabled = true;
+                            fileError.textContent = 'Please select a valid Excel file (.xlsx, .xls, or .csv)';
+                            fileError.style.display = 'block';
+                        }
+                    } else {
+                        importBtn.disabled = true;
+                    }
+                });
+
+                // Download sample file
+                downloadSampleBtn.addEventListener('click', function() {
+                    // Create sample data
+                    const sampleData = [
+                        ['SKU', 'SHIP', 'TEMU SHIP', 'EBAY2 SHIP'],
+                        ['SKU001', '10.50', '12.00', '11.50'],
+                        ['SKU002', '15.75', '18.00', '16.25'],
+                        ['SKU003', '8.25', '9.50', '8.75']
+                    ];
+
+                    // Create workbook
+                    const wb = XLSX.utils.book_new();
+                    const ws = XLSX.utils.aoa_to_sheet(sampleData);
+
+                    // Set column widths
+                    ws['!cols'] = [
+                        { wch: 15 }, // SKU
+                        { wch: 12 }, // SHIP
+                        { wch: 15 }, // TEMU SHIP
+                        { wch: 15 }  // EBAY2 SHIP
+                    ];
+
+                    // Style header row
+                    const headerRange = XLSX.utils.decode_range(ws['!ref']);
+                    for (let C = headerRange.s.c; C <= headerRange.e.c; ++C) {
+                        const cell = XLSX.utils.encode_cell({ r: 0, c: C });
+                        if (!ws[cell]) continue;
+                        ws[cell].s = {
+                            fill: { fgColor: { rgb: "2C6ED5" } },
+                            font: { bold: true, color: { rgb: "FFFFFF" } },
+                            alignment: { horizontal: "center" }
+                        };
+                    }
+
+                    XLSX.utils.book_append_sheet(wb, ws, "Shipping Data");
+                    XLSX.writeFile(wb, "shipping_master_sample.xlsx");
+                    
+                    showToast('success', 'Sample file downloaded successfully!');
+                });
+
+                // Handle import
+                importBtn.addEventListener('click', async function() {
+                    const file = importFile.files[0];
+                    if (!file) {
+                        showToast('danger', 'Please select a file to import');
+                        return;
+                    }
+
+                    // Disable button and show progress
+                    importBtn.disabled = true;
+                    importProgress.style.display = 'block';
+                    importResult.style.display = 'none';
+                    fileError.style.display = 'none';
+
+                    const formData = new FormData();
+                    formData.append('excel_file', file);
+                    formData.append('_token', csrfToken);
+
+                    try {
+                        const response = await fetch('/shipping-master/import', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: formData
+                        });
+
+                        const result = await response.json();
+
+                        // Update progress bar
+                        const progressBar = importProgress.querySelector('.progress-bar');
+                        progressBar.style.width = '100%';
+
+                        if (response.ok && result.success) {
+                            importResult.className = 'alert alert-success';
+                            importResult.innerHTML = `
+                                <i class="fas fa-check-circle me-2"></i>
+                                <strong>Import Successful!</strong><br>
+                                ${result.message || `Successfully imported ${result.imported || 0} records.`}
+                                ${result.errors && result.errors.length > 0 ? `<br><small>Errors: ${result.errors.length}</small>` : ''}
+                            `;
+                            importResult.style.display = 'block';
+
+                            // Reload data after successful import
+                            setTimeout(() => {
+                                loadData();
+                                // Close modal after a delay
+                                setTimeout(() => {
+                                    const modal = bootstrap.Modal.getInstance(importModal);
+                                    if (modal) modal.hide();
+                                    // Reset form
+                                    importFile.value = '';
+                                    importBtn.disabled = true;
+                                    importProgress.style.display = 'none';
+                                    importResult.style.display = 'none';
+                                    progressBar.style.width = '0%';
+                                }, 2000);
+                            }, 1000);
+                        } else {
+                            importResult.className = 'alert alert-danger';
+                            importResult.innerHTML = `
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>Import Failed!</strong><br>
+                                ${result.message || 'An error occurred during import.'}
+                            `;
+                            importResult.style.display = 'block';
+                            importBtn.disabled = false;
+                        }
+                    } catch (error) {
+                        console.error('Import error:', error);
+                        importResult.className = 'alert alert-danger';
+                        importResult.innerHTML = `
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Import Failed!</strong><br>
+                            ${error.message || 'An error occurred during import.'}
+                        `;
+                        importResult.style.display = 'block';
+                        importBtn.disabled = false;
+                    } finally {
+                        // Reset progress bar after a delay
+                        setTimeout(() => {
+                            const progressBar = importProgress.querySelector('.progress-bar');
+                            progressBar.style.width = '0%';
+                        }, 2000);
+                    }
+                });
+
+                // Reset form when modal is closed
+                importModal.addEventListener('hidden.bs.modal', function() {
+                    importFile.value = '';
+                    importBtn.disabled = true;
+                    importProgress.style.display = 'none';
+                    importResult.style.display = 'none';
+                    fileError.style.display = 'none';
+                    const progressBar = importProgress.querySelector('.progress-bar');
+                    if (progressBar) progressBar.style.width = '0%';
+                });
+            }
+
             // Initialize
             loadData();
             setupExcelExport();
+            setupImport();
         });
     </script>
 @endsection

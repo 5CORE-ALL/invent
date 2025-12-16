@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'General Specific Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Package Includes Master', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -26,12 +26,12 @@
             background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
             color: white;
             z-index: 10;
-            padding: 6px 8px;
+            padding: 15px 18px;
             font-weight: 600;
             border-bottom: none;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-            font-size: 10px;
-            letter-spacing: 0.2px;
+            font-size: 12px;
+            letter-spacing: 0.5px;
             text-transform: uppercase;
             transition: all 0.2s ease;
             white-space: nowrap;
@@ -46,21 +46,9 @@
             border: none;
             border-radius: 4px;
             color: #333;
-            padding: 4px 6px;
-            margin-top: 4px;
-            font-size: 10px;
-            width: 100%;
-            transition: all 0.2s;
-        }
-
-        .table-responsive thead select {
-            background-color: rgba(255, 255, 255, 0.9);
-            border: none;
-            border-radius: 4px;
-            color: #333;
-            padding: 2px 4px;
-            margin-top: 4px;
-            font-size: 10px;
+            padding: 6px 10px;
+            margin-top: 8px;
+            font-size: 12px;
             width: 100%;
             transition: all 0.2s;
         }
@@ -77,14 +65,14 @@
         }
 
         .table-responsive tbody td {
-            padding: 6px 8px;
+            padding: 12px 18px;
             vertical-align: middle;
             border-bottom: 1px solid #edf2f9;
-            font-size: 11px;
+            font-size: 12px;
             color: #495057;
             transition: all 0.2s ease;
             white-space: nowrap;
-            max-width: 120px;
+            max-width: 200px;
             overflow: hidden;
             text-overflow: ellipsis;
         }
@@ -112,27 +100,15 @@
             width: 100%;
             border-collapse: separate;
             border-spacing: 0;
-            table-layout: auto;
-        }
-
-        .table-responsive thead th div {
-            font-size: 10px;
-            line-height: 1.2;
-        }
-
-        .table-responsive thead th .text-danger {
-            font-size: 9px;
-            margin-left: 2px;
         }
 
         .edit-btn {
-            border-radius: 4px;
-            padding: 4px 8px;
+            border-radius: 6px;
+            padding: 6px 12px;
             transition: all 0.2s;
             background: #fff;
             border: 1px solid #1a56b7;
             color: #1a56b7;
-            font-size: 11px;
         }
 
         .edit-btn:hover {
@@ -143,13 +119,12 @@
         }
 
         .delete-btn {
-            border-radius: 4px;
-            padding: 4px 8px;
+            border-radius: 6px;
+            padding: 6px 12px;
             transition: all 0.2s;
             background: #fff;
             border: 1px solid #dc3545;
             color: #dc3545;
-            font-size: 11px;
         }
 
         .delete-btn:hover {
@@ -190,8 +165,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     @include('layouts.shared.page-title', [
-        'page_title' => 'General Specific Masters',
-        'sub_title' => 'General Specific Masters Analysis',
+        'page_title' => 'Package Includes Master',
+        'sub_title' => 'Package Includes Master Analysis',
     ])
 
     <div class="row">
@@ -203,15 +178,15 @@
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-search"></i></span>
                                 <input type="text" id="customSearch" class="form-control"
-                                    placeholder="Search general specific...">
+                                    placeholder="Search package includes...">
                                 <button class="btn btn-outline-secondary" type="button" id="clearSearch">Clear</button>
                             </div>
                         </div>
                         <div class="col-md-6 text-end">
-                            <button type="button" class="btn btn-primary me-2" id="addGeneralSpecificBtn">
-                                <i class="fas fa-plus me-1"></i> Add General Specific Data
+                            <button type="button" class="btn btn-primary me-2" id="addPackageIncludesBtn">
+                                <i class="fas fa-plus me-1"></i> Add Package Includes Data
                             </button>
-                            <button type="button" class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#importModal">
+                            <button type="button" class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#importPackageIncludesModal">
                                 <i class="fas fa-upload me-1"></i> Import Excel
                             </button>
                             <button type="button" class="btn btn-success" id="downloadExcel">
@@ -221,12 +196,12 @@
                     </div>
 
                     <!-- Import Modal -->
-                    <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+                    <div class="modal fade" id="importPackageIncludesModal" tabindex="-1" aria-labelledby="importPackageIncludesModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-dialog-centered">
                             <div class="modal-content">
                                 <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
-                                    <h5 class="modal-title" id="importModalLabel">
-                                        <i class="fas fa-upload me-2"></i>Import General Specific Data
+                                    <h5 class="modal-title" id="importPackageIncludesModalLabel">
+                                        <i class="fas fa-upload me-2"></i>Import Package Includes Data
                                     </h5>
                                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
@@ -236,33 +211,33 @@
                                         <strong>Instructions:</strong>
                                         <ol class="mb-0 mt-2">
                                             <li>Download the sample file below</li>
-                                            <li>Fill in the general specific data (Brand, Handling Time, Country of Origin, Warranty, Prop Warning, Condition)</li>
+                                            <li>Fill in the package includes data (Item1, Item2, Item3, ... Item10)</li>
                                             <li>Upload the completed file</li>
                                         </ol>
                                     </div>
                                     
                                     <div class="mb-3">
-                                        <button type="button" class="btn btn-outline-primary w-100" id="downloadSampleBtn">
+                                        <button type="button" class="btn btn-outline-primary w-100" id="downloadSamplePackageIncludesBtn">
                                             <i class="fas fa-download me-2"></i>Download Sample File
                                         </button>
                                     </div>
 
                                     <div class="mb-3">
-                                        <label for="importFile" class="form-label fw-bold">Select Excel File</label>
-                                        <input type="file" class="form-control" id="importFile" accept=".xlsx,.xls,.csv">
+                                        <label for="packageIncludesImportFile" class="form-label fw-bold">Select Excel File</label>
+                                        <input type="file" class="form-control" id="packageIncludesImportFile" accept=".xlsx,.xls,.csv">
                                         <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
-                                        <div id="fileError" class="text-danger mt-2" style="display: none;"></div>
+                                        <div id="packageIncludesFileError" class="text-danger mt-2" style="display: none;"></div>
                                     </div>
 
-                                    <div id="importProgress" class="progress mb-3" style="display: none;">
+                                    <div id="packageIncludesImportProgress" class="progress mb-3" style="display: none;">
                                         <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
                                     </div>
 
-                                    <div id="importResult" class="alert" style="display: none;"></div>
+                                    <div id="packageIncludesImportResult" class="alert" style="display: none;"></div>
                                 </div>
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn btn-primary" id="importBtn" disabled>
+                                    <button type="button" class="btn btn-primary" id="importPackageIncludesBtn" disabled>
                                         <i class="fas fa-upload me-2"></i>Import
                                     </button>
                                 </div>
@@ -270,72 +245,39 @@
                         </div>
                     </div>
 
-                    <div class="table-responsive" style="width: 100%;">
-                        <table id="general-specific-master-datatable" class="table dt-responsive nowrap" style="width: 100%;">
+                    <div class="table-responsive">
+                        <table id="package-includes-master-datatable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
-                                    <th style="width: 60px;">Image</th>
-                                    <th style="width: 100px;">
-                                        <div style="display: flex; align-items: center; gap: 3px; font-size: 9px;">
+                                    <th>Image</th>
+                                    <th>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
                                             <span>Parent</span>
-                                            <span id="parentCount" style="color: white; font-weight: bold;">(0)</span>
+                                            <span id="parentCount">(0)</span>
                                         </div>
                                         <input type="text" id="parentSearch" class="form-control-sm"
-                                            placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
+                                            placeholder="Search Parent">
                                     </th>
-                                    <th style="width: 100px;">
-                                        <div style="display: flex; align-items: center; gap: 3px; font-size: 9px;">
+                                    <th>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
                                             <span>SKU</span>
-                                            <span id="skuCount" style="color: white; font-weight: bold;">(0)</span>
+                                            <span id="skuCount">(0)</span>
                                         </div>
                                         <input type="text" id="skuSearch" class="form-control-sm"
-                                            placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
+                                            placeholder="Search SKU">
                                     </th>
-                                    <th style="width: 70px;">Status</th>
-                                    <th style="width: 60px;">INV</th>
-                                    <th style="width: 90px;">
-                                        <div style="font-size: 9px;">Brand <span id="brandMissingCount" style="color: white; font-weight: bold;">(0)</span></div>
-                                        <select id="filterBrand" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 1px 3px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th style="width: 100px;">
-                                        <div style="font-size: 9px;">Handling Time <span id="handlingTimeMissingCount" style="color: white; font-weight: bold;">(0)</span></div>
-                                        <select id="filterHandlingTime" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 1px 3px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th style="width: 110px;">
-                                        <div style="font-size: 9px;">Country of Origin <span id="countryOfOriginMissingCount" style="color: white; font-weight: bold;">(0)</span></div>
-                                        <select id="filterCountryOfOrigin" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 1px 3px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th style="width: 80px;">
-                                        <div style="font-size: 9px;">Warranty <span id="warrantyMissingCount" style="color: white; font-weight: bold;">(0)</span></div>
-                                        <select id="filterWarranty" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 1px 3px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th style="width: 100px;">
-                                        <div style="font-size: 9px;">Prop Warning <span id="propWarningMissingCount" style="color: white; font-weight: bold;">(0)</span></div>
-                                        <select id="filterPropWarning" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 1px 3px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th style="width: 90px;">
-                                        <div style="font-size: 9px;">Condition <span id="conditionMissingCount" style="color: white; font-weight: bold;">(0)</span></div>
-                                        <select id="filterCondition" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 1px 3px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th style="width: 90px;">Action</th>
+                                    <th>Status</th>
+                                    <th>INV</th>
+                                    @for($i = 1; $i <= 10; $i++)
+                                        <th>
+                                            <div>Item{{ $i }} <span id="item{{ $i }}MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterItem{{ $i }}" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                    @endfor
+                                    <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -348,128 +290,46 @@
                         <div class="wave"></div>
                         <div class="wave"></div>
                         <div class="wave"></div>
-                        <div class="loading-text">Loading General Specific Masters Data...</div>
+                        <div class="loading-text">Loading Package Includes Master Data...</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Add General Specific Master Modal -->
-    <div class="modal fade" id="addGeneralSpecificModal" tabindex="-1" aria-labelledby="addGeneralSpecificModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+    <!-- Add Package Includes Master Modal -->
+    <div class="modal fade" id="addPackageIncludesModal" tabindex="-1" aria-labelledby="addPackageIncludesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="addGeneralSpecificModalLabel">Add General Specific Data</h5>
+                    <h5 class="modal-title" id="addPackageIncludesModalLabel">Add Package Includes Data</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <form id="addGeneralSpecificForm">
+                    <form id="addPackageIncludesForm">
                         <div class="row mb-3">
                             <div class="col-md-12">
-                                <label for="addSku" class="form-label">SKU <span class="text-danger">*</span></label>
-                                <select class="form-control" id="addSku" name="sku" required>
+                                <label for="addPackageIncludesSku" class="form-label">SKU <span class="text-danger">*</span></label>
+                                <select class="form-control" id="addPackageIncludesSku" name="sku" required>
                                     <option value="">Select SKU</option>
                                 </select>
                             </div>
                         </div>
                         
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="addBrand" class="form-label">Brand</label>
-                                <input type="text" class="form-control" id="addBrand" name="brand" placeholder="Enter brand">
+                        @for($i = 1; $i <= 10; $i++)
+                            <div class="row mb-3">
+                                <div class="col-md-12">
+                                    <label for="addItem{{ $i }}" class="form-label">Item{{ $i }}</label>
+                                    <input type="text" class="form-control" id="addItem{{ $i }}" name="item{{ $i }}" placeholder="Enter Item{{ $i }}">
+                                </div>
                             </div>
-                            <div class="col-md-6">
-                                <label for="addHandlingTime" class="form-label">Handling Time</label>
-                                <input type="text" class="form-control" id="addHandlingTime" name="handling_time" placeholder="Enter handling time">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="addCountryOfOrigin" class="form-label">Country of Origin</label>
-                                <input type="text" class="form-control" id="addCountryOfOrigin" name="country_of_origin" placeholder="Enter country of origin">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="addWarranty" class="form-label">Warranty</label>
-                                <input type="text" class="form-control" id="addWarranty" name="warranty" placeholder="Enter warranty">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="addPropWarning" class="form-label">Prop Warning</label>
-                                <input type="text" class="form-control" id="addPropWarning" name="prop_warning" placeholder="Enter prop warning">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="addCondition" class="form-label">Condition</label>
-                                <input type="text" class="form-control" id="addCondition" name="condition" placeholder="Enter condition">
-                            </div>
-                        </div>
+                        @endfor
                     </form>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveAddGeneralSpecificBtn">
+                    <button type="button" class="btn btn-primary" id="saveAddPackageIncludesBtn">
                         <i class="fas fa-save me-2"></i> Save
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit General Specific Master Modal -->
-    <div class="modal fade" id="editGeneralSpecificModal" tabindex="-1" aria-labelledby="editGeneralSpecificModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="editGeneralSpecificModalLabel">Edit General Specific Master</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="editGeneralSpecificForm">
-                        <input type="hidden" id="editProductId" name="product_id">
-                        <input type="hidden" id="editSku" name="sku">
-                        <input type="hidden" id="editParent" name="parent">
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="editBrand" class="form-label">Brand</label>
-                                <input type="text" class="form-control" id="editBrand" name="brand" placeholder="Enter brand">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="editHandlingTime" class="form-label">Handling Time</label>
-                                <input type="text" class="form-control" id="editHandlingTime" name="handling_time" placeholder="Enter handling time">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="editCountryOfOrigin" class="form-label">Country of Origin</label>
-                                <input type="text" class="form-control" id="editCountryOfOrigin" name="country_of_origin" placeholder="Enter country of origin">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="editWarranty" class="form-label">Warranty</label>
-                                <input type="text" class="form-control" id="editWarranty" name="warranty" placeholder="Enter warranty">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="editPropWarning" class="form-label">Prop Warning</label>
-                                <input type="text" class="form-control" id="editPropWarning" name="prop_warning" placeholder="Enter prop warning">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="editCondition" class="form-label">Condition</label>
-                                <input type="text" class="form-control" id="editCondition" name="condition" placeholder="Enter condition">
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveGeneralSpecificBtn">
-                        <i class="fas fa-save me-2"></i> Save Changes
                     </button>
                 </div>
             </div>
@@ -527,10 +387,10 @@
                 return num.toFixed(decimals);
             }
 
-            // Load general specific data from server
+            // Load package includes data from server
             function loadData() {
                 const cacheParam = '?ts=' + new Date().getTime();
-                makeRequest('/general-specific-master-data-view' + cacheParam, 'GET')
+                makeRequest('/package-includes-master-data-view' + cacheParam, 'GET')
                     .then(response => {
                         if (!response.ok) {
                             throw new Error(`HTTP error! status: ${response.status}`);
@@ -544,14 +404,13 @@
                             renderTable(filteredData);
                             updateCounts();
                             setupSearch();
-                            setupEditButtons();
                         } else {
                             console.error('Invalid data format received from server');
                         }
                         document.getElementById('rainbow-loader').style.display = 'none';
                     })
                     .catch(error => {
-                        console.error('Failed to load general specific data: ' + error.message);
+                        console.error('Failed to load package includes data: ' + error.message);
                         document.getElementById('rainbow-loader').style.display = 'none';
                     });
             }
@@ -562,7 +421,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="13" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="16" class="text-center">No package includes data found</td></tr>';
                     return;
                 }
 
@@ -572,7 +431,7 @@
                     // Image column
                     const imageCell = document.createElement('td');
                     imageCell.innerHTML = item.image_path 
-                        ? `<img src="${item.image_path}" style="width:35px;height:35px;object-fit:cover;border-radius:4px;">`
+                        ? `<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`
                         : '-';
                     row.appendChild(imageCell);
 
@@ -602,46 +461,25 @@
                     }
                     row.appendChild(invCell);
 
-                    // Brand column
-                    const brandCell = document.createElement('td');
-                    brandCell.textContent = escapeHtml(item.brand) || '-';
-                    row.appendChild(brandCell);
-
-                    // Handling Time column
-                    const handlingTimeCell = document.createElement('td');
-                    handlingTimeCell.textContent = escapeHtml(item.handling_time) || '-';
-                    row.appendChild(handlingTimeCell);
-
-                    // Country of Origin column
-                    const countryOfOriginCell = document.createElement('td');
-                    countryOfOriginCell.textContent = escapeHtml(item.country_of_origin) || '-';
-                    row.appendChild(countryOfOriginCell);
-
-                    // Warranty column
-                    const warrantyCell = document.createElement('td');
-                    warrantyCell.textContent = escapeHtml(item.warranty) || '-';
-                    row.appendChild(warrantyCell);
-
-                    // Prop Warning column
-                    const propWarningCell = document.createElement('td');
-                    propWarningCell.textContent = escapeHtml(item.prop_warning) || '-';
-                    row.appendChild(propWarningCell);
-
-                    // Condition column
-                    const conditionCell = document.createElement('td');
-                    conditionCell.textContent = escapeHtml(item.condition) || escapeHtml(item.Condition) || '-';
-                    row.appendChild(conditionCell);
+                    // Item columns (1-10)
+                    for (let i = 1; i <= 10; i++) {
+                        const itemKey = `item${i}`;
+                        
+                        const itemCell = document.createElement('td');
+                        itemCell.textContent = escapeHtml(item[itemKey]) || '-';
+                        itemCell.title = escapeHtml(item[itemKey]) || '';
+                        row.appendChild(itemCell);
+                    }
 
                     // Action column
                     const actionCell = document.createElement('td');
                     actionCell.className = 'text-center';
-                    actionCell.style.minWidth = '100px';
                     actionCell.innerHTML = `
                         <div class="d-inline-flex">
-                            <button class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}" style="padding: 4px 8px; font-size: 11px;">
+                            <button class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="${escapeHtml(item.SKU)}">
                                 <i class="bi bi-pencil-square"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}" style="padding: 4px 8px; font-size: 11px;">
+                            <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}">
                                 <i class="bi bi-archive"></i>
                             </button>
                         </div>
@@ -661,36 +499,34 @@
             function updateCounts() {
                 const parentSet = new Set();
                 let skuCount = 0;
-                let brandMissingCount = 0;
-                let handlingTimeMissingCount = 0;
-                let countryOfOriginMissingCount = 0;
-                let warrantyMissingCount = 0;
-                let propWarningMissingCount = 0;
-                let conditionMissingCount = 0;
+                const itemMissingCounts = {};
+                
+                // Initialize missing counts for all items
+                for (let i = 1; i <= 10; i++) {
+                    itemMissingCounts[i] = 0;
+                }
 
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
                     
-                    // Count missing data for each column
-                    if (isMissing(item.brand)) brandMissingCount++;
-                    if (isMissing(item.handling_time)) handlingTimeMissingCount++;
-                    if (isMissing(item.country_of_origin)) countryOfOriginMissingCount++;
-                    if (isMissing(item.warranty)) warrantyMissingCount++;
-                    if (isMissing(item.prop_warning)) propWarningMissingCount++;
-                    // Check both condition and Condition (case sensitivity)
-                    if (isMissing(item.condition) && isMissing(item.Condition)) conditionMissingCount++;
+                    // Count missing data for each item column
+                    for (let i = 1; i <= 10; i++) {
+                        const itemKey = `item${i}`;
+                        if (isMissing(item[itemKey])) {
+                            itemMissingCounts[i]++;
+                        }
+                    }
                 });
                 
                 document.getElementById('parentCount').textContent = `(${parentSet.size})`;
                 document.getElementById('skuCount').textContent = `(${skuCount})`;
-                document.getElementById('brandMissingCount').textContent = `(${brandMissingCount})`;
-                document.getElementById('handlingTimeMissingCount').textContent = `(${handlingTimeMissingCount})`;
-                document.getElementById('countryOfOriginMissingCount').textContent = `(${countryOfOriginMissingCount})`;
-                document.getElementById('warrantyMissingCount').textContent = `(${warrantyMissingCount})`;
-                document.getElementById('propWarningMissingCount').textContent = `(${propWarningMissingCount})`;
-                document.getElementById('conditionMissingCount').textContent = `(${conditionMissingCount})`;
+                
+                // Update missing counts for all items
+                for (let i = 1; i <= 10; i++) {
+                    document.getElementById(`item${i}MissingCount`).textContent = `(${itemMissingCounts[i]})`;
+                }
             }
 
             // Apply all filters
@@ -719,40 +555,15 @@
                         }
                     }
 
-                    // Brand filter
-                    const filterBrand = document.getElementById('filterBrand').value;
-                    if (filterBrand === 'missing' && !isMissing(item.brand)) {
-                        return false;
-                    }
-
-                    // Handling Time filter
-                    const filterHandlingTime = document.getElementById('filterHandlingTime').value;
-                    if (filterHandlingTime === 'missing' && !isMissing(item.handling_time)) {
-                        return false;
-                    }
-
-                    // Country of Origin filter
-                    const filterCountryOfOrigin = document.getElementById('filterCountryOfOrigin').value;
-                    if (filterCountryOfOrigin === 'missing' && !isMissing(item.country_of_origin)) {
-                        return false;
-                    }
-
-                    // Warranty filter
-                    const filterWarranty = document.getElementById('filterWarranty').value;
-                    if (filterWarranty === 'missing' && !isMissing(item.warranty)) {
-                        return false;
-                    }
-
-                    // Prop Warning filter
-                    const filterPropWarning = document.getElementById('filterPropWarning').value;
-                    if (filterPropWarning === 'missing' && !isMissing(item.prop_warning)) {
-                        return false;
-                    }
-
-                    // Condition filter (check both condition and Condition)
-                    const filterCondition = document.getElementById('filterCondition').value;
-                    if (filterCondition === 'missing' && !isMissing(item.condition) && !isMissing(item.Condition)) {
-                        return false;
+                    // Item filters (Item1 through Item10)
+                    for (let i = 1; i <= 10; i++) {
+                        const filterItem = document.getElementById(`filterItem${i}`).value;
+                        if (filterItem === 'missing') {
+                            const itemKey = `item${i}`;
+                            if (!isMissing(item[itemKey])) {
+                                return false;
+                            }
+                        }
                     }
 
                     return true;
@@ -786,39 +597,18 @@
                     parentSearch.value = '';
                     skuSearch.value = '';
                     // Reset all column filters
-                    document.getElementById('filterBrand').value = 'all';
-                    document.getElementById('filterHandlingTime').value = 'all';
-                    document.getElementById('filterCountryOfOrigin').value = 'all';
-                    document.getElementById('filterWarranty').value = 'all';
-                    document.getElementById('filterPropWarning').value = 'all';
-                    document.getElementById('filterCondition').value = 'all';
+                    for (let i = 1; i <= 10; i++) {
+                        document.getElementById(`filterItem${i}`).value = 'all';
+                    }
                     applyFilters();
                 });
 
-                // Column filters
-                document.getElementById('filterBrand').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterHandlingTime').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterCountryOfOrigin').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterWarranty').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterPropWarning').addEventListener('change', function() {
-                    applyFilters();
-                });
-
-                document.getElementById('filterCondition').addEventListener('change', function() {
-                    applyFilters();
-                });
+                // Column filters for all items
+                for (let i = 1; i <= 10; i++) {
+                    document.getElementById(`filterItem${i}`).addEventListener('change', function() {
+                        applyFilters();
+                    });
+                }
             }
 
             // Toast notification function
@@ -855,42 +645,25 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image and Action)
-                    const columns = ["Parent", "SKU", "Status", "INV", "Brand", "Handling Time", "Country of Origin", "Warranty", "Prop Warning", "Condition"];
+                    const columns = ["Parent", "SKU", "Status", "INV"];
+                    
+                    // Add Item columns
+                    for (let i = 1; i <= 10; i++) {
+                        columns.push(`Item${i}`);
+                    }
 
                     // Column definitions with their data keys
                     const columnDefs = {
-                        "Parent": {
-                            key: "Parent"
-                        },
-                        "SKU": {
-                            key: "SKU"
-                        },
-                        "Status": {
-                            key: "status"
-                        },
-                        "INV": {
-                            key: "shopify_inv"
-                        },
-                        "Brand": {
-                            key: "brand"
-                        },
-                        "Handling Time": {
-                            key: "handling_time"
-                        },
-                        "Country of Origin": {
-                            key: "country_of_origin"
-                        },
-                        "Warranty": {
-                            key: "warranty"
-                        },
-                        "Prop Warning": {
-                            key: "prop_warning"
-                        },
-                        "Condition": {
-                            key: "condition",
-                            altKey: "Condition"
-                        }
+                        "Parent": { key: "Parent" },
+                        "SKU": { key: "SKU" },
+                        "Status": { key: "status" },
+                        "INV": { key: "shopify_inv" }
                     };
+                    
+                    // Add Item column definitions
+                    for (let i = 1; i <= 10; i++) {
+                        columnDefs[`Item${i}`] = { key: `item${i}` };
+                    }
 
                     // Show loader or indicate download is in progress
                     document.getElementById('downloadExcel').innerHTML =
@@ -916,15 +689,7 @@
                                     const colDef = columnDefs[col];
                                     if (colDef) {
                                         const key = colDef.key;
-                                        const altKey = colDef.altKey;
-                                        let value = '';
-                                        
-                                        // Check primary key first, then altKey if exists
-                                        if (item[key] !== undefined && item[key] !== null) {
-                                            value = item[key];
-                                        } else if (altKey && item[altKey] !== undefined && item[altKey] !== null) {
-                                            value = item[altKey];
-                                        }
+                                        let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
 
                                         // Format INV column
                                         if (key === "shopify_inv") {
@@ -951,13 +716,14 @@
 
                             // Set column widths
                             const wscols = columns.map(col => {
-                                // Adjust width based on column type
                                 if (["Parent", "SKU"].includes(col)) {
-                                    return { wch: 20 }; // Wider for text columns
-                                } else if (["Status", "Brand", "Handling Time", "Country of Origin", "Warranty", "Prop Warning", "Condition"].includes(col)) {
-                                    return { wch: 15 };
+                                    return { wch: 20 };
+                                } else if (col.startsWith("Item")) {
+                                    return { wch: 30 };
+                                } else if (["Status"].includes(col)) {
+                                    return { wch: 12 };
                                 } else {
-                                    return { wch: 10 }; // Default width for numeric columns
+                                    return { wch: 10 };
                                 }
                             });
                             ws['!cols'] = wscols;
@@ -991,10 +757,10 @@
                             }
 
                             // Add the worksheet to the workbook
-                            XLSX.utils.book_append_sheet(wb, ws, "General Specific Masters");
+                            XLSX.utils.book_append_sheet(wb, ws, "Package Includes Master");
 
                             // Generate Excel file and trigger download
-                            XLSX.writeFile(wb, "general_specific_master_export.xlsx");
+                            XLSX.writeFile(wb, "package_includes_master_export.xlsx");
 
                             // Show success toast
                             showToast('success', 'Excel file downloaded successfully!');
@@ -1007,120 +773,27 @@
                                 '<i class="fas fa-file-excel me-1"></i> Download Excel';
                             document.getElementById('downloadExcel').disabled = false;
                         }
-                    }, 100); // Small timeout to allow UI to update
+                    }, 100);
                 });
-            }
-
-            // Setup edit button handlers
-            function setupEditButtons() {
-                document.querySelectorAll('.edit-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        const sku = this.getAttribute('data-sku');
-                        const product = tableData.find(item => item.SKU === sku);
-                        if (product) {
-                            editGeneralSpecific(product);
-                        }
-                    });
-                });
-            }
-
-            // Edit General Specific Master
-            function editGeneralSpecific(product) {
-                const modal = new bootstrap.Modal(document.getElementById('editGeneralSpecificModal'));
-                
-                // Populate form fields
-                document.getElementById('editProductId').value = product.id || '';
-                document.getElementById('editSku').value = product.SKU || '';
-                document.getElementById('editParent').value = product.Parent || '';
-                document.getElementById('editBrand').value = product.brand || '';
-                document.getElementById('editHandlingTime').value = product.handling_time || '';
-                document.getElementById('editCountryOfOrigin').value = product.country_of_origin || '';
-                document.getElementById('editWarranty').value = product.warranty || '';
-                document.getElementById('editPropWarning').value = product.prop_warning || '';
-                document.getElementById('editCondition').value = product.condition || product.Condition || '';
-                
-                // Setup save button handler
-                const saveBtn = document.getElementById('saveGeneralSpecificBtn');
-                const newSaveBtn = saveBtn.cloneNode(true);
-                saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-                
-                newSaveBtn.addEventListener('click', async function() {
-                    await saveGeneralSpecific();
-                });
-                
-                modal.show();
-            }
-
-            // Save General Specific Master
-            async function saveGeneralSpecific() {
-                const saveBtn = document.getElementById('saveGeneralSpecificBtn');
-                const originalText = saveBtn.innerHTML;
-                
-                try {
-                    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
-                    saveBtn.disabled = true;
-                    
-                    const formData = {
-                        product_id: document.getElementById('editProductId').value,
-                        sku: document.getElementById('editSku').value,
-                        parent: document.getElementById('editParent').value,
-                        brand: document.getElementById('editBrand').value,
-                        handling_time: document.getElementById('editHandlingTime').value,
-                        country_of_origin: document.getElementById('editCountryOfOrigin').value,
-                        warranty: document.getElementById('editWarranty').value,
-                        prop_warning: document.getElementById('editPropWarning').value,
-                        condition: document.getElementById('editCondition').value
-                    };
-                    
-                    const response = await fetch('/general-specific-master/update', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken
-                        },
-                        body: JSON.stringify(formData)
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (!response.ok) {
-                        throw new Error(data.message || 'Failed to save data');
-                    }
-                    
-                    showToast('success', 'General Specific Master updated successfully!');
-                    
-                    // Close modal
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('editGeneralSpecificModal'));
-                    modal.hide();
-                    
-                    // Reload data
-                    loadData();
-                } catch (error) {
-                    console.error('Error saving:', error);
-                    showToast('danger', error.message || 'Failed to save data');
-                } finally {
-                    saveBtn.innerHTML = originalText;
-                    saveBtn.disabled = false;
-                }
             }
 
             // Setup add button handler
             function setupAddButton() {
-                document.getElementById('addGeneralSpecificBtn').addEventListener('click', function() {
-                    openAddGeneralSpecificModal();
+                document.getElementById('addPackageIncludesBtn').addEventListener('click', function() {
+                    openAddPackageIncludesModal();
                 });
             }
 
-            // Open Add General Specific Modal
-            async function openAddGeneralSpecificModal() {
-                const modalElement = document.getElementById('addGeneralSpecificModal');
+            // Open Add Package Includes Modal
+            async function openAddPackageIncludesModal() {
+                const modalElement = document.getElementById('addPackageIncludesModal');
                 const modal = new bootstrap.Modal(modalElement);
                 
                 // Reset form
-                document.getElementById('addGeneralSpecificForm').reset();
+                document.getElementById('addPackageIncludesForm').reset();
                 
                 // Destroy Select2 if already initialized
-                const skuSelect = document.getElementById('addSku');
+                const skuSelect = document.getElementById('addPackageIncludesSku');
                 if ($(skuSelect).hasClass('select2-hidden-accessible')) {
                     $(skuSelect).select2('destroy');
                 }
@@ -1129,12 +802,12 @@
                 await loadSkusIntoDropdown();
                 
                 // Setup save button handler
-                const saveBtn = document.getElementById('saveAddGeneralSpecificBtn');
+                const saveBtn = document.getElementById('saveAddPackageIncludesBtn');
                 const newSaveBtn = saveBtn.cloneNode(true);
                 saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
                 
                 newSaveBtn.addEventListener('click', async function() {
-                    await saveAddGeneralSpecific();
+                    await saveAddPackageIncludes();
                 });
                 
                 // Clean up Select2 when modal is hidden
@@ -1161,7 +834,7 @@
                     const data = await response.json();
                     
                     if (data.success && data.data) {
-                        const skuSelect = document.getElementById('addSku');
+                        const skuSelect = document.getElementById('addPackageIncludesSku');
                         
                         // Destroy Select2 if already initialized
                         if ($(skuSelect).hasClass('select2-hidden-accessible')) {
@@ -1185,7 +858,7 @@
                             placeholder: 'Select SKU',
                             allowClear: true,
                             width: '100%',
-                            dropdownParent: $('#addGeneralSpecificModal')
+                            dropdownParent: $('#addPackageIncludesModal')
                         });
                     }
                 } catch (error) {
@@ -1194,13 +867,13 @@
                 }
             }
 
-            // Save Add General Specific Master
-            async function saveAddGeneralSpecific() {
-                const saveBtn = document.getElementById('saveAddGeneralSpecificBtn');
+            // Save Add Package Includes Master
+            async function saveAddPackageIncludes() {
+                const saveBtn = document.getElementById('saveAddPackageIncludesBtn');
                 const originalText = saveBtn.innerHTML;
                 
                 // Validate required fields
-                const skuSelect = document.getElementById('addSku');
+                const skuSelect = document.getElementById('addPackageIncludesSku');
                 const sku = $(skuSelect).val() ? $(skuSelect).val().trim() : '';
                 if (!sku) {
                     showToast('warning', 'Please select SKU');
@@ -1212,17 +885,16 @@
                     saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
                     saveBtn.disabled = true;
                     
+                    // Build form data with all items
                     const formData = {
-                        sku: sku,
-                        brand: document.getElementById('addBrand').value.trim(),
-                        handling_time: document.getElementById('addHandlingTime').value.trim(),
-                        country_of_origin: document.getElementById('addCountryOfOrigin').value.trim(),
-                        warranty: document.getElementById('addWarranty').value.trim(),
-                        prop_warning: document.getElementById('addPropWarning').value.trim(),
-                        condition: document.getElementById('addCondition').value.trim()
+                        sku: sku
                     };
                     
-                    const response = await fetch('/general-specific-master/store', {
+                    for (let i = 1; i <= 10; i++) {
+                        formData[`item${i}`] = document.getElementById(`addItem${i}`).value.trim();
+                    }
+                    
+                    const response = await fetch('/package-includes-master/store', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1237,14 +909,18 @@
                         throw new Error(data.message || 'Failed to save data');
                     }
                     
-                    showToast('success', 'General Specific Data added successfully!');
+                    showToast('success', 'Package Includes Data added successfully!');
                     
                     // Close modal
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('addGeneralSpecificModal'));
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('addPackageIncludesModal'));
                     modal.hide();
                     
-                    // Reload data
-                    loadData();
+                    // Clear cache and reload data
+                    tableData = [];
+                    filteredData = [];
+                    setTimeout(() => {
+                        loadData();
+                    }, 500);
                 } catch (error) {
                     console.error('Error saving:', error);
                     showToast('danger', error.message || 'Failed to save data');
@@ -1256,13 +932,13 @@
 
             // Setup import functionality
             function setupImport() {
-                const importFile = document.getElementById('importFile');
-                const importBtn = document.getElementById('importBtn');
-                const downloadSampleBtn = document.getElementById('downloadSampleBtn');
-                const importModal = document.getElementById('importModal');
-                const fileError = document.getElementById('fileError');
-                const importProgress = document.getElementById('importProgress');
-                const importResult = document.getElementById('importResult');
+                const importFile = document.getElementById('packageIncludesImportFile');
+                const importBtn = document.getElementById('importPackageIncludesBtn');
+                const downloadSampleBtn = document.getElementById('downloadSamplePackageIncludesBtn');
+                const importModal = document.getElementById('importPackageIncludesModal');
+                const fileError = document.getElementById('packageIncludesFileError');
+                const importProgress = document.getElementById('packageIncludesImportProgress');
+                const importResult = document.getElementById('packageIncludesImportResult');
 
                 // Enable/disable import button based on file selection
                 importFile.addEventListener('change', function() {
@@ -1287,13 +963,15 @@
 
                 // Download sample file
                 downloadSampleBtn.addEventListener('click', function() {
-                    // Create sample data
+                    // Create sample data with headers
                     const sampleData = [
-                        ['SKU', 'Brand', 'Handling Time', 'Country of Origin', 'Warranty', 'Prop Warning', 'Condition'],
-                        ['SKU001', 'Brand A', '2-3 days', 'USA', '1 Year', 'Fragile', 'New'],
-                        ['SKU002', 'Brand B', '3-5 days', 'China', '2 Years', 'Handle with care', 'New'],
-                        ['SKU003', 'Brand C', '1-2 days', 'Germany', '6 Months', 'Keep away from heat', 'New']
+                        ['SKU', 'Item1', 'Item2', 'Item3', 'Item4', 'Item5', 'Item6', 'Item7', 'Item8', 'Item9', 'Item10']
                     ];
+                    
+                    // Add example rows
+                    sampleData.push(['SKU001', 'Product Manual', 'USB Cable', 'Charging Adapter', 'Warranty Card', 'Quick Start Guide', '', '', '', '', '']);
+                    sampleData.push(['SKU002', 'User Guide', 'Power Cable', 'Remote Control', 'Batteries', 'Mounting Bracket', 'Screws', '', '', '', '']);
+                    sampleData.push(['SKU003', 'Instruction Manual', 'HDMI Cable', 'Wall Mount', 'Screws Pack', 'Cable Ties', 'Velcro Strips', 'Cleaning Cloth', '', '', '']);
 
                     // Create workbook
                     const wb = XLSX.utils.book_new();
@@ -1302,12 +980,16 @@
                     // Set column widths
                     ws['!cols'] = [
                         { wch: 15 }, // SKU
-                        { wch: 15 }, // Brand
-                        { wch: 15 }, // Handling Time
-                        { wch: 18 }, // Country of Origin
-                        { wch: 15 }, // Warranty
-                        { wch: 15 }, // Prop Warning
-                        { wch: 15 }  // Condition
+                        { wch: 25 }, // Item1
+                        { wch: 25 }, // Item2
+                        { wch: 25 }, // Item3
+                        { wch: 25 }, // Item4
+                        { wch: 25 }, // Item5
+                        { wch: 25 }, // Item6
+                        { wch: 25 }, // Item7
+                        { wch: 25 }, // Item8
+                        { wch: 25 }, // Item9
+                        { wch: 25 }  // Item10
                     ];
 
                     // Style header row
@@ -1322,8 +1004,8 @@
                         };
                     }
 
-                    XLSX.utils.book_append_sheet(wb, ws, "General Specific Data");
-                    XLSX.writeFile(wb, "general_specific_master_sample.xlsx");
+                    XLSX.utils.book_append_sheet(wb, ws, "Package Includes Data");
+                    XLSX.writeFile(wb, "package_includes_master_sample.xlsx");
                     
                     showToast('success', 'Sample file downloaded successfully!');
                 });
@@ -1347,7 +1029,7 @@
                     formData.append('_token', csrfToken);
 
                     try {
-                        const response = await fetch('/general-specific-master/import', {
+                        const response = await fetch('/package-includes-master/import', {
                             method: 'POST',
                             headers: {
                                 'X-CSRF-TOKEN': csrfToken
@@ -1373,6 +1055,10 @@
 
                             // Reload data after successful import
                             setTimeout(() => {
+                                // Clear cache and reload data
+                                tableData = [];
+                                filteredData = [];
+                                const cacheParam = '?ts=' + new Date().getTime();
                                 loadData();
                                 // Close modal after a delay
                                 setTimeout(() => {

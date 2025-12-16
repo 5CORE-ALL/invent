@@ -107,10 +107,34 @@
                                         <th>Image</th>
                                         <th>Parent</th>
                                         <th>SKU</th>
-                                        <th>Feature 1</th>
-                                        <th>Feature 2</th>
-                                        <th>Feature 3</th>
-                                        <th>Feature 4</th>
+                                        <th>
+                                            <div>Feature 1 <span id="feature1MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterFeature1" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Feature 2 <span id="feature2MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterFeature2" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Feature 3 <span id="feature3MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterFeature3" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Feature 4 <span id="feature4MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterFeature4" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
                                         <th>Action</th>
                                     </tr>
                                     <tr>
@@ -236,6 +260,7 @@
                     if (data && Array.isArray(data)) {
                         tableData = data;
                         renderTable(tableData);
+                        updateCounts();
                     } else {
                         console.error('Invalid data:', response);
                         showError('Invalid data format received from server');
@@ -258,12 +283,17 @@
                 return;
             }
 
-            data.forEach(item => {
-                // Skip parent rows
-                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
-                    return;
-                }
+            // Filter out parent rows before rendering
+            const filteredData = data.filter(item => {
+                return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
+            });
 
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center">No products found</td></tr>';
+                return;
+            }
+
+            filteredData.forEach(item => {
                 const row = document.createElement('tr');
 
                 // Image
@@ -306,15 +336,60 @@
             });
         }
 
+        // Check if value is missing (null, undefined, empty)
+        function isMissing(value) {
+            return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
+        }
+
+        function updateCounts() {
+            let feature1MissingCount = 0;
+            let feature2MissingCount = 0;
+            let feature3MissingCount = 0;
+            let feature4MissingCount = 0;
+
+            tableData.forEach(item => {
+                if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
+                    // Count missing data for each feature column
+                    if (isMissing(item.feature1)) feature1MissingCount++;
+                    if (isMissing(item.feature2)) feature2MissingCount++;
+                    if (isMissing(item.feature3)) feature3MissingCount++;
+                    if (isMissing(item.feature4)) feature4MissingCount++;
+                }
+            });
+
+            document.getElementById('feature1MissingCount').textContent = `(${feature1MissingCount})`;
+            document.getElementById('feature2MissingCount').textContent = `(${feature2MissingCount})`;
+            document.getElementById('feature3MissingCount').textContent = `(${feature3MissingCount})`;
+            document.getElementById('feature4MissingCount').textContent = `(${feature4MissingCount})`;
+        }
+
         function setupSearchHandlers() {
             document.querySelectorAll('.search-input').forEach(input => {
                 input.addEventListener('input', function() {
-                    filterTable();
+                    applyFilters();
                 });
+            });
+
+            // Column filters
+            document.getElementById('filterFeature1').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterFeature2').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterFeature3').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterFeature4').addEventListener('change', function() {
+                applyFilters();
             });
         }
 
-        function filterTable() {
+        // Apply all filters
+        function applyFilters() {
             const filters = {};
             document.querySelectorAll('.search-input').forEach(input => {
                 const column = input.getAttribute('data-column');
@@ -324,22 +399,53 @@
                 }
             });
 
+            const filterFeature1 = document.getElementById('filterFeature1').value;
+            const filterFeature2 = document.getElementById('filterFeature2').value;
+            const filterFeature3 = document.getElementById('filterFeature3').value;
+            const filterFeature4 = document.getElementById('filterFeature4').value;
+
             const filteredData = tableData.filter(item => {
                 // Skip parent rows
                 if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
                     return false;
                 }
 
+                // Text search filters
                 for (const [column, value] of Object.entries(filters)) {
                     const itemValue = String(item[column] || '').toLowerCase();
                     if (!itemValue.includes(value)) {
                         return false;
                     }
                 }
+
+                // Feature 1 filter
+                if (filterFeature1 === 'missing' && !isMissing(item.feature1)) {
+                    return false;
+                }
+
+                // Feature 2 filter
+                if (filterFeature2 === 'missing' && !isMissing(item.feature2)) {
+                    return false;
+                }
+
+                // Feature 3 filter
+                if (filterFeature3 === 'missing' && !isMissing(item.feature3)) {
+                    return false;
+                }
+
+                // Feature 4 filter
+                if (filterFeature4 === 'missing' && !isMissing(item.feature4)) {
+                    return false;
+                }
+
                 return true;
             });
 
             renderTable(filteredData);
+        }
+
+        function filterTable() {
+            applyFilters();
         }
 
         function setupCharCounters() {

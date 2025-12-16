@@ -172,13 +172,55 @@
                                         <input type="text" id="skuSearch" class="form-control-sm"
                                             placeholder="Search SKU">
                                     </th>
-                                    <th>Product Overview</th>
-                                    <th>Unboxing</th>
-                                    <th>How To</th>
-                                    <th>Setup</th>
-                                    <th>Troubleshooting</th>
-                                    <th>Brand Story</th>
-                                    <th>Product Benefits</th>
+                                    <th>
+                                        <div>Product Overview <span id="productOverviewMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterProductOverview" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Unboxing <span id="unboxingMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterUnboxing" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>How To <span id="howToMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterHowTo" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Setup <span id="setupMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterSetup" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Troubleshooting <span id="troubleshootingMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterTroubleshooting" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Brand Story <span id="brandStoryMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBrandStory" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Product Benefits <span id="productBenefitsMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterProductBenefits" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -349,12 +391,17 @@
                 return;
             }
 
-            data.forEach(item => {
-                // Skip parent rows
-                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
-                    return;
-                }
+            // Filter out parent rows before rendering
+            const filteredData = data.filter(item => {
+                return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
+            });
 
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center">No products found</td></tr>';
+                return;
+            }
+
+            filteredData.forEach(item => {
                 const row = document.createElement('tr');
 
                 // Images
@@ -639,40 +686,157 @@
             });
         }
 
-        function setupSearchHandlers() {
-            const parentSearch = document.getElementById('parentSearch');
-            const skuSearch = document.getElementById('skuSearch');
-
-            parentSearch.addEventListener('input', filterTable);
-            skuSearch.addEventListener('input', filterTable);
-        }
-
-        function filterTable() {
+        // Apply all filters
+        function applyFilters() {
             const parentFilter = document.getElementById('parentSearch').value.toLowerCase();
             const skuFilter = document.getElementById('skuSearch').value.toLowerCase();
+            const filterProductOverview = document.getElementById('filterProductOverview').value;
+            const filterUnboxing = document.getElementById('filterUnboxing').value;
+            const filterHowTo = document.getElementById('filterHowTo').value;
+            const filterSetup = document.getElementById('filterSetup').value;
+            const filterTroubleshooting = document.getElementById('filterTroubleshooting').value;
+            const filterBrandStory = document.getElementById('filterBrandStory').value;
+            const filterProductBenefits = document.getElementById('filterProductBenefits').value;
 
             const filteredData = tableData.filter(item => {
-                const parentMatch = !parentFilter || (item.Parent && item.Parent.toLowerCase().includes(parentFilter));
-                const skuMatch = !skuFilter || (item.SKU && item.SKU.toLowerCase().includes(skuFilter));
-                return parentMatch && skuMatch;
+                // Skip parent rows
+                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
+                    return false;
+                }
+
+                // Parent search filter
+                if (parentFilter && !(item.Parent && item.Parent.toLowerCase().includes(parentFilter))) {
+                    return false;
+                }
+
+                // SKU search filter
+                if (skuFilter && !(item.SKU && item.SKU.toLowerCase().includes(skuFilter))) {
+                    return false;
+                }
+
+                // Product Overview filter
+                if (filterProductOverview === 'missing' && !isMissing(item.video_product_overview)) {
+                    return false;
+                }
+
+                // Unboxing filter
+                if (filterUnboxing === 'missing' && !isMissing(item.video_unboxing)) {
+                    return false;
+                }
+
+                // How To filter
+                if (filterHowTo === 'missing' && !isMissing(item.video_how_to)) {
+                    return false;
+                }
+
+                // Setup filter
+                if (filterSetup === 'missing' && !isMissing(item.video_setup)) {
+                    return false;
+                }
+
+                // Troubleshooting filter
+                if (filterTroubleshooting === 'missing' && !isMissing(item.video_troubleshooting)) {
+                    return false;
+                }
+
+                // Brand Story filter
+                if (filterBrandStory === 'missing' && !isMissing(item.video_brand_story)) {
+                    return false;
+                }
+
+                // Product Benefits filter
+                if (filterProductBenefits === 'missing' && !isMissing(item.video_product_benefits)) {
+                    return false;
+                }
+
+                return true;
             });
 
             renderTable(filteredData);
         }
 
+        function setupSearchHandlers() {
+            const parentSearch = document.getElementById('parentSearch');
+            const skuSearch = document.getElementById('skuSearch');
+
+            parentSearch.addEventListener('input', applyFilters);
+            skuSearch.addEventListener('input', applyFilters);
+
+            // Column filters
+            document.getElementById('filterProductOverview').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterUnboxing').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterHowTo').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterSetup').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterTroubleshooting').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterBrandStory').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterProductBenefits').addEventListener('change', function() {
+                applyFilters();
+            });
+        }
+
+        function filterTable() {
+            applyFilters();
+        }
+
+        // Check if value is missing (null, undefined, empty)
+        function isMissing(value) {
+            return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
+        }
+
         function updateCounts() {
             const parentSet = new Set();
             let skuCount = 0;
+            let productOverviewMissingCount = 0;
+            let unboxingMissingCount = 0;
+            let howToMissingCount = 0;
+            let setupMissingCount = 0;
+            let troubleshootingMissingCount = 0;
+            let brandStoryMissingCount = 0;
+            let productBenefitsMissingCount = 0;
 
             tableData.forEach(item => {
                 if (item.Parent) parentSet.add(item.Parent);
                 if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
                     skuCount++;
+                    
+                    // Count missing data for each video column
+                    if (isMissing(item.video_product_overview)) productOverviewMissingCount++;
+                    if (isMissing(item.video_unboxing)) unboxingMissingCount++;
+                    if (isMissing(item.video_how_to)) howToMissingCount++;
+                    if (isMissing(item.video_setup)) setupMissingCount++;
+                    if (isMissing(item.video_troubleshooting)) troubleshootingMissingCount++;
+                    if (isMissing(item.video_brand_story)) brandStoryMissingCount++;
+                    if (isMissing(item.video_product_benefits)) productBenefitsMissingCount++;
                 }
             });
 
             document.getElementById('parentCount').textContent = '(' + parentSet.size + ')';
             document.getElementById('skuCount').textContent = '(' + skuCount + ')';
+            document.getElementById('productOverviewMissingCount').textContent = '(' + productOverviewMissingCount + ')';
+            document.getElementById('unboxingMissingCount').textContent = '(' + unboxingMissingCount + ')';
+            document.getElementById('howToMissingCount').textContent = '(' + howToMissingCount + ')';
+            document.getElementById('setupMissingCount').textContent = '(' + setupMissingCount + ')';
+            document.getElementById('troubleshootingMissingCount').textContent = '(' + troubleshootingMissingCount + ')';
+            document.getElementById('brandStoryMissingCount').textContent = '(' + brandStoryMissingCount + ')';
+            document.getElementById('productBenefitsMissingCount').textContent = '(' + productBenefitsMissingCount + ')';
         }
 
         function escapeHtml(text) {
