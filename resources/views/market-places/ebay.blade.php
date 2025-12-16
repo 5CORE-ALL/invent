@@ -306,8 +306,8 @@
             border-radius: 4px;
         }
 
-        .custom-dropdown-menu.show {
-            display: block;
+        .dropdown-menu.show {
+            display: block !important;
         }
 
         .column-toggle-item {
@@ -1491,61 +1491,12 @@
 
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                             <!-- Export Button -->
-                            <a href="{{ route('ebay.analytics.export') }}" class="btn btn-sm btn-success">
+                            <button type="button" class="btn btn-sm btn-success" id="exportTableBtn">
                                 <i class="fa fa-file-excel"></i> Export
-                            </a>
-
-                            <!-- Import Button -->
-                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
-                                data-bs-target="#ebayImportModal">
-                                <i class="fas fa-file-import"></i> Import
                             </button>
                         </div>
                     </div>
 
-                    <!-- Ebay Import Modal -->
-                    <div class="modal fade" id="ebayImportModal" tabindex="-1" aria-labelledby="ebayImportModalLabel"
-                        aria-hidden="true">
-                        <div class="modal-dialog">
-                            <form action="{{ route('ebay.analytics.import') }}" method="POST"
-                                enctype="multipart/form-data" class="modal-content" id="ebayImportForm">
-                                @csrf
-                                <div class="modal-header">
-                                    <h5 class="modal-title" id="ebayImportModalLabel">Import Ebay Data</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"
-                                        aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <!-- File Input -->
-                                    <div class="mb-3">
-                                        <label for="reverbExcelFile" class="form-label">Select Excel File</label>
-                                        <input type="file" class="form-control" id="reverbExcelFile"
-                                            name="excel_file" accept=".xlsx,.xls,.csv" required>
-                                    </div>
-
-                                    <!-- Sample File Section -->
-                                    <div class="alert alert-info">
-                                        <small>
-                                            <i class="fas fa-info-circle me-1"></i>
-                                            Download the sample file to see the required format. Columns should be: SKU, Listed, Live.
-                                        </small>
-                                        <div class="mt-2">
-                                            <button type="button" class="btn btn-sm btn-outline-info" id="downloadSampleBtn">
-                                                <i class="fas fa-download me-1"></i> Download Sample File
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary"
-                                        data-bs-dismiss="modal">Cancel</button>
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="fas fa-file-import me-1"></i> Import
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
 
 
                     <!-- play backward forwad  -->
@@ -1594,11 +1545,11 @@
                             <!-- Column Visibility Dropdown -->
                             <div class="dropdown d-inline-block">
                                 <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                                    id="hideColumnsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                    id="hideColumnsBtn" aria-expanded="false">
                                     <i class="fa fa-eye"></i> Columns
                                 </button>
                                 <ul class="dropdown-menu" aria-labelledby="hideColumnsBtn" id="columnToggleMenu"
-                                    style="max-height: 400px; overflow-y: auto;">
+                                    style="max-height: 400px; overflow-y: auto; display: none;">
                                     <!-- Will be populated by JavaScript -->
                                 </ul>
                             </div>
@@ -3155,14 +3106,14 @@
 
 
 
-                    // SPRICE + Edit Button (no decimals)
+                    // SPRICE + Edit Button (with 2 decimals)
                     $row.append($('<td>').attr('data-field', 'sprice').html(
                         item.SPRICE !== null && !isNaN(parseFloat(item.SPRICE)) ?
                         `
                         <div class="d-flex align-items-center gap-2">
                             <span class="badge bg-primary s_price" 
                                 style="font-size:16px; padding:8px 14px; border-radius:8px;">
-                                $${Math.round(parseFloat(item.SPRICE))}
+                                $${parseFloat(item.SPRICE).toFixed(2)}
                             </span>
                             <div class="btn-group" role="group">
                                 <!-- Edit Button -->
@@ -5278,12 +5229,13 @@
                 $headers.each(function() {
                     const $th = $(this);
                     const field = $th.data('field');
-                    const title = $th.text().trim().replace(' ↓', '');
+                    const title = $th.text().trim().replace(/[↓↑]/g, '').trim();
+                    const isHidden = hiddenColumns.has(field);
 
                     const $item = $(`
                         <div class="column-toggle-item">
                             <input type="checkbox" class="column-toggle-checkbox" 
-                                id="toggle-${field}" data-field="${field}">
+                                id="toggle-${field}" data-field="${field}" ${!isHidden ? 'checked' : ''}>
                             <label for="toggle-${field}">${title}</label>
                         </div>
                     `);
@@ -5295,13 +5247,14 @@
 
                 // Dropdown toggle
                 $dropdownBtn.off('click').on('click', function(e) {
+                    e.preventDefault();
                     e.stopPropagation();
                     $menu.toggleClass('show');
                 });
 
                 // Close menu if clicked outside
                 $(document).off('click.columnToggle').on('click.columnToggle', function(e) {
-                    if (!$(e.target).closest('.custom-dropdown').length) {
+                    if (!$(e.target).closest('.dropdown').length && !$(e.target).closest('#columnToggleMenu').length) {
                         $menu.removeClass('show');
                     }
                 });
@@ -6724,6 +6677,132 @@
                         }
                     });
                 });
+            }
+
+            // Export table functionality
+            $('#exportTableBtn').on('click', function() {
+                exportTableToExcel();
+            });
+
+            function exportTableToExcel() {
+                // Get all visible table headers
+                const headers = [];
+                const headerCells = $('#ebay-table thead th:visible');
+                headerCells.each(function() {
+                    const $th = $(this);
+                    const dataField = $th.attr('data-field');
+                    if (dataField) {
+                        // Get the header text
+                        let headerText = $th.find('div').first().text().trim();
+                        // Remove sort arrows and extra whitespace
+                        headerText = headerText.replace(/↓|↑/g, '').trim();
+                        if (headerText) {
+                            headers.push({
+                                field: dataField,
+                                label: headerText
+                            });
+                        }
+                    }
+                });
+
+                // Get all visible rows data
+                const rows = [];
+                $('#ebay-table tbody tr:visible').each(function() {
+                    const $row = $(this);
+                    const rowData = {};
+                    
+                    headers.forEach(function(header) {
+                        const $cell = $row.find(`td[data-field="${header.field}"]`);
+                        if ($cell.length) {
+                            let cellValue = '';
+                            
+                            // Handle special cases for different field types
+                            if (header.field === 'ov_dil' || header.field === 'e_dil') {
+                                // OV DIL and E DIL: Extract percentage from span
+                                const $percentSpan = $cell.find('.dil-percent-value');
+                                if ($percentSpan.length) {
+                                    cellValue = $percentSpan.text().trim();
+                                } else {
+                                    cellValue = $cell.text().trim().split(' ')[0]; // Get first part before space
+                                }
+                            } else if (header.field === 'NRA') {
+                                // NRA: Get selected value from select dropdown
+                                const $select = $cell.find('select');
+                                if ($select.length) {
+                                    cellValue = $select.val() || '';
+                                } else {
+                                    cellValue = $cell.text().trim();
+                                }
+                            } else if (header.field === 'nr_req') {
+                                // NRL/REQ: Get selected value from select dropdown
+                                const $select = $cell.find('select');
+                                if ($select.length) {
+                                    cellValue = $select.val() || '';
+                                } else {
+                                    cellValue = $cell.text().trim();
+                                }
+                            } else if (header.field === 'views') {
+                                // Views: Extract number from span, remove "V" icon
+                                const $viewSpan = $cell.find('.dil-percent-value');
+                                if ($viewSpan.length) {
+                                    cellValue = $viewSpan.text().trim();
+                                } else {
+                                    // Remove "V" and any tooltip icons
+                                    cellValue = $cell.text().trim().replace(/V\s*$/, '').trim();
+                                }
+                            } else if (header.field === 'sprice') {
+                                // SPRICE: Extract price value from badge
+                                const $badge = $cell.find('.badge, .s_price');
+                                if ($badge.length) {
+                                    cellValue = $badge.text().trim();
+                                } else {
+                                    cellValue = $cell.text().trim();
+                                }
+                            } else {
+                                // For other fields, get text but remove tooltip icons and extra elements
+                                // Remove tooltip icons, badges, and other UI elements
+                                const $clone = $cell.clone();
+                                $clone.find('.tooltip-icon, .ad-view-trigger, .wmpnm-view-trigger, .price-view-trigger, .conversion-view-trigger, .badge, i, button').remove();
+                                cellValue = $clone.text().trim();
+                                // Clean up extra whitespace
+                                cellValue = cellValue.replace(/\s+/g, ' ').trim();
+                            }
+                            
+                            rowData[header.label] = cellValue || '';
+                        } else {
+                            rowData[header.label] = '';
+                        }
+                    });
+                    
+                    rows.push(rowData);
+                });
+
+                // Convert to CSV
+                let csvContent = '';
+                
+                // Add headers
+                csvContent += headers.map(h => `"${h.label}"`).join(',') + '\n';
+                
+                // Add rows
+                rows.forEach(function(row) {
+                    const values = headers.map(function(header) {
+                        const value = row[header.label] || '';
+                        // Escape quotes and wrap in quotes
+                        return `"${String(value).replace(/"/g, '""')}"`;
+                    });
+                    csvContent += values.join(',') + '\n';
+                });
+
+                // Create download link
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', 'Ebay_Analytics_Export_' + new Date().toISOString().slice(0, 10) + '.csv');
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
             }
         });
     </script>
