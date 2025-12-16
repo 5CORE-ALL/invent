@@ -150,9 +150,9 @@ class UpdateMarketplaceDailyMetrics extends Command
                 $cogs = $lp * $quantity;
                 $totalCogs += $cogs;
 
-                // PFT Each = (unit_price * 0.75) - lp - ship_cost
+                // PFT Each = (unit_price * 0.80) - lp - ship_cost
                 $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-                $pftEach = ($unitPrice * 0.75) - $lp - $shipCost;
+                $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
 
                 // T PFT = pft_each * quantity
                 $pft = $pftEach * $quantity;
