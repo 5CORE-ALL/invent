@@ -10,6 +10,8 @@ use App\Models\TemuDailyData;
 use App\Models\SheinDailyData;
 use App\Models\MercariDailyData;
 use App\Models\AliexpressDailyData;
+use App\Models\ShopifyB2CDailyData;
+use App\Models\ShopifyB2BDailyData;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\ChannelMaster;
@@ -37,6 +39,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Shein' => fn() => $this->calculateSheinMetrics($date),
             'Mercari' => fn() => $this->calculateMercariMetrics($date),
             'AliExpress' => fn() => $this->calculateAliexpressMetrics($date),
+            'Shopify B2C' => fn() => $this->calculateShopifyB2CMetrics($date),
+            'Shopify B2B' => fn() => $this->calculateShopifyB2BMetrics($date),
         ];
 
         foreach ($channels as $channel => $calculator) {
@@ -910,6 +914,244 @@ class UpdateMarketplaceDailyMetrics extends Command
             // Calculate PFT: (Unit Price × Margin - LP - Ship) × Quantity
             // Same formula as sales page and eBay
             $pft = (($unitPrice * $margin) - $lp - $ship) * $quantity;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalRevenue,
+        ];
+    }
+
+    private function calculateShopifyB2CMetrics($date)
+    {
+        // Get L30 orders data (period = 'l30' and not refunded)
+        $orders = ShopifyB2CDailyData::where('period', 'l30')
+            ->where('financial_status', '!=', 'refunded')
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return null;
+        }
+
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        // Shopify B2C uses 0.95 margin (95%)
+        $margin = 0.95;
+
+        foreach ($orders as $order) {
+            if (!$order->sku || $order->sku === '') continue;
+
+            $totalOrders++;
+            $quantity = (int) ($order->quantity ?? 1);
+            $price = (float) ($order->price ?? 0); // This is final price per unit after discount
+            $totalAmount = (float) ($order->total_amount ?? 0);
+            
+            $totalQuantity += $quantity;
+            $totalRevenue += $totalAmount;
+
+            if ($quantity > 0 && $price > 0) {
+                $totalWeightedPrice += $price * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            // Get LP, Ship and Weight Act from ProductMaster
+            $sku = strtoupper($order->sku);
+            $lp = 0;
+            $ship = 0;
+            $weightAct = 0;
+
+            if (isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                
+                // Get LP
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                
+                // Get Ship
+                if (isset($values['ship'])) {
+                    $ship = (float) $values['ship'];
+                } elseif (isset($pm->ship)) {
+                    $ship = floatval($pm->ship);
+                }
+                
+                // Get Weight Act
+                if (isset($values['wt_act'])) {
+                    $weightAct = floatval($values['wt_act']);
+                }
+            }
+
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation (same as ShopifyB2CSalesController):
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // COGS = LP * quantity (only LP, not Ship)
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            // PFT Each = (price * 0.95) - lp - ship_cost
+            $pftEach = ($price * $margin) - $lp - $shipCost;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalRevenue,
+        ];
+    }
+
+    private function calculateShopifyB2BMetrics($date)
+    {
+        // Get L30 orders data (period = 'l30' and not refunded)
+        $orders = ShopifyB2BDailyData::where('period', 'l30')
+            ->where('financial_status', '!=', 'refunded')
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return null;
+        }
+
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        // Shopify B2B (Wholesale) uses 0.95 margin (95%)
+        $margin = 0.95;
+
+        foreach ($orders as $order) {
+            if (!$order->sku || $order->sku === '') continue;
+
+            $totalOrders++;
+            $quantity = (int) ($order->quantity ?? 1);
+            $price = (float) ($order->price ?? 0); // This is final price per unit after discount
+            $totalAmount = (float) ($order->total_amount ?? 0);
+            
+            $totalQuantity += $quantity;
+            $totalRevenue += $totalAmount;
+
+            if ($quantity > 0 && $price > 0) {
+                $totalWeightedPrice += $price * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            // Get LP, Ship and Weight Act from ProductMaster
+            $sku = strtoupper($order->sku);
+            $lp = 0;
+            $ship = 0;
+            $weightAct = 0;
+
+            if (isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                
+                // Get LP
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                
+                // Get Ship
+                if (isset($values['ship'])) {
+                    $ship = (float) $values['ship'];
+                } elseif (isset($pm->ship)) {
+                    $ship = floatval($pm->ship);
+                }
+                
+                // Get Weight Act
+                if (isset($values['wt_act'])) {
+                    $weightAct = floatval($values['wt_act']);
+                }
+            }
+
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation (same as ShopifyB2BSalesController):
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // COGS = LP * quantity (only LP, not Ship)
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            // PFT Each = (price * 0.95) - lp - ship_cost
+            $pftEach = ($price * $margin) - $lp - $shipCost;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
             $totalPft += $pft;
         }
 
