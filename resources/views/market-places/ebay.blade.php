@@ -7,6 +7,7 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ asset('css/ebay-table-compact.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         /* ========== TABLE STRUCTURE ========== */
         #ebay-table-wrapper {
@@ -1110,14 +1111,76 @@
     </div>
 
     <!-- SKU Sales Data Modal -->
-    <div class="modal fade" id="skuSalesModal" tabindex="-1" aria-labelledby="skuSalesModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+    <!-- EL 7 Data Modal -->
+    <div class="modal fade" id="el7Modal" tabindex="-1" aria-labelledby="el7ModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-md">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="skuSalesModalLabel">Last 30 Days Sales - <span id="modalSkuName"></span></h5>
+                    <h5 class="modal-title" id="el7ModalLabel">EL 7 vs EL 30 - <span id="el7ModalSku"></span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="card bg-info text-white">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">EL 30</h6>
+                                    <h3 class="mb-0" id="el7ModalEl30">0</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">EL 7</h6>
+                                    <h3 class="mb-0" id="el7ModalEl7">0</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SKU Sales Modal with Chart -->
+    <div class="modal fade" id="skuSalesModal" tabindex="-1" aria-labelledby="skuSalesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="skuSalesModalLabel">Sales Data - <span id="modalSkuName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Date Filter Buttons -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="btn-group" role="group" aria-label="Date filters">
+                                <button type="button" class="btn btn-outline-primary date-filter-btn active" data-filter="today">Today</button>
+                                <button type="button" class="btn btn-outline-primary date-filter-btn" data-filter="yesterday">Yesterday</button>
+                                <button type="button" class="btn btn-outline-primary date-filter-btn" data-filter="last7">Last 7 Days</button>
+                                <button type="button" class="btn btn-outline-primary date-filter-btn" data-filter="last30">Last 30 Days</button>
+                                <button type="button" class="btn btn-outline-primary date-filter-btn" data-filter="custom">Custom Date</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Custom Date Range -->
+                    <div class="row mb-3" id="customDateRange" style="display: none;">
+                        <div class="col-md-5">
+                            <label for="startDate" class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="startDate">
+                        </div>
+                        <div class="col-md-5">
+                            <label for="endDate" class="form-label">End Date</label>
+                            <input type="date" class="form-control" id="endDate">
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="button" class="btn btn-primary w-100" id="applyCustomDate">Apply</button>
+                        </div>
+                    </div>
                     <div id="skuSalesLoading" class="text-center py-4">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
@@ -1126,7 +1189,7 @@
                     </div>
                     <div id="skuSalesContent" style="display: none;">
                         <div class="row mb-3">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="card bg-light">
                                     <div class="card-body">
                                         <h6 class="card-title">Total Quantity</h6>
@@ -1134,7 +1197,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="card bg-light">
                                     <div class="card-body">
                                         <h6 class="card-title">Total Orders</h6>
@@ -1142,20 +1205,20 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Date Range</h6>
+                                        <h6 class="mb-0" id="dateRangeDisplay">-</h6>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                            <table class="table table-bordered table-sm">
-                                <thead class="table-light sticky-top">
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Quantity</th>
-                                        <th>Orders</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="skuSalesTableBody">
-                                    <!-- Data will be populated here -->
-                                </tbody>
-                            </table>
+                        <!-- Chart Container -->
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <canvas id="salesChart" height="100"></canvas>
+                            </div>
                         </div>
                     </div>
                     <div id="skuSalesError" style="display: none;" class="alert alert-danger">
@@ -1709,6 +1772,15 @@
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="el30-total">0</div>
+                                        </div>
+                                    </th>
+                                    <th data-field="el_7" class="el7-column" style="vertical-align: middle; white-space: nowrap; display: none;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                EL 7 <span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="el7-total">0</div>
                                         </div>
                                     </th>
                                     <th data-field="e_dil" style="vertical-align: middle; white-space: nowrap;">
@@ -2639,6 +2711,7 @@
                                     L30: item.L30 || 0,
                                     ov_dil: ovDil,
                                     'eBay L30': item['eBay L30'] || 0,
+                                    'eBay L7': item['eBay L7'] || 0,
                                     'E Dil%': item['E Dil%'] || 0,
                                     'views': item['views'] || 0,
                                     'eBay Price': item['eBay Price'] || 0,
@@ -2952,7 +3025,27 @@
                                data-item='${JSON.stringify(item.raw_data)}'>W</span>`
                     ));
 
-                    $row.append($('<td>').attr('data-field', 'el_30').text(item['eBay L30']));
+                    // EL 30 with info button
+                    const $el30Cell = $('<td>').attr('data-field', 'el_30');
+                    $el30Cell.html(`
+                        <div class="d-flex align-items-center justify-content-center gap-1">
+                            <span>${item['eBay L30'] || 0}</span>
+                            ${!item.is_parent ? `
+                                <button class="btn btn-sm btn-link p-0 el7-info-btn" 
+                                        data-sku="${item['(Child) sku']}" 
+                                        data-el7="${item['eBay L7'] || 0}"
+                                        data-el30="${item['eBay L30'] || 0}"
+                                        title="View EL 7 Data"
+                                        style="padding: 0; line-height: 1; font-size: 10px;">
+                                    <i class="fas fa-info-circle text-info"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    `);
+                    $row.append($el30Cell);
+
+                    // EL 7 column (hidden by default)
+                    $row.append($('<td>').attr('data-field', 'el_7').addClass('el7-column').css('display', 'none').text(item['eBay L7'] || 0));
 
                     // A DIL with color coding
                     $row.append($('<td>').attr('data-field', 'e_dil').html(
@@ -3101,7 +3194,7 @@
                     // GRPFT with color coding
                     $row.append($('<td>').attr('data-field', 'pft').html(
                         `
-                            <span class="dil-percent-value ${getPftColor(grpft * 100)}">
+                            <span class="dil-percent-value ${getPftColor(grpft)}">
                                 ${(grpft * 100).toFixed(0)}%
                             </span>
                         `
@@ -3110,7 +3203,7 @@
                     // PFT with color coding
                     $row.append($('<td>').attr('data-field', 'gpft').html(
                         `
-                            <span class="dil-percent-value ${getPftColor(pft * 100)}">
+                            <span class="dil-percent-value ${getPftColor(pft)}">
                                 ${(pft * 100).toFixed(0)}%
                             </span>
                         ` 
@@ -3183,7 +3276,7 @@
                     }
 
                     $row.append($('<td>').attr('data-field', 'cvr').html(
-                        `<span class="dil-percent-value" style="color: ${getCvrColor(ebayCvrPercent)}">
+                        `<span class="dil-percent-value ${getCvrColor(ebayCvrPercent)}" style="font-weight: 600;">
                             ${ebayCvrPercent.toFixed(0)}%
                         </span>`
                     ));
@@ -3206,7 +3299,8 @@
                                     title="Edit SPRICE"
                                     data-lp="${item.LP}"
                                     data-ship="${item.SHIP}"
-                                    data-sku="${item["(Child) sku"]}">
+                                    data-sku="${item["(Child) sku"]}"
+                                    data-percentage="${ebayPercentage/100}">
                                     <i class="fa fa-edit"></i>
                                 </button>
                             </div>
@@ -3262,8 +3356,10 @@
                         </span>` : ''
                     ));
 
-                    $row.append($('<td>').attr('data-field', 'salesTotal').attr('id', `total-sales`).html(
-                        ((item['eBay L30']) * (parseFloat(item['eBay Price']) || 0).toFixed(2))
+                    // Total Sales = eBay L30 * eBay Price
+                    const totalSales = (parseFloat(item['eBay L30']) || 0) * (parseFloat(item['eBay Price']) || 0);
+                    $row.append($('<td>').attr('data-field', 'salesTotal').html(
+                        `$${totalSales.toFixed(2)}`
                     ));
 
                     $tbody.append($row);
@@ -5278,7 +5374,10 @@
             // Load hidden columns from localStorage
             function loadHiddenColumns() {
                 const stored = localStorage.getItem('hiddenColumns');
-                return stored ? new Set(JSON.parse(stored)) : new Set();
+                const columns = stored ? new Set(JSON.parse(stored)) : new Set();
+                // Always ensure L7 column is hidden by default
+                columns.add('el_7');
+                return columns;
             }
 
             let hiddenColumns = loadHiddenColumns();
@@ -5290,6 +5389,14 @@
                 $headers.each(function() {
                     const field = $(this).data('field');
                     const isHidden = hiddenColumns.has(field);
+                    
+                    // L7 column is always hidden unless explicitly shown via toggle button
+                    if (field === 'el_7') {
+                        $(this).hide();
+                        $table.find(`td[data-field="${field}"]`).hide();
+                        $(`#toggle-${field}`).prop('checked', false);
+                        return;
+                    }
                     
                     // Hide/show TH
                     $(this).toggle(!isHidden);
@@ -5345,6 +5452,13 @@
 
                 $menu.on('change', '.column-toggle-checkbox', function() {
                     const field = $(this).data('field');
+                    
+                    // Prevent L7 column from being controlled by checkbox
+                    if (field === 'el_7') {
+                        $(this).prop('checked', false);
+                        return;
+                    }
+                    
                     const isVisible = $(this).is(':checked');
 
                     // Toggle TH with matching data-field
@@ -5361,17 +5475,23 @@
                 });
 
                 $('#showAllColumns').on('click', function() {
-                    // Show all TH elements
-                    $table.find('th[data-field]').show();
+                    // Show all TH elements except L7 column
+                    $table.find('th[data-field]').not('.el7-column').show();
                     
-                    // Show all TD elements with data-field
-                    $table.find('td[data-field]').show();
+                    // Show all TD elements with data-field except L7 column
+                    $table.find('td[data-field]').not('.el7-column').show();
                     
-                    // Update checkboxes
-                    $menu.find('.column-toggle-checkbox').prop('checked', true);
+                    // Ensure L7 column stays hidden
+                    $table.find('.el7-column').hide();
                     
-                    // Clear hiddenColumns and save
+                    // Update checkboxes (except L7)
+                    $menu.find('.column-toggle-checkbox').not('[data-field="el_7"]').prop('checked', true);
+                    
+                    // Clear hiddenColumns and save (but keep el_7 hidden)
                     hiddenColumns.clear();
+                    if (!hiddenColumns.has('el_7')) {
+                        hiddenColumns.add('el_7');
+                    }
                     localStorage.setItem('hiddenColumns', JSON.stringify([...hiddenColumns]));
                 });
 
@@ -5651,6 +5771,7 @@
                         ovL30Total: 0,
                         ovDilTotal: 0,
                         el30Total: 0,
+                        el7Total: 0,
                         eDilTotal: 0,
                         viewsTotal: 0,
                         profitSum: 0, // <-- new
@@ -5734,6 +5855,7 @@
                         metrics.invTotal += parseFloat(item.INV) || 0;
                         metrics.ovL30Total += parseFloat(item.L30) || 0;
                         metrics.el30Total += parseFloat(item['eBay L30']) || 0;
+                        metrics.el7Total += parseFloat(item['eBay L7']) || 0;
                         metrics.viewsTotal += parseFloat(item['views']) || 0;
                         let views = parseFloat(item['views']) || 0;
                         if (item.NR !== 'NRA') {
@@ -5810,6 +5932,7 @@
                     $('#ovl30-total').text(metrics.ovL30Total.toLocaleString());
                     $('#ovdil-total').text(Math.round(metrics.ovDilTotal) + '%');
                     $('#el30-total').text(metrics.el30Total.toLocaleString());
+                    $('#el7-total').text(metrics.el7Total.toLocaleString());
                     $('#eDil-total').text(Math.round(metrics.eDilTotal) + '%');
                     $('#views-total').text(metrics.viewsTotal.toLocaleString());
                     $('#listed-total').text(metrics.listedCount.toLocaleString());
@@ -5902,6 +6025,7 @@
                 $('#inv-total').text('0');
                 $('#ovl30-total').text('0');
                 $('#ovdil-total').text('0%');
+                $('#el7-total').text('0');
                 $('#el30-total').text('0');
                 $('#eDil-total').text('0%');
                 $('#views-total').text('0');
@@ -6479,7 +6603,7 @@
                 const $sprInput = $('#sprPriceInput');
                 const $spftInput = $('#spftPercentInput');
                 const $sroiInput = $('#sroiPercentInput');
-
+                const percentage = parseFloat($(this).data('percentage')) || 0;
                 // Reset values
                 $sprInput.val('');
                 $spftInput.val('');
@@ -6489,8 +6613,8 @@
                     const SPRICE = parseFloat(this.value) || 0;
 
                     if (SPRICE > 0) {
-                        const SPFT = ((SPRICE * 0.74) - LP - SHIP) / SPRICE;
-                        const SROI = ((SPRICE * 0.74) - LP - SHIP) / LP;
+                        const SPFT = ((SPRICE * percentage) - LP - SHIP) / SPRICE;
+                        const SROI = ((SPRICE * percentage) - LP - SHIP) / LP;
 
                         $spftInput.val((SPFT * 100).toFixed(2) + '%');
                         $sroiInput.val(isFinite(SROI) ? (SROI * 100).toFixed(2) + '%' : '∞');
@@ -6577,71 +6701,189 @@
                     notification.find('.alert').alert('close');
                 }, 3000);
             }
-            // SKU Copy functionality
-            // SKU Sales Data Button Handler
+            // EL 7 Info Button Handler - Toggle EL 7 column visibility
+            $(document).on('click', '.el7-info-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Toggle EL 7 column visibility
+                const $el7Columns = $('.el7-column');
+                const isVisible = $el7Columns.first().is(':visible');
+                
+                if (isVisible) {
+                    // Hide EL 7 column
+                    $el7Columns.hide();
+                } else {
+                    // Show EL 7 column
+                    $el7Columns.show();
+                }
+            });
+
+            // SKU Sales Data Button Handler with Chart
+            let salesChart = null;
+            let currentSku = null;
+            let allSalesData = [];
+
             $(document).on('click', '.sku-sales-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 
                 const sku = $(this).data('sku');
+                currentSku = sku;
                 const $modal = $('#skuSalesModal');
                 const $modalTitle = $('#modalSkuName');
                 
                 // Set SKU in modal title
                 $modalTitle.text(sku);
                 
+                // Reset filters
+                $('.date-filter-btn').removeClass('active');
+                $('.date-filter-btn[data-filter="last30"]').addClass('active');
+                $('#customDateRange').hide();
+                
                 // Show modal
                 $modal.modal('show');
                 
+                // Load data with default filter (last 30 days)
+                loadSalesData(sku, 'last30');
+            });
+
+            // Date filter button handlers
+            $(document).on('click', '.date-filter-btn', function() {
+                $('.date-filter-btn').removeClass('active');
+                $(this).addClass('active');
+                const filter = $(this).data('filter');
+                
+                if (filter === 'custom') {
+                    $('#customDateRange').show();
+                } else {
+                    $('#customDateRange').hide();
+                    if (currentSku) {
+                        loadSalesData(currentSku, filter);
+                    }
+                }
+            });
+
+            // Apply custom date range
+            $(document).on('click', '#applyCustomDate', function() {
+                const startDate = $('#startDate').val();
+                const endDate = $('#endDate').val();
+                
+                if (!startDate || !endDate) {
+                    alert('Please select both start and end dates');
+                    return;
+                }
+                
+                if (currentSku) {
+                    loadSalesData(currentSku, 'custom', startDate, endDate);
+                }
+            });
+
+            function loadSalesData(sku, filter, startDate = null, endDate = null) {
                 // Reset content
                 $('#skuSalesLoading').show();
                 $('#skuSalesContent').hide();
                 $('#skuSalesError').hide();
                 $('#skuSalesTableBody').empty();
                 
+                // Destroy existing chart
+                if (salesChart) {
+                    salesChart.destroy();
+                    salesChart = null;
+                }
+                
+                // Build request data
+                const requestData = { sku: sku };
+                
+                if (filter === 'custom' && startDate && endDate) {
+                    requestData.start_date = startDate;
+                    requestData.end_date = endDate;
+                } else {
+                    requestData.filter = filter;
+                }
+                
                 // Fetch data
                 $.ajax({
                     url: '/ebay/sku-sales-data',
                     type: 'GET',
-                    data: { sku: sku },
+                    data: requestData,
                     success: function(response) {
                         $('#skuSalesLoading').hide();
                         
                         if (response.success && response.daily_data) {
+                            allSalesData = response.daily_data;
+                            
                             // Update totals
                             $('#totalQuantity').text(response.total_quantity || 0);
                             $('#totalOrders').text(response.total_orders || 0);
                             
-                            // Populate table
-                            const $tbody = $('#skuSalesTableBody');
-                            $tbody.empty();
+                            // Update date range display
+                            const dateRange = response.date_range || {};
+                            $('#dateRangeDisplay').text(
+                                (dateRange.from || '') + ' to ' + (dateRange.to || '')
+                            );
                             
-                            if (response.daily_data.length > 0) {
-                                response.daily_data.forEach(function(day) {
-                                    const $row = $('<tr>');
-                                    $row.append($('<td>').text(day.date));
-                                    $row.append($('<td>').text(day.quantity || 0));
-                                    $row.append($('<td>').text(day.orders || 0));
-                                    $tbody.append($row);
-                                });
-                            } else {
-                                $tbody.append($('<tr>').append($('<td colspan="3" class="text-center text-muted">').text('No sales data found for the last 30 days')));
-                            }
+                            // Create chart
+                            createSalesChart(response.daily_data);
                             
                             $('#skuSalesContent').show();
                         } else {
                             $('#skuSalesError').show();
-                            $('#skuSalesErrorMessage').text('No data available for this SKU');
+                            $('#skuSalesErrorMessage').text(response.error || 'Failed to load sales data');
                         }
                     },
                     error: function(xhr) {
                         $('#skuSalesLoading').hide();
                         $('#skuSalesError').show();
-                        const errorMsg = xhr.responseJSON?.error || 'Failed to fetch sales data';
-                        $('#skuSalesErrorMessage').text(errorMsg);
+                        $('#skuSalesErrorMessage').text('Error loading sales data. Please try again.');
                     }
                 });
-            });
+            }
+
+            function createSalesChart(dailyData) {
+                const ctx = document.getElementById('salesChart');
+                if (!ctx) return;
+                
+                const labels = dailyData.map(d => d.date);
+                const quantities = dailyData.map(d => d.quantity || 0);
+                
+                salesChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Sales Quantity',
+                            data: quantities,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            tension: 0.1,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            }
+                        }
+                    }
+                });
+            }
 
             $(document).on('click', '.copy-sku-btn', function(e) {
                 e.preventDefault();

@@ -265,24 +265,49 @@ class EbaySalesController extends Controller
     {
         try {
             $sku = $request->input('sku');
+            $filter = $request->input('filter', 'last30');
+            $startDate = $request->input('start_date');
+            $endDate = $request->input('end_date');
             
             if (!$sku) {
                 return response()->json(['error' => 'SKU is required'], 400);
             }
 
-            // Get orders for last 30 days for this SKU
-            $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+            // Determine date range based on filter
+            $now = \Carbon\Carbon::now();
+            $fromDate = null;
+            $toDate = $now->format('Y-m-d');
             
-            $orders = EbayOrder::with(['items' => function($query) use ($sku) {
+            if ($filter === 'custom' && $startDate && $endDate) {
+                $fromDate = \Carbon\Carbon::parse($startDate)->format('Y-m-d');
+                $toDate = \Carbon\Carbon::parse($endDate)->format('Y-m-d');
+            } elseif ($filter === 'today') {
+                $fromDate = $now->format('Y-m-d');
+            } elseif ($filter === 'yesterday') {
+                $fromDate = $now->copy()->subDay()->format('Y-m-d');
+                $toDate = $fromDate;
+            } elseif ($filter === 'last7') {
+                $fromDate = $now->copy()->subDays(7)->format('Y-m-d');
+            } else { // last30 (default)
+                $fromDate = $now->copy()->subDays(30)->format('Y-m-d');
+            }
+            
+            $query = EbayOrder::with(['items' => function($query) use ($sku) {
                 $query->where('sku', $sku);
             }])
                 ->where('period', 'l30')
-                ->whereDate('order_date', '>=', $thirtyDaysAgo->format('Y-m-d'))
                 ->whereHas('items', function($query) use ($sku) {
                     $query->where('sku', $sku);
-                })
-                ->orderBy('order_date', 'desc')
-                ->get();
+                });
+            
+            if ($fromDate) {
+                $query->whereDate('order_date', '>=', $fromDate);
+            }
+            if ($toDate) {
+                $query->whereDate('order_date', '<=', $toDate);
+            }
+            
+            $orders = $query->orderBy('order_date', 'desc')->get();
 
             // Group by date and calculate daily quantities
             $dailyData = [];
@@ -318,8 +343,8 @@ class EbaySalesController extends Controller
                 'total_orders' => $totalOrders,
                 'daily_data' => $dailyData,
                 'date_range' => [
-                    'from' => $thirtyDaysAgo->format('Y-m-d'),
-                    'to' => \Carbon\Carbon::now()->format('Y-m-d')
+                    'from' => $fromDate,
+                    'to' => $toDate
                 ]
             ]);
         } catch (\Exception $e) {

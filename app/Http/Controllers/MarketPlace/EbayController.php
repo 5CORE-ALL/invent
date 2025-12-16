@@ -224,6 +224,7 @@ class EbayController extends Controller
                 'sku',
                 'ebay_l30',
                 'ebay_l60',
+                'ebay_l7',
                 'ebay_price',
                 'views',
                 'item_id'
@@ -361,6 +362,7 @@ class EbayController extends Controller
             // eBay Metrics
             $row["eBay L30"] = $ebayMetric->ebay_l30 ?? 0;
             $row["eBay L60"] = $ebayMetric->ebay_l60 ?? 0;
+            $row["eBay L7"] = $ebayMetric->ebay_l7 ?? 0;
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
