@@ -792,15 +792,10 @@
                                 </small><br>
                                 Growth
                             </th>
-                            <th>NR</th>
-                            <th>type</th>
                             <th>Health Data</th>
-                            <th>Listing Counts</th>
-                            <th>W/Ads</th>
                             {{-- <th>0 Sold SKU Count</th>
                             <th>Sold Sku Count</th>
                             <th>Brand Registry</th> --}}
-                            <th>Update</th>
                             <th>Ac Health</th>
                             <th class="text-white">Action</th>
                         </tr>
@@ -1627,6 +1622,7 @@
                     },
                     {
                         data: 'sheet_link',
+                        visible: false,
                         render: function(data, type, row) {
                             const sheetLink = data || '';
                             return `<div style="display:flex; align-items:center; gap:6px;">${sheetLink ? `<a href="${sheetLink}" target="_blank" class="btn btn-sm btn-success">🔗</a>` : ''}</div>`;
@@ -1704,37 +1700,9 @@
                         }
                     },
                     {
-                        data: 'NR',
-                        render: function (v, t, row) {
-                            const checked = toNum(v) === 1 ? 'checked' : '';
-                            return `<input type="checkbox" class="checkbox-nr" data-channel="${row['Channel']}" ${checked}>`;
-                        }
-                    },
-                    {
-                        data: 'type',
-                        render: function (v) {
-                            return `<span style="display:inline-block; min-width:100px;">${v ? v : '-'}</span>`;
-                        }
-                    },
-                    {
                         data: null,
                         render: function (v, t, row) {
                             return `<i class="fas fa-eye view-health-data" style="color: #007bff; cursor: pointer; font-size: 16px;" title="View Health Data" data-channel="${row['Channel']}"></i>`;
-                        }
-                    },
-                    { data: 'Listing Counts', render: v => `<span class="metric-value">${toNum(v).toLocaleString('en-US')}</span>` },
-                    {
-                        data: 'W/Ads',
-                        render: function (v, t, row) {
-                            const checked = toNum(v) === 1 ? 'checked' : '';
-                            return `<input type="checkbox" class="checkbox-wads" data-channel="${row['Channel']}" ${checked}>`;
-                        }
-                    },
-                    {
-                        data: 'Update',
-                        render: function (v, t, row) {
-                            const checked = toNum(v) === 1 ? 'checked' : '';
-                            return `<input type="checkbox" class="checkbox-update" data-channel="${row['Channel']}" ${checked}>`;
                         }
                     },
                     {
