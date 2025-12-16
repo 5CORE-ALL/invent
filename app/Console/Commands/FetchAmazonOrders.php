@@ -16,7 +16,13 @@ class FetchAmazonOrders extends Command
      *
      * @var string
      */
-    protected $signature = 'app:fetch-amazon-orders {--fetch-missing-items : Only fetch items for orders that have no items}';
+    protected $signature = 'app:fetch-amazon-orders 
+        {--fetch-missing-items : Only fetch items for orders that have no items}
+        {--new-only : Only fetch orders newer than the latest order in database}
+        {--from= : Fetch orders from this date (Y-m-d format)}
+        {--to= : Fetch orders to this date (Y-m-d format)}
+        {--limit=500 : Maximum number of orders to fetch (for quota management)}
+        {--update-periods : Update period (l30/l60) based on current date}';
 
     /**
      * The console command description.
@@ -30,6 +36,12 @@ class FetchAmazonOrders extends Command
      */
     public function handle()
     {
+        // Option to update periods based on current date
+        if ($this->option('update-periods')) {
+            $this->updatePeriods();
+            return;
+        }
+
         // Option to only fetch missing items for existing orders
         if ($this->option('fetch-missing-items')) {
             $this->fetchMissingItems();
@@ -43,6 +55,18 @@ class FetchAmazonOrders extends Command
         }
 
         $this->info('Access Token obtained successfully');
+
+        // Check if specific date range is provided
+        if ($this->option('from') && $this->option('to')) {
+            $this->fetchDateRange($accessToken);
+            return;
+        }
+
+        // Check if we should only fetch new orders
+        if ($this->option('new-only')) {
+            $this->fetchNewOrdersOnly($accessToken);
+            return;
+        }
 
         $dateRanges = $this->dateRanges();
 
@@ -138,6 +162,120 @@ class FetchAmazonOrders extends Command
         ];
     }
 
+    /**
+     * Update periods (l30/l60) based on current date
+     * - Orders within last 30 days → l30
+     * - Orders 31-60 days ago → l60
+     * - Orders older than 60 days → deleted (optional)
+     */
+    private function updatePeriods()
+    {
+        $today = Carbon::today();
+        $l30Start = $today->copy()->subDays(30);
+        $l60Start = $today->copy()->subDays(60);
+        $l60End = $today->copy()->subDays(31);
+
+        $this->info('=== Updating Order Periods ===');
+        
+        // Count before update
+        $beforeL30 = AmazonOrder::where('period', 'l30')->count();
+        $beforeL60 = AmazonOrder::where('period', 'l60')->count();
+        $this->info("Before: L30 = {$beforeL30}, L60 = {$beforeL60}");
+
+        // Update L30: orders within last 30 days
+        $updatedToL30 = AmazonOrder::where('order_date', '>=', $l30Start)
+            ->where('period', '!=', 'l30')
+            ->update(['period' => 'l30']);
+        
+        // Update L60: orders 31-60 days ago
+        $updatedToL60 = AmazonOrder::where('order_date', '<', $l30Start)
+            ->where('order_date', '>=', $l60Start)
+            ->where('period', '!=', 'l60')
+            ->update(['period' => 'l60']);
+
+        // Count orders older than 60 days
+        $olderThan60 = AmazonOrder::where('order_date', '<', $l60Start)->count();
+
+        // Count after update
+        $afterL30 = AmazonOrder::where('period', 'l30')->count();
+        $afterL60 = AmazonOrder::where('period', 'l60')->count();
+
+        $this->info("After: L30 = {$afterL30}, L60 = {$afterL60}");
+        $this->info("Updated to L30: {$updatedToL30}");
+        $this->info("Updated to L60: {$updatedToL60}");
+        
+        if ($olderThan60 > 0) {
+            $this->warn("⚠️  Orders older than 60 days: {$olderThan60}");
+            $this->info("   (Run with --delete-old to remove them)");
+        }
+
+        $this->info('✅ Period update complete!');
+    }
+
+    /**
+     * Fetch orders for a specific date range
+     */
+    private function fetchDateRange($accessToken)
+    {
+        $limit = (int) $this->option('limit');
+        $startDate = Carbon::parse($this->option('from'));
+        $endDate = Carbon::parse($this->option('to'));
+
+        $this->info("Fetching orders from {$startDate->toDateString()} to {$endDate->toDateString()}...");
+        $this->info("Limit: {$limit} orders");
+
+        $orders = $this->fetchOrders($accessToken, $startDate, $endDate, $limit);
+        $this->info("Fetched " . count($orders) . " orders");
+
+        if (count($orders) > 0) {
+            $this->insertOrders($orders, 'l30', $accessToken);
+        }
+
+        $this->info('✅ Date range orders fetched successfully!');
+    }
+
+    /**
+     * Fetch only new orders (from last order date to yesterday)
+     */
+    private function fetchNewOrdersOnly($accessToken)
+    {
+        $lastOrderDate = AmazonOrder::max('order_date');
+        $limit = (int) $this->option('limit');
+        
+        if (!$lastOrderDate) {
+            $this->info('No existing orders found. Running full fetch...');
+            $dateRanges = $this->dateRanges();
+            foreach ($dateRanges as $period => $range) {
+                $this->info("Fetching orders for {$period}...");
+                $orders = $this->fetchOrders($accessToken, $range['start'], $range['end'], $limit);
+                $this->info("Fetched " . count($orders) . " orders for {$period}");
+                $this->insertOrders($orders, $period, $accessToken);
+            }
+            return;
+        }
+
+        $startDate = Carbon::parse($lastOrderDate)->addDay();
+        $endDate = Carbon::yesterday();
+
+        if ($startDate->greaterThan($endDate)) {
+            $this->info('Database is already up to date! Last order: ' . $lastOrderDate);
+            return;
+        }
+
+        $this->info("Fetching NEW orders from {$startDate->toDateString()} to {$endDate->toDateString()}...");
+        $this->info("(Skipping orders before {$startDate->toDateString()} - already in database)");
+        $this->info("Limit: {$limit} orders (use --limit=N to change)");
+
+        $orders = $this->fetchOrders($accessToken, $startDate, $endDate, $limit);
+        $this->info("Fetched " . count($orders) . " NEW orders");
+
+        if (count($orders) > 0) {
+            $this->insertOrders($orders, 'l30', $accessToken);
+        }
+
+        $this->info('✅ New orders fetched successfully!');
+    }
+
     private function getAccessToken()
     {
         $res = Http::asForm()->post('https://api.amazon.com/auth/o2/token', [
@@ -150,7 +288,7 @@ class FetchAmazonOrders extends Command
         return $res['access_token'] ?? null;
     }
 
-    private function fetchOrders($accessToken, $startDate, $endDate)
+    private function fetchOrders($accessToken, $startDate, $endDate, $limit = null)
     {
         $marketplaceId = env('SPAPI_MARKETPLACE_ID');
         $orders = [];
@@ -160,6 +298,12 @@ class FetchAmazonOrders extends Command
         $createdBefore = $endDate->endOfDay()->toIso8601ZuluString();
 
         do {
+            // Check limit before fetching more
+            if ($limit && count($orders) >= $limit) {
+                $this->info("  Reached limit of {$limit} orders. Stopping fetch.");
+                break;
+            }
+
             $params = [
                 'MarketplaceIds' => $marketplaceId,
                 'CreatedAfter' => $createdAfter,
@@ -194,6 +338,11 @@ class FetchAmazonOrders extends Command
                 sleep(2); // Increased from 1 to 2 seconds
             }
         } while ($nextToken);
+
+        // Trim to limit if exceeded
+        if ($limit && count($orders) > $limit) {
+            $orders = array_slice($orders, 0, $limit);
+        }
 
         return $orders;
     }
