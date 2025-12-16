@@ -769,6 +769,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'getColumnVisibility']);
     Route::post('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
     
+    // eBay 2 Sales Routes
+    Route::get('/ebay2/daily-sales-data', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getData'])->name('ebay2.daily.sales.data');
+    Route::get('/ebay2/daily-sales', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'index'])->name('ebay2.daily.sales');
+    Route::get('/ebay2-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getColumnVisibility']);
+    Route::post('/ebay2-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'saveColumnVisibility']);
+    
     // Amazon Sales Routes
     Route::get('/amazon/daily-sales-data', [AmazonSalesController::class, 'getData'])->name('amazon.daily.sales.data');
     Route::get('/amazon/daily-sales', [AmazonSalesController::class, 'index'])->name('amazon.daily.sales');
