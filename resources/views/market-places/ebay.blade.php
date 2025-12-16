@@ -7,6 +7,7 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ asset('css/ebay-table-compact.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         /* ========== TABLE STRUCTURE ========== */
         #ebay-table-wrapper {
@@ -306,8 +307,8 @@
             border-radius: 4px;
         }
 
-        .custom-dropdown-menu.show {
-            display: block;
+        .dropdown-menu.show {
+            display: block !important;
         }
 
         .column-toggle-item {
@@ -1109,6 +1110,128 @@
         </div>
     </div>
 
+    <!-- SKU Sales Data Modal -->
+    <!-- EL 7 Data Modal -->
+    <div class="modal fade" id="el7Modal" tabindex="-1" aria-labelledby="el7ModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-md">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="el7ModalLabel">EL 7 vs EL 30 - <span id="el7ModalSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="card bg-info text-white">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">EL 30</h6>
+                                    <h3 class="mb-0" id="el7ModalEl30">0</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">EL 7</h6>
+                                    <h3 class="mb-0" id="el7ModalEl7">0</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SKU Sales Modal with Chart -->
+    <div class="modal fade" id="skuSalesModal" tabindex="-1" aria-labelledby="skuSalesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="skuSalesModalLabel">Sales Data - <span id="modalSkuName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Date Filter Buttons -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="btn-group" role="group" aria-label="Date filters">
+                                <button type="button" class="btn btn-outline-primary date-filter-btn active" data-filter="today">Today</button>
+                                <button type="button" class="btn btn-outline-primary date-filter-btn" data-filter="yesterday">Yesterday</button>
+                                <button type="button" class="btn btn-outline-primary date-filter-btn" data-filter="last7">Last 7 Days</button>
+                                <button type="button" class="btn btn-outline-primary date-filter-btn" data-filter="last30">Last 30 Days</button>
+                                <button type="button" class="btn btn-outline-primary date-filter-btn" data-filter="custom">Custom Date</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Custom Date Range -->
+                    <div class="row mb-3" id="customDateRange" style="display: none;">
+                        <div class="col-md-5">
+                            <label for="startDate" class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="startDate">
+                        </div>
+                        <div class="col-md-5">
+                            <label for="endDate" class="form-label">End Date</label>
+                            <input type="date" class="form-control" id="endDate">
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="button" class="btn btn-primary w-100" id="applyCustomDate">Apply</button>
+                        </div>
+                    </div>
+                    <div id="skuSalesLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading sales data...</p>
+                    </div>
+                    <div id="skuSalesContent" style="display: none;">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Total Quantity</h6>
+                                        <h3 class="mb-0" id="totalQuantity">0</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Total Orders</h6>
+                                        <h3 class="mb-0" id="totalOrders">0</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Date Range</h6>
+                                        <h6 class="mb-0" id="dateRangeDisplay">-</h6>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Chart Container -->
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <canvas id="salesChart" height="100"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="skuSalesError" style="display: none;" class="alert alert-danger">
+                        <p id="skuSalesErrorMessage"></p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Hide SKU Modal -->
     <!-- Hide SKU Modal -->
     <div id="customHideSkuModal" class="custom-modal" style="display:none;">
@@ -1491,61 +1614,12 @@
 
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                             <!-- Export Button -->
-                            <a href="{{ route('ebay.analytics.export') }}" class="btn btn-sm btn-success">
+                            <button type="button" class="btn btn-sm btn-success" id="exportTableBtn">
                                 <i class="fa fa-file-excel"></i> Export
-                            </a>
-
-                            <!-- Import Button -->
-                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
-                                data-bs-target="#ebayImportModal">
-                                <i class="fas fa-file-import"></i> Import
                             </button>
                         </div>
                     </div>
 
-                    <!-- Ebay Import Modal -->
-                    <div class="modal fade" id="ebayImportModal" tabindex="-1" aria-labelledby="ebayImportModalLabel"
-                        aria-hidden="true">
-                        <div class="modal-dialog">
-                            <form action="{{ route('ebay.analytics.import') }}" method="POST"
-                                enctype="multipart/form-data" class="modal-content" id="ebayImportForm">
-                                @csrf
-                                <div class="modal-header">
-                                    <h5 class="modal-title" id="ebayImportModalLabel">Import Ebay Data</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"
-                                        aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <!-- File Input -->
-                                    <div class="mb-3">
-                                        <label for="reverbExcelFile" class="form-label">Select Excel File</label>
-                                        <input type="file" class="form-control" id="reverbExcelFile"
-                                            name="excel_file" accept=".xlsx,.xls,.csv" required>
-                                    </div>
-
-                                    <!-- Sample File Section -->
-                                    <div class="alert alert-info">
-                                        <small>
-                                            <i class="fas fa-info-circle me-1"></i>
-                                            Download the sample file to see the required format. Columns should be: SKU, Listed, Live.
-                                        </small>
-                                        <div class="mt-2">
-                                            <button type="button" class="btn btn-sm btn-outline-info" id="downloadSampleBtn">
-                                                <i class="fas fa-download me-1"></i> Download Sample File
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary"
-                                        data-bs-dismiss="modal">Cancel</button>
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="fas fa-file-import me-1"></i> Import
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
 
 
                     <!-- play backward forwad  -->
@@ -1594,11 +1668,11 @@
                             <!-- Column Visibility Dropdown -->
                             <div class="dropdown d-inline-block">
                                 <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                                    id="hideColumnsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                    id="hideColumnsBtn" aria-expanded="false">
                                     <i class="fa fa-eye"></i> Columns
                                 </button>
                                 <ul class="dropdown-menu" aria-labelledby="hideColumnsBtn" id="columnToggleMenu"
-                                    style="max-height: 400px; overflow-y: auto;">
+                                    style="max-height: 400px; overflow-y: auto; display: none;">
                                     <!-- Will be populated by JavaScript -->
                                 </ul>
                             </div>
@@ -1698,6 +1772,15 @@
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="el30-total">0</div>
+                                        </div>
+                                    </th>
+                                    <th data-field="el_7" class="el7-column" style="vertical-align: middle; white-space: nowrap; display: none;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                EL 7 <span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="el7-total">0</div>
                                         </div>
                                     </th>
                                     <th data-field="e_dil" style="vertical-align: middle; white-space: nowrap;">
@@ -2628,6 +2711,7 @@
                                     L30: item.L30 || 0,
                                     ov_dil: ovDil,
                                     'eBay L30': item['eBay L30'] || 0,
+                                    'eBay L7': item['eBay L7'] || 0,
                                     'E Dil%': item['E Dil%'] || 0,
                                     'views': item['views'] || 0,
                                     'eBay Price': item['eBay Price'] || 0,
@@ -2861,12 +2945,20 @@
                         $skuCell.html(`
                             <div class="d-flex align-items-center justify-content-between">
                                 <strong>${skuValue}</strong>
-                                <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
-                                        data-sku="${skuValue}" 
-                                        title="Copy SKU"
-                                        style="padding: 2px 6px; margin-left: 5px;">
-                                    <i class="fas fa-copy" style="font-size: 10px;"></i>
-                                </button>
+                                <div class="d-flex align-items-center gap-1">
+                                    <button class="btn btn-sm btn-outline-info sku-sales-btn" 
+                                            data-sku="${skuValue}" 
+                                            title="View Last 30 Days Sales"
+                                            style="padding: 2px 6px;">
+                                        <i class="fas fa-info-circle" style="font-size: 10px;"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                            data-sku="${skuValue}" 
+                                            title="Copy SKU"
+                                            style="padding: 2px 6px;">
+                                        <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                    </button>
+                                </div>
                             </div>
                         `);
                     } else {
@@ -2880,24 +2972,40 @@
                                             <div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>
                                         </div>
                                     </div>
-                                    <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
-                                            data-sku="${skuValue}" 
-                                            title="Copy SKU"
-                                            style="padding: 2px 6px; margin-left: 5px;">
-                                        <i class="fas fa-copy" style="font-size: 10px;"></i>
-                                    </button>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <button class="btn btn-sm btn-outline-info sku-sales-btn" 
+                                                data-sku="${skuValue}" 
+                                                title="View Last 30 Days Sales"
+                                                style="padding: 2px 6px;">
+                                            <i class="fas fa-info-circle" style="font-size: 10px;"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                                data-sku="${skuValue}" 
+                                                title="Copy SKU"
+                                                style="padding: 2px 6px;">
+                                            <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             `);
                         } else {
                             $skuCell.html(`
                                 <div class="d-flex align-items-center justify-content-between">
                                     <span>${skuValue}</span>
-                                    <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
-                                            data-sku="${skuValue}" 
-                                            title="Copy SKU"
-                                            style="padding: 2px 6px; margin-left: 5px;">
-                                        <i class="fas fa-copy" style="font-size: 10px;"></i>
-                                    </button>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <button class="btn btn-sm btn-outline-info sku-sales-btn" 
+                                                data-sku="${skuValue}" 
+                                                title="View Last 30 Days Sales"
+                                                style="padding: 2px 6px;">
+                                            <i class="fas fa-info-circle" style="font-size: 10px;"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                                data-sku="${skuValue}" 
+                                                title="Copy SKU"
+                                                style="padding: 2px 6px;">
+                                            <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             `);
                         }
@@ -2917,7 +3025,27 @@
                                data-item='${JSON.stringify(item.raw_data)}'>W</span>`
                     ));
 
-                    $row.append($('<td>').attr('data-field', 'el_30').text(item['eBay L30']));
+                    // EL 30 with info button
+                    const $el30Cell = $('<td>').attr('data-field', 'el_30');
+                    $el30Cell.html(`
+                        <div class="d-flex align-items-center justify-content-center gap-1">
+                            <span>${item['eBay L30'] || 0}</span>
+                            ${!item.is_parent ? `
+                                <button class="btn btn-sm btn-link p-0 el7-info-btn" 
+                                        data-sku="${item['(Child) sku']}" 
+                                        data-el7="${item['eBay L7'] || 0}"
+                                        data-el30="${item['eBay L30'] || 0}"
+                                        title="View EL 7 Data"
+                                        style="padding: 0; line-height: 1; font-size: 10px;">
+                                    <i class="fas fa-info-circle text-info"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    `);
+                    $row.append($el30Cell);
+
+                    // EL 7 column (hidden by default)
+                    $row.append($('<td>').attr('data-field', 'el_7').addClass('el7-column').css('display', 'none').text(item['eBay L7'] || 0));
 
                     // A DIL with color coding
                     $row.append($('<td>').attr('data-field', 'e_dil').html(
@@ -3066,7 +3194,7 @@
                     // GRPFT with color coding
                     $row.append($('<td>').attr('data-field', 'pft').html(
                         `
-                            <span class="dil-percent-value ${getPftColor(grpft * 100)}">
+                            <span class="dil-percent-value ${getPftColor(grpft)}">
                                 ${(grpft * 100).toFixed(0)}%
                             </span>
                         `
@@ -3075,7 +3203,7 @@
                     // PFT with color coding
                     $row.append($('<td>').attr('data-field', 'gpft').html(
                         `
-                            <span class="dil-percent-value ${getPftColor(pft * 100)}">
+                            <span class="dil-percent-value ${getPftColor(pft)}">
                                 ${(pft * 100).toFixed(0)}%
                             </span>
                         ` 
@@ -3148,21 +3276,21 @@
                     }
 
                     $row.append($('<td>').attr('data-field', 'cvr').html(
-                        `<span class="dil-percent-value" style="color: ${getCvrColor(ebayCvrPercent)}">
+                        `<span class="dil-percent-value ${getCvrColor(ebayCvrPercent)}" style="font-weight: 600;">
                             ${ebayCvrPercent.toFixed(0)}%
                         </span>`
                     ));
 
 
 
-                    // SPRICE + Edit Button (no decimals)
+                    // SPRICE + Edit Button (with 2 decimals)
                     $row.append($('<td>').attr('data-field', 'sprice').html(
                         item.SPRICE !== null && !isNaN(parseFloat(item.SPRICE)) ?
                         `
                         <div class="d-flex align-items-center gap-2">
                             <span class="badge bg-primary s_price" 
                                 style="font-size:16px; padding:8px 14px; border-radius:8px;">
-                                $${Math.round(parseFloat(item.SPRICE))}
+                                $${parseFloat(item.SPRICE).toFixed(2)}
                             </span>
                             <div class="btn-group" role="group">
                                 <!-- Edit Button -->
@@ -3171,7 +3299,8 @@
                                     title="Edit SPRICE"
                                     data-lp="${item.LP}"
                                     data-ship="${item.SHIP}"
-                                    data-sku="${item["(Child) sku"]}">
+                                    data-sku="${item["(Child) sku"]}"
+                                    data-percentage="${ebayPercentage/100}">
                                     <i class="fa fa-edit"></i>
                                 </button>
                             </div>
@@ -3227,8 +3356,10 @@
                         </span>` : ''
                     ));
 
-                    $row.append($('<td>').attr('data-field', 'salesTotal').attr('id', `total-sales`).html(
-                        ((item['eBay L30']) * (parseFloat(item['eBay Price']) || 0).toFixed(2))
+                    // Total Sales = eBay L30 * eBay Price
+                    const totalSales = (parseFloat(item['eBay L30']) || 0) * (parseFloat(item['eBay Price']) || 0);
+                    $row.append($('<td>').attr('data-field', 'salesTotal').html(
+                        `$${totalSales.toFixed(2)}`
                     ));
 
                     $tbody.append($row);
@@ -5106,37 +5237,89 @@
 
                     const th = $(this).closest('th');
                     const thField = th.data('field');
-                    const dataField = thField === 'parent' ? 'Parent' : thField;
-
+                    let dataField = thField === 'parent' ? 'Parent' : thField;
+                    
+                    // Map field names to actual data property names
+                    const fieldMapping = {
+                        'inv': 'INV',
+                        'ov_l30': 'L30',
+                        'ov_dil': 'ov_dil',
+                        'el_30': 'eBay L30',
+                        'e_dil': 'E Dil%',
+                        'price': 'eBay Price',
+                        'pft': 'PFT %',
+                        'roi': 'Roi',
+                        'tacos': 'Tacos30',
+                        'cvr': 'SCVR',
+                        'views': 'views',
+                        'sprice': 'SPRICE',
+                        'sprofit': 'SPFT',
+                        'sroi': 'SROI',
+                        'salesTotal': 'Sales L30',
+                        'grpft': 'Profit',
+                        'tprft': 'Profit',
+                        'ad-spend': 'Ad Spend',
+                        'cps': 'CPS'
+                    };
+                    
+                    // Use mapped field name if available
+                    const originalField = dataField;
+                    if (fieldMapping[dataField]) {
+                        dataField = fieldMapping[dataField];
+                    }
 
                     // Toggle direction if clicking same column, otherwise reset to ascending
-                    if (currentSort.field === dataField) {
+                    if (currentSort.field === thField) {
                         currentSort.direction *= -1;
                     } else {
-                        currentSort.field = dataField;
-                        currentSort.direction = 1;
+                        currentSort.field = thField;
+                        currentSort.direction = 1; // Start with ascending (lowest to highest)
                     }
 
                     // Update UI arrows
                     $('.sort-arrow').html('↓');
                     $(this).find('.sort-arrow').html(currentSort.direction === 1 ? '↑' : '↓');
 
-                    // Sort with fresh data
-                    const freshData = [...tableData];
-                    freshData.sort((a, b) => {
-                        const valA = a[dataField] || '';
-                        const valB = b[dataField] || '';
+                    // Pre-calculate if field is numeric (outside sort for performance)
+                    const numericFieldsSet = new Set([
+                        'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%', 
+                        'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'views', 
+                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'Ad Spend', 'CPS',
+                        'inv', 'ov_l30', 'el_30', 'e_dil', 'price', 
+                        'pft', 'roi', 'tacos', 'cvr', 'sprice', 'sprofit', 
+                        'sroi', 'salesTotal', 'grpft', 'tprft', 'ad-spend', 'cps'
+                    ]);
+                    const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
+                    
+                    // Determine value extraction function based on field type
+                    let getValue;
+                    if (dataField === 'ov_dil' || originalField === 'ov_dil') {
+                        getValue = (item) => parseFloat(item.ov_dil || 0) || 0;
+                    } else if (dataField === 'Sales L30' || originalField === 'salesTotal') {
+                        // Total Sales is calculated as (eBay L30) * (eBay Price)
+                        getValue = (item) => (parseFloat(item['eBay L30']) || 0) * (parseFloat(item['eBay Price']) || 0);
+                    } else if (isNumeric) {
+                        getValue = (item) => parseFloat(item[dataField] || 0) || 0;
+                    } else {
+                        getValue = (item) => item[dataField] || '';
+                    }
 
-                        // Numeric comparison for numeric fields
-                        if (dataField === 'sl_no' || dataField === 'INV' || dataField === 'L30') {
-                            return (parseFloat(valA) - parseFloat(valB)) * currentSort.direction;
+                    // Sort with filtered data to maintain current filters
+                    const dataToSort = [...filteredData];
+                    dataToSort.sort((a, b) => {
+                        const valA = getValue(a);
+                        const valB = getValue(b);
+                        
+                        if (isNumeric) {
+                            // Numeric comparison: direction 1 = ascending (lowest to highest), -1 = descending (highest to lowest)
+                            return (valA - valB) * currentSort.direction;
                         }
 
-                        // String comparison for other fields
+                        // String comparison for non-numeric fields
                         return String(valA).localeCompare(String(valB)) * currentSort.direction;
                     });
 
-                    filteredData = freshData;
+                    filteredData = dataToSort;
                     currentPage = 1;
                     renderTable();
                 });
@@ -5191,7 +5374,10 @@
             // Load hidden columns from localStorage
             function loadHiddenColumns() {
                 const stored = localStorage.getItem('hiddenColumns');
-                return stored ? new Set(JSON.parse(stored)) : new Set();
+                const columns = stored ? new Set(JSON.parse(stored)) : new Set();
+                // Always ensure L7 column is hidden by default
+                columns.add('el_7');
+                return columns;
             }
 
             let hiddenColumns = loadHiddenColumns();
@@ -5203,6 +5389,14 @@
                 $headers.each(function() {
                     const field = $(this).data('field');
                     const isHidden = hiddenColumns.has(field);
+                    
+                    // L7 column is always hidden unless explicitly shown via toggle button
+                    if (field === 'el_7') {
+                        $(this).hide();
+                        $table.find(`td[data-field="${field}"]`).hide();
+                        $(`#toggle-${field}`).prop('checked', false);
+                        return;
+                    }
                     
                     // Hide/show TH
                     $(this).toggle(!isHidden);
@@ -5226,12 +5420,13 @@
                 $headers.each(function() {
                     const $th = $(this);
                     const field = $th.data('field');
-                    const title = $th.text().trim().replace(' ↓', '');
+                    const title = $th.text().trim().replace(/[↓↑]/g, '').trim();
+                    const isHidden = hiddenColumns.has(field);
 
                     const $item = $(`
                         <div class="column-toggle-item">
                             <input type="checkbox" class="column-toggle-checkbox" 
-                                id="toggle-${field}" data-field="${field}">
+                                id="toggle-${field}" data-field="${field}" ${!isHidden ? 'checked' : ''}>
                             <label for="toggle-${field}">${title}</label>
                         </div>
                     `);
@@ -5243,19 +5438,27 @@
 
                 // Dropdown toggle
                 $dropdownBtn.off('click').on('click', function(e) {
+                    e.preventDefault();
                     e.stopPropagation();
                     $menu.toggleClass('show');
                 });
 
                 // Close menu if clicked outside
                 $(document).off('click.columnToggle').on('click.columnToggle', function(e) {
-                    if (!$(e.target).closest('.custom-dropdown').length) {
+                    if (!$(e.target).closest('.dropdown').length && !$(e.target).closest('#columnToggleMenu').length) {
                         $menu.removeClass('show');
                     }
                 });
 
                 $menu.on('change', '.column-toggle-checkbox', function() {
                     const field = $(this).data('field');
+                    
+                    // Prevent L7 column from being controlled by checkbox
+                    if (field === 'el_7') {
+                        $(this).prop('checked', false);
+                        return;
+                    }
+                    
                     const isVisible = $(this).is(':checked');
 
                     // Toggle TH with matching data-field
@@ -5272,17 +5475,23 @@
                 });
 
                 $('#showAllColumns').on('click', function() {
-                    // Show all TH elements
-                    $table.find('th[data-field]').show();
+                    // Show all TH elements except L7 column
+                    $table.find('th[data-field]').not('.el7-column').show();
                     
-                    // Show all TD elements with data-field
-                    $table.find('td[data-field]').show();
+                    // Show all TD elements with data-field except L7 column
+                    $table.find('td[data-field]').not('.el7-column').show();
                     
-                    // Update checkboxes
-                    $menu.find('.column-toggle-checkbox').prop('checked', true);
+                    // Ensure L7 column stays hidden
+                    $table.find('.el7-column').hide();
                     
-                    // Clear hiddenColumns and save
+                    // Update checkboxes (except L7)
+                    $menu.find('.column-toggle-checkbox').not('[data-field="el_7"]').prop('checked', true);
+                    
+                    // Clear hiddenColumns and save (but keep el_7 hidden)
                     hiddenColumns.clear();
+                    if (!hiddenColumns.has('el_7')) {
+                        hiddenColumns.add('el_7');
+                    }
                     localStorage.setItem('hiddenColumns', JSON.stringify([...hiddenColumns]));
                 });
 
@@ -5562,6 +5771,7 @@
                         ovL30Total: 0,
                         ovDilTotal: 0,
                         el30Total: 0,
+                        el7Total: 0,
                         eDilTotal: 0,
                         viewsTotal: 0,
                         profitSum: 0, // <-- new
@@ -5645,6 +5855,7 @@
                         metrics.invTotal += parseFloat(item.INV) || 0;
                         metrics.ovL30Total += parseFloat(item.L30) || 0;
                         metrics.el30Total += parseFloat(item['eBay L30']) || 0;
+                        metrics.el7Total += parseFloat(item['eBay L7']) || 0;
                         metrics.viewsTotal += parseFloat(item['views']) || 0;
                         let views = parseFloat(item['views']) || 0;
                         if (item.NR !== 'NRA') {
@@ -5721,6 +5932,7 @@
                     $('#ovl30-total').text(metrics.ovL30Total.toLocaleString());
                     $('#ovdil-total').text(Math.round(metrics.ovDilTotal) + '%');
                     $('#el30-total').text(metrics.el30Total.toLocaleString());
+                    $('#el7-total').text(metrics.el7Total.toLocaleString());
                     $('#eDil-total').text(Math.round(metrics.eDilTotal) + '%');
                     $('#views-total').text(metrics.viewsTotal.toLocaleString());
                     $('#listed-total').text(metrics.listedCount.toLocaleString());
@@ -5813,6 +6025,7 @@
                 $('#inv-total').text('0');
                 $('#ovl30-total').text('0');
                 $('#ovdil-total').text('0%');
+                $('#el7-total').text('0');
                 $('#el30-total').text('0');
                 $('#eDil-total').text('0%');
                 $('#views-total').text('0');
@@ -6390,7 +6603,7 @@
                 const $sprInput = $('#sprPriceInput');
                 const $spftInput = $('#spftPercentInput');
                 const $sroiInput = $('#sroiPercentInput');
-
+                const percentage = parseFloat($(this).data('percentage')) || 0;
                 // Reset values
                 $sprInput.val('');
                 $spftInput.val('');
@@ -6400,8 +6613,8 @@
                     const SPRICE = parseFloat(this.value) || 0;
 
                     if (SPRICE > 0) {
-                        const SPFT = ((SPRICE * 0.74) - LP - SHIP) / SPRICE;
-                        const SROI = ((SPRICE * 0.74) - LP - SHIP) / LP;
+                        const SPFT = ((SPRICE * percentage) - LP - SHIP) / SPRICE;
+                        const SROI = ((SPRICE * percentage) - LP - SHIP) / LP;
 
                         $spftInput.val((SPFT * 100).toFixed(2) + '%');
                         $sroiInput.val(isFinite(SROI) ? (SROI * 100).toFixed(2) + '%' : '∞');
@@ -6488,7 +6701,190 @@
                     notification.find('.alert').alert('close');
                 }, 3000);
             }
-            // SKU Copy functionality
+            // EL 7 Info Button Handler - Toggle EL 7 column visibility
+            $(document).on('click', '.el7-info-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Toggle EL 7 column visibility
+                const $el7Columns = $('.el7-column');
+                const isVisible = $el7Columns.first().is(':visible');
+                
+                if (isVisible) {
+                    // Hide EL 7 column
+                    $el7Columns.hide();
+                } else {
+                    // Show EL 7 column
+                    $el7Columns.show();
+                }
+            });
+
+            // SKU Sales Data Button Handler with Chart
+            let salesChart = null;
+            let currentSku = null;
+            let allSalesData = [];
+
+            $(document).on('click', '.sku-sales-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const sku = $(this).data('sku');
+                currentSku = sku;
+                const $modal = $('#skuSalesModal');
+                const $modalTitle = $('#modalSkuName');
+                
+                // Set SKU in modal title
+                $modalTitle.text(sku);
+                
+                // Reset filters
+                $('.date-filter-btn').removeClass('active');
+                $('.date-filter-btn[data-filter="last30"]').addClass('active');
+                $('#customDateRange').hide();
+                
+                // Show modal
+                $modal.modal('show');
+                
+                // Load data with default filter (last 30 days)
+                loadSalesData(sku, 'last30');
+            });
+
+            // Date filter button handlers
+            $(document).on('click', '.date-filter-btn', function() {
+                $('.date-filter-btn').removeClass('active');
+                $(this).addClass('active');
+                const filter = $(this).data('filter');
+                
+                if (filter === 'custom') {
+                    $('#customDateRange').show();
+                } else {
+                    $('#customDateRange').hide();
+                    if (currentSku) {
+                        loadSalesData(currentSku, filter);
+                    }
+                }
+            });
+
+            // Apply custom date range
+            $(document).on('click', '#applyCustomDate', function() {
+                const startDate = $('#startDate').val();
+                const endDate = $('#endDate').val();
+                
+                if (!startDate || !endDate) {
+                    alert('Please select both start and end dates');
+                    return;
+                }
+                
+                if (currentSku) {
+                    loadSalesData(currentSku, 'custom', startDate, endDate);
+                }
+            });
+
+            function loadSalesData(sku, filter, startDate = null, endDate = null) {
+                // Reset content
+                $('#skuSalesLoading').show();
+                $('#skuSalesContent').hide();
+                $('#skuSalesError').hide();
+                $('#skuSalesTableBody').empty();
+                
+                // Destroy existing chart
+                if (salesChart) {
+                    salesChart.destroy();
+                    salesChart = null;
+                }
+                
+                // Build request data
+                const requestData = { sku: sku };
+                
+                if (filter === 'custom' && startDate && endDate) {
+                    requestData.start_date = startDate;
+                    requestData.end_date = endDate;
+                } else {
+                    requestData.filter = filter;
+                }
+                
+                // Fetch data
+                $.ajax({
+                    url: '/ebay/sku-sales-data',
+                    type: 'GET',
+                    data: requestData,
+                    success: function(response) {
+                        $('#skuSalesLoading').hide();
+                        
+                        if (response.success && response.daily_data) {
+                            allSalesData = response.daily_data;
+                            
+                            // Update totals
+                            $('#totalQuantity').text(response.total_quantity || 0);
+                            $('#totalOrders').text(response.total_orders || 0);
+                            
+                            // Update date range display
+                            const dateRange = response.date_range || {};
+                            $('#dateRangeDisplay').text(
+                                (dateRange.from || '') + ' to ' + (dateRange.to || '')
+                            );
+                            
+                            // Create chart
+                            createSalesChart(response.daily_data);
+                            
+                            $('#skuSalesContent').show();
+                        } else {
+                            $('#skuSalesError').show();
+                            $('#skuSalesErrorMessage').text(response.error || 'Failed to load sales data');
+                        }
+                    },
+                    error: function(xhr) {
+                        $('#skuSalesLoading').hide();
+                        $('#skuSalesError').show();
+                        $('#skuSalesErrorMessage').text('Error loading sales data. Please try again.');
+                    }
+                });
+            }
+
+            function createSalesChart(dailyData) {
+                const ctx = document.getElementById('salesChart');
+                if (!ctx) return;
+                
+                const labels = dailyData.map(d => d.date);
+                const quantities = dailyData.map(d => d.quantity || 0);
+                
+                salesChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Sales Quantity',
+                            data: quantities,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            tension: 0.1,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
             $(document).on('click', '.copy-sku-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -6672,6 +7068,132 @@
                         }
                     });
                 });
+            }
+
+            // Export table functionality
+            $('#exportTableBtn').on('click', function() {
+                exportTableToExcel();
+            });
+
+            function exportTableToExcel() {
+                // Get all visible table headers
+                const headers = [];
+                const headerCells = $('#ebay-table thead th:visible');
+                headerCells.each(function() {
+                    const $th = $(this);
+                    const dataField = $th.attr('data-field');
+                    if (dataField) {
+                        // Get the header text
+                        let headerText = $th.find('div').first().text().trim();
+                        // Remove sort arrows and extra whitespace
+                        headerText = headerText.replace(/↓|↑/g, '').trim();
+                        if (headerText) {
+                            headers.push({
+                                field: dataField,
+                                label: headerText
+                            });
+                        }
+                    }
+                });
+
+                // Get all visible rows data
+                const rows = [];
+                $('#ebay-table tbody tr:visible').each(function() {
+                    const $row = $(this);
+                    const rowData = {};
+                    
+                    headers.forEach(function(header) {
+                        const $cell = $row.find(`td[data-field="${header.field}"]`);
+                        if ($cell.length) {
+                            let cellValue = '';
+                            
+                            // Handle special cases for different field types
+                            if (header.field === 'ov_dil' || header.field === 'e_dil') {
+                                // OV DIL and E DIL: Extract percentage from span
+                                const $percentSpan = $cell.find('.dil-percent-value');
+                                if ($percentSpan.length) {
+                                    cellValue = $percentSpan.text().trim();
+                                } else {
+                                    cellValue = $cell.text().trim().split(' ')[0]; // Get first part before space
+                                }
+                            } else if (header.field === 'NRA') {
+                                // NRA: Get selected value from select dropdown
+                                const $select = $cell.find('select');
+                                if ($select.length) {
+                                    cellValue = $select.val() || '';
+                                } else {
+                                    cellValue = $cell.text().trim();
+                                }
+                            } else if (header.field === 'nr_req') {
+                                // NRL/REQ: Get selected value from select dropdown
+                                const $select = $cell.find('select');
+                                if ($select.length) {
+                                    cellValue = $select.val() || '';
+                                } else {
+                                    cellValue = $cell.text().trim();
+                                }
+                            } else if (header.field === 'views') {
+                                // Views: Extract number from span, remove "V" icon
+                                const $viewSpan = $cell.find('.dil-percent-value');
+                                if ($viewSpan.length) {
+                                    cellValue = $viewSpan.text().trim();
+                                } else {
+                                    // Remove "V" and any tooltip icons
+                                    cellValue = $cell.text().trim().replace(/V\s*$/, '').trim();
+                                }
+                            } else if (header.field === 'sprice') {
+                                // SPRICE: Extract price value from badge
+                                const $badge = $cell.find('.badge, .s_price');
+                                if ($badge.length) {
+                                    cellValue = $badge.text().trim();
+                                } else {
+                                    cellValue = $cell.text().trim();
+                                }
+                            } else {
+                                // For other fields, get text but remove tooltip icons and extra elements
+                                // Remove tooltip icons, badges, and other UI elements
+                                const $clone = $cell.clone();
+                                $clone.find('.tooltip-icon, .ad-view-trigger, .wmpnm-view-trigger, .price-view-trigger, .conversion-view-trigger, .badge, i, button').remove();
+                                cellValue = $clone.text().trim();
+                                // Clean up extra whitespace
+                                cellValue = cellValue.replace(/\s+/g, ' ').trim();
+                            }
+                            
+                            rowData[header.label] = cellValue || '';
+                        } else {
+                            rowData[header.label] = '';
+                        }
+                    });
+                    
+                    rows.push(rowData);
+                });
+
+                // Convert to CSV
+                let csvContent = '';
+                
+                // Add headers
+                csvContent += headers.map(h => `"${h.label}"`).join(',') + '\n';
+                
+                // Add rows
+                rows.forEach(function(row) {
+                    const values = headers.map(function(header) {
+                        const value = row[header.label] || '';
+                        // Escape quotes and wrap in quotes
+                        return `"${String(value).replace(/"/g, '""')}"`;
+                    });
+                    csvContent += values.join(',') + '\n';
+                });
+
+                // Create download link
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', 'Ebay_Analytics_Export_' + new Date().toISOString().slice(0, 10) + '.csv');
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
             }
         });
     </script>

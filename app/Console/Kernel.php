@@ -87,6 +87,18 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->name('update-marketplace-daily-metrics');
 
+        // Update Amazon order periods (L30/L60) daily at 12:10 AM
+        $schedule->command('app:fetch-amazon-orders --update-periods')
+            ->dailyAt('00:10')
+            ->timezone('America/Los_Angeles')
+            ->name('update-amazon-order-periods');
+
+        // Fetch new Amazon orders daily at 12:15 AM
+        $schedule->command('app:fetch-amazon-orders --new-only --limit=300')
+            ->dailyAt('00:15')
+            ->timezone('America/Los_Angeles')
+            ->name('fetch-new-amazon-orders');
+
         // All commands running every 5 minutes
         $schedule->command('shopify:save-daily-inventory')
             ->everyFiveMinutes()

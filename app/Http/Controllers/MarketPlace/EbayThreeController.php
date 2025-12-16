@@ -303,11 +303,26 @@ class EbayThreeController extends Controller
             $type = $request->input('type');
             $value = $request->input('value');
 
+            // Validate inputs
+            if (empty($type)) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Type parameter is required.'
+                ], 400);
+            }
+
+            if ($value === null || $value === '') {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Value parameter is required.'
+                ], 400);
+            }
+
             // Current record fetch
             $marketplace = MarketplacePercentage::where('marketplace', 'Ebay3')->first();
 
-            $percent = $marketplace->percentage ?? 100;
-            $adUpdates = $marketplace->ad_updates ?? 0;
+            $percent = $marketplace ? $marketplace->percentage : 100;
+            $adUpdates = $marketplace ? ($marketplace->ad_updates ?? 0) : 0;
 
             // Handle percentage update
             if ($type === 'percentage' || $request->has('percent')) {
@@ -318,7 +333,7 @@ class EbayThreeController extends Controller
                         'message' => 'Invalid percentage value. Must be between 0 and 100.'
                     ], 400);
                 }
-                $percent = $percentValue;
+                $percent = (float) $percentValue;
             }
 
             // Handle ad_updates update
@@ -329,31 +344,51 @@ class EbayThreeController extends Controller
                         'message' => 'Invalid ad_updates value. Must be a positive number.'
                     ], 400);
                 }
-                $adUpdates = $value;
+                $adUpdates = (float) $value;
             }
 
-            // Save both fields
-            $marketplace = MarketplacePercentage::updateOrCreate(
-                ['marketplace' => 'Ebay3'],
-                [
+            // Save both fields - check for existing record including soft-deleted ones
+            $marketplace = MarketplacePercentage::withTrashed()->where('marketplace', 'Ebay3')->first();
+            
+            if ($marketplace) {
+                // If soft-deleted, restore it first
+                if ($marketplace->trashed()) {
+                    $marketplace->restore();
+                }
+                // Update existing record
+                $marketplace->percentage = $percent;
+                $marketplace->ad_updates = $adUpdates;
+                $marketplace->save();
+            } else {
+                // Create new record
+                $marketplace = MarketplacePercentage::create([
+                    'marketplace' => 'Ebay3',
                     'percentage' => $percent,
                     'ad_updates' => $adUpdates,
-                ]
-            );
+                ]);
+            }
+
+            // Refresh the model to get the latest values
+            $marketplace->refresh();
 
             // Store in cache
             Cache::put('Ebay3', $percent, now()->addDays(30));
+            Cache::put('Ebay3_ad_updates', $adUpdates, now()->addDays(30));
 
             return response()->json([
                 'status' => 200,
                 'message' => ucfirst($type ?? 'percentage') . ' updated successfully',
                 'data' => [
                     'marketplace' => 'Ebay3',
-                    'percentage' => $marketplace->percentage,
-                    'ad_updates' => $marketplace->ad_updates
+                    'percentage' => (float) $marketplace->percentage,
+                    'ad_updates' => (float) ($marketplace->ad_updates ?? 0)
                 ]
-            ]);
+            ], 200);
         } catch (\Exception $e) {
+            Log::error('Error in updateAllEbay3Skus: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
             return response()->json([
                 'status' => 500,
                 'message' => 'Error updating Ebay3 marketplace values',

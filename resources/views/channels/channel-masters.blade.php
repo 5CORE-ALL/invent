@@ -741,13 +741,6 @@
                                 </small><br>
                                 L30 Sales
                             </th>
-                            <th class="text-center align-middle">
-                                <small id="growthPercentageBadge" class="badge bg-dark text-white mb-1"
-                                    style="font-size: 13px;">
-                                    0%
-                                </small><br>
-                                Growth
-                            </th>
                             {{-- <th class="text-center align-middle">
                                 <small id="l60OrdersCountBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
@@ -792,15 +785,17 @@
                             </th>
                             {{-- <th>Red Margin</th> --}}
                             <th>Percentage</th>
-                            <th>NR</th>
-                            <th>type</th>
+                            <th class="text-center align-middle">
+                                <small id="growthPercentageBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0%
+                                </small><br>
+                                Growth
+                            </th>
                             <th>Health Data</th>
-                            <th>Listing Counts</th>
-                            <th>W/Ads</th>
                             {{-- <th>0 Sold SKU Count</th>
                             <th>Sold Sku Count</th>
                             <th>Brand Registry</th> --}}
-                            <th>Update</th>
                             <th>Ac Health</th>
                             <th class="text-white">Action</th>
                         </tr>
@@ -1627,6 +1622,7 @@
                     },
                     {
                         data: 'sheet_link',
+                        visible: false,
                         render: function(data, type, row) {
                             const sheetLink = data || '';
                             return `<div style="display:flex; align-items:center; gap:6px;">${sheetLink ? `<a href="${sheetLink}" target="_blank" class="btn btn-sm btn-success">🔗</a>` : ''}</div>`;
@@ -1641,20 +1637,6 @@
                             return `<span class="metric-value">${n.toLocaleString('en-US')}</span>`;
                         }
                     },
-                    {
-                        data: 'Growth',
-                        render: function (v) {
-                            const n = pctFix(v);
-                            if (!Number.isFinite(n)) return '-';
-                            let bg = '', color = 'black';
-                            if (n < 0)              { bg = '#ff0000'; color = 'white'; }
-                            else if (n < 10)        { bg = '#ffff00'; }
-                            else if (n < 20)        { bg = '#00ffff'; }
-                            else if (n < 50)        { bg = '#00ff00'; }
-                            else                    { bg = '#ff00ff'; color = 'white'; }
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
-                        }
-                    },
                     { data: 'L30 Orders', render: v => `<span class="metric-value">${toNum(v).toLocaleString('en-US')}</span>` },
 
                     // Gprofit% column: numeric sort enabled
@@ -1664,10 +1646,11 @@
                             const n = pctFix(v);
                             if (type === 'sort' || type === 'type') return n; // numeric for sorting
                             let bg = '', color = 'white';
-                            if (n < 15) { bg = '#ff0000'; }
-                            else if (n >= 15 && n < 25) { bg = '#ffff00'; color = 'black'; }
-                            else if (n >= 25 && n < 40) { bg = '#00ff00'; color = 'black'; }
-                            else { bg = '#8000ff'; }
+                            if (n < 10) { bg = '#ff0000'; } // Red: below 10
+                            else if (n >= 10 && n <= 15) { bg = '#ffff00'; color = 'black'; } // Yellow: 10 to 15
+                            else if (n > 15 && n <= 25) { bg = '#007bff'; } // Blue: 15.01 to 25
+                            else if (n > 25 && n <= 40) { bg = '#00ff00'; color = 'black'; } // Green: 25 to 40
+                            else { bg = '#8000ff'; } // Purple: above 40
                             return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
                         }
                     },
@@ -1685,11 +1668,12 @@
                         data: 'N PFT',
                         render: function (v) {
                             const n = pctFix(v);
-                            let bg = '', color = 'black';
-                            if (n < 0) { bg = '#ff0000'; color = 'white'; }
-                            else if (n >= 0 && n < 10) { bg = '#ffff00'; }
-                            else if (n >= 10 && n < 20) { bg = '#00ff00'; }
-                            else { bg = '#8000ff'; color = 'white'; }
+                            let bg = '', color = 'white';
+                            if (n < 10) { bg = '#ff0000'; } // Red: below 10
+                            else if (n >= 10 && n <= 15) { bg = '#ffff00'; color = 'black'; } // Yellow: 10 to 15
+                            else if (n > 15 && n <= 25) { bg = '#007bff'; } // Blue: 15.01 to 25
+                            else if (n > 25 && n <= 40) { bg = '#00ff00'; color = 'black'; } // Green: 25 to 40
+                            else { bg = '#8000ff'; } // Purple: above 40
                             return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
                         }
                     },
@@ -1702,37 +1686,23 @@
                     },
                     { data: 'Channel Percentage', render: v => `<span class="metric-value">${toNum(v).toLocaleString('en-US')}</span>` },
                     {
-                        data: 'NR',
-                        render: function (v, t, row) {
-                            const checked = toNum(v) === 1 ? 'checked' : '';
-                            return `<input type="checkbox" class="checkbox-nr" data-channel="${row['Channel']}" ${checked}>`;
-                        }
-                    },
-                    {
-                        data: 'type',
+                        data: 'Growth',
                         render: function (v) {
-                            return `<span style="display:inline-block; min-width:100px;">${v ? v : '-'}</span>`;
+                            const n = pctFix(v);
+                            if (!Number.isFinite(n)) return '-';
+                            let bg = '', color = 'black';
+                            if (n < 0)              { bg = '#ff0000'; color = 'white'; }
+                            else if (n < 10)        { bg = '#ffff00'; }
+                            else if (n < 20)        { bg = '#00ffff'; }
+                            else if (n < 50)        { bg = '#00ff00'; }
+                            else                    { bg = '#ff00ff'; color = 'white'; }
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
                         }
                     },
                     {
                         data: null,
                         render: function (v, t, row) {
                             return `<i class="fas fa-eye view-health-data" style="color: #007bff; cursor: pointer; font-size: 16px;" title="View Health Data" data-channel="${row['Channel']}"></i>`;
-                        }
-                    },
-                    { data: 'Listing Counts', render: v => `<span class="metric-value">${toNum(v).toLocaleString('en-US')}</span>` },
-                    {
-                        data: 'W/Ads',
-                        render: function (v, t, row) {
-                            const checked = toNum(v) === 1 ? 'checked' : '';
-                            return `<input type="checkbox" class="checkbox-wads" data-channel="${row['Channel']}" ${checked}>`;
-                        }
-                    },
-                    {
-                        data: 'Update',
-                        render: function (v, t, row) {
-                            const checked = toNum(v) === 1 ? 'checked' : '';
-                            return `<input type="checkbox" class="checkbox-update" data-channel="${row['Channel']}" ${checked}>`;
                         }
                     },
                     {

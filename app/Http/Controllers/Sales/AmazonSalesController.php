@@ -185,9 +185,9 @@ class AmazonSalesController extends Controller
                 // COGS = LP * quantity (same as eBay)
                 $cogs = $lp * $quantity;
 
-                // PFT Each = (price * 0.75) - lp - ship_cost (Amazon uses 75% margin)
+                // PFT Each = (price * 0.80) - lp - ship_cost (Amazon uses 80% margin)
                 $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-                $pftEach = ($unitPrice * 0.75) - $lp - $shipCost;
+                $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
 
                 // PFT Each % = (pft_each / price) * 100
                 $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;

@@ -8,7 +8,7 @@ use App\Models\EbayMetric;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
-use AWS\CRT\Log;
+use Illuminate\Support\Facades\Log;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -570,8 +570,9 @@ class EbayOverUtilizedBgtController extends Controller
             });
             $matchedCampaignL30 = $matchedCampaignsL30->first();
 
-            // Only show RUNNING campaigns
-            if (!$matchedCampaignL7 || $matchedCampaignL7->campaignStatus !== 'RUNNING') {
+            // Only show RUNNING campaigns - use L7 if available, otherwise L30
+            $campaignForDisplay = $matchedCampaignL7 ?? $matchedCampaignL30;
+            if (!$campaignForDisplay || $campaignForDisplay->campaignStatus !== 'RUNNING') {
                 continue;
             }
 
@@ -580,12 +581,18 @@ class EbayOverUtilizedBgtController extends Controller
             $row['sku'] = $campaignSku;
             $row['INV'] = 0;
             $row['L30'] = 0;
-            $row['price'] = 0;
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? '';
-            $row['campaignName'] = $matchedCampaignL7->campaign_name ?? '';
-            $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? '';
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? '';
+            
+            // Try to get price from EbayMetric using campaign name as SKU
+            $ebayMetric = EbayMetric::where('sku', $campaignSku)->first();
+            $row['price'] = $ebayMetric->ebay_price ?? 0;
+            
+            $row['campaign_id'] = $campaignForDisplay->campaign_id ?? '';
+            $row['campaignName'] = $campaignForDisplay->campaign_name ?? '';
+            $row['campaignStatus'] = $campaignForDisplay->campaignStatus ?? '';
+            $row['campaignBudgetAmount'] = $campaignForDisplay->campaignBudgetAmount ?? '';
 
+            // Use L30 data if available, otherwise use L7 data
+            $matchedCampaignL30 = $matchedCampaignL30 ?? $matchedCampaignL7;
             $adFees = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
             $sales = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0);
 
@@ -598,10 +605,14 @@ class EbayOverUtilizedBgtController extends Controller
                 $row['acos'] = $acos;
             }
 
-            $row['l7_spend'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
-            $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
-            $row['l1_spend'] = (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0);
-            $row['l1_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0);
+            // Add L30 spend and sales for totals calculation
+            $row['spend_l30'] = $adFees;
+            $row['ad_sales_l30'] = $sales;
+
+            $row['l7_spend'] = $matchedCampaignL7 ? (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0) : 0;
+            $row['l7_cpc'] = $matchedCampaignL7 ? (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0) : 0;
+            $row['l1_spend'] = $matchedCampaignL1 ? (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0) : 0;
+            $row['l1_cpc'] = $matchedCampaignL1 ? (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0) : 0;
             $row['NR'] = '';
 
             // Only show items with price >= 30 and RUNNING status
@@ -610,9 +621,32 @@ class EbayOverUtilizedBgtController extends Controller
             }
         }
 
+        // Calculate totals from ALL RUNNING campaigns (L30 data)
+        $allL30Campaigns = EbayPriorityReport::where('report_range', 'L30')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+
+        $totalSpend = 0;
+        $totalSales = 0;
+        
+        foreach ($allL30Campaigns as $campaign) {
+            $adFees = (float) str_replace('USD ', '', $campaign->cpc_ad_fees_payout_currency ?? 0);
+            $sales = (float) str_replace('USD ', '', $campaign->cpc_sale_amount_payout_currency ?? 0);
+            $totalSpend += $adFees;
+            $totalSales += $sales;
+        }
+
+        $totalACOS = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
+
         return response()->json([
             'message' => 'Data fetched successfully',
             'data'    => $result,
+            'total_acos' => round($totalACOS, 2),
+            'total_l30_spend' => round($totalSpend, 2),
+            'total_l30_sales' => round($totalSales, 2),
             'status'  => 200,
         ]);
     }
