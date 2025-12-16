@@ -260,4 +260,71 @@ class EbaySalesController extends Controller
             return response()->json(['error' => 'Failed to save preferences'], 500);
         }
     }
+
+    public function getSkuSalesData(Request $request)
+    {
+        try {
+            $sku = $request->input('sku');
+            
+            if (!$sku) {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+
+            // Get orders for last 30 days for this SKU
+            $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+            
+            $orders = EbayOrder::with(['items' => function($query) use ($sku) {
+                $query->where('sku', $sku);
+            }])
+                ->where('period', 'l30')
+                ->whereDate('order_date', '>=', $thirtyDaysAgo->format('Y-m-d'))
+                ->whereHas('items', function($query) use ($sku) {
+                    $query->where('sku', $sku);
+                })
+                ->orderBy('order_date', 'desc')
+                ->get();
+
+            // Group by date and calculate daily quantities
+            $dailyData = [];
+            foreach ($orders as $order) {
+                foreach ($order->items as $item) {
+                    if ($item->sku === $sku) {
+                        $date = \Carbon\Carbon::parse($order->order_date)->format('Y-m-d');
+                        if (!isset($dailyData[$date])) {
+                            $dailyData[$date] = [
+                                'date' => $date,
+                                'quantity' => 0,
+                                'orders' => 0
+                            ];
+                        }
+                        $dailyData[$date]['quantity'] += (int) $item->quantity;
+                        $dailyData[$date]['orders'] += 1;
+                    }
+                }
+            }
+
+            // Sort by date
+            ksort($dailyData);
+            $dailyData = array_values($dailyData);
+
+            // Calculate total
+            $totalQuantity = array_sum(array_column($dailyData, 'quantity'));
+            $totalOrders = array_sum(array_column($dailyData, 'orders'));
+
+            return response()->json([
+                'success' => true,
+                'sku' => $sku,
+                'total_quantity' => $totalQuantity,
+                'total_orders' => $totalOrders,
+                'daily_data' => $dailyData,
+                'date_range' => [
+                    'from' => $thirtyDaysAgo->format('Y-m-d'),
+                    'to' => \Carbon\Carbon::now()->format('Y-m-d')
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error getting SKU sales data: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
 }

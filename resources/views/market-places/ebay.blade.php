@@ -1109,6 +1109,66 @@
         </div>
     </div>
 
+    <!-- SKU Sales Data Modal -->
+    <div class="modal fade" id="skuSalesModal" tabindex="-1" aria-labelledby="skuSalesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="skuSalesModalLabel">Last 30 Days Sales - <span id="modalSkuName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="skuSalesLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading sales data...</p>
+                    </div>
+                    <div id="skuSalesContent" style="display: none;">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Total Quantity</h6>
+                                        <h3 class="mb-0" id="totalQuantity">0</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Total Orders</h6>
+                                        <h3 class="mb-0" id="totalOrders">0</h3>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                            <table class="table table-bordered table-sm">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Quantity</th>
+                                        <th>Orders</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="skuSalesTableBody">
+                                    <!-- Data will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="skuSalesError" style="display: none;" class="alert alert-danger">
+                        <p id="skuSalesErrorMessage"></p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Hide SKU Modal -->
     <!-- Hide SKU Modal -->
     <div id="customHideSkuModal" class="custom-modal" style="display:none;">
@@ -2812,12 +2872,20 @@
                         $skuCell.html(`
                             <div class="d-flex align-items-center justify-content-between">
                                 <strong>${skuValue}</strong>
-                                <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
-                                        data-sku="${skuValue}" 
-                                        title="Copy SKU"
-                                        style="padding: 2px 6px; margin-left: 5px;">
-                                    <i class="fas fa-copy" style="font-size: 10px;"></i>
-                                </button>
+                                <div class="d-flex align-items-center gap-1">
+                                    <button class="btn btn-sm btn-outline-info sku-sales-btn" 
+                                            data-sku="${skuValue}" 
+                                            title="View Last 30 Days Sales"
+                                            style="padding: 2px 6px;">
+                                        <i class="fas fa-info-circle" style="font-size: 10px;"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                            data-sku="${skuValue}" 
+                                            title="Copy SKU"
+                                            style="padding: 2px 6px;">
+                                        <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                    </button>
+                                </div>
                             </div>
                         `);
                     } else {
@@ -2831,24 +2899,40 @@
                                             <div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>
                                         </div>
                                     </div>
-                                    <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
-                                            data-sku="${skuValue}" 
-                                            title="Copy SKU"
-                                            style="padding: 2px 6px; margin-left: 5px;">
-                                        <i class="fas fa-copy" style="font-size: 10px;"></i>
-                                    </button>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <button class="btn btn-sm btn-outline-info sku-sales-btn" 
+                                                data-sku="${skuValue}" 
+                                                title="View Last 30 Days Sales"
+                                                style="padding: 2px 6px;">
+                                            <i class="fas fa-info-circle" style="font-size: 10px;"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                                data-sku="${skuValue}" 
+                                                title="Copy SKU"
+                                                style="padding: 2px 6px;">
+                                            <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             `);
                         } else {
                             $skuCell.html(`
                                 <div class="d-flex align-items-center justify-content-between">
                                     <span>${skuValue}</span>
-                                    <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
-                                            data-sku="${skuValue}" 
-                                            title="Copy SKU"
-                                            style="padding: 2px 6px; margin-left: 5px;">
-                                        <i class="fas fa-copy" style="font-size: 10px;"></i>
-                                    </button>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <button class="btn btn-sm btn-outline-info sku-sales-btn" 
+                                                data-sku="${skuValue}" 
+                                                title="View Last 30 Days Sales"
+                                                style="padding: 2px 6px;">
+                                            <i class="fas fa-info-circle" style="font-size: 10px;"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary copy-sku-btn" 
+                                                data-sku="${skuValue}" 
+                                                title="Copy SKU"
+                                                style="padding: 2px 6px;">
+                                            <i class="fas fa-copy" style="font-size: 10px;"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             `);
                         }
@@ -6494,6 +6578,71 @@
                 }, 3000);
             }
             // SKU Copy functionality
+            // SKU Sales Data Button Handler
+            $(document).on('click', '.sku-sales-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const sku = $(this).data('sku');
+                const $modal = $('#skuSalesModal');
+                const $modalTitle = $('#modalSkuName');
+                
+                // Set SKU in modal title
+                $modalTitle.text(sku);
+                
+                // Show modal
+                $modal.modal('show');
+                
+                // Reset content
+                $('#skuSalesLoading').show();
+                $('#skuSalesContent').hide();
+                $('#skuSalesError').hide();
+                $('#skuSalesTableBody').empty();
+                
+                // Fetch data
+                $.ajax({
+                    url: '/ebay/sku-sales-data',
+                    type: 'GET',
+                    data: { sku: sku },
+                    success: function(response) {
+                        $('#skuSalesLoading').hide();
+                        
+                        if (response.success && response.daily_data) {
+                            // Update totals
+                            $('#totalQuantity').text(response.total_quantity || 0);
+                            $('#totalOrders').text(response.total_orders || 0);
+                            
+                            // Populate table
+                            const $tbody = $('#skuSalesTableBody');
+                            $tbody.empty();
+                            
+                            if (response.daily_data.length > 0) {
+                                response.daily_data.forEach(function(day) {
+                                    const $row = $('<tr>');
+                                    $row.append($('<td>').text(day.date));
+                                    $row.append($('<td>').text(day.quantity || 0));
+                                    $row.append($('<td>').text(day.orders || 0));
+                                    $tbody.append($row);
+                                });
+                            } else {
+                                $tbody.append($('<tr>').append($('<td colspan="3" class="text-center text-muted">').text('No sales data found for the last 30 days')));
+                            }
+                            
+                            $('#skuSalesContent').show();
+                        } else {
+                            $('#skuSalesError').show();
+                            $('#skuSalesErrorMessage').text('No data available for this SKU');
+                        }
+                    },
+                    error: function(xhr) {
+                        $('#skuSalesLoading').hide();
+                        $('#skuSalesError').show();
+                        const errorMsg = xhr.responseJSON?.error || 'Failed to fetch sales data';
+                        $('#skuSalesErrorMessage').text(errorMsg);
+                    }
+                });
+            });
+
             $(document).on('click', '.copy-sku-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();

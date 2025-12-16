@@ -597,7 +597,7 @@ class EbayController extends Controller
                 $row['SGPFT'] = $sgpft;
                 
                 // Calculate SPFT = SGPFT - AD%
-                $row['SPFT'] = round($sgpft - $row["AD%"], 2);
+                $row['SPFT'] = $sgpft;
                 
                 // Calculate SROI: ((SPRICE * percentage - lp - ship) / lp) * 100
                 $row['SROI'] = round(
