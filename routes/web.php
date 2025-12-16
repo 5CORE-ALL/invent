@@ -789,6 +789,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/mercari-column-visibility', [MercariController::class, 'saveMercariColumnVisibility'])->name('mercari.save.column.visibility');
     Route::get('/mercari-column-visibility', [MercariController::class, 'getMercariColumnVisibility'])->name('mercari.get.column.visibility');
     
+    // Shopify B2C Sales Routes
+    Route::get('/shopify-b2c/daily-sales-data', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'getData'])->name('shopify-b2c.daily.sales.data');
+    Route::get('/shopify-b2c/daily-sales', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'index'])->name('shopify-b2c.daily.sales');
+    Route::get('/shopify-b2c-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'getColumnVisibility']);
+    Route::post('/shopify-b2c-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'saveColumnVisibility']);
+    
+    // Shopify B2B Sales Routes
+    Route::get('/shopify-b2b/daily-sales-data', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getData'])->name('shopify-b2b.daily.sales.data');
+    Route::get('/shopify-b2b/daily-sales', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'index'])->name('shopify-b2b.daily.sales');
+    Route::get('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getColumnVisibility']);
+    Route::post('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'saveColumnVisibility']);
+    
     Route::get('/amazonfba/view-data', [OverallAmazonFbaController::class, 'getViewAmazonFbaData'])->name('amazonfba.viewData');
     Route::get('/fbainv/view-data', [AmazonFbaInvController::class, 'getViewAmazonfbaInvData'])->name('fbainv.viewData');
     Route::get('/product-master-data', [ProductMasterController::class, 'product_master_data']);

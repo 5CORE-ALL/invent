@@ -162,6 +162,8 @@ class ChannelMasterController extends Controller
             'fbshop'    => 'getFbShopChannelData',
             'business5core'    => 'getBusiness5CoreChannelData',
             'topdawg'    => 'getTopDawgChannelData',
+            'shopifyb2c' => 'getShopifyB2CChannelData',
+            'shopifyb2b' => 'getShopifyB2BChannelData',
             // 'walmart' => 'getWalmartChannelData',
             // 'shopify' => 'getShopifyChannelData',
         ];
@@ -255,6 +257,8 @@ class ChannelMasterController extends Controller
         'fbshop'    => 'getFbShopChannelData',
         'business5core'    => 'getBusiness5CoreChannelData',
         'topdawg'    => 'getTopDawgChannelData',
+        'shopifyb2c' => 'getShopifyB2CChannelData',
+        'shopifyb2b' => 'getShopifyB2BChannelData',
     ];
 
     foreach ($channels as $channelRow) {
@@ -2812,6 +2816,112 @@ class ChannelMasterController extends Controller
         return response()->json([
             'status' => 200,
             'message' => 'wayfair channel data fetched successfully',
+            'data' => $result,
+        ]);
+    }
+
+    public function getShopifyB2CChannelData(Request $request)
+    {
+        $result = [];
+
+        // Get metrics from marketplace_daily_metrics table (pre-calculated)
+        $metrics = MarketplaceDailyMetric::where('channel', 'Shopify B2C')->latest('date')->first();
+        
+        // L60 will be 0 until we have historical data with proper dates
+        $l60Orders = 0;
+        $l60Sales = 0;
+
+        $l30Sales = $metrics->total_sales ?? 0;
+        $l30Orders = $metrics->total_orders ?? 0;
+        $totalProfit = $metrics->total_pft ?? 0;
+        $totalCogs = $metrics->total_cogs ?? 0;
+        $gProfitPct = $metrics->pft_percentage ?? 0;
+        $gRoi = $metrics->roi_percentage ?? 0;
+        
+        // Calculate growth
+        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        
+        // L60 profit percentage
+        $gprofitL60 = 0;
+        $gRoiL60 = 0;
+
+        // Channel data
+        $channelData = ChannelMaster::where('channel', 'Shopify B2C')->first();
+
+        $result[] = [
+            'Channel '   => 'Shopify B2C',
+            'L-60 Sales' => intval($l60Sales),
+            'L30 Sales'  => intval($l30Sales),
+            'Growth'     => round($growth, 2) . '%',
+            'L60 Orders' => $l60Orders,
+            'L30 Orders' => $l30Orders,
+            'Gprofit%'   => round($gProfitPct, 2) . '%',
+            'gprofitL60' => round($gprofitL60, 2) . '%',
+            'G Roi'      => round($gRoi, 2),
+            'G RoiL60'   => round($gRoiL60, 2),
+            'type'       => $channelData->type ?? '',
+            'W/Ads'      => $channelData->w_ads ?? 0,
+            'NR'         => $channelData->nr ?? 0,
+            'Update'     => $channelData->update ?? 0,
+            'cogs'       => round($totalCogs, 2),
+        ];
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Shopify B2C channel data fetched successfully',
+            'data' => $result,
+        ]);
+    }
+
+    public function getShopifyB2BChannelData(Request $request)
+    {
+        $result = [];
+
+        // Get metrics from marketplace_daily_metrics table (pre-calculated)
+        $metrics = MarketplaceDailyMetric::where('channel', 'Shopify B2B')->latest('date')->first();
+        
+        // L60 will be 0 until we have historical data with proper dates
+        $l60Orders = 0;
+        $l60Sales = 0;
+
+        $l30Sales = $metrics->total_sales ?? 0;
+        $l30Orders = $metrics->total_orders ?? 0;
+        $totalProfit = $metrics->total_pft ?? 0;
+        $totalCogs = $metrics->total_cogs ?? 0;
+        $gProfitPct = $metrics->pft_percentage ?? 0;
+        $gRoi = $metrics->roi_percentage ?? 0;
+        
+        // Calculate growth
+        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        
+        // L60 profit percentage
+        $gprofitL60 = 0;
+        $gRoiL60 = 0;
+
+        // Channel data
+        $channelData = ChannelMaster::where('channel', 'Shopify B2B')->first();
+
+        $result[] = [
+            'Channel '   => 'Shopify B2B',
+            'L-60 Sales' => intval($l60Sales),
+            'L30 Sales'  => intval($l30Sales),
+            'Growth'     => round($growth, 2) . '%',
+            'L60 Orders' => $l60Orders,
+            'L30 Orders' => $l30Orders,
+            'Gprofit%'   => round($gProfitPct, 2) . '%',
+            'gprofitL60' => round($gprofitL60, 2) . '%',
+            'G Roi'      => round($gRoi, 2),
+            'G RoiL60'   => round($gRoiL60, 2),
+            'type'       => $channelData->type ?? '',
+            'W/Ads'      => $channelData->w_ads ?? 0,
+            'NR'         => $channelData->nr ?? 0,
+            'Update'     => $channelData->update ?? 0,
+            'cogs'       => round($totalCogs, 2),
+        ];
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Shopify B2B channel data fetched successfully',
             'data' => $result,
         ]);
     }
