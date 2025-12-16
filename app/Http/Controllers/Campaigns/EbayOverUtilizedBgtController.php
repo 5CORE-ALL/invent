@@ -598,6 +598,10 @@ class EbayOverUtilizedBgtController extends Controller
                 $row['acos'] = $acos;
             }
 
+            // Add L30 spend and sales for totals calculation
+            $row['spend_l30'] = $adFees;
+            $row['ad_sales_l30'] = $sales;
+
             $row['l7_spend'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
             $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
             $row['l1_spend'] = (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0);
@@ -610,9 +614,32 @@ class EbayOverUtilizedBgtController extends Controller
             }
         }
 
+        // Calculate totals from ALL RUNNING campaigns (L30 data)
+        $allL30Campaigns = EbayPriorityReport::where('report_range', 'L30')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+
+        $totalSpend = 0;
+        $totalSales = 0;
+        
+        foreach ($allL30Campaigns as $campaign) {
+            $adFees = (float) str_replace('USD ', '', $campaign->cpc_ad_fees_payout_currency ?? 0);
+            $sales = (float) str_replace('USD ', '', $campaign->cpc_sale_amount_payout_currency ?? 0);
+            $totalSpend += $adFees;
+            $totalSales += $sales;
+        }
+
+        $totalACOS = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
+
         return response()->json([
             'message' => 'Data fetched successfully',
             'data'    => $result,
+            'total_acos' => round($totalACOS, 2),
+            'total_l30_spend' => round($totalSpend, 2),
+            'total_l30_sales' => round($totalSales, 2),
             'status'  => 200,
         ]);
     }

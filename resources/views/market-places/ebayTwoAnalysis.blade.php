@@ -1839,8 +1839,8 @@
 
                                     <th data-field="ship" class="ship_col" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                Ebay 2 Ship
+                                            <div class="d-flex align-items-center sortable-header">
+                                                Ebay 2 Ship <span class="sort-arrow">↓</span>
                                             </div>
                                         </div>
                                     </th>
@@ -5008,37 +5008,93 @@
 
                     const th = $(this).closest('th');
                     const thField = th.data('field');
-                    const dataField = thField === 'parent' ? 'Parent' : thField;
-
+                    let dataField = thField === 'parent' ? 'Parent' : thField;
+                    
+                    // Map field names to actual data property names
+                    const fieldMapping = {
+                        'ship': 'SHIP',
+                        'inv': 'INV',
+                        'ov_l30': 'L30',
+                        'ov_dil': 'ov_dil', // Data is stored as ov_dil, not 'OV DIL'
+                        'el_30': 'eBay L30',
+                        'e_dil': 'E Dil%',
+                        'price': 'eBay Price',
+                        'pft': 'PFT %',
+                        'roi': 'Roi',
+                        'tacos': 'Tacos30',
+                        'cvr': 'SCVR',
+                        'views': 'views',
+                        'sprice': 'SPRICE',
+                        'sprofit': 'SPFT',
+                        'sroi': 'SROI',
+                        'salesTotal': 'Sales L30',
+                        'grpft': 'GRPFT',
+                        'tprft': 'TPRFT',
+                        'ad-spend': 'Ad Spend',
+                        'cps': 'CPS'
+                    };
+                    
+                    // Use mapped field name if available
+                    const originalField = dataField;
+                    if (fieldMapping[dataField]) {
+                        dataField = fieldMapping[dataField];
+                    }
 
                     // Toggle direction if clicking same column, otherwise reset to ascending
-                    if (currentSort.field === dataField) {
+                    if (currentSort.field === thField) {
                         currentSort.direction *= -1;
                     } else {
-                        currentSort.field = dataField;
-                        currentSort.direction = 1;
+                        currentSort.field = thField;
+                        currentSort.direction = 1; // Start with ascending (lowest to highest)
                     }
 
                     // Update UI arrows
                     $('.sort-arrow').html('↓');
                     $(this).find('.sort-arrow').html(currentSort.direction === 1 ? '↑' : '↓');
 
-                    // Sort with fresh data
-                    const freshData = [...tableData];
-                    freshData.sort((a, b) => {
-                        const valA = a[dataField] || '';
-                        const valB = b[dataField] || '';
-
-                        // Numeric comparison for numeric fields
-                        if (dataField === 'sl_no' || dataField === 'INV' || dataField === 'L30') {
-                            return (parseFloat(valA) - parseFloat(valB)) * currentSort.direction;
+                    // Sort with filtered data to maintain current filters
+                    const dataToSort = [...filteredData];
+                    dataToSort.sort((a, b) => {
+                        // Handle ship field specifically
+                        let valA, valB;
+                        if (dataField === 'SHIP' || originalField === 'ship') {
+                            valA = parseFloat(a.SHIP || a.Ship_productmaster || 0) || 0;
+                            valB = parseFloat(b.SHIP || b.Ship_productmaster || 0) || 0;
+                        } else if (dataField === 'ov_dil' || originalField === 'ov_dil') {
+                            // OV DIL is stored as ov_dil in the data object
+                            valA = parseFloat(a.ov_dil || 0) || 0;
+                            valB = parseFloat(b.ov_dil || 0) || 0;
+                        } else {
+                            valA = a[dataField] || 0;
+                            valB = b[dataField] || 0;
                         }
 
-                        // String comparison for other fields
+                        // List of all numeric fields (both mapped and original names)
+                        const numericFields = [
+                            'sl_no', 'INV', 'L30', 'OV DIL', 'eBay L30', 'E Dil%', 
+                            'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'views', 
+                            'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'GRPFT', 'TPRFT',
+                            'ship', 'SHIP', 'Profit', 'Ad Spend', 'CPS',
+                            'inv', 'ov_l30', 'ov_dil', 'el_30', 'e_dil', 'price', 
+                            'pft', 'roi', 'tacos', 'cvr', 'sprice', 'sprofit', 
+                            'sroi', 'salesTotal', 'grpft', 'tprft', 'ad-spend', 'cps'
+                        ];
+                        
+                        // Check if field is numeric
+                        const isNumeric = numericFields.includes(dataField) || numericFields.includes(originalField);
+                        
+                        if (isNumeric) {
+                            // Numeric comparison: direction 1 = ascending (lowest to highest), -1 = descending (highest to lowest)
+                            const numA = parseFloat(valA) || 0;
+                            const numB = parseFloat(valB) || 0;
+                            return (numA - numB) * currentSort.direction;
+                        }
+
+                        // String comparison for non-numeric fields
                         return String(valA).localeCompare(String(valB)) * currentSort.direction;
                     });
 
-                    filteredData = freshData;
+                    filteredData = dataToSort;
                     currentPage = 1;
                     renderTable();
                 });
@@ -5200,14 +5256,25 @@
                     const $this = $(this);
                     const column = $this.data('column');
                     const color = $this.data('color');
-                    const text = $this.find('span').text().trim();
+                    
+                    // Get text after the status circle (clone, remove status circle, get text)
+                    const $clone = $this.clone();
+                    $clone.find('.status-circle').remove();
+                    const text = $clone.text().trim();
+
+                    // Get the color class from the status circle
+                    const $statusCircle = $this.find('.status-circle');
+                    const colorClass = $statusCircle.attr('class').replace('status-circle', '').trim() || color;
+
+                    // For ship column, use "Ebay 2 Ship" as the label
+                    const columnLabel = column === 'ship' ? 'Ebay 2 Ship' : column;
 
                     $this.closest('.dropdown')
                         .find('.dropdown-toggle')
-                        .html(`<span class="status-circle ${color}"></span> ${column} (${text})`);
+                        .html(`<span class="status-circle ${colorClass}"></span> ${columnLabel} (${text})`);
 
                     state.filters[column] = color;
-                    $this.closest('.dropdown-menu').removeClass('show');
+                    $this.closest('.manual-dropdown-container').removeClass('show');
                     applyColumnFilters();
                 });
 
@@ -5219,7 +5286,7 @@
 
                     $('#entryTypeFilter').html(`Entry Type: ${text}`);
                     state.filters.entryType = value;
-                    $('.dropdown-menu').removeClass('show');
+                    $('.manual-dropdown-container').removeClass('show');
                     applyColumnFilters();
                 });
 
@@ -5239,7 +5306,7 @@
                         .html(`<span class="status-circle ${colorClass}"></span> NRA (${text})`);
 
                     state.filters.NRA = value;
-                    $this.closest('.dropdown-menu').removeClass('show');
+                    $this.closest('.manual-dropdown-container').removeClass('show');
                     applyColumnFilters();
                 });
 
@@ -5259,7 +5326,7 @@
                         .html(`<span class="status-circle ${colorClass}"></span> NRL/REQ (${text})`);
 
                     state.filters.NRL_REQ = value;
-                    $this.closest('.dropdown-menu').removeClass('show');
+                    $this.closest('.manual-dropdown-container').removeClass('show');
                     applyColumnFilters();
                 });
             }
@@ -5378,15 +5445,27 @@
 
             // Get color for column based on value
             function getColorForColumn(column, rowData) {
-                if (!rowData || rowData[column] === undefined || rowData[column] === null || rowData[column] ===
-                    '') {
+                if (!rowData) {
                     return '';
+                }
+
+                // For ship, use the raw value - check this first before undefined check
+                if (column === 'ship' || column === 'SHIP') {
+                    const value = parseFloat(rowData[column] || rowData.SHIP || rowData.Ship_productmaster || 0) || 0;
+                    if (value <= 5) return 'low';
+                    if (value > 5 && value <= 10) return 'medium';
+                    return 'high';
                 }
 
                 // For views, use the raw value (not percentage)
                 if (column === 'views') {
                     const value = parseInt(rowData[column]) || 0;
                     return value >= 30 ? 'green' : 'red';
+                }
+
+                // General check for other columns
+                if (rowData[column] === undefined || rowData[column] === null || rowData[column] === '') {
+                    return '';
                 }
 
                 // For SCVR, always use the calculated value
@@ -6030,19 +6109,20 @@
             // Initialize manual dropdowns
             function initManualDropdowns() {
                 // Toggle dropdown when any filter button is clicked
-                $(document).on('click', '.dropdown-toggle', function(e) {
+                $(document).on('click', '.manual-dropdown-container .dropdown-toggle', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
-                    $(this).next('.dropdown-menu').toggleClass('show');
+                    const $container = $(this).closest('.manual-dropdown-container');
+                    $container.toggleClass('show');
 
                     // Close other open dropdowns
-                    $('.dropdown-menu').not($(this).next('.dropdown-menu')).removeClass('show');
+                    $('.manual-dropdown-container').not($container).removeClass('show');
                 });
 
                 // Close dropdown when clicking outside
                 $(document).on('click', function(e) {
-                    if (!$(e.target).closest('.dropdown').length) {
-                        $('.dropdown-menu').removeClass('show');
+                    if (!$(e.target).closest('.manual-dropdown-container').length) {
+                        $('.manual-dropdown-container').removeClass('show');
                     }
                 });
 
@@ -6059,7 +6139,7 @@
                     );
 
                     // Close dropdown
-                    $dropdown.find('.dropdown-menu').removeClass('show');
+                    $dropdown.closest('.manual-dropdown-container').removeClass('show');
 
                     // Apply filter logic
                     const column = $(this).data('column');

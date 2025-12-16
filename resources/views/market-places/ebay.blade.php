@@ -5106,37 +5106,89 @@
 
                     const th = $(this).closest('th');
                     const thField = th.data('field');
-                    const dataField = thField === 'parent' ? 'Parent' : thField;
-
+                    let dataField = thField === 'parent' ? 'Parent' : thField;
+                    
+                    // Map field names to actual data property names
+                    const fieldMapping = {
+                        'inv': 'INV',
+                        'ov_l30': 'L30',
+                        'ov_dil': 'ov_dil',
+                        'el_30': 'eBay L30',
+                        'e_dil': 'E Dil%',
+                        'price': 'eBay Price',
+                        'pft': 'PFT %',
+                        'roi': 'Roi',
+                        'tacos': 'Tacos30',
+                        'cvr': 'SCVR',
+                        'views': 'views',
+                        'sprice': 'SPRICE',
+                        'sprofit': 'SPFT',
+                        'sroi': 'SROI',
+                        'salesTotal': 'Sales L30',
+                        'grpft': 'Profit',
+                        'tprft': 'Profit',
+                        'ad-spend': 'Ad Spend',
+                        'cps': 'CPS'
+                    };
+                    
+                    // Use mapped field name if available
+                    const originalField = dataField;
+                    if (fieldMapping[dataField]) {
+                        dataField = fieldMapping[dataField];
+                    }
 
                     // Toggle direction if clicking same column, otherwise reset to ascending
-                    if (currentSort.field === dataField) {
+                    if (currentSort.field === thField) {
                         currentSort.direction *= -1;
                     } else {
-                        currentSort.field = dataField;
-                        currentSort.direction = 1;
+                        currentSort.field = thField;
+                        currentSort.direction = 1; // Start with ascending (lowest to highest)
                     }
 
                     // Update UI arrows
                     $('.sort-arrow').html('↓');
                     $(this).find('.sort-arrow').html(currentSort.direction === 1 ? '↑' : '↓');
 
-                    // Sort with fresh data
-                    const freshData = [...tableData];
-                    freshData.sort((a, b) => {
-                        const valA = a[dataField] || '';
-                        const valB = b[dataField] || '';
+                    // Pre-calculate if field is numeric (outside sort for performance)
+                    const numericFieldsSet = new Set([
+                        'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%', 
+                        'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'views', 
+                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'Ad Spend', 'CPS',
+                        'inv', 'ov_l30', 'el_30', 'e_dil', 'price', 
+                        'pft', 'roi', 'tacos', 'cvr', 'sprice', 'sprofit', 
+                        'sroi', 'salesTotal', 'grpft', 'tprft', 'ad-spend', 'cps'
+                    ]);
+                    const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
+                    
+                    // Determine value extraction function based on field type
+                    let getValue;
+                    if (dataField === 'ov_dil' || originalField === 'ov_dil') {
+                        getValue = (item) => parseFloat(item.ov_dil || 0) || 0;
+                    } else if (dataField === 'Sales L30' || originalField === 'salesTotal') {
+                        // Total Sales is calculated as (eBay L30) * (eBay Price)
+                        getValue = (item) => (parseFloat(item['eBay L30']) || 0) * (parseFloat(item['eBay Price']) || 0);
+                    } else if (isNumeric) {
+                        getValue = (item) => parseFloat(item[dataField] || 0) || 0;
+                    } else {
+                        getValue = (item) => item[dataField] || '';
+                    }
 
-                        // Numeric comparison for numeric fields
-                        if (dataField === 'sl_no' || dataField === 'INV' || dataField === 'L30') {
-                            return (parseFloat(valA) - parseFloat(valB)) * currentSort.direction;
+                    // Sort with filtered data to maintain current filters
+                    const dataToSort = [...filteredData];
+                    dataToSort.sort((a, b) => {
+                        const valA = getValue(a);
+                        const valB = getValue(b);
+                        
+                        if (isNumeric) {
+                            // Numeric comparison: direction 1 = ascending (lowest to highest), -1 = descending (highest to lowest)
+                            return (valA - valB) * currentSort.direction;
                         }
 
-                        // String comparison for other fields
+                        // String comparison for non-numeric fields
                         return String(valA).localeCompare(String(valB)) * currentSort.direction;
                     });
 
-                    filteredData = freshData;
+                    filteredData = dataToSort;
                     currentPage = 1;
                     renderTable();
                 });
