@@ -1340,7 +1340,7 @@
                                             <span class="status-circle default"></span> All</a></li>
                                     <li><a class="dropdown-item nrl-req-filter" href="#" data-value="REQ">
                                             <span class="status-circle green"></span> REQ</a></li>
-                                    <li><a class="dropdown-item nrl-req-filter" href="#" data-value="NR">
+                                    <li><a class="dropdown-item nrl-req-filter" href="#" data-value="NRL">
                                             <span class="status-circle red"></span> NRL</a></li>
                                 </ul>
                             </div>
@@ -2699,7 +2699,7 @@
                         if (item.NR === 'NRA') {
                             nraCount++;
                         }
-                        if (item.nr_req === 'NR') {
+                        if (item.nr_req === 'NRL') {
                             nrlCount++;
                         }
                     }
@@ -2988,12 +2988,12 @@
                         $row.append($('<td>').attr('data-field', 'nr_req')); // Empty cell for parent
                     } else {
                         // Set default value for nr_req if missing
-                        let currentNrReq = (item.nr_req === 'REQ' || item.nr_req === 'NR') ? item.nr_req : 'REQ';
+                        let currentNrReq = (item.nr_req === 'REQ' || item.nr_req === 'NRL') ? item.nr_req : 'REQ';
 
                         const $nrReqSelect = $(`
                             <select class="form-select form-select-sm nr-req-dropdown" style="min-width: 100px;">
                                 <option value="REQ" class="req-option">REQ</option>
-                                <option value="NR" class="nr-option">NRL</option>
+                                <option value="NRL" class="nr-option">NRL</option>
                             </select>
                         `);
 
@@ -3004,7 +3004,7 @@
                         if (currentNrReq === 'REQ') {
                             $nrReqSelect.css('background-color', '#28a745');
                             $nrReqSelect.css('color', '#ffffff');
-                        } else if (currentNrReq === 'NR') {
+                        } else if (currentNrReq === 'NRL') {
                             $nrReqSelect.css('background-color', '#dc3545');
                             $nrReqSelect.css('color', '#ffffff');
                         }
@@ -3446,17 +3446,17 @@
             function initNRReqChangeHandler() {
                 $(document).on('change', '.nr-req-dropdown', function() {
                     const $select = $(this);
-                    const newValue = $select.val();
+                    const newValue = $select.val(); // 'REQ' or 'NRL'
                     const sku = $select.data('sku');
 
                     // Change background color based on selected value
                     if (newValue === 'REQ') {
                         $select.css('background-color', '#28a745').css('color', '#ffffff');
-                    } else if (newValue === 'NR') {
+                    } else if (newValue === 'NRL') {
                         $select.css('background-color', '#dc3545').css('color', '#ffffff');
                     }
 
-                    // Send AJAX to save NRL/REQ status
+                    // Send AJAX to save NRL/REQ status (Listing eBay controller expects 'REQ' or 'NRL')
                     $.ajax({
                         url: '/listing_ebay/save-status',
                         type: 'POST',
@@ -5506,7 +5506,7 @@
                             }
                             
                             // Check nr_req for child rows
-                            const nrReq = item.nr_req || 'NR';
+                            const nrReq = item.nr_req || 'NRL';
                             return nrReq === filterValue;
                         });
                         return;
@@ -5669,10 +5669,10 @@
 
                         // Count NRL/REQ entries (only for non-parent rows)
                         if (!item.is_parent) {
-                            const nrReq = item.nr_req || 'NR';
+                            const nrReq = item.nr_req || 'NRL';
                             if (nrReq === 'REQ') {
                                 metrics.reqCount++;
-                            } else if (nrReq === 'NR') {
+                            } else if (nrReq === 'NRL') {
                                 metrics.nrCount++;
                             }
                         }
@@ -5782,7 +5782,7 @@
                     const nrlReqFilter = state.filters.NRL_REQ || 'all';
                     if (nrlReqFilter === 'REQ') {
                         $('#req-total').text(metrics.reqCount.toLocaleString());
-                    } else if (nrlReqFilter === 'NR') {
+                    } else if (nrlReqFilter === 'NRL') {
                         $('#req-total').text(metrics.nrCount.toLocaleString());
                     } else {
                         // When filter is 'all', show total REQ count
