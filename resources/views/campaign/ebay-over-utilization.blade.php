@@ -1096,6 +1096,8 @@
 
                     let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                    
+                    let campaignNameUpper = (data.campaignName || "").toUpperCase();
 
                     // Get row's ACOS (backend already returns 100 when acos is 0)
                     let rowAcos = parseFloat(acos) || 0;
@@ -1115,9 +1117,10 @@
                     // Filter logic:
                     // 1. ACOS > TOTAL_ACOS AND UB7 > 33%
                     // OR
-                    // 2. ACOS < TOTAL_ACOS AND UB7 > 90%
+                    // 2. ACOS <= TOTAL_ACOS AND UB7 > 90%
+                    // Note: Changed condition2 to <= to include cases where ACOS equals TOTAL_ACOS
                     let condition1 = (rowAcos > totalACOSValue && ub7 > 33);
-                    let condition2 = (rowAcos < totalACOSValue && ub7 > 90);
+                    let condition2 = (rowAcos <= totalACOSValue && ub7 > 90);
                     
                     // Check if at least one condition matches
                     // If condition1 OR condition2 is true, continue to other filters
@@ -1133,7 +1136,9 @@
                     let inv = parseFloat(data.INV);
                     let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
                     let dilColor = getDilColor(dilDecimal);
-                    if (dilColor === "pink") return false;
+                    if (dilColor === "pink") {
+                        return false;
+                    }
 
                     // Global search filter
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
