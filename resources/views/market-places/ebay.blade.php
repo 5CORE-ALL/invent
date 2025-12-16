@@ -1146,6 +1146,21 @@
         </div>
     </div>
 
+    <!-- LMP Modal -->
+    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable shadow-none">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">LMP Data for <span id="lmpSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="lmpDataList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- SKU Sales Modal with Chart -->
     <div class="modal fade" id="skuSalesModal" tabindex="-1" aria-labelledby="skuSalesModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-xl">
@@ -1790,6 +1805,15 @@
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="eDil-total">0%</div>
+                                        </div>
+                                    </th>
+                                    <th data-field="lmp" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                LMP <span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="lmp-total">$0.00</div>
                                         </div>
                                     </th>
                                     <th data-field="NRA" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
@@ -2742,6 +2766,8 @@
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
                                     spend_l30: item.AD_Spend_L30 || 0,
+                                    lmp_price: item.lmp_price,
+                                    lmp_entries: item.lmp_entries || [],
                                 };
                             });
 
@@ -3051,6 +3077,23 @@
                     $row.append($('<td>').attr('data-field', 'e_dil').html(
                         `<span class="dil-percent-value ${getEDilColor(item['E Dil%'])}">${Math.round(item['E Dil%'] * 100)}%</span>`
                     ));
+
+                    // LMP column - same logic as ebay-tabulator-view
+                    const value = item.lmp_price;
+                    const lmpEntries = item.lmp_entries || [];
+                    const sku = item['(Child) sku'];
+                    let lmpCellContent = '';
+                    
+                    if (value && lmpEntries.length > 0) {
+                        const jsonData = JSON.stringify(lmpEntries);
+                        lmpCellContent = `<a href="#" class="lmp-link" data-sku="${sku}" data-lmp-data='${jsonData}'>$${parseFloat(value).toFixed(2)}</a>`;
+                    } else if (value) {
+                        lmpCellContent = `$${parseFloat(value).toFixed(2)}`;
+                    } else {
+                        lmpCellContent = '';
+                    }
+                    
+                    $row.append($('<td>').attr('data-field', 'lmp').html(lmpCellContent));
 
                     if (item.is_parent) {
                         $row.append($('<td>').attr('data-field', 'NRA')); // Empty cell for parent
@@ -5772,6 +5815,8 @@
                         ovDilTotal: 0,
                         el30Total: 0,
                         el7Total: 0,
+                        lmpTotal: 0,
+                        lmpCount: 0,
                         eDilTotal: 0,
                         viewsTotal: 0,
                         profitSum: 0, // <-- new
@@ -5856,6 +5901,11 @@
                         metrics.ovL30Total += parseFloat(item.L30) || 0;
                         metrics.el30Total += parseFloat(item['eBay L30']) || 0;
                         metrics.el7Total += parseFloat(item['eBay L7']) || 0;
+                        const lmpPrice = parseFloat(item.lmp_price) || 0;
+                        if (lmpPrice > 0) {
+                            metrics.lmpTotal += lmpPrice;
+                            metrics.lmpCount++;
+                        }
                         metrics.viewsTotal += parseFloat(item['views']) || 0;
                         let views = parseFloat(item['views']) || 0;
                         if (item.NR !== 'NRA') {
@@ -5933,6 +5983,8 @@
                     $('#ovdil-total').text(Math.round(metrics.ovDilTotal) + '%');
                     $('#el30-total').text(metrics.el30Total.toLocaleString());
                     $('#el7-total').text(metrics.el7Total.toLocaleString());
+                    const lmpAverage = metrics.lmpCount > 0 ? (metrics.lmpTotal / metrics.lmpCount) : 0;
+                    $('#lmp-total').text('$' + lmpAverage.toFixed(2));
                     $('#eDil-total').text(Math.round(metrics.eDilTotal) + '%');
                     $('#views-total').text(metrics.viewsTotal.toLocaleString());
                     $('#listed-total').text(metrics.listedCount.toLocaleString());
@@ -6027,6 +6079,7 @@
                 $('#ovdil-total').text('0%');
                 $('#el7-total').text('0');
                 $('#el30-total').text('0');
+                $('#lmp-total').text('$0.00');
                 $('#eDil-total').text('0%');
                 $('#views-total').text('0');
                 $('#grpft-total').text('0%');
@@ -6718,6 +6771,39 @@
                     $el7Columns.show();
                 }
             });
+
+            // LMP Modal Event Listener
+            $(document).on('click', '.lmp-link', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                let data = $(this).data('lmp-data');
+                
+                try {
+                    if (typeof data === 'string') {
+                        data = JSON.parse(data);
+                    }
+                    openLmpModal(sku, data);
+                } catch (error) {
+                    console.error('Error parsing LMP data:', error);
+                    alert('Error loading LMP data');
+                }
+            });
+
+            // LMP Modal Function
+            function openLmpModal(sku, data) {
+                $('#lmpSku').text(sku);
+                let html = '';
+                data.forEach(item => {
+                    html += `<div style="margin-bottom: 10px; border: 1px solid #ccc; padding: 10px;">
+                        <strong>Price: $${item.price}</strong><br>
+                        <a href="${item.link}" target="_blank">View Link</a>
+                        ${item.image ? `<br><img src="${item.image}" alt="Product Image" style="max-width: 100px; max-height: 100px;">` : ''}
+                    </div>`;
+                });
+                $('#lmpDataList').html(html);
+                $('#lmpModal').modal('show');
+            }
 
             // SKU Sales Data Button Handler with Chart
             let salesChart = null;
