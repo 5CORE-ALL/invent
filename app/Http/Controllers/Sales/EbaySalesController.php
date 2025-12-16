@@ -260,4 +260,96 @@ class EbaySalesController extends Controller
             return response()->json(['error' => 'Failed to save preferences'], 500);
         }
     }
+
+    public function getSkuSalesData(Request $request)
+    {
+        try {
+            $sku = $request->input('sku');
+            $filter = $request->input('filter', 'last30');
+            $startDate = $request->input('start_date');
+            $endDate = $request->input('end_date');
+            
+            if (!$sku) {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+
+            // Determine date range based on filter
+            $now = \Carbon\Carbon::now();
+            $fromDate = null;
+            $toDate = $now->format('Y-m-d');
+            
+            if ($filter === 'custom' && $startDate && $endDate) {
+                $fromDate = \Carbon\Carbon::parse($startDate)->format('Y-m-d');
+                $toDate = \Carbon\Carbon::parse($endDate)->format('Y-m-d');
+            } elseif ($filter === 'today') {
+                $fromDate = $now->format('Y-m-d');
+            } elseif ($filter === 'yesterday') {
+                $fromDate = $now->copy()->subDay()->format('Y-m-d');
+                $toDate = $fromDate;
+            } elseif ($filter === 'last7') {
+                $fromDate = $now->copy()->subDays(7)->format('Y-m-d');
+            } else { // last30 (default)
+                $fromDate = $now->copy()->subDays(30)->format('Y-m-d');
+            }
+            
+            $query = EbayOrder::with(['items' => function($query) use ($sku) {
+                $query->where('sku', $sku);
+            }])
+                ->where('period', 'l30')
+                ->whereHas('items', function($query) use ($sku) {
+                    $query->where('sku', $sku);
+                });
+            
+            if ($fromDate) {
+                $query->whereDate('order_date', '>=', $fromDate);
+            }
+            if ($toDate) {
+                $query->whereDate('order_date', '<=', $toDate);
+            }
+            
+            $orders = $query->orderBy('order_date', 'desc')->get();
+
+            // Group by date and calculate daily quantities
+            $dailyData = [];
+            foreach ($orders as $order) {
+                foreach ($order->items as $item) {
+                    if ($item->sku === $sku) {
+                        $date = \Carbon\Carbon::parse($order->order_date)->format('Y-m-d');
+                        if (!isset($dailyData[$date])) {
+                            $dailyData[$date] = [
+                                'date' => $date,
+                                'quantity' => 0,
+                                'orders' => 0
+                            ];
+                        }
+                        $dailyData[$date]['quantity'] += (int) $item->quantity;
+                        $dailyData[$date]['orders'] += 1;
+                    }
+                }
+            }
+
+            // Sort by date
+            ksort($dailyData);
+            $dailyData = array_values($dailyData);
+
+            // Calculate total
+            $totalQuantity = array_sum(array_column($dailyData, 'quantity'));
+            $totalOrders = array_sum(array_column($dailyData, 'orders'));
+
+            return response()->json([
+                'success' => true,
+                'sku' => $sku,
+                'total_quantity' => $totalQuantity,
+                'total_orders' => $totalOrders,
+                'daily_data' => $dailyData,
+                'date_range' => [
+                    'from' => $fromDate,
+                    'to' => $toDate
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error getting SKU sales data: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
 }

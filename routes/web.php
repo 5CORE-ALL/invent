@@ -768,6 +768,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay/daily-sales', [EbaySalesController::class, 'index'])->name('ebay.daily.sales');
     Route::get('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'getColumnVisibility']);
     Route::post('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
+    Route::get('/ebay/sku-sales-data', [EbaySalesController::class, 'getSkuSalesData'])->name('ebay.sku.sales.data');
     
     // eBay 2 Sales Routes
     Route::get('/ebay2/daily-sales-data', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getData'])->name('ebay2.daily.sales.data');
