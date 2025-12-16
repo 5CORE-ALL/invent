@@ -239,9 +239,10 @@ class EbayController extends Controller
             ->keyBy('listing_id')
             ->toArray();
 
+        // Latest NR/REQ + links from Listing eBay page (source of truth)
         $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
         
-        // Fetch listing status data for nr_req field
+        // Legacy listing status data for nr_req field (used as fallback)
         // Key listing status by lowercase SKU for case-insensitive lookup (UI sends upper/lower mixed)
         $listingStatusData = EbayListingStatus::whereIn("sku", $skus)
             ->get()
@@ -308,16 +309,53 @@ class EbayController extends Controller
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
             
-            // NR/REQ status from listing status
+            // ==== NRL/REQ + Links ====
+            // Default values
+            $row['nr_req'] = 'REQ';
+            $row['B Link'] = '';
+            $row['S Link'] = '';
+
+            // 1) Prefer data from EbayDataView (Listing eBay page) via NRL field
+            if (isset($nrValues[$pm->sku])) {
+                $raw = $nrValues[$pm->sku];
+
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true) ?? [];
+                }
+
+                if (is_array($raw)) {
+                    // NRL mapping: 'NRL' => NRL, 'REQ' => REQ
+                    $nrlValue = $raw['NRL'] ?? null;
+                    if ($nrlValue === 'NRL') {
+                        $row['nr_req'] = 'NRL';
+                    } elseif ($nrlValue === 'REQ') {
+                        $row['nr_req'] = 'REQ';
+                    }
+
+                    // Buyer / Seller links from Listing eBay if present
+                    if (!empty($raw['buyer_link'])) {
+                        $row['B Link'] = $raw['buyer_link'];
+                    }
+                    if (!empty($raw['seller_link'])) {
+                        $row['S Link'] = $raw['seller_link'];
+                    }
+                }
+            }
+
+            // 2) Fallback: Only use EbayListingStatus for buyer/seller links (not for nr_req)
+            // nr_req should ONLY come from EbayDataView to match listingEbay page
             if ($listingStatus) {
-                $statusValue = is_array($listingStatus->value) ? $listingStatus->value : json_decode($listingStatus->value, true);
-                $row['nr_req'] = $statusValue['nr_req'] ?? 'REQ';
-                $row['B Link'] = $statusValue['buyer_link'] ?? '';
-                $row['S Link'] = $statusValue['seller_link'] ?? '';
-            } else {
-                $row['nr_req'] = 'REQ';
-                $row['B Link'] = '';
-                $row['S Link'] = '';
+                $statusValue = is_array($listingStatus->value)
+                    ? $listingStatus->value
+                    : (json_decode($listingStatus->value, true) ?? []);
+
+                // Only use links from EbayListingStatus if not already set from EbayDataView
+                if (empty($row['B Link']) && !empty($statusValue['buyer_link'])) {
+                    $row['B Link'] = $statusValue['buyer_link'];
+                }
+                if (empty($row['S Link']) && !empty($statusValue['seller_link'])) {
+                    $row['S Link'] = $statusValue['seller_link'];
+                }
             }
 
             // eBay Metrics

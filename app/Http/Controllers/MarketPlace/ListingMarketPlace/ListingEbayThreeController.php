@@ -33,7 +33,17 @@ class ListingEbayThreeController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $statusData = EbayThreeListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Get status data, handling duplicates by taking the most recent non-empty record
+        $statusData = EbayThreeListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->filter(function ($record) {
+                // Filter out records with empty or null values
+                $value = is_array($record->value) ? $record->value : (json_decode($record->value, true) ?? []);
+                return !empty($value) && (isset($value['nr_req']) || isset($value['listed']) || isset($value['buyer_link']) || isset($value['seller_link']));
+            })
+            ->keyBy('sku');
 
         $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData) {
             $childSku = $item->sku;
@@ -45,10 +55,15 @@ class ListingEbayThreeController extends Controller
             $item->seller_link = null;
             if (isset($statusData[$childSku])) {
                 $status = $statusData[$childSku]->value;
-                $item->nr_req = $status['nr_req'] ?? null;
-                $item->listed = $status['listed'] ?? null;
-                $item->buyer_link = $status['buyer_link'] ?? null;
-                $item->seller_link = $status['seller_link'] ?? null;
+                if (is_string($status)) {
+                    $status = json_decode($status, true) ?? [];
+                }
+                if (is_array($status) && !empty($status)) {
+                    $item->nr_req = $status['nr_req'] ?? null;
+                    $item->listed = $status['listed'] ?? null;
+                    $item->buyer_link = $status['buyer_link'] ?? null;
+                    $item->seller_link = $status['seller_link'] ?? null;
+                }
             }
             return $item;
         })->values();
@@ -65,27 +80,45 @@ class ListingEbayThreeController extends Controller
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',
             'listed' => 'nullable|string',
-            'buyer_link' => 'nullable|url',
-            'seller_link' => 'nullable|url',
+            'buyer_link' => 'nullable|string',
+            'seller_link' => 'nullable|string',
         ]);
 
-        $sku = $validated['sku'];
-        $status = EbayThreeListingStatus::where('sku', $sku)->first();
+        $sku = trim($validated['sku']);
+        
+        // Get the most recent non-empty record, or create new
+        $status = EbayThreeListingStatus::where('sku', $sku)
+            ->orderBy('updated_at', 'desc')
+            ->first();
 
-        $existing = $status ? $status->value : [];
+        // If we have a record, use its value, otherwise start fresh
+        if ($status) {
+            $existing = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+            
+            // If existing is empty array, start fresh
+            if (empty($existing)) {
+                $existing = [];
+            }
+        } else {
+            $existing = [];
+        }
 
-        // Only update the fields that are present in the request
+        // Only update the fields that are present in the request and not empty
         $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
         foreach ($fields as $field) {
-            if ($request->has($field)) {
+            if ($request->has($field) && $request->input($field) !== null && $request->input($field) !== '') {
                 $existing[$field] = $validated[$field];
             }
         }
 
-        EbayThreeListingStatus::updateOrCreate(
-            ['sku' => $validated['sku']],
-            ['value' => $existing]
-        );
+        // Clean up: Delete any duplicate records for this SKU before creating/updating
+        EbayThreeListingStatus::where('sku', $sku)->delete();
+
+        // Create a single clean record
+        EbayThreeListingStatus::create([
+            'sku' => $sku,
+            'value' => $existing
+        ]);
 
         return response()->json(['status' => 'success']);
     }
@@ -96,7 +129,17 @@ class ListingEbayThreeController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $statusData = EbayThreeListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Get status data, handling duplicates by taking the most recent non-empty record
+        $statusData = EbayThreeListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->filter(function ($record) {
+                // Filter out records with empty or null values
+                $value = is_array($record->value) ? $record->value : (json_decode($record->value, true) ?? []);
+                return !empty($value) && (isset($value['nr_req']) || isset($value['listed']) || isset($value['buyer_link']) || isset($value['seller_link']));
+            })
+            ->keyBy('sku');
 
         $reqCount = 0;
         $listedCount = 0;
@@ -109,18 +152,24 @@ class ListingEbayThreeController extends Controller
 
             if ($isParent || floatval($inv) <= 0) continue;
 
-            $status = $statusData[$sku]->value ?? null;
-            if (is_string($status)) {
-                $status = json_decode($status, true);
+            $status = null;
+            if (isset($statusData[$sku])) {
+                $status = $statusData[$sku]->value;
+                if (is_string($status)) {
+                    $status = json_decode($status, true);
+                }
+                if (is_array($status) && empty($status)) {
+                    $status = null;
+                }
             }
 
             // NR/REQ logic
-            $nrReq = $status['nr_req'] ?? (floatval($inv) > 0 ? 'REQ' : 'NR');
+            $nrReq = ($status && isset($status['nr_req'])) ? $status['nr_req'] : (floatval($inv) > 0 ? 'REQ' : 'NR');
             if ($nrReq === 'REQ') {
                 $reqCount++;
             }
 
-            $listed = $status['listed'] ?? null;
+            $listed = ($status && isset($status['listed'])) ? $status['listed'] : null;
             if ($listed === 'Listed') {
                 $listedCount++;
             }
@@ -210,8 +259,19 @@ class ListingEbayThreeController extends Controller
                         continue;
                     }
 
-                    $status = EbayThreeListingStatus::where('sku', $sku)->first();
-                    $existing = $status ? $status->value : [];
+                    // Get the most recent non-empty record, or start fresh
+                    $status = EbayThreeListingStatus::where('sku', $sku)
+                        ->orderBy('updated_at', 'desc')
+                        ->first();
+
+                    if ($status) {
+                        $existing = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+                        if (empty($existing)) {
+                            $existing = [];
+                        }
+                    } else {
+                        $existing = [];
+                    }
 
                     $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
                     foreach ($fields as $field) {
@@ -220,10 +280,14 @@ class ListingEbayThreeController extends Controller
                         }
                     }
 
-                    EbayThreeListingStatus::updateOrCreate(
-                        ['sku' => $sku],
-                        ['value' => $existing]
-                    );
+                    // Clean up duplicates before creating/updating
+                    EbayThreeListingStatus::where('sku', $sku)->delete();
+
+                    // Create a single clean record
+                    EbayThreeListingStatus::create([
+                        'sku' => $sku,
+                        'value' => $existing
+                    ]);
                     
                     $processedCount++;
                     

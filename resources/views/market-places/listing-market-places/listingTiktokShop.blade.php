@@ -2178,38 +2178,13 @@
                 calculateTotals(); // Recalculate totals
             });
 
-            // Save NR/REQ or Listed/Pending when dropdown changes
-            $(document).on('change', '.nr-req-dropdown, .listed-dropdown', function() {
-                const $row = $(this).closest('tr');
-                const sku = $row.find('td').eq(2).text().trim(); // Adjust index if needed
-                const nr_req = $row.find('.nr-req-dropdown').val() || 'REQ';
-                const listed = $row.find('.listed-dropdown').val() || 'Pending';
-
-                // Optionally, get current links if you want to save them too
-                const buyer_link = $row.data('buyer-link') || '';
-                const seller_link = $row.data('seller-link') || '';
-
-                saveStatusToDB(sku, nr_req, listed, buyer_link, seller_link);
-            });
-
-            // Save links when submitting the modal
-            $('#submitLinks').on('click', function(e) {
-                e.preventDefault();
-                const sku = $('#skuInput').val();
-                const buyer_link = $('#buyerLink').val();
-                const seller_link = $('#sellerLink').val();
-
-                // Only send the fields that have changed (example: always send both links)
-                saveStatusToDB(sku, {
-                    buyer_link,
-                    seller_link
-                });
-
-                $('#linkModal').modal('hide');
-            });
-
-            // AJAX function to save to DB
+            // AJAX function to save to DB (unified function)
             function saveStatusToDB(sku, data) {
+                if (!sku) {
+                    showNotification('danger', 'SKU is required!');
+                    return;
+                }
+
                 $.ajax({
                     url: '/listing_tiktokshop/save-status',
                     type: 'POST',
@@ -2229,29 +2204,62 @@
                         renderTable();     // Optionally re-render table if needed
                     },
                     error: function(xhr) {
+                        console.error('Save error:', xhr.responseText);
                         showNotification('danger', 'Save failed!');
                     }
                 });
             }
 
+            // NR/REQ dropdown change handler
             $(document).on('change', '.nr-req-dropdown', function() {
                 const $row = $(this).closest('tr');
                 const sku = $row.find('td').eq(2).text().trim();
                 const nr_req = $(this).val();
 
+                if (!sku) {
+                    showNotification('danger', 'SKU not found!');
+                    return;
+                }
+
                 saveStatusToDB(sku, {
-                    nr_req
+                    nr_req: nr_req
                 });
             });
 
+            // Listed dropdown change handler
             $(document).on('change', '.listed-dropdown', function() {
                 const $row = $(this).closest('tr');
                 const sku = $row.find('td').eq(2).text().trim();
                 const listed = $(this).val();
 
+                if (!sku) {
+                    showNotification('danger', 'SKU not found!');
+                    return;
+                }
+
                 saveStatusToDB(sku, {
-                    listed
+                    listed: listed
                 });
+            });
+
+            // Save links when submitting the modal
+            $('#submitLinks').on('click', function(e) {
+                e.preventDefault();
+                const sku = $('#skuInput').val();
+                const buyer_link = $('#buyerLink').val();
+                const seller_link = $('#sellerLink').val();
+
+                if (!sku) {
+                    showNotification('danger', 'SKU is required!');
+                    return;
+                }
+
+                saveStatusToDB(sku, {
+                    buyer_link: buyer_link || '',
+                    seller_link: seller_link || ''
+                });
+
+                $('#linkModal').modal('hide');
             });
 
             $('#nr-req-filter').on('change', function() {
