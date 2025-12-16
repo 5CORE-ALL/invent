@@ -81,6 +81,12 @@ class Kernel extends ConsoleKernel
             }
         })->everyFiveMinutes()->name('clear-laravel-log');
 
+        // Update marketplace daily metrics at 12:05 AM daily
+        $schedule->command('app:update-marketplace-daily-metrics')
+            ->dailyAt('00:05')
+            ->timezone('America/Los_Angeles')
+            ->name('update-marketplace-daily-metrics');
+
         // All commands running every 5 minutes
         $schedule->command('shopify:save-daily-inventory')
             ->everyFiveMinutes()

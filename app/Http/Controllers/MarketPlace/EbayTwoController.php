@@ -101,7 +101,8 @@ class EbayTwoController extends Controller
             ->get()
             ->keyBy("sku");
 
-        $ebayMetrics = Ebay2Metric::whereIn("sku", $skus)
+        $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id')
+            ->whereIn("sku", $skus)
             ->get()
             ->keyBy("sku");  
 
@@ -154,8 +155,10 @@ class EbayTwoController extends Controller
                 ($adMetricsBySku[$sku][$range]['Sls'] ?? 0) + (int) $report->sales;
         }
 
-        // 5. Marketplace percentage (EbayTwo)
-        $percentage = (MarketplacePercentage::where("marketplace", "EbayTwo")->value("percentage") ?? 100) / 100;
+        // 5. Get percentage and ad_updates from MarketplacePercentage
+        $marketplaceData = MarketplacePercentage::where("marketplace", "EbayTwo")->first();
+        $percentage = ($marketplaceData->percentage ?? 100) / 100;
+        $adUpdates = $marketplaceData->ad_updates ?? 0;
 
         // 6. Build Result
         $result = [];
@@ -194,6 +197,7 @@ class EbayTwoController extends Controller
             $row["eBay L30"] = $ebayMetric->ebay_l30 ?? 0;
             $row["eBay L60"] = $ebayMetric->ebay_l60 ?? 0;
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
+            $row['views'] = $ebayMetric->views ?? 0;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
 
             $row["E Dil%"] = ($row["eBay L30"] && $row["INV"] > 0)
@@ -218,6 +222,7 @@ class EbayTwoController extends Controller
             // Calculate AD_Spend_L30 from GENERAL_SPENT (L30)
             $pmt_spend_l30 = $adMetricsBySku[$sku]['L30']['GENERAL_SPENT'] ?? 0;
             $row["AD_Spend_L30"] = round($pmt_spend_l30, 2);
+            $row["spend_l30"] = round($pmt_spend_l30, 2); // Add for frontend compatibility
             $row["pmt_spend_L30"] = round($pmt_spend_l30, 2);
             $row["kw_spend_L30"] = 0; // No keyword campaigns for ebay2
             $row["AD_Sales_L30"] = 0; // Can be calculated if needed
@@ -236,24 +241,45 @@ class EbayTwoController extends Controller
                 $lp = floatval($pm->lp);
             }
 
-            $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            $ship = isset($values["ebay2_ship"]) ? floatval($values["ebay2_ship"]) : (isset($pm->ebay2_ship) ? floatval($pm->ebay2_ship) : 0);
 
             // Price and units for calculations
             $price = floatval($row["eBay Price"] ?? 0);
             $units_ordered_l30 = floatval($row["eBay L30"] ?? 0);
             $row["PmtClkL30"] = $adMetricsBySku[$sku]['L30']['Clk'] ?? 0;
+            
+            // Calculate AD% = (AD Spend L30 / (Price * eBay L30)) * 100
+            $totalRevenue = $price * $units_ordered_l30;
+            $row["AD%"] = $totalRevenue > 0 ? round(($pmt_spend_l30 / $totalRevenue) * 100, 4) : 0;
+            
             // Profit/Sales
             $row["Total_pft"] = round(($price * $percentage - $lp - $ship) * $units_ordered_l30, 2);
+            $row["Profit"] = $row["Total_pft"]; // Add for frontend compatibility
             $row["T_Sale_l30"] = round($price * $units_ordered_l30, 2);
-            $row["PFT %"] = round(
-                $price > 0 ? (($price * $percentage - $lp - $ship) / $price) : 0,
-                2
-            );
+            $row["Sales L30"] = $row["T_Sale_l30"]; // Add for frontend compatibility
+            
+            // Calculate TacosL30 = AD Spend L30 / Total Sales L30
+            $row["TacosL30"] = $row["T_Sale_l30"] > 0 ? round($pmt_spend_l30 / $row["T_Sale_l30"], 4) : 0;
+            
+            // Calculate GPFT% = ((Price * $percentage - Ship - LP) / Price) * 100
+            $gpft = $price > 0 ? (($price * $percentage - $ship - $lp) / $price) * 100 : 0;
+            $row["GPFT%"] = round($gpft, 2);
+            
+            // PFT% = GPFT% - AD%
+            $row["PFT %"] = round($gpft - $row["AD%"], 2);
+            
             $row["ROI%"] = round(
-                $lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) : 0,
+                $lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) * 100 : 0,
                 2
             );
+            
+            // Calculate SCVR = (eBay L30 / views) * 100
+            $views = floatval($row['views'] ?? 0);
+            $ebayL30 = floatval($row["eBay L30"] ?? 0);
+            $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
+            
             $row["percentage"] = $percentage;
+            $row["ad_updates"] = $adUpdates;
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
 

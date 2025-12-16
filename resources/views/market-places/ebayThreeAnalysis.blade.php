@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'eBay', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'eBay3', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <div id="messageArea" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1055;"></div>
 <div class="toast-container"></div>
@@ -308,6 +308,10 @@
 
         .custom-dropdown-menu.show {
             display: block;
+        }
+
+        .dropdown-menu.show {
+            display: block !important;
         }
 
         .column-toggle-item {
@@ -1070,7 +1074,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'eBay', 'sub_title' => 'eBay Analysis'])
+    @include('layouts.shared/page-title', ['page_title' => 'eBay3', 'sub_title' => 'eBay3 Analysis'])
 
     <div class="row">
         <div class="col-12">
@@ -1140,7 +1144,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>eBay Product Analysis</h4>
+                <h4>eBay3 Product Analysis</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                         <!-- Left side: Filter buttons and Create Task -->
                         <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -1594,11 +1598,11 @@
                             <!-- Column Visibility Dropdown -->
                             <div class="dropdown d-inline-block">
                                 <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                                    id="hideColumnsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                    id="hideColumnsBtn" aria-expanded="false">
                                     <i class="fa fa-eye"></i> Columns
                                 </button>
                                 <ul class="dropdown-menu" aria-labelledby="hideColumnsBtn" id="columnToggleMenu"
-                                    style="max-height: 400px; overflow-y: auto;">
+                                    style="max-height: 400px; overflow-y: auto; display: none;">
                                     <!-- Will be populated by JavaScript -->
                                 </ul>
                             </div>
@@ -1914,7 +1918,7 @@
 
 
                 $.ajax({
-                    url: "/update-ebay-sku-pricing",
+                    url: "/push-ebay3-price",
                     type: "POST",
                     data: {
                         "_token": "{{ csrf_token() }}",
@@ -1922,7 +1926,10 @@
                         "price": val,
                     },
                     success: function(info) {
-                        alert("Request Sent to Ebay, Pls Wait to Reflect Everywhere");
+                        showNotification('success', 'Request Sent to Ebay, Please Wait to Reflect Everywhere');
+                    },
+                    error: function(xhr) {
+                        showNotification('danger', 'Error sending request to Ebay. Please try again.');
                     }
                 });
 
@@ -1944,11 +1951,11 @@
             const duration = form.querySelector('#duration').value;
 
             if (!title || assignor === "Select Assignor" || assignee === "Please Select" || !duration) {
-                alert("Please fill in all required fields marked with *");
+                showNotification('warning', 'Please fill in all required fields marked with *');
                 return;
             }
 
-            alert("🎉 Task Created Successfully!");
+            showNotification('success', '🎉 Task Created Successfully!');
 
             form.reset();
             const modal = bootstrap.Modal.getInstance(document.getElementById('createTaskModal'));
@@ -1980,7 +1987,7 @@
                     }
 
                     $.ajax({
-                        url: '/update-all-ebay1-skus',
+                        url: '/update-all-ebay3-skus',
                         type: 'POST',
                         data: {
                             type: 'percentage',
@@ -1988,14 +1995,29 @@
                             _token: $('meta[name="csrf-token"]').attr('content')
                         },
                         success: function(response) {
+                            if (response.status === 200) {
                             showNotification('success', 'Percentage updated successfully!');
                             $input.prop('disabled', true);
                             $icon.removeClass('fa-check').addClass('fa-pen');
+                                // Update the input value with the new value from server
+                                if (response.data && response.data.percentage) {
+                                    $input.val(response.data.percentage);
+                                }
                             // Reload the data table if needed
                             loadData();
+                            } else {
+                                showNotification('danger', response.message || 'Error updating percentage.');
+                                $input.val(originalValue);
+                                $input.prop('disabled', true);
+                                $icon.removeClass('fa-check').addClass('fa-pen');
+                            }
                         },
                         error: function(xhr) {
-                            showNotification('danger', 'Error updating percentage.');
+                            var errorMsg = 'Error updating percentage.';
+                            if (xhr.responseJSON && xhr.responseJSON.message) {
+                                errorMsg = xhr.responseJSON.message;
+                            }
+                            showNotification('danger', errorMsg);
                             $input.val(originalValue); // Restore original value
                             $input.prop('disabled', true);
                             $icon.removeClass('fa-check').addClass('fa-pen');
@@ -2024,7 +2046,7 @@
 
                     // Ad Updates
                     $.ajax({
-                        url: '/update-all-ebay1-skus',
+                        url: '/update-all-ebay3-skus',
                         type: 'POST',
                         data: {
                             type: 'ad_updates',
@@ -2596,7 +2618,7 @@
             function loadData() {
                 showLoader();
                 return $.ajax({
-                    url: '/ebay-data-view',
+                    url: '/ebay3/view-data',
                     type: 'GET',
                     dataType: 'json',
                     success: function(response) {
@@ -2622,7 +2644,7 @@
                                     'image_src': item['image_path'] || '',
                                     Parent: item.Parent || item.parent || item.parent_asin ||
                                         item.Parent_ASIN || '(No Parent)',
-                                    '(Child) sku': item['(Child) sku'] || '',
+                                    '(Child) sku': item['(Child) sku'] || item['Sku'] || item['sku'] || '',
                                     'R&A': item['R&A'] !== undefined ? item['R&A'] : '',
                                     INV: item.INV || 0,
                                     L30: item.L30 || 0,
@@ -2924,11 +2946,12 @@
                         `<span class="dil-percent-value ${getEDilColor(item['E Dil%'])}">${Math.round(item['E Dil%'] * 100)}%</span>`
                     ));
 
-                    if (item.is_parent) {
-                        $row.append($('<td>').attr('data-field', 'NRA')); // Empty cell for parent
-                    } else {
+                    // NRA dropdown - for both parent and child rows
                         let currentNR = (item.NR === 'RA' || item.NR === 'NRA' || item.NR === 'LATER') ?
                             item.NR : 'RA';
+                    
+                    if (!item.is_parent) {
+                        // Auto-set logic only for child rows
 
                         const adilPercent = Math.round(item['E Dil%'] * 100);
                         // Auto-set to NRA if E Dil% >= 50%, but only save if it's actually changing
@@ -2938,7 +2961,7 @@
                             // Only save if SKU exists and value is actually changing
                             if (item['(Child) sku']) {
                                 $.ajax({
-                                    url: '/ebay/save-nr',
+                                    url: '/ebay3/save-nr',
                                     type: 'POST',
                                     data: {
                                         sku: item['(Child) sku'],
@@ -2958,6 +2981,8 @@
                                     }
                                 });
                             }
+                        }
+
                         }
 
                         item.UI_NR = currentNR;
@@ -2981,14 +3006,12 @@
 
                         $select.data('sku', item['(Child) sku']);
                         $row.append($('<td>').attr('data-field', 'NRA').append($select));
-                    }
 
-                    // NRL/REQ dropdown - only for non-parent rows
-                    if (item.is_parent) {
-                        $row.append($('<td>').attr('data-field', 'nr_req')); // Empty cell for parent
-                    } else {
+                    // NRL/REQ dropdown - for both parent and child rows
                         // Set default value for nr_req if missing
                         let currentNrReq = (item.nr_req === 'REQ' || item.nr_req === 'NR') ? item.nr_req : 'REQ';
+                    
+                    // Additional logic for child rows if needed (can be added here if needed)
 
                         const $nrReqSelect = $(`
                             <select class="form-select form-select-sm nr-req-dropdown" style="min-width: 100px;">
@@ -3011,7 +3034,6 @@
 
                         $nrReqSelect.data('sku', item['(Child) sku']);
                         $row.append($('<td>').attr('data-field', 'nr_req').append($nrReqSelect));
-                    }
 
                     // views with tooltip icon (no color coding)
                     $row.append($('<td>').attr('data-field', 'views').html(
@@ -3093,7 +3115,7 @@
                     // Auto-save TPFT only if SKU exists and TPFT has a valid value
                     if (item['(Child) sku'] && !isNaN(tprft) && isFinite(tprft) && tprft !== 0) {
                         $.ajax({
-                            url: '/update-ebay-nr-data',
+                            url: '/update-ebay3-nr-data',
                             type: 'POST',
                             data: {
                                 sku: item['(Child) sku'],
@@ -3337,7 +3359,7 @@
                             }
 
                             $.ajax({
-                                url: '/ebay/save-nr',
+                                url: '/ebay3/save-nr',
                                 type: 'POST',
                                 data: data,
                                 success: function(response) {
@@ -3410,7 +3432,7 @@
 
                     // Send AJAX
                     $.ajax({
-                        url: '/ebay/save-nr',
+                        url: '/ebay3/save-nr',
                         type: 'POST',
                         data: {
                             sku: sku,
@@ -3458,7 +3480,7 @@
 
                     // Send AJAX to save NRL/REQ status
                     $.ajax({
-                        url: '/listing_ebay/save-status',
+                        url: '/listing_ebaythree/save-status',
                         type: 'POST',
                         data: {
                             sku: sku,
@@ -3497,7 +3519,7 @@
                 const value = $cb.is(':checked') ? 1 : 0;
 
                 $.ajax({
-                    url: '/ebay/update-listed-live',
+                    url: '/ebay3/update-listed-live',
                     method: 'POST',
                     data: {
                         sku: sku,
@@ -3536,7 +3558,7 @@
                     },
                     error: function(err) {
                         console.error('Update failed', err);
-                        alert('Failed to update. Try again.');
+                        showNotification('danger', 'Failed to update. Please try again.');
                         $cb.prop('checked', !value); // revert on error
                     }
                 });
@@ -5048,12 +5070,12 @@
                     }
                 });
                 
-                localStorage.setItem('ebayTableColumnWidths', JSON.stringify(widths));
+                localStorage.setItem('ebayThreeTableColumnWidths', JSON.stringify(widths));
             }
             
             // Load column widths from localStorage
             function loadColumnWidths() {
-                const saved = localStorage.getItem('ebayTableColumnWidths');
+                const saved = localStorage.getItem('ebayThreeTableColumnWidths');
                 if (!saved) return;
                 
                 try {
@@ -5190,7 +5212,7 @@
 
             // Load hidden columns from localStorage
             function loadHiddenColumns() {
-                const stored = localStorage.getItem('hiddenColumns');
+                const stored = localStorage.getItem('ebayThreeHiddenColumns');
                 return stored ? new Set(JSON.parse(stored)) : new Set();
             }
 
@@ -5241,15 +5263,16 @@
                 // Apply hidden columns after table is rendered
                 applyColumnVisibility();
 
-                // Dropdown toggle
+                // Dropdown toggle - prevent Bootstrap from handling it, use custom logic
                 $dropdownBtn.off('click').on('click', function(e) {
+                    e.preventDefault();
                     e.stopPropagation();
                     $menu.toggleClass('show');
                 });
 
                 // Close menu if clicked outside
                 $(document).off('click.columnToggle').on('click.columnToggle', function(e) {
-                    if (!$(e.target).closest('.custom-dropdown').length) {
+                    if (!$(e.target).closest('.dropdown').length && !$(e.target).closest('#columnToggleMenu').length) {
                         $menu.removeClass('show');
                     }
                 });
@@ -5268,7 +5291,7 @@
                     if (!isVisible) hiddenColumns.add(field);
                     else hiddenColumns.delete(field);
 
-                    localStorage.setItem('hiddenColumns', JSON.stringify([...hiddenColumns]));
+                    localStorage.setItem('ebayThreeHiddenColumns', JSON.stringify([...hiddenColumns]));
                 });
 
                 $('#showAllColumns').on('click', function() {
@@ -5283,7 +5306,7 @@
                     
                     // Clear hiddenColumns and save
                     hiddenColumns.clear();
-                    localStorage.setItem('hiddenColumns', JSON.stringify([...hiddenColumns]));
+                    localStorage.setItem('ebayThreeHiddenColumns', JSON.stringify([...hiddenColumns]));
                 });
 
             }
@@ -5433,12 +5456,7 @@
                     // special-case: NRA -> use UI_NR (front-end selected value) only
                     if (column === 'NRA') {
                         filteredData = filteredData.filter(item => {
-                            // Skip parent rows - they don't have NRA dropdown
-                            if (item.is_parent) {
-                                return true; // Always show parent rows
-                            }
-                            
-                            // Only check UI_NR for child rows - this is the frontend selected value
+                            // Check UI_NR for both parent and child rows
                             const uiNR = item.UI_NR || item.NR || 'RA';
                             return uiNR === filterValue;
                         });
@@ -5448,13 +5466,8 @@
                     // special-case: NRL_REQ -> filter based on nr_req field
                     if (column === 'NRL_REQ') {
                         filteredData = filteredData.filter(item => {
-                            // Skip parent rows - they don't have NRL/REQ dropdown
-                            if (item.is_parent) {
-                                return true; // Always show parent rows
-                            }
-                            
-                            // Check nr_req for child rows
-                            const nrReq = item.nr_req || 'NR';
+                            // Check nr_req for both parent and child rows
+                            const nrReq = item.nr_req || 'REQ';
                             return nrReq === filterValue;
                         });
                         return;
@@ -5615,24 +5628,20 @@
                             metrics.liveCount++;
                         }
 
-                        // Count NRL/REQ entries (only for non-parent rows)
-                        if (!item.is_parent) {
-                            const nrReq = item.nr_req || 'NR';
+                        // Count NRL/REQ entries (for both parent and child rows)
+                        const nrReq = item.nr_req || 'REQ';
                             if (nrReq === 'REQ') {
                                 metrics.reqCount++;
                             } else if (nrReq === 'NR') {
                                 metrics.nrCount++;
-                            }
                         }
                         
-                        // Count NRA column entries based on UI_NR (only for non-parent rows)
-                        if (!item.is_parent) {
+                        // Count NRA column entries based on UI_NR (for both parent and child rows)
                             const currentNR = item.UI_NR || item.NR || 'RA';
                             if (currentNR === 'NRA') {
                                 metrics.nraColCount++;
                             } else if (currentNR === 'RA') {
                                 metrics.raColCount++;
-                            }
                         }
 
                         const profit = parseFloat(item.Profit) || 0;
@@ -5762,7 +5771,7 @@
                     $('#sale-total').text(metrics.totalSalesTotal.toLocaleString());
 
                     $.ajax({
-                        url: "{{ route('adv-ebay.total-sales.save-data') }}",
+                        url: "{{ route('adv-ebay3.total-sale.save-data') }}",
                         method: 'GET',
                         data: {
                             totalSales: metrics.totalSalesTotal
@@ -6343,7 +6352,7 @@
                         '<span class="spinner-border spinner-border-sm me-2"></span>Updating Selected...');
 
                 $.ajax({
-                    url: '/ebay/save-nr',
+                    url: '/ebay3/save-nr',
                     type: 'POST',
                     data: {
                         skus: skusToUpdate,
@@ -6423,12 +6432,12 @@
                 const sprice = spriceVal !== '' ? parseFloat(spriceVal) : null;
 
                 if (!sku || !sprice) {
-                    alert('SKU and SPRICE are required.');
+                    showNotification('warning', 'SKU and SPRICE are required.');
                     return;
                 }
 
                 $.ajax({
-                    url: '/ebay-one/save-sprice',
+                    url: '/ebay3/save-sprice',
                     type: 'POST',
                     data: {
                         _token: $('meta[name="csrf-token"]').attr('content'),
@@ -6463,7 +6472,11 @@
                         renderTable();
                     },
                     error: function(xhr) {
-                        alert('Error saving SPRICE.');
+                        var errorMsg = 'Error saving SPRICE.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMsg = xhr.responseJSON.message;
+                        }
+                        showNotification('danger', errorMsg);
                         console.error(xhr.responseText);
                     },
                     complete: function() {

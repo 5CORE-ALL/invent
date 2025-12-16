@@ -310,6 +310,10 @@
             display: block;
         }
 
+        .dropdown-menu.show {
+            display: block !important;
+        }
+
         .column-toggle-item {
             padding: 8px 16px;
             cursor: pointer;
@@ -1070,7 +1074,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'eBay', 'sub_title' => 'eBay Analysis'])
+    @include('layouts.shared/page-title', ['page_title' => 'eBay2', 'sub_title' => 'eBay2 Analysis'])
 
     <div class="row">
         <div class="col-12">
@@ -1129,7 +1133,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>eBay Product Analysis</h4>
+                <h4>eBay2 Product Analysis</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                         <!-- Left side: Filter buttons and Create Task -->
                         <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -1583,11 +1587,11 @@
                             <!-- Column Visibility Dropdown -->
                             <div class="dropdown d-inline-block">
                                 <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                                    id="hideColumnsBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                    id="hideColumnsBtn" aria-expanded="false">
                                     <i class="fa fa-eye"></i> Columns
                                 </button>
                                 <ul class="dropdown-menu" aria-labelledby="hideColumnsBtn" id="columnToggleMenu"
-                                    style="max-height: 400px; overflow-y: auto;">
+                                    style="max-height: 400px; overflow-y: auto; display: none;">
                                     <!-- Will be populated by JavaScript -->
                                 </ul>
                             </div>
@@ -1609,8 +1613,8 @@
                             <span class="badge bg-danger fs-5 p-2" id="zero-sold-count-summary" style="color: white; font-weight: bold;">0 SOLD: 0</span>
                             <span class="badge bg-primary fs-5 p-2" id="sold-count-summary" style="color: white; font-weight: bold;">SOLD: 0</span>
                             <span class="badge bg-danger fs-5 p-2" id="red-margin-count-summary" style="color: white; font-weight: bold;">RED MARGIN: 0</span>
-                            <span class="badge bg-warning fs-5 p-2" id="nra-count-summary" style="color: black; font-weight: bold;">NRA: 0</span>
                             <span class="badge bg-secondary fs-5 p-2" id="nrl-count-summary" style="color: white; font-weight: bold;">NRL: 0</span>
+                            <span class="badge bg-success fs-5 p-2" id="req-count-summary" style="color: white; font-weight: bold;">REQ: 0</span>
                         </div>
                     </div>
                 </div>
@@ -1698,16 +1702,6 @@
                                             <div class="metric-total" id="eDil-total">0%</div>
                                         </div>
                                     </th>
-                                    <th data-field="NRA" style="vertical-align: middle; white-space: nowrap; min-width: 80px; width: 80px;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                NRA
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="nra-col-count">0</div>
-                                        </div>
-                                    </th>
-
                                     <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap; min-width: 100px; width: 100px;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -1840,6 +1834,14 @@
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="sale-total">0</div>
+                                        </div>
+                                    </th>
+
+                                    <th data-field="ship" class="ship_col" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                Ebay 2 Ship
+                                            </div>
                                         </div>
                                     </th>
                                 </tr>
@@ -2342,8 +2344,11 @@
                     .removeClass('btn-success btn-warning btn-danger')
                     .addClass('btn-light');
 
-                // Show all products
-                filteredData = [...tableData];
+                // Show all products (filtered to REQ only)
+                filteredData = tableData.filter(item => {
+                    const nrReq = (item.nr_req || '').toUpperCase();
+                    return nrReq === 'REQ' || !item.nr_req; // Show REQ or items without nr_req set (defaults to REQ)
+                });
                 currentPage = 1;
                 renderTable();
                 calculateTotals();
@@ -2599,11 +2604,16 @@
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
                                     spend_l30: item.AD_Spend_L30 || 0,
+                                    'AD%': item['AD%'] || 0,
                                 };
                             });
 
 
-                            filteredData = [...tableData];
+                            // Filter to show only REQ data
+                            filteredData = tableData.filter(item => {
+                                const nrReq = (item.nr_req || '').toUpperCase();
+                                return nrReq === 'REQ' || !item.nr_req; // Show REQ or items without nr_req set (defaults to REQ)
+                            });
 
                         }
                     },
@@ -2622,8 +2632,8 @@
                 let zeroSold = 0;
                 let totalSku = 0;
                 let lowProfitCount = 0;
-                let nraCount = 0;
                 let nrlCount = 0;
+                let reqCount = 0;
 
                 filteredData.forEach(item => {
                     if (!item.is_parent) {
@@ -2637,11 +2647,11 @@
                         if (pftPercentage < 10) {
                             lowProfitCount++;
                         }
-                        if (item.NR === 'NRA') {
-                            nraCount++;
-                        }
                         if (item.nr_req === 'NR') {
                             nrlCount++;
+                        }
+                        if (item.nr_req === 'REQ' || !item.nr_req) {
+                            reqCount++;
                         }
                     }
                 });
@@ -2649,14 +2659,13 @@
                 $('#zero-sold-count').text(zeroSold);
                 $('#sold-count').text(totalSku - zeroSold);
                 $('#red-margin-count').text(lowProfitCount);
-                $('#nra-count').text(nraCount);
                 
                 // Update summary badges
                 $('#zero-sold-count-summary').text('0 SOLD: ' + zeroSold);
                 $('#sold-count-summary').text('SOLD: ' + (totalSku - zeroSold));
                 $('#red-margin-count-summary').text('RED MARGIN: ' + lowProfitCount);
-                $('#nra-count-summary').text('NRA: ' + nraCount);
                 $('#nrl-count-summary').text('NRL: ' + nrlCount);
+                $('#req-count-summary').text('REQ: ' + reqCount);
 
                 updateRedMarginDataToChannelMaster(lowProfitCount);
             }
@@ -2865,65 +2874,6 @@
                         `<span class="dil-percent-value ${getEDilColor(item['E Dil%'])}">${Math.round(item['E Dil%'] * 100)}%</span>`
                     ));
 
-                    if (item.is_parent) {
-                        $row.append($('<td>').attr('data-field', 'NRA')); // Empty cell for parent
-                    } else {
-                        let currentNR = (item.NR === 'RA' || item.NR === 'NRA' || item.NR === 'LATER') ?
-                            item.NR : 'RA';
-
-                        const adilPercent = Math.round(item['E Dil%'] * 100);
-                        // Auto-set to NRA if E Dil% >= 50%, but only save if it's actually changing
-                        if (adilPercent >= 50 && currentNR !== 'NRA') {
-                            currentNR = 'NRA';
-
-                            // Only save if SKU exists and value is actually changing
-                            if (item['(Child) sku']) {
-                                $.ajax({
-                                    url: '/ebay2/save-nr',
-                                    type: 'POST',
-                                    data: {
-                                        sku: item['(Child) sku'],
-                                        nr: 'NRA',
-                                        _token: $('meta[name="csrf-token"]').attr('content')
-                                    },
-                                    success: function(res) {
-                                        // Update the item in tableData to prevent repeated saves
-                                        const foundItem = tableData.find(i => i['(Child) sku'] === item['(Child) sku']);
-                                        if (foundItem) {
-                                            foundItem.NR = 'NRA';
-                                            foundItem.UI_NR = 'NRA';
-                                        }
-                                    },
-                                    error: function(err) {
-                                        // Silent error - don't pollute console on every render
-                                    }
-                                });
-                            }
-                        }
-
-                        item.UI_NR = currentNR;
-
-                        const $select = $(`
-                            <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                                <option value="NRA" ${currentNR === 'NRA' ? 'selected' : ''}>NRA</option>
-                                <option value="RA" ${currentNR === 'RA' ? 'selected' : ''}>RA</option>
-                                <option value="LATER" ${currentNR === 'LATER' ? 'selected' : ''}>LATER</option>
-                            </select>
-                        `);
-
-                        // Set background color based on value
-                        if (currentNR === 'NRA') {
-                            $select.css('background-color', '#dc3545');
-                            $select.css('color', '#ffffff');
-                        } else if (currentNR === 'RA') {
-                            $select.css('background-color', '#28a745');
-                            $select.css('color', '#ffffff');
-                        }
-
-                        $select.data('sku', item['(Child) sku']);
-                        $row.append($('<td>').attr('data-field', 'NRA').append($select));
-                    }
-
                     // NRL/REQ dropdown - only for non-parent rows
                     if (item.is_parent) {
                         $row.append($('<td>').attr('data-field', 'nr_req')); // Empty cell for parent
@@ -2979,25 +2929,29 @@
                     ));
                     
                     const price = Number(item['eBay Price']) || 0;
-                    const ship = Number(item.SHIP) || 0;
-                    const lp = Number(item.LP) || 0;
+                    const ship = Number(item.SHIP || item.Ship_productmaster) || 0;
+                    const lp = Number(item.LP || item.LP_productmaster) || 0;
                     const spend = Number(item.spend_l30) || 0;
                     const eL30 = Number(item['eBay L30']) || 0;
+                    // Use percentage from item if available, otherwise use global percentage
                     const ebayPercentage = {{ $ebayTwoPercentage ?? 0}};
-                    const ebayAdPercentage = 0;
                     const totalSalesData = eL30 * price;
                     let tacos = Number(item.TacosL30) || 0;
+                    const adPercent = Number(item['AD%'] || 0) / 100; // Convert AD% to decimal
 
-                    let pft = ((price * (ebayPercentage / 100)) - lp - ship) / price;
-                    if(isNaN(pft) || !isFinite(pft)) {
-                        pft = 0;
-                    }
-
-                    let grpft = ((price * (ebayAdPercentage / 100)) - ship - lp) / price;
+                    // GRPFT% = ((Price * percentage - Ship - LP) / Price) * 100
+                    let grpft = ((price * (ebayPercentage / 100)) - ship - lp) / price;
                     if(isNaN(grpft) || !isFinite(grpft)) {
                         grpft = 0;
                     }
 
+                    // PFT% = GRPFT% - AD%
+                    let pft = grpft - adPercent;
+                    if(isNaN(pft) || !isFinite(pft)) {
+                        pft = 0;
+                    }
+
+                    // TPRFT% = GRPFT% - TacosL30 (TacosL30 is already a decimal ratio)
                     let tprft = grpft - tacos;
                     
                     if(isNaN(tprft) || !isFinite(tprft)) {
@@ -3169,8 +3123,15 @@
                     ));
 
                     $row.append($('<td>').attr('data-field', 'salesTotal').attr('id', `total-sales`).html(
-                        ((item['eBay L30']) * (parseFloat(item['eBay Price']) || 0).toFixed(2))
+                        ((item['eBay L30']) * (parseFloat(item['eBay Price']) || 0)).toFixed(2)
                     ));
+
+                    // Add Ebay 2 Ship column
+                    if (item.is_parent) {
+                        $row.append($('<td>').attr('data-field', 'ship').addClass('ship_col')); // Empty cell for parent
+                    } else {
+                        $row.append($('<td>').attr('data-field', 'ship').addClass('ship_col').text(item.SHIP || 0));
+                    }
 
                     $tbody.append($row);
                 });
@@ -3438,7 +3399,7 @@
                 const value = $cb.is(':checked') ? 1 : 0;
 
                 $.ajax({
-                    url: '/ebay/update-listed-live',
+                    url: '/ebay2/update-listed-live',
                     method: 'POST',
                     data: {
                         sku: sku,
@@ -4989,12 +4950,12 @@
                     }
                 });
                 
-                localStorage.setItem('ebayTableColumnWidths', JSON.stringify(widths));
+                localStorage.setItem('ebayTwoTableColumnWidths', JSON.stringify(widths));
             }
             
             // Load column widths from localStorage
             function loadColumnWidths() {
-                const saved = localStorage.getItem('ebayTableColumnWidths');
+                const saved = localStorage.getItem('ebayTwoTableColumnWidths');
                 if (!saved) return;
                 
                 try {
@@ -5131,7 +5092,7 @@
 
             // Load hidden columns from localStorage
             function loadHiddenColumns() {
-                const stored = localStorage.getItem('hiddenColumns');
+                const stored = localStorage.getItem('ebayTwoHiddenColumns');
                 return stored ? new Set(JSON.parse(stored)) : new Set();
             }
 
@@ -5182,15 +5143,16 @@
                 // Apply hidden columns after table is rendered
                 applyColumnVisibility();
 
-                // Dropdown toggle
+                // Dropdown toggle - prevent Bootstrap from handling it, use custom logic
                 $dropdownBtn.off('click').on('click', function(e) {
+                    e.preventDefault();
                     e.stopPropagation();
                     $menu.toggleClass('show');
                 });
 
                 // Close menu if clicked outside
                 $(document).off('click.columnToggle').on('click.columnToggle', function(e) {
-                    if (!$(e.target).closest('.custom-dropdown').length) {
+                    if (!$(e.target).closest('.dropdown').length && !$(e.target).closest('#columnToggleMenu').length) {
                         $menu.removeClass('show');
                     }
                 });
@@ -5209,7 +5171,7 @@
                     if (!isVisible) hiddenColumns.add(field);
                     else hiddenColumns.delete(field);
 
-                    localStorage.setItem('hiddenColumns', JSON.stringify([...hiddenColumns]));
+                    localStorage.setItem('ebayTwoHiddenColumns', JSON.stringify([...hiddenColumns]));
                 });
 
                 $('#showAllColumns').on('click', function() {
@@ -5224,7 +5186,7 @@
                     
                     // Clear hiddenColumns and save
                     hiddenColumns.clear();
-                    localStorage.setItem('hiddenColumns', JSON.stringify([...hiddenColumns]));
+                    localStorage.setItem('ebayTwoHiddenColumns', JSON.stringify([...hiddenColumns]));
                 });
 
             }
@@ -5615,15 +5577,21 @@
                         
                         // Calculate GRPFT, PFT, and TPRFT for totals
                         const itemPrice = parseFloat(item['eBay Price']) || 0;
-                        const itemShip = parseFloat(item.SHIP) || 0;
-                        const itemLp = parseFloat(item.LP) || 0;
+                        const itemShip = parseFloat(item.SHIP || item.Ship_productmaster) || 0;
+                        const itemLp = parseFloat(item.LP || item.LP_productmaster) || 0;
                         const itemTacos = parseFloat(item.TacosL30) || 0;
-                        const ebayPct = {{ $ebayTwoPercentage ?? 0}};
-                        const ebayAdPct = 0;
+                        // Use percentage from item if available, otherwise use global percentage
+                        const itemPercentage = {{ $ebayTwoPercentage ?? 0}};
+                        const ebayPct = itemPercentage;
                         
                         if (itemPrice > 0) {
-                            const itemPft = (itemPrice * (ebayPct / 100) - itemLp - itemShip) / itemPrice;
-                            const itemGrpft = (itemPrice * (ebayAdPct / 100) - itemShip - itemLp) / itemPrice;
+                            // GRPFT% = ((Price * percentage - Ship - LP) / Price) * 100
+                            const itemGrpft = (itemPrice * (ebayPct / 100) - itemShip - itemLp) / itemPrice;
+                            // Get AD% from item (convert from percentage to decimal)
+                            const itemAdPercent = (parseFloat(item['AD%'] || 0) / 100);
+                            // PFT% = GRPFT% - AD%
+                            const itemPft = itemGrpft - itemAdPercent;
+                            // TPRFT% = GRPFT% - TacosL30 (both are decimals, so direct subtraction)
                             const itemTprft = itemGrpft - itemTacos;
                             
                             if (!isNaN(itemPft) && isFinite(itemPft)) {
@@ -5633,9 +5601,9 @@
                             if (!isNaN(itemGrpft) && isFinite(itemGrpft)) {
                                 metrics.grpftTotal += itemGrpft * 100;
                                 metrics.grpftCount++;
-                                // Calculate GRPFT amount: (price * ebayAdPercentage / 100 - ship - lp) * L30
+                                // Calculate GRPFT amount: (price * percentage - ship - lp) * L30
                                 const itemL30 = parseFloat(item['eBay L30']) || 0;
-                                const grpftAmount = ((itemPrice * (ebayAdPct / 100)) - itemShip - itemLp) * itemL30;
+                                const grpftAmount = ((itemPrice * (ebayPct / 100)) - itemShip - itemLp) * itemL30;
                                 if (!isNaN(grpftAmount) && isFinite(grpftAmount)) {
                                     metrics.totalGrpftAmount += grpftAmount;
                                 }
@@ -5700,7 +5668,7 @@
                         }
                     }
                     
-                    $('#sale-total').text(metrics.totalSalesTotal.toLocaleString());
+                    $('#sale-total').text(metrics.totalSalesTotal.toFixed(2));
 
                     $.ajax({
                         url: "{{ route('adv-ebay2.total-sale.save-data') }}",
@@ -5775,7 +5743,6 @@
                 $('#zero-sold-count-summary').text('0 SOLD: 0');
                 $('#sold-count-summary').text('SOLD: 0');
                 $('#red-margin-count-summary').text('RED MARGIN: 0');
-                $('#nra-count-summary').text('NRA: 0');
                 $('#nrl-count-summary').text('NRL: 0');
                 $('#req-total').text('0');
             }
@@ -6369,7 +6336,7 @@
                 }
 
                 $.ajax({
-                    url: '/ebay-one/save-sprice',
+                    url: '/ebay/save-sprice',
                     type: 'POST',
                     data: {
                         _token: $('meta[name="csrf-token"]').attr('content'),

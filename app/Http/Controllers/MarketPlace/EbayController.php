@@ -484,7 +484,7 @@ class EbayController extends Controller
             $row["TacosL30"] = $totalSales > 0 ? round($AD_Spend_L30 / $totalSales, 4) : 0;
             
             // Calculate GPFT%
-            $gpft = $price > 0 ? (($price * 0.86 - $ship - $lp) / $price) * 100 : 0;
+            $gpft = $price > 0 ? (($price * $percentage - $ship - $lp) / $price) * 100 : 0;
             
             // PFT% = GPFT% - AD%
             $row["PFT %"] = round($gpft - $row["AD%"], 2);

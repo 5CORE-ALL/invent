@@ -284,6 +284,22 @@
                                     </select>
                                 </div>
                             </div>
+                            <div class="col-md-6">
+                                <div class="d-flex gap-3 justify-content-end align-items-center">
+                                    <div class="text-end">
+                                        <div class="text-muted small" style="font-size: 0.9rem;">Total L30 Spend</div>
+                                        <div class="fw-bold" style="font-size: 1.3rem;" id="total-l30-spend">$0.00</div>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="text-muted small" style="font-size: 0.9rem;">Total L30 Sales</div>
+                                        <div class="fw-bold" style="font-size: 1.3rem;" id="total-l30-sales">$0.00</div>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="text-muted small" style="font-size: 0.9rem;">Total ACOS</div>
+                                        <div class="fw-bold" style="font-size: 1.3rem;" id="total-acos">0.00%</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -735,6 +751,9 @@
                 return 'pink';
             };
 
+            // Variable to store total ACOS for use in filters and formatters
+            var totalACOSValue = 0;
+
             var table = new Tabulator("#budget-under-table", {
                 index: "Sku",
                 ajaxURL: "/ebay-over-uti/data",
@@ -857,22 +876,23 @@
                         title: "ACOS",
                         field: "acos",
                         hozAlign: "right",
+                        sorter: "number",
+                        sorterParams: {
+                            alignEmptyValues: "bottom"
+                        },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var acosRaw = row.acos; 
                             var acos = parseFloat(acosRaw);
 
-                            if (isNaN(acos.toFixed(0))) {
-                                acos = 0;
+                            if (isNaN(acos)) {
+                                acos = 100;
                             }
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
 
-                            if (acos === 0) {
-                                td.classList.add('red-bg');
-                                return "100%"; 
-                            } else if (acos < 7) {
+                            if (acos < 7) {
                                 td.classList.add('pink-bg');
                             } else if (acos >= 7 && acos <= 14) {
                                 td.classList.add('green-bg');
@@ -881,6 +901,17 @@
                             }
 
                             return acos.toFixed(0) + "%";
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            // Custom sorter: treat acos === 0 as 100 for sorting
+                            var acosA = parseFloat(aRow.getData().acos || 0);
+                            var acosB = parseFloat(bRow.getData().acos || 0);
+                            
+                            // If acos is 0, treat it as 100 for sorting
+                            if (acosA === 0) acosA = 100;
+                            if (acosB === 0) acosB = 100;
+                            
+                            return acosA - acosB;
                         }
                     },
                     {
@@ -892,10 +923,20 @@
                             var l7_spend = parseFloat(row.l7_spend) || 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                            
+                            // Get row's ACOS
+                            var rowAcos = parseFloat(row.acos) || 0;
+                            if (isNaN(rowAcos) || rowAcos === 0) {
+                                rowAcos = 100; // Treat 0 as 100 for comparison
+                            }
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 70 && ub7 <= 90) {
+                            
+                            // If acos > totalACOS, show pink (new rule)
+                            if (rowAcos > totalACOSValue) {
+                                td.classList.add('pink-bg');
+                            } else if (ub7 >= 70 && ub7 <= 90) {
                                 td.classList.add('green-bg');
                             } else if (ub7 > 90) {
                                 td.classList.add('pink-bg');
@@ -1043,13 +1084,30 @@
                     let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
-                    if (!(ub7 > 90)) return false;
+                    // Get row's ACOS (backend already returns 100 when acos is 0)
+                    let rowAcos = parseFloat(acos) || 0;
+                    if (isNaN(rowAcos)) {
+                        rowAcos = 0;
+                    }
 
-                    // price < 20
-                    // let price = parseFloat(data.price || 0);
-                    // if (price < 30) {
-                    //     return false;
-                    // }
+                    // Calculate totalACOSValue if not already set (from all table data)
+                    if (totalACOSValue === 0 || isNaN(totalACOSValue)) {
+                        let allData = table.getData();
+                        let allTotalSpend = 0;
+                        let allTotalSales = 0;
+                        allData.forEach(function(row) {
+                            let spend = parseFloat(row.spend_l30 || 0);
+                            let sales = parseFloat(row.ad_sales_l30 || 0);
+                            allTotalSpend += spend;
+                            allTotalSales += sales;
+                        });
+                        totalACOSValue = allTotalSales > 0 ? (allTotalSpend / allTotalSales) * 100 : 0;
+                    }
+
+                    // Show campaigns where ub7 > 90 OR acos > totalACOS
+                    // Note: Backend already returns 100 when acos is 0, so we can directly compare
+                    let showCampaign = (rowAcos > totalACOSValue);
+                    if (!showCampaign) return false;
 
                     // Pink DIL filter (exclude pink rows)
                     let l30 = parseFloat(data.L30);
@@ -1111,21 +1169,67 @@
                     document.getElementById("percentage-campaigns").innerText = percentage + "%";
                 }
 
-                table.on("dataFiltered", updateCampaignStats);
-                table.on("pageLoaded", updateCampaignStats);
-                table.on("dataProcessed", updateCampaignStats);
+                function updateL30Totals() {
+                    let allData = table.getData();
+                    let filteredData = allData.filter(combinedFilter);
+
+                    let totalSpend = 0;
+                    let totalSales = 0;
+
+                    filteredData.forEach(function(row) {
+                        let spend = parseFloat(row.spend_l30 || 0);
+                        let sales = parseFloat(row.ad_sales_l30 || 0);
+                        totalSpend += spend;
+                        totalSales += sales;
+                    });
+
+                    // Update display
+                    document.getElementById("total-l30-spend").innerText = "$" + totalSpend.toFixed(2);
+                    document.getElementById("total-l30-sales").innerText = "$" + totalSales.toFixed(2);
+
+                    // Calculate Total ACOS = (Total L30 Spend / Total L30 Sales) * 100
+                    let totalACOS = totalSales > 0 ? (totalSpend / totalSales) * 100 : 0;
+                    document.getElementById("total-acos").innerText = totalACOS.toFixed(2) + "%";
+                    
+                    // Calculate total ACOS from ALL data for filter comparison
+                    let allTotalSpend = 0;
+                    let allTotalSales = 0;
+                    allData.forEach(function(row) {
+                        let spend = parseFloat(row.spend_l30 || 0);
+                        let sales = parseFloat(row.ad_sales_l30 || 0);
+                        allTotalSpend += spend;
+                        allTotalSales += sales;
+                    });
+                    totalACOSValue = allTotalSales > 0 ? (allTotalSpend / allTotalSales) * 100 : 0;
+                }
+
+                table.on("dataFiltered", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
+                table.on("pageLoaded", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
+                table.on("dataProcessed", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
 
                 $("#global-search").on("keyup", function() {
                     table.setFilter(combinedFilter);
                     updateCampaignStats(); // update count immediately
+                    updateL30Totals(); // update totals immediately
                 });
 
                 $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     updateCampaignStats(); // update count immediately
+                    updateL30Totals(); // update totals immediately
                 });
 
                 updateCampaignStats();
+                updateL30Totals();
             });
 
             document.addEventListener("click", function(e) {

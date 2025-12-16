@@ -908,6 +908,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('ebayThreePricingCVR', [EbayThreeController::class, 'ebayThreePricingCVR'])->name('ebayThree.pricing.cvr');
     Route::post('/update-all-ebay3-skus', [EbayThreeController::class, 'updateAllEbay3Skus']);
     Route::post('/ebay3/save-nr', [EbayThreeController::class, 'saveNrToDatabase']);
+    Route::post('/ebay3/save-sprice', [EbayThreeController::class, 'saveSpriceToDatabase']);
     Route::post('/ebay3/update-listed-live', [EbayThreeController::class, 'updateListedLive']);
     Route::post('/ebay3-analytics/import', [EbayThreeController::class, 'importEbayThreeAnalytics'])->name('ebay3.analytics.import');
     Route::get('/ebay3-analytics/export', [EbayThreeController::class, 'exportEbayThreeAnalytics'])->name('ebay3.analytics.export');
