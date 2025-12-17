@@ -330,6 +330,9 @@
                             <a href="{{ route('keywords.master') }}">Keywords Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('package.includes.master') }}">Package Includes Master</a>
+                        </li>
+                        <li>
                             <a href="{{ route('qa.master') }}">Q&A Master</a>
                         </li>
                         <li>

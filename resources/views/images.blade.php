@@ -122,20 +122,104 @@
                                         <th>Image</th>
                                         <th>Parent</th>
                                         <th>SKU</th>
-                                        <th>Main Image</th>
-                                        <th>Main Image Brand</th>
-                                        <th>Image 1</th>
-                                        <th>Image 2</th>
-                                        <th>Image 3</th>
-                                        <th>Image 4</th>
-                                        <th>Image 5</th>
-                                        <th>Image 6</th>
-                                        <th>Image 7</th>
-                                        <th>Image 8</th>
-                                        <th>Image 9</th>
-                                        <th>Image 10</th>
-                                        <th>Image 11</th>
-                                        <th>Image 12</th>
+                                        <th>
+                                            <div>Main Image <span id="mainImageMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterMainImage" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Main Image Brand <span id="mainImageBrandMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterMainImageBrand" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 1 <span id="image1MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage1" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 2 <span id="image2MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage2" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 3 <span id="image3MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage3" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 4 <span id="image4MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage4" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 5 <span id="image5MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage5" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 6 <span id="image6MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage6" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 7 <span id="image7MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage7" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 8 <span id="image8MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage8" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 9 <span id="image9MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage9" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 10 <span id="image10MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage10" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 11 <span id="image11MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage11" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Image 12 <span id="image12MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterImage12" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
                                         <th>Action</th>
                                     </tr>
                                     <tr>
@@ -324,6 +408,7 @@
                     if (data && Array.isArray(data)) {
                         tableData = data;
                         renderTable(tableData);
+                        updateCounts();
                     } else {
                         console.error('Invalid data:', response);
                         showError('Invalid data format received from server');
@@ -346,12 +431,17 @@
                 return;
             }
 
-            data.forEach(item => {
-                // Skip parent rows
-                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
-                    return;
-                }
+            // Filter out parent rows before rendering
+            const filteredData = data.filter(item => {
+                return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
+            });
 
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="18" class="text-center">No products found</td></tr>';
+                return;
+            }
+
+            filteredData.forEach(item => {
                 const row = document.createElement('tr');
 
                 // Image
@@ -430,15 +520,88 @@
             });
         }
 
+        // Check if value is missing (null, undefined, empty)
+        function isMissing(value) {
+            return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
+        }
+
+        function updateCounts() {
+            let mainImageMissingCount = 0;
+            let mainImageBrandMissingCount = 0;
+            let image1MissingCount = 0;
+            let image2MissingCount = 0;
+            let image3MissingCount = 0;
+            let image4MissingCount = 0;
+            let image5MissingCount = 0;
+            let image6MissingCount = 0;
+            let image7MissingCount = 0;
+            let image8MissingCount = 0;
+            let image9MissingCount = 0;
+            let image10MissingCount = 0;
+            let image11MissingCount = 0;
+            let image12MissingCount = 0;
+
+            tableData.forEach(item => {
+                if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
+                    // Count missing data for each image column
+                    if (isMissing(item.main_image)) mainImageMissingCount++;
+                    if (isMissing(item.main_image_brand)) mainImageBrandMissingCount++;
+                    if (isMissing(item.image1)) image1MissingCount++;
+                    if (isMissing(item.image2)) image2MissingCount++;
+                    if (isMissing(item.image3)) image3MissingCount++;
+                    if (isMissing(item.image4)) image4MissingCount++;
+                    if (isMissing(item.image5)) image5MissingCount++;
+                    if (isMissing(item.image6)) image6MissingCount++;
+                    if (isMissing(item.image7)) image7MissingCount++;
+                    if (isMissing(item.image8)) image8MissingCount++;
+                    if (isMissing(item.image9)) image9MissingCount++;
+                    if (isMissing(item.image10)) image10MissingCount++;
+                    if (isMissing(item.image11)) image11MissingCount++;
+                    if (isMissing(item.image12)) image12MissingCount++;
+                }
+            });
+
+            document.getElementById('mainImageMissingCount').textContent = `(${mainImageMissingCount})`;
+            document.getElementById('mainImageBrandMissingCount').textContent = `(${mainImageBrandMissingCount})`;
+            document.getElementById('image1MissingCount').textContent = `(${image1MissingCount})`;
+            document.getElementById('image2MissingCount').textContent = `(${image2MissingCount})`;
+            document.getElementById('image3MissingCount').textContent = `(${image3MissingCount})`;
+            document.getElementById('image4MissingCount').textContent = `(${image4MissingCount})`;
+            document.getElementById('image5MissingCount').textContent = `(${image5MissingCount})`;
+            document.getElementById('image6MissingCount').textContent = `(${image6MissingCount})`;
+            document.getElementById('image7MissingCount').textContent = `(${image7MissingCount})`;
+            document.getElementById('image8MissingCount').textContent = `(${image8MissingCount})`;
+            document.getElementById('image9MissingCount').textContent = `(${image9MissingCount})`;
+            document.getElementById('image10MissingCount').textContent = `(${image10MissingCount})`;
+            document.getElementById('image11MissingCount').textContent = `(${image11MissingCount})`;
+            document.getElementById('image12MissingCount').textContent = `(${image12MissingCount})`;
+        }
+
         function setupSearchHandlers() {
             document.querySelectorAll('.search-input').forEach(input => {
                 input.addEventListener('input', function() {
-                    filterTable();
+                    applyFilters();
                 });
             });
+
+            // Column filters
+            document.getElementById('filterMainImage').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterMainImageBrand').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            for (let i = 1; i <= 12; i++) {
+                document.getElementById(`filterImage${i}`).addEventListener('change', function() {
+                    applyFilters();
+                });
+            }
         }
 
-        function filterTable() {
+        // Apply all filters
+        function applyFilters() {
             const filters = {};
             document.querySelectorAll('.search-input').forEach(input => {
                 const column = input.getAttribute('data-column');
@@ -448,22 +611,91 @@
                 }
             });
 
+            const filterMainImage = document.getElementById('filterMainImage').value;
+            const filterMainImageBrand = document.getElementById('filterMainImageBrand').value;
+            const filterImage1 = document.getElementById('filterImage1').value;
+            const filterImage2 = document.getElementById('filterImage2').value;
+            const filterImage3 = document.getElementById('filterImage3').value;
+            const filterImage4 = document.getElementById('filterImage4').value;
+            const filterImage5 = document.getElementById('filterImage5').value;
+            const filterImage6 = document.getElementById('filterImage6').value;
+            const filterImage7 = document.getElementById('filterImage7').value;
+            const filterImage8 = document.getElementById('filterImage8').value;
+            const filterImage9 = document.getElementById('filterImage9').value;
+            const filterImage10 = document.getElementById('filterImage10').value;
+            const filterImage11 = document.getElementById('filterImage11').value;
+            const filterImage12 = document.getElementById('filterImage12').value;
+
             const filteredData = tableData.filter(item => {
                 // Skip parent rows
                 if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
                     return false;
                 }
 
+                // Text search filters
                 for (const [column, value] of Object.entries(filters)) {
                     const itemValue = String(item[column] || '').toLowerCase();
                     if (!itemValue.includes(value)) {
                         return false;
                     }
                 }
+
+                // Main Image filter
+                if (filterMainImage === 'missing' && !isMissing(item.main_image)) {
+                    return false;
+                }
+
+                // Main Image Brand filter
+                if (filterMainImageBrand === 'missing' && !isMissing(item.main_image_brand)) {
+                    return false;
+                }
+
+                // Image 1-12 filters
+                if (filterImage1 === 'missing' && !isMissing(item.image1)) {
+                    return false;
+                }
+                if (filterImage2 === 'missing' && !isMissing(item.image2)) {
+                    return false;
+                }
+                if (filterImage3 === 'missing' && !isMissing(item.image3)) {
+                    return false;
+                }
+                if (filterImage4 === 'missing' && !isMissing(item.image4)) {
+                    return false;
+                }
+                if (filterImage5 === 'missing' && !isMissing(item.image5)) {
+                    return false;
+                }
+                if (filterImage6 === 'missing' && !isMissing(item.image6)) {
+                    return false;
+                }
+                if (filterImage7 === 'missing' && !isMissing(item.image7)) {
+                    return false;
+                }
+                if (filterImage8 === 'missing' && !isMissing(item.image8)) {
+                    return false;
+                }
+                if (filterImage9 === 'missing' && !isMissing(item.image9)) {
+                    return false;
+                }
+                if (filterImage10 === 'missing' && !isMissing(item.image10)) {
+                    return false;
+                }
+                if (filterImage11 === 'missing' && !isMissing(item.image11)) {
+                    return false;
+                }
+                if (filterImage12 === 'missing' && !isMissing(item.image12)) {
+                    return false;
+                }
+
                 return true;
             });
 
             renderTable(filteredData);
+        }
+
+        function filterTable() {
+            applyFilters();
         }
 
         function setupSKUChangeHandler() {
@@ -696,3 +928,4 @@
         }
     </script>
 @endsection
+

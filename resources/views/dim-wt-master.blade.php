@@ -175,6 +175,9 @@
                             </div>
                         </div>
                         <div class="col-md-6 text-end">
+                            <button type="button" class="btn btn-info me-2" id="importExcel">
+                                <i class="fas fa-file-upload me-1"></i> Import Excel
+                            </button>
                             <button type="button" class="btn btn-success" id="downloadExcel">
                                 <i class="fas fa-file-excel me-1"></i> Download Excel
                             </button>
@@ -204,11 +207,41 @@
                                     </th>
                                     <th>Status</th>
                                     <th>INV</th>
-                                    <th>WT ACT</th>
-                                    <th>WT DECL</th>
-                                    <th>L</th>
-                                    <th>W</th>
-                                    <th>H</th>
+                                    <th>
+                                        <div>WT ACT <span id="wtActMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterWtAct" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>WT DECL <span id="wtDeclMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>L <span id="lMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterL" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>W <span id="wMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterW" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>H <span id="hMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterH" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -224,6 +257,42 @@
                         <div class="wave"></div>
                         <div class="loading-text">Loading Dim & Wt Master Data...</div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Excel Modal -->
+    <div class="modal fade" id="importExcelModal" tabindex="-1" aria-labelledby="importExcelModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="importExcelModalLabel">Import Dim & Wt Data from Excel</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="excelFile" class="form-label">Select Excel File</label>
+                        <input type="file" class="form-control" id="excelFile" accept=".xlsx,.xls" required>
+                        <small class="form-text text-muted">Please upload an Excel file (.xlsx or .xls) with columns: SKU, WT ACT, WT DECL, L, W, H</small>
+                    </div>
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> The Excel file should have the following columns:
+                        <ul class="mb-0 mt-2">
+                            <li>SKU (required)</li>
+                            <li>WT ACT (optional)</li>
+                            <li>WT DECL (optional)</li>
+                            <li>L (optional)</li>
+                            <li>W (optional)</li>
+                            <li>H (optional)</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="uploadExcelBtn">
+                        <i class="fas fa-upload me-2"></i> Upload & Import
+                    </button>
                 </div>
             </div>
         </div>
@@ -406,13 +475,98 @@
             function updateCounts() {
                 const parentSet = new Set();
                 let skuCount = 0;
+                let wtActMissingCount = 0;
+                let wtDeclMissingCount = 0;
+                let lMissingCount = 0;
+                let wMissingCount = 0;
+                let hMissingCount = 0;
+
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
+                    
+                    // Count missing data for each column
+                    if (isMissing(item.wt_act)) wtActMissingCount++;
+                    if (isMissing(item.wt_decl)) wtDeclMissingCount++;
+                    if (isMissing(item.l)) lMissingCount++;
+                    if (isMissing(item.w)) wMissingCount++;
+                    if (isMissing(item.h)) hMissingCount++;
                 });
+                
                 document.getElementById('parentCount').textContent = `(${parentSet.size})`;
                 document.getElementById('skuCount').textContent = `(${skuCount})`;
+                document.getElementById('wtActMissingCount').textContent = `(${wtActMissingCount})`;
+                document.getElementById('wtDeclMissingCount').textContent = `(${wtDeclMissingCount})`;
+                document.getElementById('lMissingCount').textContent = `(${lMissingCount})`;
+                document.getElementById('wMissingCount').textContent = `(${wMissingCount})`;
+                document.getElementById('hMissingCount').textContent = `(${hMissingCount})`;
+            }
+
+            // Check if value is missing (null, undefined, empty, or 0)
+            function isMissing(value) {
+                return value === null || value === undefined || value === '' || value === 0 || parseFloat(value) === 0;
+            }
+
+            // Apply all filters
+            function applyFilters() {
+                filteredData = tableData.filter(item => {
+                    // Parent search filter
+                    const parentSearch = document.getElementById('parentSearch').value.toLowerCase();
+                    if (parentSearch && !(item.Parent || '').toLowerCase().includes(parentSearch)) {
+                        return false;
+                    }
+
+                    // SKU search filter
+                    const skuSearch = document.getElementById('skuSearch').value.toLowerCase();
+                    if (skuSearch && !(item.SKU || '').toLowerCase().includes(skuSearch)) {
+                        return false;
+                    }
+
+                    // Custom search filter
+                    const customSearch = document.getElementById('customSearch').value.toLowerCase();
+                    if (customSearch) {
+                        const parent = (item.Parent || '').toLowerCase();
+                        const sku = (item.SKU || '').toLowerCase();
+                        const status = (item.status || '').toLowerCase();
+                        if (!parent.includes(customSearch) && !sku.includes(customSearch) && !status.includes(customSearch)) {
+                            return false;
+                        }
+                    }
+
+                    // WT ACT filter
+                    const filterWtAct = document.getElementById('filterWtAct').value;
+                    if (filterWtAct === 'missing' && !isMissing(item.wt_act)) {
+                        return false;
+                    }
+
+                    // WT DECL filter
+                    const filterWtDecl = document.getElementById('filterWtDecl').value;
+                    if (filterWtDecl === 'missing' && !isMissing(item.wt_decl)) {
+                        return false;
+                    }
+
+                    // L filter
+                    const filterL = document.getElementById('filterL').value;
+                    if (filterL === 'missing' && !isMissing(item.l)) {
+                        return false;
+                    }
+
+                    // W filter
+                    const filterW = document.getElementById('filterW').value;
+                    if (filterW === 'missing' && !isMissing(item.w)) {
+                        return false;
+                    }
+
+                    // H filter
+                    const filterH = document.getElementById('filterH').value;
+                    if (filterH === 'missing' && !isMissing(item.h)) {
+                        return false;
+                    }
+
+                    return true;
+                });
+                renderTable(filteredData);
             }
 
             // Setup search functionality
@@ -420,36 +574,19 @@
                 // Parent search
                 const parentSearch = document.getElementById('parentSearch');
                 parentSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        return parent.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // SKU search
                 const skuSearch = document.getElementById('skuSearch');
                 skuSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const sku = (item.SKU || '').toLowerCase();
-                        return sku.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // Custom search
                 const customSearch = document.getElementById('customSearch');
                 customSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        const sku = (item.SKU || '').toLowerCase();
-                        const status = (item.status || '').toLowerCase();
-                        return parent.includes(searchTerm) || sku.includes(searchTerm) || status.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // Clear search
@@ -457,8 +594,34 @@
                     customSearch.value = '';
                     parentSearch.value = '';
                     skuSearch.value = '';
-                    filteredData = [...tableData];
-                    renderTable(filteredData);
+                    // Reset all column filters
+                    document.getElementById('filterWtAct').value = 'all';
+                    document.getElementById('filterWtDecl').value = 'all';
+                    document.getElementById('filterL').value = 'all';
+                    document.getElementById('filterW').value = 'all';
+                    document.getElementById('filterH').value = 'all';
+                    applyFilters();
+                });
+
+                // Column filters
+                document.getElementById('filterWtAct').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterWtDecl').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterL').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterW').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterH').addEventListener('change', function() {
+                    applyFilters();
                 });
             }
 
@@ -646,9 +809,89 @@
                 });
             }
 
+            // Setup import functionality
+            function setupImport() {
+                document.getElementById('importExcel').addEventListener('click', function() {
+                    openImportModal();
+                });
+
+                document.getElementById('uploadExcelBtn').addEventListener('click', function() {
+                    uploadExcelFile();
+                });
+            }
+
+            // Open Import Modal
+            function openImportModal() {
+                const modalElement = document.getElementById('importExcelModal');
+                const modal = new bootstrap.Modal(modalElement);
+                
+                // Reset file input
+                document.getElementById('excelFile').value = '';
+                
+                modal.show();
+            }
+
+            // Upload and Import Excel File
+            async function uploadExcelFile() {
+                const fileInput = document.getElementById('excelFile');
+                const file = fileInput.files[0];
+                
+                if (!file) {
+                    showToast('warning', 'Please select an Excel file to upload');
+                    return;
+                }
+
+                const uploadBtn = document.getElementById('uploadExcelBtn');
+                const originalText = uploadBtn.innerHTML;
+                
+                try {
+                    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Uploading...';
+                    uploadBtn.disabled = true;
+                    
+                    // Create FormData for file upload
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('_token', csrfToken);
+                    
+                    const response = await fetch('/dim-wt-master/import', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (!response.ok) {
+                        throw new Error(data.message || 'Failed to import data');
+                    }
+                    
+                    showToast('success', data.message || 'Data imported successfully!');
+                    
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('importExcelModal'));
+                    modal.hide();
+                    
+                    // Clear cache and reload data
+                    tableData = [];
+                    filteredData = [];
+                    setTimeout(() => {
+                        loadData();
+                    }, 500);
+                } catch (error) {
+                    console.error('Error importing:', error);
+                    showToast('danger', error.message || 'Failed to import data');
+                } finally {
+                    uploadBtn.innerHTML = originalText;
+                    uploadBtn.disabled = false;
+                }
+            }
+
             // Initialize
             loadData();
             setupExcelExport();
+            setupImport();
         });
     </script>
 @endsection

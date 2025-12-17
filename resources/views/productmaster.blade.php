@@ -767,7 +767,7 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="sku" class="form-label fw-bold"
-                                                        style="color: #4A5568;">SKU*</label>
+                                                        style="color: #4A5568;">SKU <span class="text-danger">*</span></label>
                                                     <input type="text" class="form-control" id="sku"
                                                         placeholder="Enter SKU"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
@@ -777,35 +777,36 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="parent" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Parent</label>
+                                                        style="color: #4A5568;">Parent <span class="text-danger">*</span></label>
                                                     <div class="input-group">
                                                         <input type="text" class="form-control" id="parent"
                                                             placeholder="Enter or select parent"
                                                             style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;"
-                                                            list="parentOptions">
+                                                            list="parentOptions" required>
                                                         <datalist id="parentOptions"></datalist>
                                                         <button class="btn btn-outline-secondary" type="button"
                                                             id="refreshParents" style="border-radius: 0 6px 6px 0;">
                                                             <i class="fas fa-sync-alt"></i>
                                                         </button>
                                                     </div>
+                                                    <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="labelQty" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Label QTY</label>
+                                                        style="color: #4A5568;">Label QTY <span class="text-danger">*</span></label>
                                                     <input type="text" class="form-control" id="labelQty"
                                                         placeholder="Enter QTY"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;" required>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="status" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Status</label>
-                                                    <select class="form-control" id="status" name="status"
+                                                        style="color: #4A5568;">Status <span class="text-danger">*</span></label>
+                                                    <select class="form-control" id="status" name="status" required
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                         <option value="">Select Status</option>
                                                         <option value="active">Active</option>
@@ -814,16 +815,20 @@
                                                         <option value="upcoming">Upcoming</option>
                                                         <option value="2BDC">2BDC</option>
                                                     </select>
+                                                    <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="unit" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Unit</label>
-                                                    <select class="form-control" id="unit" name="unit" required>
+                                                        style="color: #4A5568;">Unit <span class="text-danger">*</span></label>
+                                                    <select class="form-control" id="unit" name="unit" required
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        <option value="">Select Unit</option>
                                                         <option value="Pieces">Pieces</option>
                                                         <option value="Pair">Pair</option>
                                                     </select>
+                                                    <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -833,10 +838,10 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="cp" class="form-label fw-bold"
-                                                        style="color: #4A5568;">CP</label>
+                                                        style="color: #4A5568;">CP <span class="text-danger">*</span></label>
                                                     <input type="text" class="form-control" id="cp"
                                                         placeholder="Enter cp"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;" required>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
@@ -873,10 +878,10 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="wtAct" class="form-label fw-bold"
-                                                        style="color: #4A5568;">WT ACT</label>
+                                                        style="color: #4A5568;">WT ACT <span class="text-danger">*</span></label>
                                                     <input type="text" class="form-control" id="wtAct"
                                                         placeholder="Enter WT ACT"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;" required>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
@@ -887,20 +892,20 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="wtDecl" class="form-label fw-bold"
-                                                        style="color: #4A5568;">WT DECL</label>
+                                                        style="color: #4A5568;">WT DECL <span class="text-danger">*</span></label>
                                                     <input type="text" class="form-control" id="wtDecl"
                                                         placeholder="Enter WT DECL"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;" required>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="ship" class="form-label fw-bold"
-                                                        style="color: #4A5568;">SHIP</label>
+                                                        style="color: #4A5568;">SHIP <span class="text-danger">*</span></label>
                                                     <input type="text" class="form-control" id="ship"
                                                         placeholder="Enter SHIP"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;" required>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
@@ -946,20 +951,20 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="w" class="form-label fw-bold"
-                                                        style="color: #4A5568;">W</label>
+                                                        style="color: #4A5568;">W <span class="text-danger">*</span></label>
                                                     <input type="text" class="form-control" id="w"
                                                         placeholder="Enter W"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;" required>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="l" class="form-label fw-bold"
-                                                        style="color: #4A5568;">L</label>
+                                                        style="color: #4A5568;">L <span class="text-danger">*</span></label>
                                                     <input type="text" class="form-control" id="l"
                                                         placeholder="Enter L"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;" required>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
@@ -970,10 +975,10 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="h" class="form-label fw-bold"
-                                                        style="color: #4A5568;">H</label>
+                                                        style="color: #4A5568;">H <span class="text-danger">*</span></label>
                                                     <input type="text" class="form-control" id="h"
                                                         placeholder="Enter H"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;" required>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
@@ -1013,10 +1018,11 @@
                                             <div class="col-md-3">
                                                 <div class="form-group">
                                                     <label for="upc" class="form-label fw-bold"
-                                                        style="color: #4A5568;">UPC</label>
+                                                        style="color: #4A5568;">UPC <span class="text-danger">*</span></label>
                                                     <input type="text" class="form-control" id="upc"
                                                         placeholder="Enter UPC"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
+                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;" required>
+                                                    <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
                                             <div class="col-md-3">
@@ -3043,8 +3049,9 @@
                 }
 
                 let isValid = true;
-                // const requiredFields = ['sku', 'labelQty', 'cp', 'ship', 'wtAct', 'wtDecl', 'w', 'l', 'h', 'unit'];
-                const requiredFields = ['sku'];
+                // Required fields: sku, parent, labelQty, status, unit, cp, wtAct, wtDecl, ship, upc, w, l, h
+                const requiredFields = ['sku', 'parent', 'labelQty', 'status', 'unit', 'cp', 'wtAct', 'wtDecl', 'ship', 'upc', 'w', 'l', 'h'];
+                const numericFields = ['labelQty', 'cp', 'wtAct', 'wtDecl', 'w', 'l', 'h'];
                 const skuField = document.getElementById('sku');
                 
                 // Check if SKU already exists (front-end validation)
@@ -3058,13 +3065,33 @@
 
                 requiredFields.forEach(id => {
                     const field = document.getElementById(id);
-                    if (!field.value.trim()) {
-                        showFieldError(field, 'This field is required');
+                    if (!field) return; // Skip if field doesn't exist
+                    
+                    const fieldValue = field.value ? field.value.trim() : '';
+                    
+                    // Check if field is empty
+                    if (!fieldValue) {
+                        let errorMessage = 'This field is required';
+                        if (id === 'status') {
+                            errorMessage = 'Please select a status';
+                        } else if (id === 'unit') {
+                            errorMessage = 'Please select a unit';
+                        }
+                        showFieldError(field, errorMessage);
                         isValid = false;
-                    } else if (isNaN(field.value) && id !== 'sku' && id !== 'unit') {
-                        showFieldError(field, 'Must be a number');
-                        isValid = false;
-                    } else if (id !== 'sku' || isValid) { // Only clear if not already marked as duplicate
+                    } 
+                    // Check if numeric fields contain valid numbers
+                    else if (numericFields.includes(id)) {
+                        const numValue = parseFloat(fieldValue);
+                        if (isNaN(numValue) || numValue < 0) {
+                            showFieldError(field, 'Must be a valid positive number');
+                            isValid = false;
+                        } else {
+                            clearFieldError(field);
+                        }
+                    } 
+                    // For non-numeric required fields, just clear error if value exists
+                    else {
                         clearFieldError(field);
                     }
                 });

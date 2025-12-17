@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class CategoryController extends Controller
 {
@@ -518,6 +519,149 @@ class CategoryController extends Controller
         ]);
     }
 
+    public function importShippingMaster(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            $extension = strtolower($file->getClientOriginalExtension());
+            
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
+            
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
+            }
+
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings
+            $columnMap = [
+                'sku' => 'sku',
+                'ship' => 'ship',
+                'temu_ship' => 'temu_ship',
+                'ebay2_ship' => 'ebay2_ship'
+            ];
+
+            // Find column indices
+            $columnIndices = [];
+            foreach ($columnMap as $key => $value) {
+                $index = array_search($key, $headers);
+                if ($index !== false) {
+                    $columnIndices[$value] = $index;
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
+                    continue;
+                }
+
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
+                }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                $hasChanges = false;
+
+                // Update SHIP if column exists and has value
+                if (isset($columnIndices['ship']) && isset($row[$columnIndices['ship']])) {
+                    $shipValue = trim($row[$columnIndices['ship']]);
+                    if ($shipValue !== '') {
+                        $values['ship'] = $shipValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update TEMU SHIP if column exists and has value
+                if (isset($columnIndices['temu_ship']) && isset($row[$columnIndices['temu_ship']])) {
+                    $temuShipValue = trim($row[$columnIndices['temu_ship']]);
+                    if ($temuShipValue !== '') {
+                        $values['temu_ship'] = $temuShipValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update EBAY2 SHIP if column exists and has value
+                if (isset($columnIndices['ebay2_ship']) && isset($row[$columnIndices['ebay2_ship']])) {
+                    $ebay2ShipValue = trim($row[$columnIndices['ebay2_ship']]);
+                    if ($ebay2ShipValue !== '') {
+                        $values['ebay2_ship'] = $ebay2ShipValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update product if there are changes
+                if ($hasChanges) {
+                    $product->Values = $values;
+                    $product->save();
+                    $updated++;
+                    $imported++;
+                }
+            }
+
+            $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $imported,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Shipping Master Import Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function generalSpecificMaster()
     {
         return view('general-specific-master');
@@ -818,6 +962,181 @@ class CategoryController extends Controller
         }
     }
 
+    public function importGeneralSpecificMaster(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
+            
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
+            }
+
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings
+            $columnMap = [
+                'sku' => 'sku',
+                'brand' => 'brand',
+                'handling_time' => 'handling_time',
+                'country_of_origin' => 'country_of_origin',
+                'warranty' => 'warranty',
+                'prop_warning' => 'prop_warning',
+                'condition' => 'condition'
+            ];
+
+            // Find column indices
+            $columnIndices = [];
+            foreach ($columnMap as $key => $value) {
+                $index = array_search($key, $headers);
+                if ($index !== false) {
+                    $columnIndices[$value] = $index;
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
+                    continue;
+                }
+
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)
+                    ->where('sku', 'NOT LIKE', 'PARENT %')
+                    ->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
+                }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                $hasChanges = false;
+
+                // Update Brand if column exists and has value
+                if (isset($columnIndices['brand']) && isset($row[$columnIndices['brand']])) {
+                    $brandValue = trim($row[$columnIndices['brand']]);
+                    if ($brandValue !== '') {
+                        $values['brand'] = $brandValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Handling Time if column exists and has value
+                if (isset($columnIndices['handling_time']) && isset($row[$columnIndices['handling_time']])) {
+                    $handlingTimeValue = trim($row[$columnIndices['handling_time']]);
+                    if ($handlingTimeValue !== '') {
+                        $values['handling_time'] = $handlingTimeValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Country of Origin if column exists and has value
+                if (isset($columnIndices['country_of_origin']) && isset($row[$columnIndices['country_of_origin']])) {
+                    $countryOfOriginValue = trim($row[$columnIndices['country_of_origin']]);
+                    if ($countryOfOriginValue !== '') {
+                        $values['country_of_origin'] = $countryOfOriginValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Warranty if column exists and has value
+                if (isset($columnIndices['warranty']) && isset($row[$columnIndices['warranty']])) {
+                    $warrantyValue = trim($row[$columnIndices['warranty']]);
+                    if ($warrantyValue !== '') {
+                        $values['warranty'] = $warrantyValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Prop Warning if column exists and has value
+                if (isset($columnIndices['prop_warning']) && isset($row[$columnIndices['prop_warning']])) {
+                    $propWarningValue = trim($row[$columnIndices['prop_warning']]);
+                    if ($propWarningValue !== '') {
+                        $values['prop_warning'] = $propWarningValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Condition if column exists and has value
+                if (isset($columnIndices['condition']) && isset($row[$columnIndices['condition']])) {
+                    $conditionValue = trim($row[$columnIndices['condition']]);
+                    if ($conditionValue !== '') {
+                        $values['condition'] = $conditionValue;
+                        $values['Condition'] = $conditionValue; // Also update capitalized version
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update product if there are changes
+                if ($hasChanges) {
+                    $product->Values = $values;
+                    $product->save();
+                    $updated++;
+                    $imported++;
+                }
+            }
+
+            $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $imported,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('General Specific Master Import Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function getSkusForDropdown(Request $request)
     {
         try {
@@ -1061,6 +1380,160 @@ class CategoryController extends Controller
         }
     }
 
+    public function importComplianceMaster(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
+            
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
+            }
+
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings
+            $columnMap = [
+                'sku' => 'sku',
+                'battery' => 'battery',
+                'wireless' => 'wireless',
+                'electric' => 'electric',
+                'graph' => 'graph'
+            ];
+
+            // Find column indices
+            $columnIndices = [];
+            foreach ($columnMap as $key => $value) {
+                $index = array_search($key, $headers);
+                if ($index !== false) {
+                    $columnIndices[$value] = $index;
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
+                    continue;
+                }
+
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)
+                    ->where('sku', 'NOT LIKE', 'PARENT %')
+                    ->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
+                }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                $hasChanges = false;
+
+                // Update Battery if column exists and has value
+                if (isset($columnIndices['battery']) && isset($row[$columnIndices['battery']])) {
+                    $batteryValue = trim($row[$columnIndices['battery']]);
+                    if ($batteryValue !== '') {
+                        $values['battery'] = $batteryValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Wireless if column exists and has value
+                if (isset($columnIndices['wireless']) && isset($row[$columnIndices['wireless']])) {
+                    $wirelessValue = trim($row[$columnIndices['wireless']]);
+                    if ($wirelessValue !== '') {
+                        $values['wireless'] = $wirelessValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Electric if column exists and has value
+                if (isset($columnIndices['electric']) && isset($row[$columnIndices['electric']])) {
+                    $electricValue = trim($row[$columnIndices['electric']]);
+                    if ($electricValue !== '') {
+                        $values['electric'] = $electricValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Graph if column exists and has value
+                if (isset($columnIndices['graph']) && isset($row[$columnIndices['graph']])) {
+                    $graphValue = trim($row[$columnIndices['graph']]);
+                    if ($graphValue !== '') {
+                        $values['graph'] = $graphValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update product if there are changes
+                if ($hasChanges) {
+                    $product->Values = $values;
+                    $product->save();
+                    $updated++;
+                    $imported++;
+                }
+            }
+
+            $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $imported,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Compliance Master Import Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function extraFeaturesMaster()
     {
         return view('extra-features-master');
@@ -1278,6 +1751,160 @@ class CategoryController extends Controller
         }
     }
 
+    public function importExtraFeaturesMaster(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
+            
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
+            }
+
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings
+            $columnMap = [
+                'sku' => 'sku',
+                'ex_feature_1' => 'ex_feature_1',
+                'ex_feature_2' => 'ex_feature_2',
+                'ex_feature_3' => 'ex_feature_3',
+                'ex_feature_4' => 'ex_feature_4'
+            ];
+
+            // Find column indices
+            $columnIndices = [];
+            foreach ($columnMap as $key => $value) {
+                $index = array_search($key, $headers);
+                if ($index !== false) {
+                    $columnIndices[$value] = $index;
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
+                    continue;
+                }
+
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)
+                    ->where('sku', 'NOT LIKE', 'PARENT %')
+                    ->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
+                }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                $hasChanges = false;
+
+                // Update Ex.Feature 1 if column exists and has value
+                if (isset($columnIndices['ex_feature_1']) && isset($row[$columnIndices['ex_feature_1']])) {
+                    $exFeature1Value = trim($row[$columnIndices['ex_feature_1']]);
+                    if ($exFeature1Value !== '') {
+                        $values['ex_feature_1'] = $exFeature1Value;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Ex.Feature 2 if column exists and has value
+                if (isset($columnIndices['ex_feature_2']) && isset($row[$columnIndices['ex_feature_2']])) {
+                    $exFeature2Value = trim($row[$columnIndices['ex_feature_2']]);
+                    if ($exFeature2Value !== '') {
+                        $values['ex_feature_2'] = $exFeature2Value;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Ex.Feature 3 if column exists and has value
+                if (isset($columnIndices['ex_feature_3']) && isset($row[$columnIndices['ex_feature_3']])) {
+                    $exFeature3Value = trim($row[$columnIndices['ex_feature_3']]);
+                    if ($exFeature3Value !== '') {
+                        $values['ex_feature_3'] = $exFeature3Value;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Ex.Feature 4 if column exists and has value
+                if (isset($columnIndices['ex_feature_4']) && isset($row[$columnIndices['ex_feature_4']])) {
+                    $exFeature4Value = trim($row[$columnIndices['ex_feature_4']]);
+                    if ($exFeature4Value !== '') {
+                        $values['ex_feature_4'] = $exFeature4Value;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update product if there are changes
+                if ($hasChanges) {
+                    $product->Values = $values;
+                    $product->save();
+                    $updated++;
+                    $imported++;
+                }
+            }
+
+            $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $imported,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Extra Features Master Import Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function aPlusImagesMaster()
     {
         return view('a-plus-images-master');
@@ -1485,6 +2112,171 @@ class CategoryController extends Controller
         }
     }
 
+    public function importAPlusImagesMaster(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
+            
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
+            }
+
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings (try multiple variations)
+            $columnIndices = [];
+            
+            // Find SKU column
+            foreach ($headers as $index => $header) {
+                if ($header === 'sku') {
+                    $columnIndices['sku'] = $index;
+                    break;
+                }
+            }
+            
+            // Find Standard A+ column (try multiple variations)
+            foreach ($headers as $index => $header) {
+                if (in_array($header, ['standard_a_plus', 'standard_a', 'standardaplus', 'standard_a'])) {
+                    $columnIndices['standard_a_plus'] = $index;
+                    break;
+                }
+            }
+            
+            // If not found, try partial match
+            if (!isset($columnIndices['standard_a_plus'])) {
+                foreach ($headers as $index => $header) {
+                    if (strpos($header, 'standard') !== false && (strpos($header, 'a') !== false || strpos($header, 'plus') !== false)) {
+                        $columnIndices['standard_a_plus'] = $index;
+                        break;
+                    }
+                }
+            }
+            
+            // Find Premium A+ column (try multiple variations)
+            foreach ($headers as $index => $header) {
+                if (in_array($header, ['premium_a_plus', 'premium_a', 'premiumaplus', 'premium_a'])) {
+                    $columnIndices['premium_a_plus'] = $index;
+                    break;
+                }
+            }
+            
+            // If not found, try partial match
+            if (!isset($columnIndices['premium_a_plus'])) {
+                foreach ($headers as $index => $header) {
+                    if (strpos($header, 'premium') !== false && (strpos($header, 'a') !== false || strpos($header, 'plus') !== false)) {
+                        $columnIndices['premium_a_plus'] = $index;
+                        break;
+                    }
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
+                    continue;
+                }
+
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)
+                    ->where('sku', 'NOT LIKE', 'PARENT %')
+                    ->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
+                }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                $hasChanges = false;
+
+                // Update Standard A+ if column exists and has value
+                if (isset($columnIndices['standard_a_plus']) && isset($row[$columnIndices['standard_a_plus']])) {
+                    $standardAPlusValue = trim($row[$columnIndices['standard_a_plus']]);
+                    if ($standardAPlusValue !== '') {
+                        $values['standard_a_plus'] = $standardAPlusValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Premium A+ if column exists and has value
+                if (isset($columnIndices['premium_a_plus']) && isset($row[$columnIndices['premium_a_plus']])) {
+                    $premiumAPlusValue = trim($row[$columnIndices['premium_a_plus']]);
+                    if ($premiumAPlusValue !== '') {
+                        $values['premium_a_plus'] = $premiumAPlusValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update product if there are changes
+                if ($hasChanges) {
+                    $product->Values = $values;
+                    $product->save();
+                    $updated++;
+                    $imported++;
+                }
+            }
+
+            $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $imported,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('A+ Images Master Import Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function keywordsMaster()
     {
         return view('keywords-master');
@@ -1688,6 +2480,171 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error saving data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function importKeywordsMaster(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
+            
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
+            }
+
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings (try multiple variations)
+            $columnIndices = [];
+            
+            // Find SKU column
+            foreach ($headers as $index => $header) {
+                if ($header === 'sku') {
+                    $columnIndices['sku'] = $index;
+                    break;
+                }
+            }
+            
+            // Find Backend Keywords column (try multiple variations)
+            foreach ($headers as $index => $header) {
+                if (in_array($header, ['backend_keywords', 'backendkeywords', 'backend_keyword'])) {
+                    $columnIndices['backend_keywords'] = $index;
+                    break;
+                }
+            }
+            
+            // If not found, try partial match
+            if (!isset($columnIndices['backend_keywords'])) {
+                foreach ($headers as $index => $header) {
+                    if (strpos($header, 'backend') !== false && (strpos($header, 'keyword') !== false || strpos($header, 'keywords') !== false)) {
+                        $columnIndices['backend_keywords'] = $index;
+                        break;
+                    }
+                }
+            }
+            
+            // Find Generic Keyword column (try multiple variations)
+            foreach ($headers as $index => $header) {
+                if (in_array($header, ['generic_keyword', 'generickeyword', 'generic_keywords'])) {
+                    $columnIndices['generic_keyword'] = $index;
+                    break;
+                }
+            }
+            
+            // If not found, try partial match
+            if (!isset($columnIndices['generic_keyword'])) {
+                foreach ($headers as $index => $header) {
+                    if (strpos($header, 'generic') !== false && (strpos($header, 'keyword') !== false || strpos($header, 'keywords') !== false)) {
+                        $columnIndices['generic_keyword'] = $index;
+                        break;
+                    }
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
+                    continue;
+                }
+
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)
+                    ->where('sku', 'NOT LIKE', 'PARENT %')
+                    ->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
+                }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                $hasChanges = false;
+
+                // Update Backend Keywords if column exists and has value
+                if (isset($columnIndices['backend_keywords']) && isset($row[$columnIndices['backend_keywords']])) {
+                    $backendKeywordsValue = trim($row[$columnIndices['backend_keywords']]);
+                    if ($backendKeywordsValue !== '') {
+                        $values['backend_keywords'] = $backendKeywordsValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Generic Keyword if column exists and has value
+                if (isset($columnIndices['generic_keyword']) && isset($row[$columnIndices['generic_keyword']])) {
+                    $genericKeywordValue = trim($row[$columnIndices['generic_keyword']]);
+                    if ($genericKeywordValue !== '') {
+                        $values['generic_keyword'] = $genericKeywordValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update product if there are changes
+                if ($hasChanges) {
+                    $product->Values = $values;
+                    $product->save();
+                    $updated++;
+                    $imported++;
+                }
+            }
+
+            $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $imported,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Keywords Master Import Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -1934,6 +2891,183 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error saving data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function importCompetitorsMaster(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
+            
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
+            }
+
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings
+            $columnIndices = [];
+            
+            // Find SKU column
+            foreach ($headers as $index => $header) {
+                if ($header === 'sku') {
+                    $columnIndices['sku'] = $index;
+                    break;
+                }
+            }
+            
+            // Find Brand and Link columns (Brand 1 through Brand 5, Link 1 through Link 5)
+            for ($i = 1; $i <= 5; $i++) {
+                $brandKey = "brand_{$i}";
+                $linkKey = "link_{$i}";
+                
+                // Find Brand column
+                foreach ($headers as $index => $header) {
+                    if (in_array($header, [$brandKey, "brand{$i}", "brand_{$i}"])) {
+                        $columnIndices[$brandKey] = $index;
+                        break;
+                    }
+                }
+                
+                // If not found, try partial match
+                if (!isset($columnIndices[$brandKey])) {
+                    foreach ($headers as $index => $header) {
+                        if (strpos($header, 'brand') !== false && (strpos($header, (string)$i) !== false || preg_match('/brand\s*' . $i . '/i', $header))) {
+                            $columnIndices[$brandKey] = $index;
+                            break;
+                        }
+                    }
+                }
+                
+                // Find Link column
+                foreach ($headers as $index => $header) {
+                    if (in_array($header, [$linkKey, "link{$i}", "link_{$i}"])) {
+                        $columnIndices[$linkKey] = $index;
+                        break;
+                    }
+                }
+                
+                // If not found, try partial match
+                if (!isset($columnIndices[$linkKey])) {
+                    foreach ($headers as $index => $header) {
+                        if (strpos($header, 'link') !== false && (strpos($header, (string)$i) !== false || preg_match('/link\s*' . $i . '/i', $header))) {
+                            $columnIndices[$linkKey] = $index;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
+                    continue;
+                }
+
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)
+                    ->where('sku', 'NOT LIKE', 'PARENT %')
+                    ->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
+                }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                $hasChanges = false;
+
+                // Update Brand and Link columns (Brand 1 through Brand 5, Link 1 through Link 5)
+                for ($i = 1; $i <= 5; $i++) {
+                    $brandKey = "brand_{$i}";
+                    $linkKey = "link_{$i}";
+                    
+                    // Update Brand if column exists and has value
+                    if (isset($columnIndices[$brandKey]) && isset($row[$columnIndices[$brandKey]])) {
+                        $brandValue = trim($row[$columnIndices[$brandKey]]);
+                        if ($brandValue !== '') {
+                            $values[$brandKey] = $brandValue;
+                            $hasChanges = true;
+                        }
+                    }
+                    
+                    // Update Link if column exists and has value
+                    if (isset($columnIndices[$linkKey]) && isset($row[$columnIndices[$linkKey]])) {
+                        $linkValue = trim($row[$columnIndices[$linkKey]]);
+                        if ($linkValue !== '') {
+                            $values[$linkKey] = $linkValue;
+                            $hasChanges = true;
+                        }
+                    }
+                }
+
+                // Update product if there are changes
+                if ($hasChanges) {
+                    $product->Values = $values;
+                    $product->save();
+                    $updated++;
+                    $imported++;
+                }
+            }
+
+            $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $imported,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Competitors Master Import Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -2443,6 +3577,517 @@ class CategoryController extends Controller
         ]);
     }
 
+    public function importDimWtMaster(Request $request)
+    {
+        try {
+            $request->validate([
+                'file' => 'required|mimes:xlsx,xls|max:10240', // 10MB max
+            ]);
+
+            $file = $request->file('file');
+            $filePath = $file->getRealPath();
+
+            // Read Excel file using PhpSpreadsheet or simple file reading
+            // For simplicity, we'll use a basic approach with PhpSpreadsheet if available
+            // Otherwise, we can use a simpler method
+            
+            $data = [];
+            $extension = $file->getClientOriginalExtension();
+            
+            if ($extension === 'xlsx' || $extension === 'xls') {
+                // Use PhpSpreadsheet to read Excel file
+                $spreadsheet = IOFactory::load($filePath);
+                $worksheet = $spreadsheet->getActiveSheet();
+                $rows = $worksheet->toArray();
+                
+                // Get header row to find column indices
+                $headers = array_map('strtolower', array_map('trim', $rows[0] ?? []));
+                
+                // Find column indices
+                $skuIndex = array_search('sku', $headers);
+                $wtActIndex = array_search('wt act', $headers) !== false ? array_search('wt act', $headers) : array_search('wt_act', $headers);
+                $wtDeclIndex = array_search('wt decl', $headers) !== false ? array_search('wt decl', $headers) : array_search('wt_decl', $headers);
+                $lIndex = array_search('l', $headers);
+                $wIndex = array_search('w', $headers);
+                $hIndex = array_search('h', $headers);
+                
+                // If header row not found or SKU column not found, use default positions
+                if ($skuIndex === false) {
+                    $skuIndex = 0;
+                    $wtActIndex = 1;
+                    $wtDeclIndex = 2;
+                    $lIndex = 3;
+                    $wIndex = 4;
+                    $hIndex = 5;
+                }
+                
+                // Skip header row (first row)
+                for ($i = 1; $i < count($rows); $i++) {
+                    $row = $rows[$i];
+                    if (empty($row[$skuIndex])) continue; // Skip empty rows
+                    
+                    $data[] = [
+                        'sku' => trim($row[$skuIndex] ?? ''),
+                        'wt_act' => ($wtActIndex !== false && isset($row[$wtActIndex]) && $row[$wtActIndex] !== '') ? (float)$row[$wtActIndex] : null,
+                        'wt_decl' => ($wtDeclIndex !== false && isset($row[$wtDeclIndex]) && $row[$wtDeclIndex] !== '') ? (float)$row[$wtDeclIndex] : null,
+                        'l' => ($lIndex !== false && isset($row[$lIndex]) && $row[$lIndex] !== '') ? (float)$row[$lIndex] : null,
+                        'w' => ($wIndex !== false && isset($row[$wIndex]) && $row[$wIndex] !== '') ? (float)$row[$wIndex] : null,
+                        'h' => ($hIndex !== false && isset($row[$hIndex]) && $row[$hIndex] !== '') ? (float)$row[$hIndex] : null,
+                    ];
+                }
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid file format. Please upload an Excel file (.xlsx or .xls)'
+                ], 400);
+            }
+
+            if (empty($data)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No data found in the Excel file'
+                ], 400);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($data as $rowData) {
+                if (empty($rowData['sku'])) {
+                    continue;
+                }
+
+                try {
+                    // Normalize SKU
+                    $sku = trim($rowData['sku']);
+                    
+                    // Find product by SKU
+                    $product = ProductMaster::where('sku', $sku)
+                        ->where('sku', 'NOT LIKE', 'PARENT %')
+                        ->first();
+
+                    if ($product) {
+                        // Get existing Values
+                        $existingValues = is_array($product->Values) ? $product->Values : 
+                                         (is_string($product->Values) ? json_decode($product->Values, true) : []);
+                        
+                        if (!is_array($existingValues)) {
+                            $existingValues = [];
+                        }
+
+                        // Update Values with dim & wt data
+                        if ($rowData['wt_act'] !== null) {
+                            $existingValues['wt_act'] = $rowData['wt_act'];
+                        }
+                        if ($rowData['wt_decl'] !== null) {
+                            $existingValues['wt_decl'] = $rowData['wt_decl'];
+                        }
+                        if ($rowData['l'] !== null) {
+                            $existingValues['l'] = $rowData['l'];
+                        }
+                        if ($rowData['w'] !== null) {
+                            $existingValues['w'] = $rowData['w'];
+                        }
+                        if ($rowData['h'] !== null) {
+                            $existingValues['h'] = $rowData['h'];
+                        }
+
+                        $product->Values = $existingValues;
+                        $product->save();
+                        $updated++;
+                    } else {
+                        // Product not found - could create new or skip
+                        $errors[] = "SKU '{$sku}' not found in database";
+                    }
+                } catch (\Exception $e) {
+                    $errors[] = "Error processing SKU '{$rowData['sku']}': " . $e->getMessage();
+                }
+            }
+
+            $message = "Import completed. Updated: {$updated}";
+            if (!empty($errors)) {
+                $message .= ". Errors: " . count($errors);
+                if (count($errors) <= 5) {
+                    $message .= " - " . implode(", ", $errors);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error importing file: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function packageIncludesMaster()
+    {
+        return view('package-includes-master');
+    }
+
+    public function getPackageIncludesMasterData(Request $request)
+    {
+        // Fetch all products from the database ordered by parent and SKU
+        $products = ProductMaster::orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
+        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+            // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
+            return str_replace("\u{00a0}", ' ', $item->sku);
+        });
+
+        // Prepare data in the same format as your sheet (flatten Values)
+        $result = [];
+        foreach ($products as $product) {
+            $row = [
+                'id' => $product->id,
+                'Parent' => $product->parent,
+                'SKU' => $product->sku,
+                'title150' => $product->title150,
+                'title100' => $product->title100,
+                'title80' => $product->title80,
+                'title60' => $product->title60,
+                'bullet1' => $product->bullet1,
+                'bullet2' => $product->bullet2,
+                'bullet3' => $product->bullet3,
+                'bullet4' => $product->bullet4,
+                'bullet5' => $product->bullet5,
+                'product_description' => $product->product_description,
+                'feature1' => $product->feature1,
+                'feature2' => $product->feature2,
+                'feature3' => $product->feature3,
+                'feature4' => $product->feature4,
+                'main_image' => $product->main_image,
+                'main_image_brand' => $product->main_image_brand,
+                'image1' => $product->image1,
+                'image2' => $product->image2,
+                'image3' => $product->image3,
+                'image4' => $product->image4,
+                'image5' => $product->image5,
+                'image6' => $product->image6,
+                'image7' => $product->image7,
+                'image8' => $product->image8,
+                'image9' => $product->image9,
+                'image10' => $product->image10,
+                'image11' => $product->image11,
+                'image12' => $product->image12,
+            ];
+
+            // Merge the Values array (if not null)
+            if (is_array($product->Values)) {
+                $row = array_merge($row, $product->Values);
+            } elseif (is_string($product->Values)) {
+                $values = json_decode($product->Values, true);
+                if (is_array($values)) {
+                    $row = array_merge($row, $values);
+                }
+            }
+
+            // Add Shopify inv and quantity if available
+            // Normalize the product SKU for lookup
+            $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
+            
+            if (isset($shopifySkus[$normalizedSku])) {
+                $shopifyData = $shopifySkus[$normalizedSku];
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $shopifyImage = $shopifyData->image_src ?? null;
+            } else {
+                $row['shopify_inv'] = 0;
+                $row['shopify_quantity'] = 0;
+                $shopifyImage = null;
+            }
+
+            // image_path is inside $row (from Values JSON)
+            $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
+            if ($shopifyImage) {
+                $row['image_path'] = $shopifyImage; // Use Shopify URL
+            } elseif ($localImage) {
+                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+            } else {
+                $row['image_path'] = null;
+            }
+
+            $result[] = $row;
+        }
+
+        return response()->json([
+            'message' => 'Data loaded from database',
+            'data' => $result,
+            'status' => 200
+        ]);
+    }
+
+    public function storePackageIncludesMaster(Request $request)
+    {
+        try {
+            // Build validation rules for all items
+            $rules = ['sku' => 'required|string'];
+            for ($i = 1; $i <= 10; $i++) {
+                $rules["item{$i}"] = 'nullable|string';
+            }
+            
+            $validated = $request->validate($rules);
+
+            // Get the product by SKU to retrieve parent
+            $existingProduct = ProductMaster::where('sku', $validated['sku'])
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->first();
+
+            $parent = null;
+            if ($existingProduct) {
+                $parent = $existingProduct->parent;
+            }
+
+            // Check if product with same SKU already has package includes data
+            if ($existingProduct) {
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                                 (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
+                
+                // Check if any item fields already exist
+                $hasPackageIncludesData = false;
+                for ($i = 1; $i <= 10; $i++) {
+                    if (!empty($existingValues["item{$i}"])) {
+                        $hasPackageIncludesData = true;
+                        break;
+                    }
+                }
+                
+                if ($hasPackageIncludesData) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This SKU already has package includes data. Please use edit instead.'
+                    ], 409);
+                }
+            }
+
+            // Prepare Values array with item fields
+            $values = [];
+            
+            for ($i = 1; $i <= 10; $i++) {
+                if (!empty($validated["item{$i}"])) {
+                    $values["item{$i}"] = $validated["item{$i}"];
+                }
+            }
+
+            // Update existing product or create new one
+            if ($existingProduct) {
+                // Merge with existing Values
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                                 (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
+                
+                if (!is_array($existingValues)) {
+                    $existingValues = [];
+                }
+                
+                $mergedValues = array_merge($existingValues, $values);
+                $existingProduct->Values = $mergedValues;
+                $existingProduct->save();
+                $product = $existingProduct;
+            } else {
+                // Create new product (shouldn't happen if SKU dropdown is working correctly)
+                $product = ProductMaster::create([
+                    'sku' => $validated['sku'],
+                    'parent' => $parent,
+                    'Values' => !empty($values) ? $values : null,
+                ]);
+            }
+
+            // If parent exists, also create/update the parent row
+            if ($parent) {
+                $parentSku = 'PARENT ' . $parent;
+                $parentRow = ProductMaster::where('sku', $parentSku)
+                    ->where('parent', $parent)
+                    ->first();
+
+                if (!$parentRow) {
+                    ProductMaster::create([
+                        'sku' => $parentSku,
+                        'parent' => $parent,
+                        'Values' => null,
+                    ]);
+                }
+            }
+                
+            return response()->json([
+                'success' => true,
+                'message' => 'Package includes data saved successfully',
+                'data' => $product
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error saving data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function importPackageIncludesMaster(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
+            
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
+            }
+
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings
+            $columnIndices = [];
+            
+            // Find SKU column
+            foreach ($headers as $index => $header) {
+                if ($header === 'sku') {
+                    $columnIndices['sku'] = $index;
+                    break;
+                }
+            }
+            
+            // Find Item columns (Item1 through Item10)
+            for ($i = 1; $i <= 10; $i++) {
+                $itemKey = "item{$i}";
+                foreach ($headers as $index => $header) {
+                    if (in_array($header, [$itemKey, "item_{$i}", "item{$i}"])) {
+                        $columnIndices[$itemKey] = $index;
+                        break;
+                    }
+                }
+                
+                // If not found, try partial match
+                if (!isset($columnIndices[$itemKey])) {
+                    foreach ($headers as $index => $header) {
+                        if (strpos($header, 'item') !== false && (strpos($header, (string)$i) !== false || preg_match('/item\s*' . $i . '/i', $header))) {
+                            $columnIndices[$itemKey] = $index;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
+                    continue;
+                }
+
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)
+                    ->where('sku', 'NOT LIKE', 'PARENT %')
+                    ->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
+                }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                $hasChanges = false;
+
+                // Update Item columns (Item1 through Item10) if they exist and have values
+                for ($i = 1; $i <= 10; $i++) {
+                    $itemKey = "item{$i}";
+                    if (isset($columnIndices[$itemKey]) && isset($row[$columnIndices[$itemKey]])) {
+                        $itemValue = trim($row[$columnIndices[$itemKey]]);
+                        if ($itemValue !== '') {
+                            $values[$itemKey] = $itemValue;
+                            $hasChanges = true;
+                        }
+                    }
+                }
+
+                // Update product if there are changes
+                if ($hasChanges) {
+                    $product->Values = $values;
+                    $product->save();
+                    $updated++;
+                    $imported++;
+                }
+            }
+
+            $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $imported,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Package Includes Master Import Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function qaMaster()
     {
         return view('qa-master');
@@ -2641,6 +4286,183 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error saving data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function importQAMaster(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
+            
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
+            }
+
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings
+            $columnIndices = [];
+            
+            // Find SKU column
+            foreach ($headers as $index => $header) {
+                if ($header === 'sku') {
+                    $columnIndices['sku'] = $index;
+                    break;
+                }
+            }
+            
+            // Find Question and Answer columns (Question1 through Question10, Answer1 through Answer10)
+            for ($i = 1; $i <= 10; $i++) {
+                $questionKey = "question{$i}";
+                $answerKey = "answer{$i}";
+                
+                // Find Question column
+                foreach ($headers as $index => $header) {
+                    if (in_array($header, [$questionKey, "question_{$i}", "question{$i}"])) {
+                        $columnIndices[$questionKey] = $index;
+                        break;
+                    }
+                }
+                
+                // If not found, try partial match
+                if (!isset($columnIndices[$questionKey])) {
+                    foreach ($headers as $index => $header) {
+                        if (strpos($header, 'question') !== false && (strpos($header, (string)$i) !== false || preg_match('/question\s*' . $i . '/i', $header))) {
+                            $columnIndices[$questionKey] = $index;
+                            break;
+                        }
+                    }
+                }
+                
+                // Find Answer column
+                foreach ($headers as $index => $header) {
+                    if (in_array($header, [$answerKey, "answer_{$i}", "answer{$i}"])) {
+                        $columnIndices[$answerKey] = $index;
+                        break;
+                    }
+                }
+                
+                // If not found, try partial match
+                if (!isset($columnIndices[$answerKey])) {
+                    foreach ($headers as $index => $header) {
+                        if (strpos($header, 'answer') !== false && (strpos($header, (string)$i) !== false || preg_match('/answer\s*' . $i . '/i', $header))) {
+                            $columnIndices[$answerKey] = $index;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
+                    continue;
+                }
+
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)
+                    ->where('sku', 'NOT LIKE', 'PARENT %')
+                    ->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
+                }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                $hasChanges = false;
+
+                // Update Question and Answer columns (Question1 through Question10, Answer1 through Answer10)
+                for ($i = 1; $i <= 10; $i++) {
+                    $questionKey = "question{$i}";
+                    $answerKey = "answer{$i}";
+                    
+                    // Update Question if column exists and has value
+                    if (isset($columnIndices[$questionKey]) && isset($row[$columnIndices[$questionKey]])) {
+                        $questionValue = trim($row[$columnIndices[$questionKey]]);
+                        if ($questionValue !== '') {
+                            $values[$questionKey] = $questionValue;
+                            $hasChanges = true;
+                        }
+                    }
+                    
+                    // Update Answer if column exists and has value
+                    if (isset($columnIndices[$answerKey]) && isset($row[$columnIndices[$answerKey]])) {
+                        $answerValue = trim($row[$columnIndices[$answerKey]]);
+                        if ($answerValue !== '') {
+                            $values[$answerKey] = $answerValue;
+                            $hasChanges = true;
+                        }
+                    }
+                }
+
+                // Update product if there are changes
+                if ($hasChanges) {
+                    $product->Values = $values;
+                    $product->save();
+                    $updated++;
+                    $imported++;
+                }
+            }
+
+            $message = "Successfully imported {$imported} record(s). Updated {$updated} record(s).";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $imported,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Q&A Master Import Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage()
             ], 500);
         }
     }
