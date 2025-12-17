@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Mercari With Ship Daily Sales', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Mercari Without Ship Daily Sales', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -70,20 +70,15 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Mercari With Ship Daily Sales',
-        'sub_title' => 'Orders where seller pays shipping (buyer_shipping_fee = 0)',
+        'page_title' => 'Mercari Without Ship Daily Sales',
+        'sub_title' => 'Orders where buyer pays shipping (buyer_shipping_fee > 0)',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Mercari With Ship Daily Sales <span class="badge bg-success">Seller Pays Shipping</span></h4>
+                <h4>Mercari Without Ship Daily Sales <span class="badge bg-warning text-dark">Buyer Pays Shipping</span></h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <!-- Upload Button -->
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
-                        <i class="fa fa-upload"></i> Upload CSV
-                    </button>
-
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -102,8 +97,8 @@
                         <i class="fa fa-file-excel"></i> Export
                     </button>
 
-                    <a href="/mercari-without-ship" class="btn btn-sm btn-warning">
-                        <i class="fa fa-money-bill"></i> View Without Ship
+                    <a href="/mercari-with-ship" class="btn btn-sm btn-info">
+                        <i class="fa fa-truck"></i> View With Ship
                     </a>
                 </div>
 
@@ -147,47 +142,13 @@
             </div>
         </div>
     </div>
-
-    <!-- Upload Modal -->
-    <div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="uploadModalLabel">Upload Mercari Daily Data</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="upload-form" enctype="multipart/form-data">
-                        <div class="mb-3">
-                            <label for="file-input" class="form-label">Select CSV/Excel File</label>
-                            <input type="file" class="form-control" id="file-input" name="file" accept=".csv,.xlsx,.xls,.txt" required>
-                            <div class="form-text">Accepted formats: CSV, XLSX, XLS, TXT (tab-separated)</div>
-                        </div>
-                        <div id="upload-progress" class="mb-3" style="display: none;">
-                            <div class="progress">
-                                <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
-                                     role="progressbar" style="width: 0%"></div>
-                            </div>
-                            <small id="upload-status" class="text-muted"></small>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="upload-btn">
-                        <i class="fa fa-upload"></i> Upload
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script-bottom')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
-        const COLUMN_VIS_KEY = "mercari_sales_column_visibility";
+        const COLUMN_VIS_KEY = "mercari_without_ship_column_visibility";
         let table = null;
 
         // Toast notification function
@@ -222,9 +183,9 @@
             });
 
             // Initialize Tabulator
-            console.log("Initializing Tabulator for Mercari With Ship Daily Sales...");
+            console.log("Initializing Tabulator for Mercari Without Ship Sales Data...");
             table = new Tabulator("#mercari-table", {
-                ajaxURL: "/mercari/daily-data-with-ship",
+                ajaxURL: "/mercari/daily-data-without-ship",
                 ajaxSorting: false,
                 layout: "fitDataStretch",
                 pagination: true,
@@ -374,12 +335,9 @@
                         hozAlign: "right",
                         sorter: "number",
                         width: 120,
-                        formatter: "money",
-                        formatterParams: {
-                            decimal: ".",
-                            thousand: ",",
-                            symbol: "$",
-                            precision: 2
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<span style="color: #dc3545; font-weight: bold;">$${parseFloat(value || 0).toFixed(2)}</span>`;
                         }
                     },
                     {
@@ -576,7 +534,6 @@
             // Item Search functionality
             $('#item-search').on('keyup', function() {
                 const value = $(this).val();
-                // Search in both item_id and item_title
                 table.setFilter(function(data) {
                     if (!value) return true;
                     const searchValue = value.toLowerCase();
@@ -604,7 +561,6 @@
                         return;
                     }
 
-                    // Skip cancelled orders
                     const orderStatus = (row.order_status || '').toLowerCase();
                     const isCancelled = row.canceled_date !== null && row.canceled_date !== '' ||
                                        orderStatus.includes('cancelled') || 
@@ -622,28 +578,26 @@
                     const penalty = parseFloat(row.penalty_fee) || 0;
                     const lp = parseFloat(row.lp) || 0;
                     const ship = parseFloat(row.ship) || 0;
+                    const quantity = parseInt(row.quantity) || 1; // Default quantity = 1
 
                     totalSales += itemPrice;
                     totalRevenue += itemPrice;
                     totalNetProceeds += netProceeds;
                     totalFees += mercariFee + paymentFee + shippingAdj + penalty;
 
-                    // Calculate PFT: (Item Price × 0.88) - LP - Ship
-                    const pft = (itemPrice * 0.88) - lp - ship;
+                    // COGS = LP * quantity
+                    const cogs = lp * quantity;
+                    // Calculate PFT: (Item Price × 0.88) - COGS (no ship for Without Ship)
+                    const pft = (itemPrice * 0.88) - cogs;
                     totalPft += pft;
-                    totalCogs += lp;
+                    totalCogs += cogs;
                 });
 
-                // Calculate average price
                 const avgPrice = totalOrders > 0 ? totalSales / totalOrders : 0;
-
-                // Calculate PFT Percentage: (Total PFT / Total Sales) * 100
                 const pftPercentage = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
-
-                // Calculate ROI Percentage: (Total PFT / Total COGS) * 100
+                // ROI = PFT / LP
                 const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
-                // Update badges
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-sales-badge').text('Total Sales: $' + totalSales.toFixed(2));
                 $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
@@ -655,7 +609,6 @@
                 $('#net-proceeds-badge').text('Net Proceeds: $' + totalNetProceeds.toFixed(2));
                 $('#total-fees-badge').text('Total Fees: $' + totalFees.toFixed(2));
 
-                // Color code PFT Total badge
                 const pftBadge = $('#pft-total-badge');
                 if (totalPft >= 0) {
                     pftBadge.removeClass('bg-danger').addClass('bg-dark');
@@ -669,7 +622,7 @@
                 const menu = document.getElementById("column-dropdown-menu");
                 menu.innerHTML = '';
 
-                fetch('/mercari-column-visibility', {
+                fetch('/mercari-without-ship-column-visibility', {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -711,7 +664,7 @@
                     }
                 });
 
-                fetch('/mercari-column-visibility', {
+                fetch('/mercari-without-ship-column-visibility', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -724,7 +677,7 @@
             }
 
             function applyColumnVisibilityFromServer() {
-                fetch('/mercari-column-visibility', {
+                fetch('/mercari-without-ship-column-visibility', {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -742,7 +695,6 @@
                     });
             }
 
-            // Wait for table to be built
             table.on('tableBuilt', function() {
                 applyColumnVisibilityFromServer();
                 buildColumnDropdown();
@@ -752,22 +704,18 @@
                 updateSummary();
             });
 
-            // Update summary when data changes (filters, pagination, etc.)
             table.on('dataProcessed', function() {
                 updateSummary();
             });
 
-            // Update summary when table is rendered
             table.on('renderComplete', function() {
                 updateSummary();
             });
 
-            // Update summary when filters change
             table.on('dataFiltered', function() {
                 updateSummary();
             });
 
-            // Toggle column from dropdown
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
                 if (e.target.type === 'checkbox') {
                     const field = e.target.value;
@@ -781,7 +729,6 @@
                 }
             });
 
-            // Show All Columns button
             document.getElementById("show-all-columns-btn").addEventListener("click", function() {
                 table.getColumns().forEach(col => {
                     col.show();
@@ -790,86 +737,9 @@
                 saveColumnVisibilityToServer();
             });
 
-            // Export functionality
             $('#export-btn').on('click', function() {
-                table.download("csv", "mercari_with_ship_daily_sales_data.csv");
+                table.download("csv", "mercari_without_ship_daily_sales_data.csv");
             });
-
-            // Upload functionality
-            $('#upload-btn').on('click', function() {
-                const fileInput = document.getElementById('file-input');
-                const file = fileInput.files[0];
-                
-                if (!file) {
-                    showToast('Please select a file', 'error');
-                    return;
-                }
-
-                const uploadId = 'mercari_' + Date.now();
-                const totalChunks = 1; // Process in single chunk for simplicity
-                
-                $('#upload-progress').show();
-                $('#upload-btn').prop('disabled', true);
-                
-                uploadChunk(file, 0, totalChunks, uploadId);
-            });
-
-            function uploadChunk(file, chunk, totalChunks, uploadId) {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('chunk', chunk);
-                formData.append('totalChunks', totalChunks);
-                formData.append('uploadId', uploadId);
-
-                $.ajax({
-                    url: '/mercari/upload-daily-data',
-                    type: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    xhr: function() {
-                        const xhr = new window.XMLHttpRequest();
-                        xhr.upload.addEventListener("progress", function(evt) {
-                            if (evt.lengthComputable) {
-                                const percentComplete = Math.round((evt.loaded / evt.total) * 100);
-                                $('#upload-progress-bar').css('width', percentComplete + '%');
-                                $('#upload-status').text('Uploading: ' + percentComplete + '%');
-                            }
-                        }, false);
-                        return xhr;
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            const progress = response.progress || 0;
-                            $('#upload-progress-bar').css('width', progress + '%');
-                            $('#upload-status').text(`Processing: ${response.imported} imported, ${response.skipped} skipped`);
-
-                            if (chunk === totalChunks - 1) {
-                                // Last chunk completed
-                                showToast(`Successfully imported ${response.imported} records!`, 'success');
-                                $('#upload-progress').hide();
-                                $('#upload-btn').prop('disabled', false);
-                                $('#uploadModal').modal('hide');
-                                $('#file-input').val('');
-                                
-                                // Reload table data
-                                table.replaceData();
-                            }
-                        } else {
-                            showToast('Upload failed: ' + (response.message || 'Unknown error'), 'error');
-                            $('#upload-progress').hide();
-                            $('#upload-btn').prop('disabled', false);
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('Upload error:', error);
-                        showToast('Upload failed: ' + (xhr.responseJSON?.message || error), 'error');
-                        $('#upload-progress').hide();
-                        $('#upload-btn').prop('disabled', false);
-                    }
-                });
-            }
         });
     </script>
 @endsection
-

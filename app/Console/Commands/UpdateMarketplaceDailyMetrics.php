@@ -37,7 +37,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             'eBay' => fn() => $this->calculateEbayMetrics($date),
             'Temu' => fn() => $this->calculateTemuMetrics($date),
             'Shein' => fn() => $this->calculateSheinMetrics($date),
-            'Mercari' => fn() => $this->calculateMercariMetrics($date),
+            'Mercari With Ship' => fn() => $this->calculateMercariWithShipMetrics($date),
+            'Mercari Without Ship' => fn() => $this->calculateMercariWithoutShipMetrics($date),
             'AliExpress' => fn() => $this->calculateAliexpressMetrics($date),
             'Shopify B2C' => fn() => $this->calculateShopifyB2CMetrics($date),
             'Shopify B2B' => fn() => $this->calculateShopifyB2BMetrics($date),
@@ -573,10 +574,14 @@ class UpdateMarketplaceDailyMetrics extends Command
         ];
     }
 
-    private function calculateMercariMetrics($date)
+    private function calculateMercariWithShipMetrics($date)
     {
-        // Get Mercari daily data
-        $data = MercariDailyData::all();
+        // Get Mercari daily data - With Ship: buyer_shipping_fee = 0 or null (seller pays shipping)
+        $data = MercariDailyData::where(function ($query) {
+            $query->whereNull('buyer_shipping_fee')
+                  ->orWhere('buyer_shipping_fee', '=', 0)
+                  ->orWhere('buyer_shipping_fee', '=', '');
+        })->get();
 
         if ($data->isEmpty()) {
             return null;
@@ -674,8 +679,134 @@ class UpdateMarketplaceDailyMetrics extends Command
             // COGS = LP only
             $totalCogs += $lp;
 
-            // Calculate PFT: Net Proceeds - LP - Ship
-            $pft = $netProceeds - $lp - $ship;
+            // Calculate PFT: (Item Price × 0.88) - LP - Ship
+            $pft = ($itemPrice * 0.88) - $lp - $ship;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalOrders, // 1 per order
+            'total_revenue' => $totalSales,
+            'total_sales' => $totalSales,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalSales,
+            'total_fees' => $totalFees,
+            'net_proceeds' => $totalNetProceeds,
+        ];
+    }
+
+    private function calculateMercariWithoutShipMetrics($date)
+    {
+        // Get Mercari daily data - Without Ship: buyer_shipping_fee > 0 (buyer pays shipping)
+        $data = MercariDailyData::where('buyer_shipping_fee', '>', 0)->get();
+
+        if ($data->isEmpty()) {
+            return null;
+        }
+
+        // Fetch all ProductMaster records and create lookup maps
+        $productMastersBySku = ProductMaster::all()->mapWithKeys(function($pm) {
+            $sku = strtoupper(trim($pm->sku));
+            $skuNoSpaces = str_replace([' ', '-', '_'], '', $sku);
+            return [
+                $sku => $pm,
+                $skuNoSpaces => $pm, // Also index by SKU without spaces/dashes
+            ];
+        });
+
+        $totalOrders = 0;
+        $totalSales = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalFees = 0;
+        $totalNetProceeds = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($data as $row) {
+            // Skip rows without item_id
+            if (!$row->item_id || $row->item_id === '') {
+                continue;
+            }
+            
+            // Skip cancelled orders (like badge does)
+            $orderStatus = strtolower($row->order_status ?? '');
+            $isCancelled = ($row->canceled_date !== null && $row->canceled_date !== '') ||
+                           str_contains($orderStatus, 'cancelled') ||
+                           str_contains($orderStatus, 'canceled');
+            if ($isCancelled) {
+                continue;
+            }
+
+            $totalOrders++;
+            $itemPrice = (float) ($row->item_price ?? 0);
+            $netProceeds = (float) ($row->net_seller_proceeds ?? 0);
+            $mercariFee = (float) ($row->mercari_selling_fee ?? 0);
+            $paymentFee = (float) ($row->payment_processing_fee_charged_to_seller ?? 0);
+            $shippingAdj = (float) ($row->shipping_adjustment_fee ?? 0);
+            $penalty = (float) ($row->penalty_fee ?? 0);
+            
+            $totalSales += $itemPrice;
+            $totalNetProceeds += $netProceeds;
+            $totalFees += $mercariFee + $paymentFee + $shippingAdj + $penalty;
+
+            if ($itemPrice > 0) {
+                $totalWeightedPrice += $itemPrice;
+                $totalQuantityForPrice++;
+            }
+
+            // Extract and match SKU from item_title
+            $lp = 0;
+            $ship = 0;
+            $matchedSku = $this->extractSkuFromTitle($row->item_title, $productMastersBySku);
+            
+            if ($matchedSku) {
+                // Find the ProductMaster record by the matched SKU
+                $pm = null;
+                foreach ($productMastersBySku as $pmSku => $pmRecord) {
+                    if (strtoupper(trim($pmRecord->sku)) === strtoupper(trim($matchedSku))) {
+                        $pm = $pmRecord;
+                        break;
+                    }
+                }
+                
+                if ($pm) {
+                    $values = is_array($pm->Values) 
+                        ? $pm->Values 
+                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    
+                    // Get LP
+                    foreach ($values as $k => $v) {
+                        if (strtolower($k) === "lp") {
+                            $lp = floatval($v);
+                            break;
+                        }
+                    }
+                    if ($lp === 0 && isset($pm->lp)) {
+                        $lp = floatval($pm->lp);
+                    }
+                    
+                    // Get Ship
+                    $ship = isset($values["ship"]) 
+                        ? floatval($values["ship"]) 
+                        : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                }
+            }
+            
+            // COGS = LP only (quantity is 1 per order)
+            $totalCogs += $lp;
+
+            // Calculate PFT: (Item Price × 0.88) - LP (no ship for Without Ship)
+            $pft = ($itemPrice * 0.88) - $lp;
             $totalPft += $pft;
         }
 
