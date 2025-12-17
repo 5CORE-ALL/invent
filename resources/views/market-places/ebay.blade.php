@@ -1205,26 +1205,26 @@
                     <div id="skuSalesContent" style="display: none;">
                         <div class="row mb-3">
                             <div class="col-md-4">
-                                <div class="card bg-light">
-                                    <div class="card-body">
-                                        <h6 class="card-title">Total Quantity</h6>
-                                        <h3 class="mb-0" id="totalQuantity">0</h3>
+                                <div class="card border shadow-sm" style="height: 100%; border-radius: 8px;">
+                                    <div class="card-body d-flex flex-column justify-content-between" style="padding: 0.75rem; min-height: 70px;">
+                                        <small class="text-muted text-uppercase" style="font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px;">Total Quantity</small>
+                                        <h5 class="mb-0 fw-bold" id="totalQuantity" style="font-size: 1.25rem; color: #2c3e50;">0</h5>
                                     </div>
                                 </div>
                             </div>
                             <div class="col-md-4">
-                                <div class="card bg-light">
-                                    <div class="card-body">
-                                        <h6 class="card-title">Total Orders</h6>
-                                        <h3 class="mb-0" id="totalOrders">0</h3>
+                                <div class="card border shadow-sm" style="height: 100%; border-radius: 8px;">
+                                    <div class="card-body d-flex flex-column justify-content-between" style="padding: 0.75rem; min-height: 70px;">
+                                        <small class="text-muted text-uppercase" style="font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px;">Total Orders</small>
+                                        <h5 class="mb-0 fw-bold" id="totalOrders" style="font-size: 1.25rem; color: #2c3e50;">0</h5>
                                     </div>
                                 </div>
                             </div>
                             <div class="col-md-4">
-                                <div class="card bg-light">
-                                    <div class="card-body">
-                                        <h6 class="card-title">Date Range</h6>
-                                        <h6 class="mb-0" id="dateRangeDisplay">-</h6>
+                                <div class="card border shadow-sm" style="height: 100%; border-radius: 8px;">
+                                    <div class="card-body d-flex flex-column justify-content-between" style="padding: 0.75rem; min-height: 70px;">
+                                        <small class="text-muted text-uppercase" style="font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px;">Date Range</small>
+                                        <h6 class="mb-0 fw-semibold" id="dateRangeDisplay" style="font-size: 0.9rem; color: #495057;">-</h6>
                                     </div>
                                 </div>
                             </div>
@@ -1232,7 +1232,9 @@
                         <!-- Chart Container -->
                         <div class="row mb-3">
                             <div class="col-12">
-                                <canvas id="salesChart" height="100"></canvas>
+                                <div style="position: relative; height: 400px; width: 100%;">
+                                    <canvas id="salesChart"></canvas>
+                                </div>
                             </div>
                         </div>
                     </div>
