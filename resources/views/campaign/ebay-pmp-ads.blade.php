@@ -3003,20 +3003,20 @@
                     let sbidValue;
                     
                     // New rule: if SBID between 0.01-1% OR DIL red OR views < 100, set to 8%
-                    if ((scvr >= 0.01 && scvr <= 1) || isDilRed || views < 100) {
+                    if ((scvr >= 0.01 && scvr <= 1) || views < 100) {
                         sbidValue = 8; // Flat 8
                     } else if (scvr < 0.01) {
                         sbidValue = item.ESBID || 0; // Use ESBID for CVR < 0.01%
                     } else if (scvr >= 1.01 && scvr <= 2) {
-                        sbidValue = 7; // Flat 8
+                        sbidValue = 7; // Flat 7
                     } else if (scvr >= 2.01 && scvr <= 3) {
-                        sbidValue = 6; // Flat 6
+                        sbidValue = 5; // Flat 5
                     } else if (scvr >= 3.01 && scvr <= 5) {
-                        sbidValue = 4; // Flat 5
-                    } else if (scvr >= 5.01 && scvr <= 7) {
-                        sbidValue = 4; // Flat 4
-                    } else if (scvr >= 7.01 && scvr <= 13) {
                         sbidValue = 3; // Flat 3
+                    } else if (scvr >= 5.01 && scvr <= 7) {
+                        sbidValue = 3; // Flat 3
+                    } else if (scvr >= 7.01 && scvr <= 13) {
+                        sbidValue = 2; // Flat 3
                     } else { // scvr > 13
                         sbidValue = 2; // Flat 2
                     }

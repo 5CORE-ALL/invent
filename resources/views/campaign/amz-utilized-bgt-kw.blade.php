@@ -246,7 +246,7 @@
 
     <!-- Chart Modal -->
     <div class="modal fade" id="utilizationChartModal" tabindex="-1" aria-labelledby="utilizationChartModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+        <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title fw-bold" id="utilizationChartModalLabel">
@@ -1109,8 +1109,7 @@
                                         position: 'top'
                                     },
                                     tooltip: {
-                                        mode: 'index',
-                                        intersect: false
+                                        enabled: false
                                     }
                                 },
                                 scales: {

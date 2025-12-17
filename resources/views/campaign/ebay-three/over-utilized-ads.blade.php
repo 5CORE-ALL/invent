@@ -284,6 +284,22 @@
                                     </select>
                                 </div>
                             </div>
+                            <div class="col-md-6">
+                                <div class="d-flex gap-3 justify-content-end align-items-center">
+                                    <div class="text-end">
+                                        <div class="text-muted small" style="font-size: 0.9rem;">Total L30 Spend</div>
+                                        <div class="fw-bold" style="font-size: 1.3rem;" id="total-l30-spend">$0.00</div>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="text-muted small" style="font-size: 0.9rem;">Total L30 Sales</div>
+                                        <div class="fw-bold" style="font-size: 1.3rem;" id="total-l30-sales">$0.00</div>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="text-muted small" style="font-size: 0.9rem;">Total ACOS</div>
+                                        <div class="fw-bold" style="font-size: 1.3rem;" id="total-acos">0.00%</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -727,6 +743,11 @@
                 return 'pink';
             };
 
+            // Global variables to store totals from ALL campaigns (these don't change with filters)
+            let totalACOSValue = 0;
+            let totalL30Spend = 0;
+            let totalL30Sales = 0;
+
             var table = new Tabulator("#budget-under-table", {
                 index: "Sku",
                 ajaxURL: "/ebay-3/utilized/ads/data",
@@ -878,10 +899,20 @@
                             var l7_spend = parseFloat(row.l7_spend) || 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                            
+                            // Get row's ACOS
+                            var rowAcos = parseFloat(row.acos) || 0;
+                            if (isNaN(rowAcos) || rowAcos === 0) {
+                                rowAcos = 100; // Treat 0 as 100 for comparison
+                            }
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 70 && ub7 <= 90) {
+                            
+                            // If acos > totalACOS, show pink (new rule)
+                            if (rowAcos > totalACOSValue) {
+                                td.classList.add('pink-bg');
+                            } else if (ub7 >= 70 && ub7 <= 90) {
                                 td.classList.add('green-bg');
                             } else if (ub7 > 90) {
                                 td.classList.add('pink-bg');
@@ -984,6 +1015,17 @@
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
+                    // Set totals from API response (all campaigns, not just table data)
+                    // These values don't change when filters are applied
+                    totalACOSValue = parseFloat(response.total_acos) || 0;
+                    totalL30Spend = parseFloat(response.total_l30_spend) || 0;
+                    totalL30Sales = parseFloat(response.total_l30_sales) || 0;
+                    
+                    // Update display with totals from all campaigns
+                    document.getElementById("total-l30-spend").innerText = "$" + totalL30Spend.toFixed(2);
+                    document.getElementById("total-l30-sales").innerText = "$" + totalL30Sales.toFixed(2);
+                    document.getElementById("total-acos").innerText = totalACOSValue.toFixed(2) + "%";
+                    
                     return response.data;
                 }
             });
@@ -1034,11 +1076,32 @@
                     let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
-                    if (!(ub7 > 90)) return false;
+                    // Get row's ACOS (backend already returns 100 when acos is 0)
+                    let rowAcos = parseFloat(acos) || 0;
+                    if (isNaN(rowAcos)) {
+                        rowAcos = 0;
+                    }
+                    // Treat 0 as 100 for comparison (as per backend logic)
+                    if (rowAcos === 0) {
+                        rowAcos = 100;
+                    }
 
-                    // price < 20
-                    let price = parseFloat(data.price || 0);
-                    if (price < 30) {
+                    // Check if total ACOS is available
+                    if (totalACOSValue === 0 || isNaN(totalACOSValue)) {
+                        return false;
+                    }
+
+                    // Condition 1: ACOS > TOTAL_ACOS AND UB7 > 33%
+                    // Condition 2: ACOS <= TOTAL_ACOS AND UB7 > 90%
+                    let condition1 = (rowAcos > totalACOSValue && ub7 > 33);
+                    let condition2 = (rowAcos <= totalACOSValue && ub7 > 90);
+
+                    // Check if at least one condition matches
+                    // If condition1 OR condition2 is true, continue to other filters
+                    // If both are false, exclude this row
+                    let matchesCondition = condition1 || condition2;
+                    
+                    if (!matchesCondition) {
                         return false;
                     }
 
@@ -1094,21 +1157,42 @@
                     document.getElementById("percentage-campaigns").innerText = percentage + "%";
                 }
 
-                table.on("dataFiltered", updateCampaignStats);
-                table.on("pageLoaded", updateCampaignStats);
-                table.on("dataProcessed", updateCampaignStats);
+                function updateL30Totals() {
+                    // These totals are from ALL campaigns and don't change with filters
+                    // They are set from API response in ajaxResponse function
+                    // No need to recalculate from filtered data - always use static values from API
+                    document.getElementById("total-l30-spend").innerText = "$" + totalL30Spend.toFixed(2);
+                    document.getElementById("total-l30-sales").innerText = "$" + totalL30Sales.toFixed(2);
+                    document.getElementById("total-acos").innerText = totalACOSValue.toFixed(2) + "%";
+                }
+
+                table.on("dataFiltered", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
+                table.on("pageLoaded", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
+                table.on("dataProcessed", function() {
+                    updateCampaignStats();
+                    updateL30Totals();
+                });
 
                 $("#global-search").on("keyup", function() {
                     table.setFilter(combinedFilter);
                     updateCampaignStats(); // update count immediately
+                    updateL30Totals(); // update totals immediately
                 });
 
                 $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     updateCampaignStats(); // update count immediately
+                    updateL30Totals(); // update totals immediately
                 });
 
                 updateCampaignStats();
+                updateL30Totals();
             });
 
             document.addEventListener("click", function(e) {
