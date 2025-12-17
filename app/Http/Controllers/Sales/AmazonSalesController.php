@@ -54,13 +54,17 @@ class AmazonSalesController extends Controller
     {
         \Log::info('AmazonSalesController getData called');
 
+        // 32 days: yesterday se 31 din pehle tak (excluding today)
+        $yesterday = \Carbon\Carbon::yesterday();
+        $startDate = $yesterday->copy()->subDays(32); // 32 days including yesterday
+
         $orders = AmazonOrder::with('items')
-            ->where('period', 'l30')
+            ->whereBetween('order_date', [$startDate, $yesterday->endOfDay()])
             ->where('status', '!=', 'Canceled')
             ->orderBy('order_date', 'desc')
             ->get();
 
-        \Log::info('Found ' . $orders->count() . ' orders');
+        \Log::info('Found ' . $orders->count() . ' orders (Date: ' . $startDate->toDateString() . ' to ' . $yesterday->toDateString() . ' - 32 days)');
 
         // Get unique SKUs and ASINs
         $skus = [];
