@@ -622,16 +622,19 @@
                     const penalty = parseFloat(row.penalty_fee) || 0;
                     const lp = parseFloat(row.lp) || 0;
                     const ship = parseFloat(row.ship) || 0;
+                    const quantity = parseInt(row.quantity) || 1; // Default quantity = 1
 
                     totalSales += itemPrice;
                     totalRevenue += itemPrice;
                     totalNetProceeds += netProceeds;
                     totalFees += mercariFee + paymentFee + shippingAdj + penalty;
 
-                    // Calculate PFT: (Item Price × 0.88) - LP - Ship
-                    const pft = (itemPrice * 0.88) - lp - ship;
+                    // COGS = LP * quantity
+                    const cogs = lp * quantity;
+                    // Calculate PFT: (Item Price × 0.88) - COGS - Ship
+                    const pft = (itemPrice * 0.88) - cogs - ship;
                     totalPft += pft;
-                    totalCogs += lp;
+                    totalCogs += cogs;
                 });
 
                 // Calculate average price
@@ -640,7 +643,7 @@
                 // Calculate PFT Percentage: (Total PFT / Total Sales) * 100
                 const pftPercentage = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
 
-                // Calculate ROI Percentage: (Total PFT / Total COGS) * 100
+                // Calculate ROI Percentage: (Total PFT / Total LP) * 100
                 const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
                 // Update badges

@@ -917,7 +917,9 @@
 
                         <li><a href="{{ url('shein-tabulator') }}">Shein Sales Data</a></li>
 
-                        <li><a href="{{ url('mercari-tabulator') }}">Mercari Sales Data</a></li>
+                        <li><a href="{{ url('mercari-with-ship') }}">Mercari With Ship Sales</a></li>
+
+                        <li><a href="{{ url('mercari-without-ship') }}">Mercari Without Ship Sales</a></li>
 
                         <li><a href="{{ url('aliexpress-tabulator') }}">Aliexpress Sales Data</a></li>
 

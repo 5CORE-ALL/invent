@@ -784,12 +784,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-column-visibility', [AmazonSalesController::class, 'getColumnVisibility']);
     Route::post('/amazon-column-visibility', [AmazonSalesController::class, 'saveColumnVisibility']);
     
-    // Mercari Sales Routes
+    // Mercari Sales Routes (With Ship - buyer_shipping_fee = 0 or null)
     Route::post('/mercari/upload-daily-data', [MercariController::class, 'uploadDailyDataChunk'])->name('mercari.upload.daily.data');
     Route::get('/mercari/daily-data', [MercariController::class, 'getDailyData'])->name('mercari.get.daily.data');
-    Route::get('/mercari-tabulator', [MercariController::class, 'mercariTabulatorView'])->name('mercari.tabulator.view');
+    Route::get('/mercari/daily-data-with-ship', [MercariController::class, 'getDailyDataWithShip'])->name('mercari.get.daily.data.with.ship');
+    Route::get('/mercari-with-ship', [MercariController::class, 'mercariTabulatorView'])->name('mercari.with.ship.view');
     Route::post('/mercari-column-visibility', [MercariController::class, 'saveMercariColumnVisibility'])->name('mercari.save.column.visibility');
     Route::get('/mercari-column-visibility', [MercariController::class, 'getMercariColumnVisibility'])->name('mercari.get.column.visibility');
+    
+    // Mercari Without Ship Sales Routes (buyer_shipping_fee > 0)
+    Route::get('/mercari-without-ship', [MercariController::class, 'mercariWithoutShipView'])->name('mercari.without.ship.view');
+    Route::get('/mercari/daily-data-without-ship', [MercariController::class, 'getDailyDataWithoutShip'])->name('mercari.get.daily.data.without.ship');
+    Route::post('/mercari-without-ship-column-visibility', [MercariController::class, 'saveMercariWithoutShipColumnVisibility'])->name('mercari.save.without.ship.column.visibility');
+    Route::get('/mercari-without-ship-column-visibility', [MercariController::class, 'getMercariWithoutShipColumnVisibility'])->name('mercari.get.without.ship.column.visibility');
+    
+    // Shopify B2C Sales Routes
 
     Route::get('/shopify-b2c/daily-sales-data', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'getData'])->name('shopify-b2c.daily.sales.data');
     Route::get('/shopify-b2c/daily-sales', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'index'])->name('shopify-b2c.daily.sales');

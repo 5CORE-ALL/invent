@@ -452,11 +452,156 @@ class MercariController extends Controller
     }
 
     /**
-     * Show Mercari tabulator view
+     * Show Mercari tabulator view (With Ship - buyer_shipping_fee = 0 or null)
      */
     public function mercariTabulatorView()
     {
-        return view('sales.mercari_daily_sales_data');
+        return view('sales.mercari_with_ship_daily_sales_data');
+    }
+
+    /**
+     * Show Mercari Without Ship view (buyer_shipping_fee > 0)
+     */
+    public function mercariWithoutShipView()
+    {
+        return view('sales.mercari_without_ship_daily_sales_data');
+    }
+
+    /**
+     * Get daily data for Mercari Without Ship (buyer_shipping_fee > 0)
+     */
+    public function getDailyDataWithoutShip(Request $request)
+    {
+        try {
+            // Get Mercari daily data where buyer_shipping_fee > 0
+            $data = MercariDailyData::whereNull('canceled_date')
+                ->where(function($query) {
+                    $query->whereNull('order_status')
+                          ->orWhere('order_status', 'not like', '%cancelled%')
+                          ->orWhere('order_status', 'not like', '%canceled%');
+                })
+                ->where('buyer_shipping_fee', '>', 0)
+                ->orderBy('sold_date', 'desc')
+                ->get();
+            
+            return $this->formatMercariData($data);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Mercari Without Ship data: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Get daily data for Mercari With Ship (buyer_shipping_fee = 0 or null)
+     */
+    public function getDailyDataWithShip(Request $request)
+    {
+        try {
+            // Get Mercari daily data where buyer_shipping_fee = 0 or null
+            $data = MercariDailyData::whereNull('canceled_date')
+                ->where(function($query) {
+                    $query->whereNull('order_status')
+                          ->orWhere('order_status', 'not like', '%cancelled%')
+                          ->orWhere('order_status', 'not like', '%canceled%');
+                })
+                ->where(function($query) {
+                    $query->whereNull('buyer_shipping_fee')
+                          ->orWhere('buyer_shipping_fee', '=', 0);
+                })
+                ->orderBy('sold_date', 'desc')
+                ->get();
+            
+            return $this->formatMercariData($data);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Mercari With Ship data: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Format Mercari data with LP and Ship from ProductMaster
+     */
+    private function formatMercariData($data)
+    {
+        // Fetch all ProductMaster records and create lookup maps
+        $productMastersBySku = ProductMaster::all()->mapWithKeys(function($pm) {
+            $sku = strtoupper(trim($pm->sku));
+            $skuNoSpaces = str_replace([' ', '-', '_'], '', $sku);
+            return [
+                $sku => $pm,
+                $skuNoSpaces => $pm,
+            ];
+        });
+        
+        // Enhance data with LP, Ship, and matched SKU from ProductMaster
+        $data = $data->map(function($item) use ($productMastersBySku) {
+            $matchedSku = $this->extractAndMatchSkuFromTitle($item->item_title, $productMastersBySku);
+            
+            $responseItem = [
+                'id' => $item->id,
+                'item_id' => $item->item_id,
+                'sold_date' => $item->sold_date ? $item->sold_date->toISOString() : null,
+                'canceled_date' => $item->canceled_date ? $item->canceled_date->toISOString() : null,
+                'completed_date' => $item->completed_date ? $item->completed_date->toISOString() : null,
+                'item_title' => $item->item_title,
+                'order_status' => $item->order_status,
+                'shipped_to_state' => $item->shipped_to_state,
+                'shipped_from_state' => $item->shipped_from_state,
+                'item_price' => $item->item_price !== null ? (float)$item->item_price : null,
+                'buyer_shipping_fee' => $item->buyer_shipping_fee !== null ? (float)$item->buyer_shipping_fee : null,
+                'seller_shipping_fee' => $item->seller_shipping_fee !== null ? (float)$item->seller_shipping_fee : null,
+                'mercari_selling_fee' => $item->mercari_selling_fee !== null ? (float)$item->mercari_selling_fee : null,
+                'payment_processing_fee_charged_to_seller' => $item->payment_processing_fee_charged_to_seller !== null ? (float)$item->payment_processing_fee_charged_to_seller : null,
+                'shipping_adjustment_fee' => $item->shipping_adjustment_fee !== null ? (float)$item->shipping_adjustment_fee : null,
+                'penalty_fee' => $item->penalty_fee !== null ? (float)$item->penalty_fee : null,
+                'net_seller_proceeds' => $item->net_seller_proceeds !== null ? (float)$item->net_seller_proceeds : null,
+                'sales_tax_charged_to_buyer' => $item->sales_tax_charged_to_buyer !== null ? (float)$item->sales_tax_charged_to_buyer : null,
+                'merchant_fees_charged_to_buyer' => $item->merchant_fees_charged_to_buyer !== null ? (float)$item->merchant_fees_charged_to_buyer : null,
+                'service_fee_charged_to_buyer' => $item->service_fee_charged_to_buyer !== null ? (float)$item->service_fee_charged_to_buyer : null,
+                'buyer_protection_charged_to_buyer' => $item->buyer_protection_charged_to_buyer !== null ? (float)$item->buyer_protection_charged_to_buyer : null,
+                'payment_processing_fee_charged_to_buyer' => $item->payment_processing_fee_charged_to_buyer !== null ? (float)$item->payment_processing_fee_charged_to_buyer : null,
+                'sku' => $matchedSku,
+                'lp' => 0,
+                'ship' => 0,
+            ];
+            
+            if ($matchedSku) {
+                $pm = null;
+                foreach ($productMastersBySku as $pmSku => $pmRecord) {
+                    if (strtoupper(trim($pmRecord->sku)) === strtoupper(trim($matchedSku))) {
+                        $pm = $pmRecord;
+                        break;
+                    }
+                }
+                
+                if ($pm) {
+                    $values = is_array($pm->Values) 
+                        ? $pm->Values 
+                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    
+                    $lp = 0;
+                    foreach ($values as $k => $v) {
+                        if (strtolower($k) === "lp") {
+                            $lp = floatval($v);
+                            break;
+                        }
+                    }
+                    if ($lp === 0 && isset($pm->lp)) {
+                        $lp = floatval($pm->lp);
+                    }
+                    $responseItem['lp'] = $lp;
+                    
+                    $ship = isset($values["ship"]) 
+                        ? floatval($values["ship"]) 
+                        : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                    $responseItem['ship'] = $ship;
+                }
+            }
+            
+            return $responseItem;
+        });
+        
+        return response()->json($data);
     }
 
     /**
@@ -489,6 +634,40 @@ class MercariController extends Controller
     {
         $userId = auth()->id() ?? 'guest';
         $visibility = cache()->get("mercari_column_visibility_{$userId}", []);
+        
+        return response()->json($visibility);
+    }
+
+    /**
+     * Save column visibility preferences for Without Ship page
+     */
+    public function saveMercariWithoutShipColumnVisibility(Request $request)
+    {
+        try {
+            $visibility = $request->input('visibility', []);
+            $userId = auth()->id() ?? 'guest';
+            
+            cache()->put("mercari_without_ship_column_visibility_{$userId}", $visibility, now()->addYear());
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Column visibility saved'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get column visibility preferences for Without Ship page
+     */
+    public function getMercariWithoutShipColumnVisibility()
+    {
+        $userId = auth()->id() ?? 'guest';
+        $visibility = cache()->get("mercari_without_ship_column_visibility_{$userId}", []);
         
         return response()->json($visibility);
     }
