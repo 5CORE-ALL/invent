@@ -30,6 +30,9 @@ class FetchEbay3Metrics extends Command
         }
 
         $listingData = $this->processTask($taskId, $token);
+        
+        // Delete the task after successful processing to prevent reuse
+        $this->deleteTask($taskId);
 
         // Save price + SKU mapping
         // We'll map itemId => [sku, sku, ...]
@@ -145,44 +148,60 @@ class FetchEbay3Metrics extends Command
         $secret = env('EBAY_3_CERT_ID');
         $rtoken = env('EBAY_3_REFRESH_TOKEN');
 
-        try {
-            $response = Http::asForm()
-                ->withBasicAuth($id, $secret)
-                ->post('https://api.ebay.com/identity/v1/oauth2/token', [
-                    'grant_type' => 'refresh_token',
-                    'refresh_token' => $rtoken,
+        $maxRetries = 3;
+        $attempt = 0;
+
+        while ($attempt < $maxRetries) {
+            $attempt++;
+            
+            try {
+                $response = Http::asForm()
+                    ->withBasicAuth($id, $secret)
+                    ->timeout(30)
+                    ->connectTimeout(15)
+                    ->retry(2, 1000)
+                    ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                        'grant_type' => 'refresh_token',
+                        'refresh_token' => $rtoken,
+                    ]);
+
+                if (! $response->successful()) {
+                    if ($attempt < $maxRetries) {
+                        $this->warn("⚠️  Token request failed (attempt {$attempt}/{$maxRetries}), retrying...");
+                        sleep(2);
+                        continue;
+                    }
+                    $this->error('❌ TOKEN FAILED: '.json_encode($response->json()));
+                    return null;
+                }
+
+                return $response->json()['access_token'] ?? null;
+
+            } catch (\Throwable $e) {
+                if ($attempt < $maxRetries) {
+                    $this->warn("⚠️  Token request exception (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
+                    Log::channel('daily')->warning('EBAY TOKEN EXCEPTION (retrying)', [
+                        'attempt' => $attempt,
+                        'message' => $e->getMessage(),
+                    ]);
+                    sleep(2);
+                    continue;
+                }
+                
+                Log::channel('daily')->error('EBAY TOKEN EXCEPTION', [
+                    'message' => $e->getMessage(),
                 ]);
 
-            if (! $response->successful()) {
-                $this->error('❌ TOKEN FAILED: '.json_encode($response->json()));
                 return null;
             }
-
-            return $response->json()['access_token'] ?? null;
-
-        } catch (\Throwable $e) {
-            Log::channel('daily')->error('EBAY TOKEN EXCEPTION', [
-                'message' => $e->getMessage(),
-            ]);
-
-            return null;
         }
+
+        return null;
     }
 
     private function getInventoryTaskId($token)
     {
         $type = 'LMS_ACTIVE_INVENTORY_REPORT';
-
-        $task = EbayTask::where('type', $type)
-            ->where('ebay_account', 'Ebay3')
-            ->latest()
-            ->first();
-
-        // reuse last task if created less than 24h ago
-        if ($task && now()->diffInHours($task->created_at) < 24) {
-            $this->info('✅ Reusing existing Task: '.$task->task_id.' (created: '.$task->created_at.')');
-            return $task->task_id;
-        }
 
         $this->info('⏳ Creating new task...');
 
@@ -192,11 +211,45 @@ class FetchEbay3Metrics extends Command
             'schemaVersion' => '1.0',
         ];
 
-        $response = Http::withToken($token)
-            ->post('https://api.ebay.com/sell/feed/v1/inventory_task', $payload);
+        $maxRetries = 3;
+        $attempt = 0;
+        $response = null;
 
-        if (! $response->successful()) {
-            $this->error('❌ Task API failed: '.$response->body());
+        while ($attempt < $maxRetries) {
+            $attempt++;
+            
+            try {
+                $response = Http::withToken($token)
+                    ->timeout(60)
+                    ->connectTimeout(20)
+                    ->retry(2, 1000)
+                    ->post('https://api.ebay.com/sell/feed/v1/inventory_task', $payload);
+
+                if ($response->successful()) {
+                    break;
+                }
+
+                if ($attempt < $maxRetries) {
+                    $this->warn("⚠️  Task API failed (attempt {$attempt}/{$maxRetries}), retrying...");
+                    sleep(2);
+                    continue;
+                }
+
+                $this->error('❌ Task API failed: '.$response->body());
+                return null;
+            } catch (\Throwable $e) {
+                if ($attempt < $maxRetries) {
+                    $this->warn("⚠️  Task API exception (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
+                    sleep(2);
+                    continue;
+                }
+                $this->error('❌ Task API exception: '.$e->getMessage());
+                return null;
+            }
+        }
+
+        if (! $response || ! $response->successful()) {
+            $this->error('❌ Task API failed after retries');
             return null;
         }
 
@@ -219,11 +272,67 @@ class FetchEbay3Metrics extends Command
         return $taskId;
     }
 
+    private function deleteTask($taskId)
+    {
+        try {
+            $deleted = EbayTask::where('task_id', $taskId)->delete();
+            if ($deleted) {
+                $this->info("🗑️  Task {$taskId} deleted from database (one-time use)");
+            } else {
+                $this->warn("⚠️  Task {$taskId} not found in database to delete");
+            }
+        } catch (\Throwable $e) {
+            $this->warn("⚠️  Failed to delete task {$taskId}: " . $e->getMessage());
+            Log::channel('daily')->warning('Failed to delete eBay task', [
+                'task_id' => $taskId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     private function processTask($taskId, $token)
     {
         while (true) {
-            $check = Http::withToken($token)
-                ->get("https://api.ebay.com/sell/feed/v1/inventory_task/{$taskId}");
+            $maxRetries = 3;
+            $attempt = 0;
+            $check = null;
+
+            while ($attempt < $maxRetries) {
+                $attempt++;
+                
+                try {
+                    $check = Http::withToken($token)
+                        ->timeout(30)
+                        ->connectTimeout(15)
+                        ->retry(2, 1000)
+                        ->get("https://api.ebay.com/sell/feed/v1/inventory_task/{$taskId}");
+
+                    if ($check->successful()) {
+                        break;
+                    }
+
+                    if ($attempt < $maxRetries) {
+                        $this->warn("⚠️  Task status check failed (attempt {$attempt}/{$maxRetries}), retrying...");
+                        sleep(2);
+                        continue;
+                    }
+                } catch (\Throwable $e) {
+                    if ($attempt < $maxRetries) {
+                        $this->warn("⚠️  Task status check exception (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
+                        sleep(2);
+                        continue;
+                    }
+                    $this->error('❌ Task status check exception: '.$e->getMessage());
+                    sleep(10);
+                    continue;
+                }
+            }
+
+            if (! $check || ! $check->successful()) {
+                $this->warn('⚠️  Failed to check task status, retrying in 10 seconds...');
+                sleep(10);
+                continue;
+            }
 
             $status = $check['status'] ?? 'UNKNOWN';
 
@@ -240,7 +349,48 @@ class FetchEbay3Metrics extends Command
     {
         $url = "https://api.ebay.com/sell/feed/v1/task/{$taskId}/download_result_file";
 
-        $response = Http::withToken($token)->get($url);
+        $maxRetries = 3;
+        $attempt = 0;
+        $response = null;
+
+        while ($attempt < $maxRetries) {
+            $attempt++;
+            
+            try {
+                $response = Http::withToken($token)
+                    ->timeout(120)
+                    ->connectTimeout(20)
+                    ->retry(2, 1000)
+                    ->get($url);
+
+                if ($response->successful()) {
+                    break;
+                }
+
+                if ($attempt < $maxRetries) {
+                    $this->warn("⚠️  Download failed (attempt {$attempt}/{$maxRetries}), retrying...");
+                    sleep(2);
+                    continue;
+                }
+
+                $this->error('❌ Download failed: '.$response->body());
+                return [];
+            } catch (\Throwable $e) {
+                if ($attempt < $maxRetries) {
+                    $this->warn("⚠️  Download exception (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
+                    sleep(2);
+                    continue;
+                }
+                $this->error('❌ Download exception: '.$e->getMessage());
+                return [];
+            }
+        }
+
+        if (! $response || ! $response->successful()) {
+            $this->error('❌ Download failed after retries');
+            return [];
+        }
+
         $content = $response->body();
         $magic = substr($content, 0, 2);
 
@@ -393,10 +543,45 @@ class FetchEbay3Metrics extends Command
             
             $this->info("📊 Chunk {$chunkIndex}: " . implode(', ', array_slice($chunk, 0, 3)) . (count($chunk) > 3 ? '...' : ''));
 
-            $r = Http::withToken($token)->get($url);
-            
-            if (!$r->successful()) {
-                $this->error('❌ Views API failed for chunk ' . $chunkIndex . ': ' . $r->body());
+            $maxRetries = 3;
+            $attempt = 0;
+            $r = null;
+
+            while ($attempt < $maxRetries) {
+                $attempt++;
+                
+                try {
+                    $r = Http::withToken($token)
+                        ->timeout(60)
+                        ->connectTimeout(20)
+                        ->retry(2, 1000)
+                        ->get($url);
+
+                    if ($r->successful()) {
+                        break;
+                    }
+
+                    if ($attempt < $maxRetries) {
+                        $this->warn("⚠️  Views API failed for chunk {$chunkIndex} (attempt {$attempt}/{$maxRetries}), retrying...");
+                        sleep(2);
+                        continue;
+                    }
+
+                    $this->error('❌ Views API failed for chunk ' . $chunkIndex . ': ' . $r->body());
+                    continue 2; // Continue to next chunk
+                } catch (\Throwable $e) {
+                    if ($attempt < $maxRetries) {
+                        $this->warn("⚠️  Views API exception for chunk {$chunkIndex} (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
+                        sleep(2);
+                        continue;
+                    }
+                    $this->error('❌ Views API exception for chunk ' . $chunkIndex . ': ' . $e->getMessage());
+                    continue 2; // Continue to next chunk
+                }
+            }
+
+            if (! $r || ! $r->successful()) {
+                $this->warn('⚠️  Views API failed for chunk ' . $chunkIndex . ' after retries, skipping...');
                 continue;
             }
 
@@ -451,10 +636,45 @@ class FetchEbay3Metrics extends Command
 
             $url = "https://api.ebay.com/sell/analytics/v1/traffic_report?dimension=LISTING&filter=listing_ids:%7B{$ids}%7D,date_range:[{$range}]&metric=LISTING_VIEWS_TOTAL";
             
-            $r = Http::withToken($token)->get($url);
-            
-            if (!$r->successful()) {
-                $this->error('❌ L7 Views API failed for chunk ' . $chunkIndex . ': ' . $r->body());
+            $maxRetries = 3;
+            $attempt = 0;
+            $r = null;
+
+            while ($attempt < $maxRetries) {
+                $attempt++;
+                
+                try {
+                    $r = Http::withToken($token)
+                        ->timeout(60)
+                        ->connectTimeout(20)
+                        ->retry(2, 1000)
+                        ->get($url);
+
+                    if ($r->successful()) {
+                        break;
+                    }
+
+                    if ($attempt < $maxRetries) {
+                        $this->warn("⚠️  L7 Views API failed for chunk {$chunkIndex} (attempt {$attempt}/{$maxRetries}), retrying...");
+                        sleep(2);
+                        continue;
+                    }
+
+                    $this->error('❌ L7 Views API failed for chunk ' . $chunkIndex . ': ' . $r->body());
+                    continue 2; // Continue to next chunk
+                } catch (\Throwable $e) {
+                    if ($attempt < $maxRetries) {
+                        $this->warn("⚠️  L7 Views API exception for chunk {$chunkIndex} (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
+                        sleep(2);
+                        continue;
+                    }
+                    $this->error('❌ L7 Views API exception for chunk ' . $chunkIndex . ': ' . $e->getMessage());
+                    continue 2; // Continue to next chunk
+                }
+            }
+
+            if (! $r || ! $r->successful()) {
+                $this->warn('⚠️  L7 Views API failed for chunk ' . $chunkIndex . ' after retries, skipping...');
                 continue;
             }
 
@@ -491,7 +711,48 @@ class FetchEbay3Metrics extends Command
         $url = "https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[{$from}..{$to}]&limit=200";
 
         do {
-            $r = Http::withToken($token)->get($url);
+            $maxRetries = 3;
+            $attempt = 0;
+            $r = null;
+
+            while ($attempt < $maxRetries) {
+                $attempt++;
+                
+                try {
+                    $r = Http::withToken($token)
+                        ->timeout(60)
+                        ->connectTimeout(20)
+                        ->retry(2, 1000)
+                        ->get($url);
+
+                    if ($r->successful()) {
+                        break;
+                    }
+
+                    if ($attempt < $maxRetries) {
+                        $this->warn("⚠️  Order API failed (attempt {$attempt}/{$maxRetries}), retrying...");
+                        sleep(2);
+                        continue;
+                    }
+
+                    $this->error('❌ Order API failed: ' . ($r ? $r->body() : 'No response'));
+                    break 2; // Break out of both loops
+                } catch (\Throwable $e) {
+                    if ($attempt < $maxRetries) {
+                        $this->warn("⚠️  Order API exception (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
+                        sleep(2);
+                        continue;
+                    }
+                    $this->error('❌ Order API exception: ' . $e->getMessage());
+                    break 2; // Break out of both loops
+                }
+            }
+
+            if (! $r || ! $r->successful()) {
+                $this->error('❌ Order API failed after retries');
+                break;
+            }
+
             foreach ($r['orders'] ?? [] as $o) {
                 foreach ($o['lineItems'] ?? [] as $li) {
                     $id = $li['legacyItemId'] ?? null;

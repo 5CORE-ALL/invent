@@ -1093,7 +1093,23 @@
                     const r2s = parseFloat(item["readyToShipQty"] ?? item["readyToShipQty"]) || 0;
                     const msl = totalMonth > 0 ? (total / totalMonth) * 4 : 0;
 
-                    const toOrder = Math.round(msl - inv - transit - orderGiven - r2s);
+                    // Get stage from item to determine which fields to use for to_order calculation
+                    const itemStage = item.stage || '';
+                    
+                    // For to_order calculation, only use the quantity from the matching stage
+                    let effectiveOrderGiven = 0;
+                    let effectiveR2s = 0;
+                    let effectiveTransit = transit;
+                    
+                    if (itemStage === 'mip') {
+                        effectiveOrderGiven = orderGiven;
+                    } else if (itemStage === 'r2s') {
+                        effectiveR2s = r2s;
+                    } else if (itemStage === 'transit') {
+                        effectiveTransit = transit;
+                    }
+
+                    const toOrder = Math.round(msl - inv - effectiveTransit - effectiveOrderGiven - effectiveR2s);
 
                     // if (toOrder == 0) {
                     //     return false;
@@ -1116,6 +1132,25 @@
                     const shopifyPrice = parseFloat(item["shopifyb2c_price"]) || 0;
                     const msl_sp = Math.round(shopifyPrice * msl / 4);
 
+                    // Get original values (itemStage already declared above)
+                    const originalOrderGiven = parseFloat(item['order_given'] ?? item['Order Given'] ?? 0);
+                    const originalReadyToShipQty = parseFloat(item['readyToShipQty'] ?? item['ready_to_ship'] ?? 0);
+                    const originalTransit = parseFloat(item['transit'] ?? item['Transit'] ?? 0);
+                    
+                    // Clear stage fields based on current stage - only show value for matching stage
+                    let finalOrderGiven = 0;
+                    let finalReadyToShipQty = 0;
+                    let finalTransit = 0;
+                    
+                    // If stage is set, only show value for matching stage
+                    if (itemStage === 'mip') {
+                        finalOrderGiven = originalOrderGiven;
+                    } else if (itemStage === 'r2s') {
+                        finalReadyToShipQty = originalReadyToShipQty;
+                    } else if (itemStage === 'transit') {
+                        finalTransit = originalTransit;
+                    }
+
                     const processedItem = {
                         ...item,
                         sl_no: index + 1,
@@ -1128,7 +1163,10 @@
                         s_msl: s_msl_val,
                         is_parent: isParent,
                         isParent: isParent,
-                        raw_data: item || {}
+                        raw_data: item || {},
+                        order_given: finalOrderGiven,
+                        readyToShipQty: finalReadyToShipQty,
+                        transit: finalTransit
                     };
 
                     // Group for play button use
@@ -1928,15 +1966,86 @@
                                     r.getData().SKU === sku && r.getData().Parent === parent
                                 );
                                 if (row) {
-                                    // Update the row data - this will automatically trigger formatter
-                                    row.update({
-                                        stage: newValue
-                                    }, true); // true = update existing row data
+                                    const rowData = row.getData();
                                     
-                                    // Don't auto-filter - let the stage filter dropdown control visibility
-                                    // The row should remain visible after stage change
-                                    // Only apply filters if stage filter dropdown is set
-                                    setCombinedFilters();
+                                    // Stage to table mapping
+                                    const stageTableMap = {
+                                        'mip': { table: 'mfrg-progress', field: 'order_given' },
+                                        'r2s': { table: 'ready-to-ship', field: 'readyToShipQty' },
+                                        'transit': { table: 'transit', field: 'transit' },
+                                        'appr_req': { table: null, field: 'to_order' },
+                                        'to_order_analysis': { table: null, field: 'to_order' },
+                                        'all_good': { table: null, field: null }
+                                    };
+
+                                    const stageConfig = stageTableMap[newValue];
+                                    
+                                    // Prepare update object - clear other stage fields first
+                                    const updateData = {
+                                        stage: newValue
+                                    };
+                                    
+                                    // Clear fields that don't match the selected stage
+                                    if (newValue !== 'mip') {
+                                        updateData['order_given'] = 0;
+                                    }
+                                    if (newValue !== 'r2s') {
+                                        updateData['readyToShipQty'] = 0;
+                                    }
+                                    if (newValue !== 'transit') {
+                                        updateData['transit'] = 0;
+                                    }
+                                    
+                                    if (stageConfig && stageConfig.table) {
+                                        // Check if SKU exists in the respective table and get quantity
+                                        fetch(`/forecast-analysis/get-sku-quantity?sku=${encodeURIComponent(sku)}&table=${stageConfig.table}`, {
+                                            method: 'GET',
+                                            headers: {
+                                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                                                'Accept': 'application/json'
+                                            }
+                                        })
+                                        .then(res => res.json())
+                                        .then(data => {
+                                            if (data.success && data.exists) {
+                                                // SKU exists in table, use its quantity
+                                                const quantity = parseFloat(data.quantity) || 0;
+                                                updateData[stageConfig.field] = quantity;
+                                            } else {
+                                                // SKU doesn't exist, set to 0 for this field
+                                                updateData[stageConfig.field] = 0;
+                                            }
+                                            
+                                            // Update row with all changes
+                                            row.update(updateData, true);
+                                            
+                                            // Refresh the cells to show updated values
+                                            setTimeout(() => {
+                                                const stageCell = row.getCells().find(cell => cell.getField() === 'stage');
+                                                const mipCell = row.getCells().find(cell => cell.getField() === 'order_given');
+                                                const r2sCell = row.getCells().find(cell => cell.getField() === 'readyToShipQty');
+                                                const transitCell = row.getCells().find(cell => cell.getField() === 'transit');
+                                                
+                                                if (stageCell) stageCell.reformat();
+                                                if (mipCell) mipCell.reformat();
+                                                if (r2sCell) r2sCell.reformat();
+                                                if (transitCell) transitCell.reformat();
+                                            }, 100);
+                                            
+                                            setCombinedFilters();
+                                        })
+                                        .catch(error => {
+                                            console.error('Error fetching quantity:', error);
+                                            // On error, still clear other fields and update stage
+                                            row.update(updateData, true);
+                                            setCombinedFilters();
+                                        });
+                                    } else {
+                                        // For stages without table check (appr_req, to_order_analysis, all_good)
+                                        // Still clear other stage fields
+                                        row.update(updateData, true);
+                                        setCombinedFilters();
+                                    }
                                 }
                             }
                         },

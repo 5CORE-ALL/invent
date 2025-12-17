@@ -1337,7 +1337,7 @@
                             <!-- NRL/REQ Filter -->
                             <div class="dropdown manual-dropdown-container">
                                 <button class="btn btn-light dropdown-toggle" type="button" id="nrlReqFilterDropdown">
-                                    <span class="status-circle default"></span> NRL/REQ
+                                    <span class="status-circle green"></span> NRL/REQ (REQ)
                                 </button>
                                 <ul class="dropdown-menu" aria-labelledby="nrlReqFilterDropdown">
                                     <li><a class="dropdown-item nrl-req-filter" href="#" data-value="all">
@@ -2184,7 +2184,7 @@
                     'Tacos30': 'all',
                     'SCVR': 'all',
                     'NRA': 'all',
-                    'NRL_REQ': 'all',
+                    'NRL_REQ': 'REQ',
                     'entryType': 'all'
                 }
             };
@@ -2571,6 +2571,8 @@
                     initSearch();
                     initColumnToggle();
                     initFilters();
+                    // Apply REQ filter by default
+                    applyColumnFilters();
                     calculateTotals();
                     initEnhancedDropdowns();
                     initManualDropdowns();
@@ -5460,7 +5462,7 @@
 
                     $this.closest('.dropdown')
                         .find('.dropdown-toggle')
-                        .html(`<span class="status-circle ${colorClass}"></span> NRL/REQ (${text})`);
+                        .html(`<span class="status-circle ${colorClass}"></span> (${text})`);
 
                     state.filters.NRL_REQ = value;
                     $this.closest('.dropdown-menu').removeClass('show');

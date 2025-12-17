@@ -157,17 +157,17 @@
                         <!-- Clicks -->
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
-                                <div class="text-muted small">Clicks</div>
-                                <div class="h3 mb-0 fw-bold text-primary card-clicks" id="total-clicks">{{ array_sum($clicks) }}</div>
+                                <div class="text-muted small">Clicks (L30)</div>
+                                <div class="h3 mb-0 fw-bold text-primary card-clicks" id="total-clicks">{{ $cardClicks ?? 0 }}</div>
                             </div>
                         </div>
 
                         <!-- Spend -->
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
-                                <div class="text-muted small">Spend</div>
+                                <div class="text-muted small">Spend (L30)</div>
                                 <div class="h3 mb-0 fw-bold text-success card-spend" id="total-spend-chart">
-                                    US${{ number_format(array_sum($spend), 0) }}
+                                    US${{ number_format($cardSpend ?? 0, 0) }}
                                 </div>
                             </div>
                         </div>
@@ -175,8 +175,8 @@
                         <!-- Orders -->
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
-                                <div class="text-muted small">Orders</div>
-                                <div class="h3 mb-0 fw-bold text-danger card-orders" id="total-orders">{{ array_sum($orders) }}</div>
+                                <div class="text-muted small">Orders (L30)</div>
+                                <div class="h3 mb-0 fw-bold text-danger card-orders" id="total-orders">{{ $cardOrders ?? 0 }}</div>
                             </div>
                         </div>
 
@@ -185,9 +185,9 @@
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
-                                        <div class="text-muted small">Sales</div>
+                                        <div class="text-muted small">Sales (L30)</div>
                                         <div class="h3 mb-0 fw-bold text-info card-sales" id="total-sales-chart">
-                                            US${{ number_format(array_sum($sales), 0) }}
+                                            US${{ number_format($cardSales ?? 0, 0) }}
                                         </div>
                                     </div>
                                     <!-- Arrow button -->
@@ -1438,12 +1438,40 @@
             // Reset on cancel
             $('#daterange-btn').on('cancel.daterangepicker', function(ev, picker) {
                 $(this).find('span').html("Date range: Select");
-                fetchChartData(); 
+                // Reset to original chart data
+                chart.data.labels = {!! json_encode(array_map(function($date) { return \Carbon\Carbon::parse($date)->format('M d'); }, $dates)) !!};
+                chart.data.datasets[0].data = {!! json_encode($clicks) !!};
+                chart.data.datasets[1].data = {!! json_encode($spend) !!};
+                chart.data.datasets[2].data = {!! json_encode($orders) !!};
+                chart.data.datasets[3].data = {!! json_encode($sales) !!};
+                chart.update();
+                
+                // Reset cards to L30 data
+                $('#total-clicks').text('{{ $cardClicks ?? 0 }}');
+                $('#total-spend-chart').text('US${{ number_format($cardSpend ?? 0, 0) }}');
+                $('#total-orders').text('{{ $cardOrders ?? 0 }}');
+                $('#total-sales-chart').text('US${{ number_format($cardSales ?? 0, 0) }}');
             });
 
         });
 
         function fetchChartData(startDate, endDate) {
+            if (!startDate || !endDate) {
+                // Reset to L30 data if no dates provided
+                chart.data.labels = {!! json_encode(array_map(function($date) { return \Carbon\Carbon::parse($date)->format('M d'); }, $dates)) !!};
+                chart.data.datasets[0].data = {!! json_encode($clicks) !!};
+                chart.data.datasets[1].data = {!! json_encode($spend) !!};
+                chart.data.datasets[2].data = {!! json_encode($orders) !!};
+                chart.data.datasets[3].data = {!! json_encode($sales) !!};
+                chart.update();
+                
+                $('#total-clicks').text('{{ $cardClicks ?? 0 }}');
+                $('#total-spend-chart').text('US${{ number_format($cardSpend ?? 0, 0) }}');
+                $('#total-orders').text('{{ $cardOrders ?? 0 }}');
+                $('#total-sales-chart').text('US${{ number_format($cardSales ?? 0, 0) }}');
+                return;
+            }
+
             console.log('Fetching chart data:', { startDate, endDate });
             
             $.ajax({
@@ -1452,9 +1480,20 @@
                 data: { startDate, endDate },
                 beforeSend: function() {
                     console.log('Sending AJAX request to:', "{{ route('amazonHlAds.filter') }}");
+                    $('#total-clicks, #total-spend-chart, #total-orders, #total-sales-chart').text('Loading...');
                 },
                 success: function(response) {
                     console.log('Chart data response:', response);
+                    
+                    if (response.error) {
+                        alert('Error: ' + response.error);
+                        // Reset to L30 on error
+                        $('#total-clicks').text('{{ $cardClicks ?? 0 }}');
+                        $('#total-spend-chart').text('US${{ number_format($cardSpend ?? 0, 0) }}');
+                        $('#total-orders').text('{{ $cardOrders ?? 0 }}');
+                        $('#total-sales-chart').text('US${{ number_format($cardSales ?? 0, 0) }}');
+                        return;
+                    }
                     
                     if (response.dates && response.dates.length > 0) {
                         const formattedDates = response.dates.map(d => moment(d).format('MMM D'));
@@ -1465,10 +1504,10 @@
                         chart.data.datasets[3].data = response.sales;
                         chart.update();
 
-                        $('#total-clicks').text(response.totals.clicks || 0);
-                        $('#total-spend-chart').text('US$' + Math.round(response.totals.spend || 0));
-                        $('#total-orders').text(response.totals.orders || 0);
-                        $('#total-sales-chart').text('US$' + Math.round(response.totals.sales || 0));
+                        $('#total-clicks').text(Math.round(response.totals.clicks || 0));
+                        $('#total-spend-chart').text('US$' + Math.round(Number(response.totals.spend || 0)));
+                        $('#total-orders').text(Math.round(response.totals.orders || 0));
+                        $('#total-sales-chart').text('US$' + Math.round(Number(response.totals.sales || 0)));
                         
                         // Reload table data with new date range
                         if (typeof table !== 'undefined' && table.replaceData) {
@@ -1476,6 +1515,11 @@
                         }
                     } else {
                         console.warn('No data received for date range');
+                        // Reset to L30 if no data
+                        $('#total-clicks').text('{{ $cardClicks ?? 0 }}');
+                        $('#total-spend-chart').text('US${{ number_format($cardSpend ?? 0, 0) }}');
+                        $('#total-orders').text('{{ $cardOrders ?? 0 }}');
+                        $('#total-sales-chart').text('US${{ number_format($cardSales ?? 0, 0) }}');
                     }
                 },
                 error: function(xhr, status, error) {
@@ -1483,6 +1527,11 @@
                     console.error('Status:', status);
                     console.error('Response:', xhr.responseText);
                     alert('Error loading data. Please check console for details.');
+                    // Reset to L30 on error
+                    $('#total-clicks').text('{{ $cardClicks ?? 0 }}');
+                    $('#total-spend-chart').text('US${{ number_format($cardSpend ?? 0, 0) }}');
+                    $('#total-orders').text('{{ $cardOrders ?? 0 }}');
+                    $('#total-sales-chart').text('US${{ number_format($cardSales ?? 0, 0) }}');
                 }
             });
         }
