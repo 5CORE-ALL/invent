@@ -180,9 +180,62 @@
                             <button type="button" class="btn btn-primary me-2" id="addCompetitorsBtn">
                                 <i class="fas fa-plus me-1"></i> Add Competitors Data
                             </button>
+                            <button type="button" class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#importCompetitorsModal">
+                                <i class="fas fa-upload me-1"></i> Import Excel
+                            </button>
                             <button type="button" class="btn btn-success" id="downloadExcel">
                                 <i class="fas fa-file-excel me-1"></i> Download Excel
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- Import Modal -->
+                    <div class="modal fade" id="importCompetitorsModal" tabindex="-1" aria-labelledby="importCompetitorsModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                                    <h5 class="modal-title" id="importCompetitorsModalLabel">
+                                        <i class="fas fa-upload me-2"></i>Import Competitors Data
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Instructions:</strong>
+                                        <ol class="mb-0 mt-2">
+                                            <li>Download the sample file below</li>
+                                            <li>Fill in the competitors data (Brand 1, Link 1, Brand 2, Link 2, ... Brand 5, Link 5)</li>
+                                            <li>Upload the completed file</li>
+                                        </ol>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <button type="button" class="btn btn-outline-primary w-100" id="downloadSampleCompetitorsBtn">
+                                            <i class="fas fa-download me-2"></i>Download Sample File
+                                        </button>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="competitorsImportFile" class="form-label fw-bold">Select Excel File</label>
+                                        <input type="file" class="form-control" id="competitorsImportFile" accept=".xlsx,.xls,.csv">
+                                        <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
+                                        <div id="competitorsFileError" class="text-danger mt-2" style="display: none;"></div>
+                                    </div>
+
+                                    <div id="competitorsImportProgress" class="progress mb-3" style="display: none;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                    </div>
+
+                                    <div id="competitorsImportResult" class="alert" style="display: none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn btn-primary" id="importCompetitorsBtn" disabled>
+                                        <i class="fas fa-upload me-2"></i>Import
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -209,16 +262,76 @@
                                     </th>
                                     <th>Status</th>
                                     <th>INV</th>
-                                    <th>Brand 1</th>
-                                    <th>Link 1</th>
-                                    <th>Brand 2</th>
-                                    <th>Link 2</th>
-                                    <th>Brand 3</th>
-                                    <th>Link 3</th>
-                                    <th>Brand 4</th>
-                                    <th>Link 4</th>
-                                    <th>Brand 5</th>
-                                    <th>Link 5</th>
+                                    <th>
+                                        <div>Brand 1 <span id="brand1MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBrand1" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Link 1 <span id="link1MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterLink1" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Brand 2 <span id="brand2MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBrand2" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Link 2 <span id="link2MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterLink2" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Brand 3 <span id="brand3MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBrand3" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Link 3 <span id="link3MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterLink3" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Brand 4 <span id="brand4MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBrand4" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Link 4 <span id="link4MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterLink4" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Brand 5 <span id="brand5MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBrand5" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Link 5 <span id="link5MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterLink5" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -568,17 +681,103 @@
                 });
             }
 
+            // Check if value is missing (null, undefined, empty)
+            function isMissing(value) {
+                return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
+            }
+
             // Update counts
             function updateCounts() {
                 const parentSet = new Set();
                 let skuCount = 0;
+                const brandMissingCounts = {};
+                const linkMissingCounts = {};
+                
+                // Initialize missing counts for all brands and links
+                for (let i = 1; i <= 5; i++) {
+                    brandMissingCounts[i] = 0;
+                    linkMissingCounts[i] = 0;
+                }
+
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
+                    
+                    // Count missing data for each brand and link column
+                    for (let i = 1; i <= 5; i++) {
+                        const brandKey = `brand_${i}`;
+                        const linkKey = `link_${i}`;
+                        
+                        if (isMissing(item[brandKey])) {
+                            brandMissingCounts[i]++;
+                        }
+                        if (isMissing(item[linkKey])) {
+                            linkMissingCounts[i]++;
+                        }
+                    }
                 });
+                
                 document.getElementById('parentCount').textContent = `(${parentSet.size})`;
                 document.getElementById('skuCount').textContent = `(${skuCount})`;
+                
+                // Update missing counts for all brands and links
+                for (let i = 1; i <= 5; i++) {
+                    document.getElementById(`brand${i}MissingCount`).textContent = `(${brandMissingCounts[i]})`;
+                    document.getElementById(`link${i}MissingCount`).textContent = `(${linkMissingCounts[i]})`;
+                }
+            }
+
+            // Apply all filters
+            function applyFilters() {
+                filteredData = tableData.filter(item => {
+                    // Parent search filter
+                    const parentSearch = document.getElementById('parentSearch').value.toLowerCase();
+                    if (parentSearch && !(item.Parent || '').toLowerCase().includes(parentSearch)) {
+                        return false;
+                    }
+
+                    // SKU search filter
+                    const skuSearch = document.getElementById('skuSearch').value.toLowerCase();
+                    if (skuSearch && !(item.SKU || '').toLowerCase().includes(skuSearch)) {
+                        return false;
+                    }
+
+                    // Custom search filter
+                    const customSearch = document.getElementById('customSearch').value.toLowerCase();
+                    if (customSearch) {
+                        const parent = (item.Parent || '').toLowerCase();
+                        const sku = (item.SKU || '').toLowerCase();
+                        const status = (item.status || '').toLowerCase();
+                        if (!parent.includes(customSearch) && !sku.includes(customSearch) && !status.includes(customSearch)) {
+                            return false;
+                        }
+                    }
+
+                    // Brand and Link filters (Brand 1-5, Link 1-5)
+                    for (let i = 1; i <= 5; i++) {
+                        // Brand filter
+                        const filterBrand = document.getElementById(`filterBrand${i}`).value;
+                        if (filterBrand === 'missing') {
+                            const brandKey = `brand_${i}`;
+                            if (!isMissing(item[brandKey])) {
+                                return false;
+                            }
+                        }
+
+                        // Link filter
+                        const filterLink = document.getElementById(`filterLink${i}`).value;
+                        if (filterLink === 'missing') {
+                            const linkKey = `link_${i}`;
+                            if (!isMissing(item[linkKey])) {
+                                return false;
+                            }
+                        }
+                    }
+
+                    return true;
+                });
+                renderTable(filteredData);
             }
 
             // Setup search functionality
@@ -586,36 +785,19 @@
                 // Parent search
                 const parentSearch = document.getElementById('parentSearch');
                 parentSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        return parent.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // SKU search
                 const skuSearch = document.getElementById('skuSearch');
                 skuSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const sku = (item.SKU || '').toLowerCase();
-                        return sku.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // Custom search
                 const customSearch = document.getElementById('customSearch');
                 customSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        const sku = (item.SKU || '').toLowerCase();
-                        const status = (item.status || '').toLowerCase();
-                        return parent.includes(searchTerm) || sku.includes(searchTerm) || status.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // Clear search
@@ -623,9 +805,24 @@
                     customSearch.value = '';
                     parentSearch.value = '';
                     skuSearch.value = '';
-                    filteredData = [...tableData];
-                    renderTable(filteredData);
+                    // Reset all column filters
+                    for (let i = 1; i <= 5; i++) {
+                        document.getElementById(`filterBrand${i}`).value = 'all';
+                        document.getElementById(`filterLink${i}`).value = 'all';
+                    }
+                    applyFilters();
                 });
+
+                // Column filters for all brands and links
+                for (let i = 1; i <= 5; i++) {
+                    document.getElementById(`filterBrand${i}`).addEventListener('change', function() {
+                        applyFilters();
+                    });
+
+                    document.getElementById(`filterLink${i}`).addEventListener('change', function() {
+                        applyFilters();
+                    });
+                }
             }
 
             // Toast notification function
@@ -954,10 +1151,217 @@
                 }
             }
 
+            // Setup import functionality
+            function setupImport() {
+                const importFile = document.getElementById('competitorsImportFile');
+                const importBtn = document.getElementById('importCompetitorsBtn');
+                const downloadSampleBtn = document.getElementById('downloadSampleCompetitorsBtn');
+                const importModal = document.getElementById('importCompetitorsModal');
+                const fileError = document.getElementById('competitorsFileError');
+                const importProgress = document.getElementById('competitorsImportProgress');
+                const importResult = document.getElementById('competitorsImportResult');
+
+                // Enable/disable import button based on file selection
+                importFile.addEventListener('change', function() {
+                    if (this.files && this.files.length > 0) {
+                        const file = this.files[0];
+                        const fileName = file.name.toLowerCase();
+                        const validExtensions = ['.xlsx', '.xls', '.csv'];
+                        const isValid = validExtensions.some(ext => fileName.endsWith(ext));
+
+                        if (isValid) {
+                            importBtn.disabled = false;
+                            fileError.style.display = 'none';
+                        } else {
+                            importBtn.disabled = true;
+                            fileError.textContent = 'Please select a valid Excel file (.xlsx, .xls, or .csv)';
+                            fileError.style.display = 'block';
+                        }
+                    } else {
+                        importBtn.disabled = true;
+                    }
+                });
+
+                // Download sample file
+                downloadSampleBtn.addEventListener('click', function() {
+                    // Create sample data with headers
+                    const sampleData = [
+                        ['SKU', 'Brand 1', 'Link 1', 'Brand 2', 'Link 2', 'Brand 3', 'Link 3', 'Brand 4', 'Link 4', 'Brand 5', 'Link 5']
+                    ];
+                    
+                    // Add example rows
+                    sampleData.push([
+                        'SKU001',
+                        'Competitor A',
+                        'https://example.com/competitor-a',
+                        'Competitor B',
+                        'https://example.com/competitor-b',
+                        'Competitor C',
+                        'https://example.com/competitor-c',
+                        '',
+                        '',
+                        '',
+                        ''
+                    ]);
+                    sampleData.push([
+                        'SKU002',
+                        'Brand X',
+                        'https://example.com/brand-x',
+                        'Brand Y',
+                        'https://example.com/brand-y',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        ''
+                    ]);
+
+                    // Create workbook
+                    const wb = XLSX.utils.book_new();
+                    const ws = XLSX.utils.aoa_to_sheet(sampleData);
+
+                    // Set column widths
+                    ws['!cols'] = [
+                        { wch: 15 }, // SKU
+                        { wch: 20 }, // Brand 1
+                        { wch: 40 }, // Link 1
+                        { wch: 20 }, // Brand 2
+                        { wch: 40 }, // Link 2
+                        { wch: 20 }, // Brand 3
+                        { wch: 40 }, // Link 3
+                        { wch: 20 }, // Brand 4
+                        { wch: 40 }, // Link 4
+                        { wch: 20 }, // Brand 5
+                        { wch: 40 }  // Link 5
+                    ];
+
+                    // Style header row
+                    const headerRange = XLSX.utils.decode_range(ws['!ref']);
+                    for (let C = headerRange.s.c; C <= headerRange.e.c; ++C) {
+                        const cell = XLSX.utils.encode_cell({ r: 0, c: C });
+                        if (!ws[cell]) continue;
+                        ws[cell].s = {
+                            fill: { fgColor: { rgb: "2C6ED5" } },
+                            font: { bold: true, color: { rgb: "FFFFFF" } },
+                            alignment: { horizontal: "center" }
+                        };
+                    }
+
+                    XLSX.utils.book_append_sheet(wb, ws, "Competitors Data");
+                    XLSX.writeFile(wb, "competitors_master_sample.xlsx");
+                    
+                    showToast('success', 'Sample file downloaded successfully!');
+                });
+
+                // Handle import
+                importBtn.addEventListener('click', async function() {
+                    const file = importFile.files[0];
+                    if (!file) {
+                        showToast('danger', 'Please select a file to import');
+                        return;
+                    }
+
+                    // Disable button and show progress
+                    importBtn.disabled = true;
+                    importProgress.style.display = 'block';
+                    importResult.style.display = 'none';
+                    fileError.style.display = 'none';
+
+                    const formData = new FormData();
+                    formData.append('excel_file', file);
+                    formData.append('_token', csrfToken);
+
+                    try {
+                        const response = await fetch('/competitors-master/import', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: formData
+                        });
+
+                        const result = await response.json();
+
+                        // Update progress bar
+                        const progressBar = importProgress.querySelector('.progress-bar');
+                        progressBar.style.width = '100%';
+
+                        if (response.ok && result.success) {
+                            importResult.className = 'alert alert-success';
+                            importResult.innerHTML = `
+                                <i class="fas fa-check-circle me-2"></i>
+                                <strong>Import Successful!</strong><br>
+                                ${result.message || `Successfully imported ${result.imported || 0} records.`}
+                                ${result.errors && result.errors.length > 0 ? `<br><small>Errors: ${result.errors.length}</small>` : ''}
+                            `;
+                            importResult.style.display = 'block';
+
+                            // Reload data after successful import
+                            setTimeout(() => {
+                                // Clear cache and reload data
+                                tableData = [];
+                                filteredData = [];
+                                const cacheParam = '?ts=' + new Date().getTime();
+                                loadData();
+                                // Close modal after a delay
+                                setTimeout(() => {
+                                    const modal = bootstrap.Modal.getInstance(importModal);
+                                    if (modal) modal.hide();
+                                    // Reset form
+                                    importFile.value = '';
+                                    importBtn.disabled = true;
+                                    importProgress.style.display = 'none';
+                                    importResult.style.display = 'none';
+                                    progressBar.style.width = '0%';
+                                }, 2000);
+                            }, 1000);
+                        } else {
+                            importResult.className = 'alert alert-danger';
+                            importResult.innerHTML = `
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>Import Failed!</strong><br>
+                                ${result.message || 'An error occurred during import.'}
+                            `;
+                            importResult.style.display = 'block';
+                            importBtn.disabled = false;
+                        }
+                    } catch (error) {
+                        console.error('Import error:', error);
+                        importResult.className = 'alert alert-danger';
+                        importResult.innerHTML = `
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Import Failed!</strong><br>
+                            ${error.message || 'An error occurred during import.'}
+                        `;
+                        importResult.style.display = 'block';
+                        importBtn.disabled = false;
+                    } finally {
+                        // Reset progress bar after a delay
+                        setTimeout(() => {
+                            const progressBar = importProgress.querySelector('.progress-bar');
+                            progressBar.style.width = '0%';
+                        }, 2000);
+                    }
+                });
+
+                // Reset form when modal is closed
+                importModal.addEventListener('hidden.bs.modal', function() {
+                    importFile.value = '';
+                    importBtn.disabled = true;
+                    importProgress.style.display = 'none';
+                    importResult.style.display = 'none';
+                    fileError.style.display = 'none';
+                    const progressBar = importProgress.querySelector('.progress-bar');
+                    if (progressBar) progressBar.style.width = '0%';
+                });
+            }
+
             // Initialize
             loadData();
             setupExcelExport();
             setupAddButton();
+            setupImport();
         });
     </script>
 @endsection

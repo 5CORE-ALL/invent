@@ -186,9 +186,62 @@
                             <button type="button" class="btn btn-primary me-2" id="addQABtn">
                                 <i class="fas fa-plus me-1"></i> Add Q&A Data
                             </button>
+                            <button type="button" class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#importQAModal">
+                                <i class="fas fa-upload me-1"></i> Import Excel
+                            </button>
                             <button type="button" class="btn btn-success" id="downloadExcel">
                                 <i class="fas fa-file-excel me-1"></i> Download Excel
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- Import Modal -->
+                    <div class="modal fade" id="importQAModal" tabindex="-1" aria-labelledby="importQAModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                                    <h5 class="modal-title" id="importQAModalLabel">
+                                        <i class="fas fa-upload me-2"></i>Import Q&A Data
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Instructions:</strong>
+                                        <ol class="mb-0 mt-2">
+                                            <li>Download the sample file below</li>
+                                            <li>Fill in the Q&A data (Question1, Answer1, Question2, Answer2, ... Question10, Answer10)</li>
+                                            <li>Upload the completed file</li>
+                                        </ol>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <button type="button" class="btn btn-outline-primary w-100" id="downloadSampleQABtn">
+                                            <i class="fas fa-download me-2"></i>Download Sample File
+                                        </button>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="qaImportFile" class="form-label fw-bold">Select Excel File</label>
+                                        <input type="file" class="form-control" id="qaImportFile" accept=".xlsx,.xls,.csv">
+                                        <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
+                                        <div id="qaFileError" class="text-danger mt-2" style="display: none;"></div>
+                                    </div>
+
+                                    <div id="qaImportProgress" class="progress mb-3" style="display: none;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                    </div>
+
+                                    <div id="qaImportResult" class="alert" style="display: none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn btn-primary" id="importQABtn" disabled>
+                                        <i class="fas fa-upload me-2"></i>Import
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -216,8 +269,20 @@
                                     <th>Status</th>
                                     <th>INV</th>
                                     @for($i = 1; $i <= 10; $i++)
-                                        <th>Question{{ $i }}</th>
-                                        <th>Answer{{ $i }}</th>
+                                        <th>
+                                            <div>Question{{ $i }} <span id="question{{ $i }}MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterQuestion{{ $i }}" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
+                                        <th>
+                                            <div>Answer{{ $i }} <span id="answer{{ $i }}MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                            <select id="filterAnswer{{ $i }}" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                                <option value="all">All Data</option>
+                                                <option value="missing">Missing Data</option>
+                                            </select>
+                                        </th>
                                     @endfor
                                     <th>Action</th>
                                 </tr>
@@ -442,17 +507,103 @@
                 });
             }
 
+            // Check if value is missing (null, undefined, empty)
+            function isMissing(value) {
+                return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
+            }
+
             // Update counts
             function updateCounts() {
                 const parentSet = new Set();
                 let skuCount = 0;
+                const questionMissingCounts = {};
+                const answerMissingCounts = {};
+                
+                // Initialize missing counts for all questions and answers
+                for (let i = 1; i <= 10; i++) {
+                    questionMissingCounts[i] = 0;
+                    answerMissingCounts[i] = 0;
+                }
+
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
+                    
+                    // Count missing data for each question and answer column
+                    for (let i = 1; i <= 10; i++) {
+                        const questionKey = `question${i}`;
+                        const answerKey = `answer${i}`;
+                        
+                        if (isMissing(item[questionKey])) {
+                            questionMissingCounts[i]++;
+                        }
+                        if (isMissing(item[answerKey])) {
+                            answerMissingCounts[i]++;
+                        }
+                    }
                 });
+                
                 document.getElementById('parentCount').textContent = `(${parentSet.size})`;
                 document.getElementById('skuCount').textContent = `(${skuCount})`;
+                
+                // Update missing counts for all questions and answers
+                for (let i = 1; i <= 10; i++) {
+                    document.getElementById(`question${i}MissingCount`).textContent = `(${questionMissingCounts[i]})`;
+                    document.getElementById(`answer${i}MissingCount`).textContent = `(${answerMissingCounts[i]})`;
+                }
+            }
+
+            // Apply all filters
+            function applyFilters() {
+                filteredData = tableData.filter(item => {
+                    // Parent search filter
+                    const parentSearch = document.getElementById('parentSearch').value.toLowerCase();
+                    if (parentSearch && !(item.Parent || '').toLowerCase().includes(parentSearch)) {
+                        return false;
+                    }
+
+                    // SKU search filter
+                    const skuSearch = document.getElementById('skuSearch').value.toLowerCase();
+                    if (skuSearch && !(item.SKU || '').toLowerCase().includes(skuSearch)) {
+                        return false;
+                    }
+
+                    // Custom search filter
+                    const customSearch = document.getElementById('customSearch').value.toLowerCase();
+                    if (customSearch) {
+                        const parent = (item.Parent || '').toLowerCase();
+                        const sku = (item.SKU || '').toLowerCase();
+                        const status = (item.status || '').toLowerCase();
+                        if (!parent.includes(customSearch) && !sku.includes(customSearch) && !status.includes(customSearch)) {
+                            return false;
+                        }
+                    }
+
+                    // Question and Answer filters (Question1 through Question10, Answer1 through Answer10)
+                    for (let i = 1; i <= 10; i++) {
+                        // Question filter
+                        const filterQuestion = document.getElementById(`filterQuestion${i}`).value;
+                        if (filterQuestion === 'missing') {
+                            const questionKey = `question${i}`;
+                            if (!isMissing(item[questionKey])) {
+                                return false;
+                            }
+                        }
+
+                        // Answer filter
+                        const filterAnswer = document.getElementById(`filterAnswer${i}`).value;
+                        if (filterAnswer === 'missing') {
+                            const answerKey = `answer${i}`;
+                            if (!isMissing(item[answerKey])) {
+                                return false;
+                            }
+                        }
+                    }
+
+                    return true;
+                });
+                renderTable(filteredData);
             }
 
             // Setup search functionality
@@ -460,36 +611,19 @@
                 // Parent search
                 const parentSearch = document.getElementById('parentSearch');
                 parentSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        return parent.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // SKU search
                 const skuSearch = document.getElementById('skuSearch');
                 skuSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const sku = (item.SKU || '').toLowerCase();
-                        return sku.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // Custom search
                 const customSearch = document.getElementById('customSearch');
                 customSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        const sku = (item.SKU || '').toLowerCase();
-                        const status = (item.status || '').toLowerCase();
-                        return parent.includes(searchTerm) || sku.includes(searchTerm) || status.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // Clear search
@@ -497,9 +631,24 @@
                     customSearch.value = '';
                     parentSearch.value = '';
                     skuSearch.value = '';
-                    filteredData = [...tableData];
-                    renderTable(filteredData);
+                    // Reset all column filters
+                    for (let i = 1; i <= 10; i++) {
+                        document.getElementById(`filterQuestion${i}`).value = 'all';
+                        document.getElementById(`filterAnswer${i}`).value = 'all';
+                    }
+                    applyFilters();
                 });
+
+                // Column filters for all questions and answers
+                for (let i = 1; i <= 10; i++) {
+                    document.getElementById(`filterQuestion${i}`).addEventListener('change', function() {
+                        applyFilters();
+                    });
+
+                    document.getElementById(`filterAnswer${i}`).addEventListener('change', function() {
+                        applyFilters();
+                    });
+                }
             }
 
             // Toast notification function
@@ -823,10 +972,247 @@
                 }
             }
 
+            // Setup import functionality
+            function setupImport() {
+                const importFile = document.getElementById('qaImportFile');
+                const importBtn = document.getElementById('importQABtn');
+                const downloadSampleBtn = document.getElementById('downloadSampleQABtn');
+                const importModal = document.getElementById('importQAModal');
+                const fileError = document.getElementById('qaFileError');
+                const importProgress = document.getElementById('qaImportProgress');
+                const importResult = document.getElementById('qaImportResult');
+
+                // Enable/disable import button based on file selection
+                importFile.addEventListener('change', function() {
+                    if (this.files && this.files.length > 0) {
+                        const file = this.files[0];
+                        const fileName = file.name.toLowerCase();
+                        const validExtensions = ['.xlsx', '.xls', '.csv'];
+                        const isValid = validExtensions.some(ext => fileName.endsWith(ext));
+
+                        if (isValid) {
+                            importBtn.disabled = false;
+                            fileError.style.display = 'none';
+                        } else {
+                            importBtn.disabled = true;
+                            fileError.textContent = 'Please select a valid Excel file (.xlsx, .xls, or .csv)';
+                            fileError.style.display = 'block';
+                        }
+                    } else {
+                        importBtn.disabled = true;
+                    }
+                });
+
+                // Download sample file
+                downloadSampleBtn.addEventListener('click', function() {
+                    // Create sample data with headers
+                    const sampleData = [
+                        ['SKU', 'Question1', 'Answer1', 'Question2', 'Answer2', 'Question3', 'Answer3', 'Question4', 'Answer4', 'Question5', 'Answer5', 'Question6', 'Answer6', 'Question7', 'Answer7', 'Question8', 'Answer8', 'Question9', 'Answer9', 'Question10', 'Answer10']
+                    ];
+                    
+                    // Add example rows
+                    sampleData.push([
+                        'SKU001',
+                        'What is the battery life?',
+                        'The battery lasts up to 10 hours on a single charge.',
+                        'Is it waterproof?',
+                        'Yes, it has an IPX7 waterproof rating.',
+                        'What is the warranty period?',
+                        'We offer a 1-year warranty on all products.',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        ''
+                    ]);
+                    sampleData.push([
+                        'SKU002',
+                        'How do I charge this device?',
+                        'Use the included USB-C cable to charge the device.',
+                        'What is the range?',
+                        'The Bluetooth range is up to 30 feet.',
+                        'Does it come with a warranty?',
+                        'Yes, it includes a 2-year manufacturer warranty.',
+                        'Can I use it while charging?',
+                        'Yes, you can use the device while it is charging.',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        ''
+                    ]);
+
+                    // Create workbook
+                    const wb = XLSX.utils.book_new();
+                    const ws = XLSX.utils.aoa_to_sheet(sampleData);
+
+                    // Set column widths
+                    ws['!cols'] = [
+                        { wch: 15 }, // SKU
+                        { wch: 30 }, // Question1
+                        { wch: 40 }, // Answer1
+                        { wch: 30 }, // Question2
+                        { wch: 40 }, // Answer2
+                        { wch: 30 }, // Question3
+                        { wch: 40 }, // Answer3
+                        { wch: 30 }, // Question4
+                        { wch: 40 }, // Answer4
+                        { wch: 30 }, // Question5
+                        { wch: 40 }, // Answer5
+                        { wch: 30 }, // Question6
+                        { wch: 40 }, // Answer6
+                        { wch: 30 }, // Question7
+                        { wch: 40 }, // Answer7
+                        { wch: 30 }, // Question8
+                        { wch: 40 }, // Answer8
+                        { wch: 30 }, // Question9
+                        { wch: 40 }, // Answer9
+                        { wch: 30 }, // Question10
+                        { wch: 40 }  // Answer10
+                    ];
+
+                    // Style header row
+                    const headerRange = XLSX.utils.decode_range(ws['!ref']);
+                    for (let C = headerRange.s.c; C <= headerRange.e.c; ++C) {
+                        const cell = XLSX.utils.encode_cell({ r: 0, c: C });
+                        if (!ws[cell]) continue;
+                        ws[cell].s = {
+                            fill: { fgColor: { rgb: "2C6ED5" } },
+                            font: { bold: true, color: { rgb: "FFFFFF" } },
+                            alignment: { horizontal: "center" }
+                        };
+                    }
+
+                    XLSX.utils.book_append_sheet(wb, ws, "Q&A Data");
+                    XLSX.writeFile(wb, "qa_master_sample.xlsx");
+                    
+                    showToast('success', 'Sample file downloaded successfully!');
+                });
+
+                // Handle import
+                importBtn.addEventListener('click', async function() {
+                    const file = importFile.files[0];
+                    if (!file) {
+                        showToast('danger', 'Please select a file to import');
+                        return;
+                    }
+
+                    // Disable button and show progress
+                    importBtn.disabled = true;
+                    importProgress.style.display = 'block';
+                    importResult.style.display = 'none';
+                    fileError.style.display = 'none';
+
+                    const formData = new FormData();
+                    formData.append('excel_file', file);
+                    formData.append('_token', csrfToken);
+
+                    try {
+                        const response = await fetch('/qa-master/import', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: formData
+                        });
+
+                        const result = await response.json();
+
+                        // Update progress bar
+                        const progressBar = importProgress.querySelector('.progress-bar');
+                        progressBar.style.width = '100%';
+
+                        if (response.ok && result.success) {
+                            importResult.className = 'alert alert-success';
+                            importResult.innerHTML = `
+                                <i class="fas fa-check-circle me-2"></i>
+                                <strong>Import Successful!</strong><br>
+                                ${result.message || `Successfully imported ${result.imported || 0} records.`}
+                                ${result.errors && result.errors.length > 0 ? `<br><small>Errors: ${result.errors.length}</small>` : ''}
+                            `;
+                            importResult.style.display = 'block';
+
+                            // Reload data after successful import
+                            setTimeout(() => {
+                                // Clear cache and reload data
+                                tableData = [];
+                                filteredData = [];
+                                const cacheParam = '?ts=' + new Date().getTime();
+                                loadData();
+                                // Close modal after a delay
+                                setTimeout(() => {
+                                    const modal = bootstrap.Modal.getInstance(importModal);
+                                    if (modal) modal.hide();
+                                    // Reset form
+                                    importFile.value = '';
+                                    importBtn.disabled = true;
+                                    importProgress.style.display = 'none';
+                                    importResult.style.display = 'none';
+                                    progressBar.style.width = '0%';
+                                }, 2000);
+                            }, 1000);
+                        } else {
+                            importResult.className = 'alert alert-danger';
+                            importResult.innerHTML = `
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>Import Failed!</strong><br>
+                                ${result.message || 'An error occurred during import.'}
+                            `;
+                            importResult.style.display = 'block';
+                            importBtn.disabled = false;
+                        }
+                    } catch (error) {
+                        console.error('Import error:', error);
+                        importResult.className = 'alert alert-danger';
+                        importResult.innerHTML = `
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Import Failed!</strong><br>
+                            ${error.message || 'An error occurred during import.'}
+                        `;
+                        importResult.style.display = 'block';
+                        importBtn.disabled = false;
+                    } finally {
+                        // Reset progress bar after a delay
+                        setTimeout(() => {
+                            const progressBar = importProgress.querySelector('.progress-bar');
+                            progressBar.style.width = '0%';
+                        }, 2000);
+                    }
+                });
+
+                // Reset form when modal is closed
+                importModal.addEventListener('hidden.bs.modal', function() {
+                    importFile.value = '';
+                    importBtn.disabled = true;
+                    importProgress.style.display = 'none';
+                    importResult.style.display = 'none';
+                    fileError.style.display = 'none';
+                    const progressBar = importProgress.querySelector('.progress-bar');
+                    if (progressBar) progressBar.style.width = '0%';
+                });
+            }
+
             // Initialize
             loadData();
             setupExcelExport();
             setupAddButton();
+            setupImport();
         });
     </script>
 @endsection

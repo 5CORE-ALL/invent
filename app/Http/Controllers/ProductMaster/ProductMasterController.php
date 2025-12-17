@@ -280,20 +280,83 @@ class ProductMasterController extends Controller
         $request->headers->set('Accept', 'application/json');
 
         $validated = $request->validate([
-            'parent' => 'nullable|string',
+            'parent' => 'required|string',
             'sku' => 'required|string',
             'Values' => 'required',
             'unit' => 'required|string',
             'image' => 'nullable|file|image|max:5120', // 5MB max
         ]);
 
+        // Skip validation for PARENT SKUs
+        $sku = $validated['sku'];
+        $isParentSku = stripos($sku, 'PARENT') !== false;
+
+        // Validate Values JSON contains required fields (skip for PARENT SKUs)
+        $values = is_array($validated['Values']) ? $validated['Values'] : json_decode($validated['Values'], true);
+        
+        if (!is_array($values)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid Values data format'
+            ], 422);
+        }
+
+        // Skip required field validation for PARENT SKUs
+        if (!$isParentSku) {
+            $requiredFields = [
+                'label_qty' => 'Label QTY',
+                'status' => 'Status',
+                'cp' => 'CP',
+                'wt_act' => 'WT ACT',
+                'wt_decl' => 'WT DECL',
+                'ship' => 'SHIP',
+                'upc' => 'UPC',
+                'w' => 'W',
+                'l' => 'L',
+                'h' => 'H'
+            ];
+
+            $missingFields = [];
+            foreach ($requiredFields as $field => $label) {
+                if (!isset($values[$field]) || $values[$field] === '' || $values[$field] === null) {
+                    $missingFields[] = $label;
+                }
+            }
+
+            if (!empty($missingFields)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The following fields are required: ' . implode(', ', $missingFields),
+                    'errors' => $missingFields
+                ], 422);
+            }
+
+            // Validate numeric fields
+            $numericFields = ['label_qty', 'cp', 'wt_act', 'wt_decl', 'w', 'l', 'h'];
+            $invalidNumeric = [];
+            foreach ($numericFields as $field) {
+                if (isset($values[$field]) && $values[$field] !== '' && $values[$field] !== null) {
+                    if (!is_numeric($values[$field]) || floatval($values[$field]) < 0) {
+                        $invalidNumeric[] = $requiredFields[$field] ?? $field;
+                    }
+                }
+            }
+
+            if (!empty($invalidNumeric)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The following fields must be valid positive numbers: ' . implode(', ', $invalidNumeric),
+                    'errors' => $invalidNumeric
+                ], 422);
+            }
+        }
+
         $operation = $request->input('operation', 'create');
         $originalSku = $request->input('original_sku');
         $originalParent = $request->input('original_parent');
 
         try {
-            // Prepare Values as array
-            $values = is_array($validated['Values']) ? $validated['Values'] : json_decode($validated['Values'], true);
+            // Values array is already prepared above during validation
 
             // Handle image upload if present
             if ($request->hasFile('image')) {
@@ -1789,12 +1852,6 @@ class ProductMasterController extends Controller
     {
         try {
             Log::info("Starting Temu title update for SKU: {$sku}, Title: {$title}");
-            
-            // Check if Temu is temporarily disabled (IP whitelist pending)
-            if (env('TEMU_DISABLED', false)) {
-                Log::warning("Temu updates temporarily disabled (IP whitelist pending). Set TEMU_DISABLED=false when ready.");
-                return false;
-            }
             
             $appKey = env('TEMU_APP_KEY');
             $appSecret = env('TEMU_SECRET_KEY');

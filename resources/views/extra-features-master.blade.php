@@ -180,9 +180,62 @@
                             <button type="button" class="btn btn-primary me-2" id="addExtraFeaturesBtn">
                                 <i class="fas fa-plus me-1"></i> Add Extra Features Data
                             </button>
+                            <button type="button" class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#importModal">
+                                <i class="fas fa-upload me-1"></i> Import Excel
+                            </button>
                             <button type="button" class="btn btn-success" id="downloadExcel">
                                 <i class="fas fa-file-excel me-1"></i> Download Excel
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- Import Modal -->
+                    <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                                    <h5 class="modal-title" id="importModalLabel">
+                                        <i class="fas fa-upload me-2"></i>Import Extra Features Data
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Instructions:</strong>
+                                        <ol class="mb-0 mt-2">
+                                            <li>Download the sample file below</li>
+                                            <li>Fill in the extra features data (Ex.Feature 1, Ex.Feature 2, Ex.Feature 3, Ex.Feature 4)</li>
+                                            <li>Upload the completed file</li>
+                                        </ol>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <button type="button" class="btn btn-outline-primary w-100" id="downloadSampleBtn">
+                                            <i class="fas fa-download me-2"></i>Download Sample File
+                                        </button>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="importFile" class="form-label fw-bold">Select Excel File</label>
+                                        <input type="file" class="form-control" id="importFile" accept=".xlsx,.xls,.csv">
+                                        <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
+                                        <div id="fileError" class="text-danger mt-2" style="display: none;"></div>
+                                    </div>
+
+                                    <div id="importProgress" class="progress mb-3" style="display: none;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                    </div>
+
+                                    <div id="importResult" class="alert" style="display: none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn btn-primary" id="importBtn" disabled>
+                                        <i class="fas fa-upload me-2"></i>Import
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -209,10 +262,34 @@
                                     </th>
                                     <th>Status</th>
                                     <th>INV</th>
-                                    <th>Ex.Feature 1</th>
-                                    <th>Ex.Feature 2</th>
-                                    <th>Ex.Feature 3</th>
-                                    <th>Ex.Feature 4</th>
+                                    <th>
+                                        <div>Ex.Feature 1 <span id="exFeature1MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterExFeature1" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Ex.Feature 2 <span id="exFeature2MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterExFeature2" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Ex.Feature 3 <span id="exFeature3MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterExFeature3" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Ex.Feature 4 <span id="exFeature4MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterExFeature4" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -449,17 +526,93 @@
                 });
             }
 
+            // Check if value is missing (null, undefined, empty)
+            function isMissing(value) {
+                return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
+            }
+
             // Update counts
             function updateCounts() {
                 const parentSet = new Set();
                 let skuCount = 0;
+                let exFeature1MissingCount = 0;
+                let exFeature2MissingCount = 0;
+                let exFeature3MissingCount = 0;
+                let exFeature4MissingCount = 0;
+
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
+                    
+                    // Count missing data for each column
+                    if (isMissing(item.ex_feature_1)) exFeature1MissingCount++;
+                    if (isMissing(item.ex_feature_2)) exFeature2MissingCount++;
+                    if (isMissing(item.ex_feature_3)) exFeature3MissingCount++;
+                    if (isMissing(item.ex_feature_4)) exFeature4MissingCount++;
                 });
+                
                 document.getElementById('parentCount').textContent = `(${parentSet.size})`;
                 document.getElementById('skuCount').textContent = `(${skuCount})`;
+                document.getElementById('exFeature1MissingCount').textContent = `(${exFeature1MissingCount})`;
+                document.getElementById('exFeature2MissingCount').textContent = `(${exFeature2MissingCount})`;
+                document.getElementById('exFeature3MissingCount').textContent = `(${exFeature3MissingCount})`;
+                document.getElementById('exFeature4MissingCount').textContent = `(${exFeature4MissingCount})`;
+            }
+
+            // Apply all filters
+            function applyFilters() {
+                filteredData = tableData.filter(item => {
+                    // Parent search filter
+                    const parentSearch = document.getElementById('parentSearch').value.toLowerCase();
+                    if (parentSearch && !(item.Parent || '').toLowerCase().includes(parentSearch)) {
+                        return false;
+                    }
+
+                    // SKU search filter
+                    const skuSearch = document.getElementById('skuSearch').value.toLowerCase();
+                    if (skuSearch && !(item.SKU || '').toLowerCase().includes(skuSearch)) {
+                        return false;
+                    }
+
+                    // Custom search filter
+                    const customSearch = document.getElementById('customSearch').value.toLowerCase();
+                    if (customSearch) {
+                        const parent = (item.Parent || '').toLowerCase();
+                        const sku = (item.SKU || '').toLowerCase();
+                        const status = (item.status || '').toLowerCase();
+                        if (!parent.includes(customSearch) && !sku.includes(customSearch) && !status.includes(customSearch)) {
+                            return false;
+                        }
+                    }
+
+                    // Ex.Feature 1 filter
+                    const filterExFeature1 = document.getElementById('filterExFeature1').value;
+                    if (filterExFeature1 === 'missing' && !isMissing(item.ex_feature_1)) {
+                        return false;
+                    }
+
+                    // Ex.Feature 2 filter
+                    const filterExFeature2 = document.getElementById('filterExFeature2').value;
+                    if (filterExFeature2 === 'missing' && !isMissing(item.ex_feature_2)) {
+                        return false;
+                    }
+
+                    // Ex.Feature 3 filter
+                    const filterExFeature3 = document.getElementById('filterExFeature3').value;
+                    if (filterExFeature3 === 'missing' && !isMissing(item.ex_feature_3)) {
+                        return false;
+                    }
+
+                    // Ex.Feature 4 filter
+                    const filterExFeature4 = document.getElementById('filterExFeature4').value;
+                    if (filterExFeature4 === 'missing' && !isMissing(item.ex_feature_4)) {
+                        return false;
+                    }
+
+                    return true;
+                });
+                renderTable(filteredData);
             }
 
             // Setup search functionality
@@ -467,36 +620,19 @@
                 // Parent search
                 const parentSearch = document.getElementById('parentSearch');
                 parentSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        return parent.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // SKU search
                 const skuSearch = document.getElementById('skuSearch');
                 skuSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const sku = (item.SKU || '').toLowerCase();
-                        return sku.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // Custom search
                 const customSearch = document.getElementById('customSearch');
                 customSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        const sku = (item.SKU || '').toLowerCase();
-                        const status = (item.status || '').toLowerCase();
-                        return parent.includes(searchTerm) || sku.includes(searchTerm) || status.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyFilters();
                 });
 
                 // Clear search
@@ -504,8 +640,29 @@
                     customSearch.value = '';
                     parentSearch.value = '';
                     skuSearch.value = '';
-                    filteredData = [...tableData];
-                    renderTable(filteredData);
+                    // Reset all column filters
+                    document.getElementById('filterExFeature1').value = 'all';
+                    document.getElementById('filterExFeature2').value = 'all';
+                    document.getElementById('filterExFeature3').value = 'all';
+                    document.getElementById('filterExFeature4').value = 'all';
+                    applyFilters();
+                });
+
+                // Column filters
+                document.getElementById('filterExFeature1').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterExFeature2').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterExFeature3').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterExFeature4').addEventListener('change', function() {
+                    applyFilters();
                 });
             }
 
@@ -832,10 +989,182 @@
                 }
             }
 
+            // Setup import functionality
+            function setupImport() {
+                const importFile = document.getElementById('importFile');
+                const importBtn = document.getElementById('importBtn');
+                const downloadSampleBtn = document.getElementById('downloadSampleBtn');
+                const importModal = document.getElementById('importModal');
+                const fileError = document.getElementById('fileError');
+                const importProgress = document.getElementById('importProgress');
+                const importResult = document.getElementById('importResult');
+
+                // Enable/disable import button based on file selection
+                importFile.addEventListener('change', function() {
+                    if (this.files && this.files.length > 0) {
+                        const file = this.files[0];
+                        const fileName = file.name.toLowerCase();
+                        const validExtensions = ['.xlsx', '.xls', '.csv'];
+                        const isValid = validExtensions.some(ext => fileName.endsWith(ext));
+
+                        if (isValid) {
+                            importBtn.disabled = false;
+                            fileError.style.display = 'none';
+                        } else {
+                            importBtn.disabled = true;
+                            fileError.textContent = 'Please select a valid Excel file (.xlsx, .xls, or .csv)';
+                            fileError.style.display = 'block';
+                        }
+                    } else {
+                        importBtn.disabled = true;
+                    }
+                });
+
+                // Download sample file
+                downloadSampleBtn.addEventListener('click', function() {
+                    // Create sample data
+                    const sampleData = [
+                        ['SKU', 'Ex.Feature 1', 'Ex.Feature 2', 'Ex.Feature 3', 'Ex.Feature 4'],
+                        ['SKU001', 'Waterproof', 'Shockproof', 'Dustproof', 'UV Resistant'],
+                        ['SKU002', 'Wireless Charging', 'Fast Charging', 'Long Battery', 'Smart Control'],
+                        ['SKU003', 'Bluetooth 5.0', 'WiFi Enabled', 'Voice Control', 'App Compatible']
+                    ];
+
+                    // Create workbook
+                    const wb = XLSX.utils.book_new();
+                    const ws = XLSX.utils.aoa_to_sheet(sampleData);
+
+                    // Set column widths
+                    ws['!cols'] = [
+                        { wch: 15 }, // SKU
+                        { wch: 18 }, // Ex.Feature 1
+                        { wch: 18 }, // Ex.Feature 2
+                        { wch: 18 }, // Ex.Feature 3
+                        { wch: 18 }  // Ex.Feature 4
+                    ];
+
+                    // Style header row
+                    const headerRange = XLSX.utils.decode_range(ws['!ref']);
+                    for (let C = headerRange.s.c; C <= headerRange.e.c; ++C) {
+                        const cell = XLSX.utils.encode_cell({ r: 0, c: C });
+                        if (!ws[cell]) continue;
+                        ws[cell].s = {
+                            fill: { fgColor: { rgb: "2C6ED5" } },
+                            font: { bold: true, color: { rgb: "FFFFFF" } },
+                            alignment: { horizontal: "center" }
+                        };
+                    }
+
+                    XLSX.utils.book_append_sheet(wb, ws, "Extra Features Data");
+                    XLSX.writeFile(wb, "extra_features_master_sample.xlsx");
+                    
+                    showToast('success', 'Sample file downloaded successfully!');
+                });
+
+                // Handle import
+                importBtn.addEventListener('click', async function() {
+                    const file = importFile.files[0];
+                    if (!file) {
+                        showToast('danger', 'Please select a file to import');
+                        return;
+                    }
+
+                    // Disable button and show progress
+                    importBtn.disabled = true;
+                    importProgress.style.display = 'block';
+                    importResult.style.display = 'none';
+                    fileError.style.display = 'none';
+
+                    const formData = new FormData();
+                    formData.append('excel_file', file);
+                    formData.append('_token', csrfToken);
+
+                    try {
+                        const response = await fetch('/extra-features-master/import', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: formData
+                        });
+
+                        const result = await response.json();
+
+                        // Update progress bar
+                        const progressBar = importProgress.querySelector('.progress-bar');
+                        progressBar.style.width = '100%';
+
+                        if (response.ok && result.success) {
+                            importResult.className = 'alert alert-success';
+                            importResult.innerHTML = `
+                                <i class="fas fa-check-circle me-2"></i>
+                                <strong>Import Successful!</strong><br>
+                                ${result.message || `Successfully imported ${result.imported || 0} records.`}
+                                ${result.errors && result.errors.length > 0 ? `<br><small>Errors: ${result.errors.length}</small>` : ''}
+                            `;
+                            importResult.style.display = 'block';
+
+                            // Reload data after successful import
+                            setTimeout(() => {
+                                loadData();
+                                // Close modal after a delay
+                                setTimeout(() => {
+                                    const modal = bootstrap.Modal.getInstance(importModal);
+                                    if (modal) modal.hide();
+                                    // Reset form
+                                    importFile.value = '';
+                                    importBtn.disabled = true;
+                                    importProgress.style.display = 'none';
+                                    importResult.style.display = 'none';
+                                    progressBar.style.width = '0%';
+                                }, 2000);
+                            }, 1000);
+                        } else {
+                            importResult.className = 'alert alert-danger';
+                            importResult.innerHTML = `
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>Import Failed!</strong><br>
+                                ${result.message || 'An error occurred during import.'}
+                            `;
+                            importResult.style.display = 'block';
+                            importBtn.disabled = false;
+                        }
+                    } catch (error) {
+                        console.error('Import error:', error);
+                        importResult.className = 'alert alert-danger';
+                        importResult.innerHTML = `
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Import Failed!</strong><br>
+                            ${error.message || 'An error occurred during import.'}
+                        `;
+                        importResult.style.display = 'block';
+                        importBtn.disabled = false;
+                    } finally {
+                        // Reset progress bar after a delay
+                        setTimeout(() => {
+                            const progressBar = importProgress.querySelector('.progress-bar');
+                            progressBar.style.width = '0%';
+                        }, 2000);
+                    }
+                });
+
+                // Reset form when modal is closed
+                importModal.addEventListener('hidden.bs.modal', function() {
+                    importFile.value = '';
+                    importBtn.disabled = true;
+                    importProgress.style.display = 'none';
+                    importResult.style.display = 'none';
+                    fileError.style.display = 'none';
+                    const progressBar = importProgress.querySelector('.progress-bar');
+                    if (progressBar) progressBar.style.width = '0%';
+                });
+            }
+
             // Initialize
             loadData();
             setupExcelExport();
             setupAddButton();
+            setupImport();
         });
     </script>
 @endsection

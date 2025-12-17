@@ -176,11 +176,41 @@
                                         <input type="text" id="skuSearch" class="form-control-sm"
                                             placeholder="Search SKU">
                                     </th>
-                                    <th>Bullet 1</th>
-                                    <th>Bullet 2</th>
-                                    <th>Bullet 3</th>
-                                    <th>Bullet 4</th>
-                                    <th>Bullet 5</th>
+                                    <th>
+                                        <div>Bullet 1 <span id="bullet1MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBullet1" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Bullet 2 <span id="bullet2MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBullet2" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Bullet 3 <span id="bullet3MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBullet3" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Bullet 4 <span id="bullet4MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBullet4" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Bullet 5 <span id="bullet5MissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterBullet5" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -370,12 +400,17 @@
                 return;
             }
 
-            data.forEach(item => {
-                // Skip parent rows
-                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
-                    return;
-                }
+            // Filter out parent rows before rendering
+            const filteredData = data.filter(item => {
+                return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
+            });
 
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center">No products found</td></tr>';
+                return;
+            }
+
+            filteredData.forEach(item => {
                 const row = document.createElement('tr');
 
                 // Images
@@ -613,40 +648,131 @@
             });
         }
 
-        function setupSearchHandlers() {
-            const parentSearch = document.getElementById('parentSearch');
-            const skuSearch = document.getElementById('skuSearch');
-
-            parentSearch.addEventListener('input', filterTable);
-            skuSearch.addEventListener('input', filterTable);
-        }
-
-        function filterTable() {
+        // Apply all filters
+        function applyFilters() {
             const parentFilter = document.getElementById('parentSearch').value.toLowerCase();
             const skuFilter = document.getElementById('skuSearch').value.toLowerCase();
+            const filterBullet1 = document.getElementById('filterBullet1').value;
+            const filterBullet2 = document.getElementById('filterBullet2').value;
+            const filterBullet3 = document.getElementById('filterBullet3').value;
+            const filterBullet4 = document.getElementById('filterBullet4').value;
+            const filterBullet5 = document.getElementById('filterBullet5').value;
 
             const filteredData = tableData.filter(item => {
-                const parentMatch = !parentFilter || (item.Parent && item.Parent.toLowerCase().includes(parentFilter));
-                const skuMatch = !skuFilter || (item.SKU && item.SKU.toLowerCase().includes(skuFilter));
-                return parentMatch && skuMatch;
+                // Skip parent rows
+                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
+                    return false;
+                }
+
+                // Parent search filter
+                if (parentFilter && !(item.Parent && item.Parent.toLowerCase().includes(parentFilter))) {
+                    return false;
+                }
+
+                // SKU search filter
+                if (skuFilter && !(item.SKU && item.SKU.toLowerCase().includes(skuFilter))) {
+                    return false;
+                }
+
+                // Bullet 1 filter
+                if (filterBullet1 === 'missing' && !isMissing(item.bullet1)) {
+                    return false;
+                }
+
+                // Bullet 2 filter
+                if (filterBullet2 === 'missing' && !isMissing(item.bullet2)) {
+                    return false;
+                }
+
+                // Bullet 3 filter
+                if (filterBullet3 === 'missing' && !isMissing(item.bullet3)) {
+                    return false;
+                }
+
+                // Bullet 4 filter
+                if (filterBullet4 === 'missing' && !isMissing(item.bullet4)) {
+                    return false;
+                }
+
+                // Bullet 5 filter
+                if (filterBullet5 === 'missing' && !isMissing(item.bullet5)) {
+                    return false;
+                }
+
+                return true;
             });
 
             renderTable(filteredData);
         }
 
+        function setupSearchHandlers() {
+            const parentSearch = document.getElementById('parentSearch');
+            const skuSearch = document.getElementById('skuSearch');
+
+            parentSearch.addEventListener('input', applyFilters);
+            skuSearch.addEventListener('input', applyFilters);
+
+            // Column filters
+            document.getElementById('filterBullet1').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterBullet2').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterBullet3').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterBullet4').addEventListener('change', function() {
+                applyFilters();
+            });
+
+            document.getElementById('filterBullet5').addEventListener('change', function() {
+                applyFilters();
+            });
+        }
+
+        function filterTable() {
+            applyFilters();
+        }
+
+        // Check if value is missing (null, undefined, empty)
+        function isMissing(value) {
+            return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
+        }
+
         function updateCounts() {
             const parentSet = new Set();
             let skuCount = 0;
+            let bullet1MissingCount = 0;
+            let bullet2MissingCount = 0;
+            let bullet3MissingCount = 0;
+            let bullet4MissingCount = 0;
+            let bullet5MissingCount = 0;
 
             tableData.forEach(item => {
                 if (item.Parent) parentSet.add(item.Parent);
                 if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
                     skuCount++;
+                    
+                    // Count missing data for each bullet column
+                    if (isMissing(item.bullet1)) bullet1MissingCount++;
+                    if (isMissing(item.bullet2)) bullet2MissingCount++;
+                    if (isMissing(item.bullet3)) bullet3MissingCount++;
+                    if (isMissing(item.bullet4)) bullet4MissingCount++;
+                    if (isMissing(item.bullet5)) bullet5MissingCount++;
                 }
             });
 
             document.getElementById('parentCount').textContent = `(${parentSet.size})`;
             document.getElementById('skuCount').textContent = `(${skuCount})`;
+            document.getElementById('bullet1MissingCount').textContent = `(${bullet1MissingCount})`;
+            document.getElementById('bullet2MissingCount').textContent = `(${bullet2MissingCount})`;
+            document.getElementById('bullet3MissingCount').textContent = `(${bullet3MissingCount})`;
+            document.getElementById('bullet4MissingCount').textContent = `(${bullet4MissingCount})`;
+            document.getElementById('bullet5MissingCount').textContent = `(${bullet5MissingCount})`;
         }
 
         function escapeHtml(text) {
