@@ -5,6 +5,8 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 
     <style>
         .table-responsive {
@@ -23,14 +25,15 @@
             background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
             color: white;
             z-index: 10;
-            padding: 15px 18px;
+            padding: 6px 8px;
             font-weight: 600;
             border-bottom: none;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-            font-size: 13px;
-            letter-spacing: 0.5px;
+            font-size: 10px;
+            letter-spacing: 0.2px;
             text-transform: uppercase;
             transition: all 0.2s ease;
+            white-space: nowrap;
         }
 
         .table-responsive thead th:hover {
@@ -42,9 +45,21 @@
             border: none;
             border-radius: 4px;
             color: #333;
-            padding: 6px 10px;
-            margin-top: 8px;
-            font-size: 12px;
+            padding: 4px 6px;
+            margin-top: 4px;
+            font-size: 10px;
+            width: 100%;
+            transition: all 0.2s;
+        }
+
+        .table-responsive thead select {
+            background-color: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 4px;
+            color: #333;
+            padding: 2px 4px;
+            margin-top: 4px;
+            font-size: 9px;
             width: 100%;
             transition: all 0.2s;
         }
@@ -96,6 +111,16 @@
         .edit-btn:hover {
             transform: translateY(-1px);
             box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3);
+        }
+
+        .view-btn {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+        }
+
+        .view-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(23, 162, 184, 0.3);
         }
 
         #rainbow-loader {
@@ -324,6 +349,57 @@
         </div>
     </div>
 
+    <!-- View Title Modal -->
+    <div class="modal fade" id="viewTitleModal" tabindex="-1" aria-labelledby="viewTitleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title" id="viewTitleModalLabel">
+                        <i class="fas fa-eye me-2"></i>View Title Details
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Image</label>
+                            <div id="viewImage" class="mt-2"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">SKU</label>
+                            <div class="form-control-plaintext" id="viewSku"></div>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold">Parent</label>
+                            <div class="form-control-plaintext" id="viewParent"></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Title 150</label>
+                        <div class="form-control-plaintext border rounded p-2" id="viewTitle150" style="min-height: 60px; white-space: pre-wrap; word-wrap: break-word;"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Title 100</label>
+                        <div class="form-control-plaintext border rounded p-2" id="viewTitle100" style="min-height: 50px; white-space: pre-wrap; word-wrap: break-word;"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Title 80</label>
+                        <div class="form-control-plaintext border rounded p-2" id="viewTitle80" style="min-height: 50px; white-space: pre-wrap; word-wrap: break-word;"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Title 60</label>
+                        <div class="form-control-plaintext border rounded p-2" id="viewTitle60" style="min-height: 50px; white-space: pre-wrap; word-wrap: break-word;"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Platform Selection Modal -->
     <div class="modal fade" id="platformModal" tabindex="-1" aria-labelledby="platformModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
@@ -470,6 +546,7 @@
 
 @section('script')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         @verbatim
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -832,15 +909,17 @@
                 title60Cell.title = item.title60 || '';
                 row.appendChild(title60Cell);
 
-                // Action - Edit Button
+                // Action - View and Edit Buttons
                 const actionCell = document.createElement('td');
-                actionCell.innerHTML = '<button class="action-btn edit-btn" data-sku="' + escapeHtml(item.SKU) + '"><i class="fas fa-edit"></i> Edit</button>';
+                actionCell.innerHTML = '<button class="action-btn view-btn" data-sku="' + escapeHtml(item.SKU) + '" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white; margin-right: 4px;"><i class="fas fa-eye"></i> View</button>' +
+                    '<button class="action-btn edit-btn" data-sku="' + escapeHtml(item.SKU) + '"><i class="fas fa-edit"></i> Edit</button>';
                 row.appendChild(actionCell);
 
                 tbody.appendChild(row);
             });
 
             setupEditButtons();
+            setupViewButtons();
             setupCheckboxHandlers();
         }
 
@@ -851,6 +930,41 @@
                     openModal('edit', sku);
                 });
             });
+        }
+
+        function setupViewButtons() {
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const sku = this.getAttribute('data-sku');
+                    openViewModal(sku);
+                });
+            });
+        }
+
+        function openViewModal(sku) {
+            const item = tableData.find(d => d.SKU === sku);
+            if (!item) {
+                showError('Product not found');
+                return;
+            }
+
+            // Populate view modal
+            const viewImage = document.getElementById('viewImage');
+            if (item.image_path) {
+                viewImage.innerHTML = '<img src="' + escapeHtml(item.image_path) + '" style="width:80px;height:80px;object-fit:cover;border-radius:4px;">';
+            } else {
+                viewImage.innerHTML = '<span class="text-muted">No image</span>';
+            }
+
+            document.getElementById('viewSku').textContent = escapeHtml(item.SKU) || '-';
+            document.getElementById('viewParent').textContent = escapeHtml(item.Parent) || '-';
+            document.getElementById('viewTitle150').textContent = item.title150 || '-';
+            document.getElementById('viewTitle100').textContent = item.title100 || '-';
+            document.getElementById('viewTitle80').textContent = item.title80 || '-';
+            document.getElementById('viewTitle60').textContent = item.title60 || '-';
+
+            const viewModal = new bootstrap.Modal(document.getElementById('viewTitleModal'));
+            viewModal.show();
         }
 
         function openModal(mode, sku = null) {
@@ -873,6 +987,11 @@
                 selectSku.required = true;
                 editSku.value = '';
                 
+                // Destroy Select2 if already initialized
+                if ($(selectSku).hasClass('select2-hidden-accessible')) {
+                    $(selectSku).select2('destroy');
+                }
+                
                 // Populate SKU dropdown
                 selectSku.innerHTML = '<option value="">Choose SKU...</option>';
                 tableData.forEach(item => {
@@ -880,11 +999,25 @@
                         selectSku.innerHTML += '<option value="' + escapeHtml(item.SKU) + '">' + escapeHtml(item.SKU) + '</option>';
                     }
                 });
+                
+                // Initialize Select2 with searchable dropdown
+                $(selectSku).select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Choose SKU...',
+                    allowClear: true,
+                    width: '100%',
+                    dropdownParent: $('#titleModal')
+                });
             } else if (mode === 'edit' && sku) {
                 modalTitle.textContent = 'Edit Title';
                 selectSku.style.display = 'none';
                 selectSku.required = false;
                 editSku.value = sku;
+                
+                // Destroy Select2 if initialized
+                if ($(selectSku).hasClass('select2-hidden-accessible')) {
+                    $(selectSku).select2('destroy');
+                }
                 
                 // Load existing data
                 const item = tableData.find(d => d.SKU === sku);
@@ -898,6 +1031,14 @@
                     });
                 }
             }
+
+            // Clean up Select2 when modal is hidden
+            const modalElement = document.getElementById('titleModal');
+            modalElement.addEventListener('hidden.bs.modal', function() {
+                if ($(selectSku).hasClass('select2-hidden-accessible')) {
+                    $(selectSku).select2('destroy');
+                }
+            }, { once: true });
 
             titleModal.show();
         }

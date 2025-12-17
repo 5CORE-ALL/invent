@@ -2,6 +2,8 @@
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
     <style>
         .table-container {
             overflow-x: auto;
@@ -226,6 +228,7 @@
 
 @section('script')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         let tableData = [];
@@ -461,8 +464,10 @@
         }
 
         function setupSKUChangeHandler() {
-            document.getElementById('modalSKU').addEventListener('change', function() {
-                const selectedSKU = this.value;
+            const skuSelect = document.getElementById('modalSKU');
+            // Use jQuery event for Select2 compatibility
+            $(skuSelect).on('change', function() {
+                const selectedSKU = $(this).val();
                 if (selectedSKU) {
                     const item = tableData.find(d => d.SKU === selectedSKU);
                     if (item) {
@@ -495,6 +500,12 @@
 
             // Populate SKU dropdown
             const skuSelect = document.getElementById('modalSKU');
+            
+            // Destroy Select2 if already initialized
+            if ($(skuSelect).hasClass('select2-hidden-accessible')) {
+                $(skuSelect).select2('destroy');
+            }
+            
             skuSelect.innerHTML = '<option value="">Select SKU</option>';
             
             tableData.forEach(item => {
@@ -521,13 +532,32 @@
                 }
             } else {
                 document.getElementById('modalTitle').textContent = 'Add Features';
+                
+                // Initialize Select2 with searchable dropdown for add mode
+                $(skuSelect).select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Select SKU',
+                    allowClear: true,
+                    width: '100%',
+                    dropdownParent: $('#featureModal')
+                });
             }
+
+            // Clean up Select2 when modal is hidden
+            const modalElement = document.getElementById('featureModal');
+            modalElement.addEventListener('hidden.bs.modal', function() {
+                if ($(skuSelect).hasClass('select2-hidden-accessible')) {
+                    $(skuSelect).select2('destroy');
+                }
+            }, { once: true });
 
             featureModal.show();
         }
 
         function saveFeatures() {
-            const sku = document.getElementById('modalSKU').value;
+            const skuSelect = document.getElementById('modalSKU');
+            // Get SKU value - use Select2 .val() if initialized, otherwise use .value
+            const sku = $(skuSelect).hasClass('select2-hidden-accessible') ? $(skuSelect).val() : skuSelect.value;
             
             if (!sku) {
                 showError('Please select a SKU');
