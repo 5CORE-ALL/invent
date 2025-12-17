@@ -770,7 +770,7 @@
                                 G ROI%
                             </th>
                             <th class="text-center align-middle">
-                                <small class="badge bg-dark text-white mb-1"
+                                <small id="nPftPercentageBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
                                     0%
                                 </small><br>
@@ -1145,6 +1145,7 @@
             const growthBadge = document.getElementById('growthPercentageBadge');
             const gprofitBadge = document.getElementById('gprofitPercentage');
             const groiBadge = document.getElementById('groiPercentageBadge');
+            const nPftBadge = document.getElementById('nPftPercentageBadge');
 
             if (l60Badge) l60Badge.textContent = Math.round(l60SalesTotal).toLocaleString('en-US');
             if (l30Badge) l30Badge.textContent = Math.round(l30SalesTotal).toLocaleString('en-US');
@@ -1184,6 +1185,10 @@
             }
             // if (gprofitBadge) gprofitBadge.textContent = gProfit !== null ? gProfit.toFixed(1) + '%' : 'N/A';
             if (groiBadge) groiBadge.textContent = gRoi !== null ? gRoi.toFixed(1) + '%' : 'N/A';
+            
+            // Calculate N PFT = (sum of PFT / sum of L30 Sales) * 100
+            let nPft = totalL30Sales !== 0 ? (totalPft / totalL30Sales) * 100 : null;
+            if (nPftBadge) nPftBadge.textContent = nPft !== null ? nPft.toFixed(1) + '%' : 'N/A';
 
             $("#profit_margin").html(gProfit.toFixed(1)+'%');
             $("#sales_roi").html(gRoi.toFixed(1)+'%');

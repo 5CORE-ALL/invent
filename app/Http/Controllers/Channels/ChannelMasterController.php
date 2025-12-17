@@ -806,6 +806,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Macys')->first();
 
@@ -820,6 +823,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -924,6 +928,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Reverb')->first();
 
@@ -938,6 +945,7 @@ class ChannelMasterController extends Controller
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1041,6 +1049,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Doba')->first();
 
@@ -1055,6 +1066,7 @@ class ChannelMasterController extends Controller
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1213,6 +1225,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Walmart')->first();
 
@@ -1227,6 +1242,7 @@ class ChannelMasterController extends Controller
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1331,6 +1347,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Tiendamia')->first();
 
@@ -1345,6 +1364,7 @@ class ChannelMasterController extends Controller
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1450,6 +1470,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'BestBuy USA')->first();
 
@@ -1464,6 +1487,7 @@ class ChannelMasterController extends Controller
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1568,6 +1592,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'PLS')->first();
 
@@ -1582,6 +1609,7 @@ class ChannelMasterController extends Controller
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1687,6 +1715,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Wayfair')->first();
 
@@ -1701,6 +1732,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1805,6 +1837,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Faire')->first();
 
@@ -1819,6 +1854,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1858,6 +1894,9 @@ class ChannelMasterController extends Controller
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shein')->first();
 
@@ -1872,6 +1911,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1976,6 +2016,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Tiktok Shop')->first();
 
@@ -1990,6 +2033,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2094,6 +2138,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Instagram Shop')->first();
 
@@ -2108,6 +2155,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2148,6 +2196,9 @@ class ChannelMasterController extends Controller
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Aliexpress')->first();
 
@@ -2162,6 +2213,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2195,6 +2247,9 @@ class ChannelMasterController extends Controller
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
         
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
         
@@ -2216,6 +2271,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2249,6 +2305,9 @@ class ChannelMasterController extends Controller
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
         
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
         
@@ -2270,6 +2329,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2374,6 +2434,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'FB Marketplace')->first();
 
@@ -2388,6 +2451,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2492,6 +2556,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'FB Shop')->first();
 
@@ -2506,6 +2573,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2610,6 +2678,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Business 5Core')->first();
 
@@ -2624,6 +2695,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2728,6 +2800,9 @@ class ChannelMasterController extends Controller
         $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'TopDawg')->first();
 
@@ -2742,6 +2817,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2781,6 +2857,9 @@ class ChannelMasterController extends Controller
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shopify B2C')->first();
 
@@ -2795,6 +2874,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2834,6 +2914,9 @@ class ChannelMasterController extends Controller
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
+        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shopify B2B')->first();
 
@@ -2848,6 +2931,7 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
