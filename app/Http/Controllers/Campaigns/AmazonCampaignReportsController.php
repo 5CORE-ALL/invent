@@ -147,7 +147,7 @@ class AmazonCampaignReportsController extends Controller
             ], 400);
         }
 
-        // First, get all data and group by campaignName and date to get MAX(spend) per campaign per date
+        // First, get all data and group by campaignName and date to get MAX(spend) per campaign per date (for chart)
         $rawData = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
                 report_date_range as report_date,
@@ -165,7 +165,7 @@ class AmazonCampaignReportsController extends Controller
             ->groupBy('report_date_range', 'campaignName')
             ->get();
 
-        // Now group by date and sum all campaigns (using MAX spend per campaign)
+        // Now group by date and sum all campaigns (using MAX spend per campaign) - for chart
         $data = $rawData->groupBy('report_date')->map(function ($dateGroup) {
             return (object) [
                 'report_date' => $dateGroup->first()->report_date,
@@ -176,18 +176,40 @@ class AmazonCampaignReportsController extends Controller
             ];
         })->values();
 
+        // Calculate totals separately: Group by campaignName across entire date range to get MAX(spend) per campaign
+        // This matches the logic used in amazonKwAdsView for L30 totals
+        $totalsData = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('
+                campaignName,
+                MAX(spend) as max_spend,
+                SUM(clicks) as clicks,
+                SUM(purchases1d) as orders,
+                SUM(sales1d) as sales
+            ')
+            ->whereNotNull('report_date_range')
+            ->whereRaw("report_date_range >= ?", [$start])
+            ->whereRaw("report_date_range <= ?", [$end])
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1']) // Exclude period ranges, only dates
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'") // Exclude PT and FBA campaigns
+            ->groupBy('campaignName')
+            ->get();
+
+        // Sum all campaigns (using MAX spend per campaign across entire date range)
+        // This ensures each campaign is counted once with its MAX spend, matching amazonKwAdsView logic
+        $totals = [
+            'clicks' => (int) $totalsData->sum('clicks'),
+            'spend'  => (float) $totalsData->sum('max_spend'), // Sum of MAX spend per campaign
+            'orders' => (int) $totalsData->sum('orders'),
+            'sales'  => (float) $totalsData->sum('sales'),
+        ];
+
         return response()->json([
             'dates'  => $data->pluck('report_date'),
             'clicks' => $data->pluck('clicks')->map(fn($v) => (int) $v),
             'spend'  => $data->pluck('spend')->map(fn($v) => (float) $v),
             'orders' => $data->pluck('orders')->map(fn($v) => (int) $v),
             'sales'  => $data->pluck('sales')->map(fn($v) => (float) $v),
-            'totals' => [
-                'clicks' => $data->sum('clicks'),
-                'spend'  => $data->sum('spend'),
-                'orders' => $data->sum('orders'),
-                'sales'  => $data->sum('sales'),
-            ]
+            'totals' => $totals
         ]);
     }
 
@@ -203,7 +225,7 @@ class AmazonCampaignReportsController extends Controller
             ], 400);
         }
 
-        // First, get all data and group by campaignName and date to get MAX(spend) per campaign per date
+        // First, get all data and group by campaignName and date to get MAX(spend) per campaign per date (for chart)
         $rawData = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
                 report_date_range as report_date,
@@ -226,7 +248,7 @@ class AmazonCampaignReportsController extends Controller
             ->groupBy('report_date_range', 'campaignName')
             ->get();
 
-        // Now group by date and sum all campaigns (using MAX spend per campaign)
+        // Now group by date and sum all campaigns (using MAX spend per campaign) - for chart
         $data = $rawData->groupBy('report_date')->map(function ($dateGroup) {
             return (object) [
                 'report_date' => $dateGroup->first()->report_date,
@@ -237,18 +259,44 @@ class AmazonCampaignReportsController extends Controller
             ];
         })->values();
 
+        // Calculate totals separately: Group by campaignName across entire date range to get MAX(spend) per campaign
+        $totalsData = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('
+                campaignName,
+                MAX(spend) as max_spend,
+                SUM(clicks) as clicks,
+                SUM(purchases1d) as orders,
+                SUM(sales1d) as sales
+            ')
+            ->whereNotNull('report_date_range')
+            ->whereRaw("report_date_range >= ?", [$start])
+            ->whereRaw("report_date_range <= ?", [$end])
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1']) // Exclude period ranges, only dates
+            ->where(function($query) {
+                $query->whereRaw("campaignName LIKE '%PT'")
+                    ->orWhereRaw("campaignName LIKE '%PT.'");
+            })
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'") // Exclude FBA PT campaigns
+            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'") // Exclude FBA PT. campaigns
+            ->groupBy('campaignName')
+            ->get();
+
+        // Sum all campaigns (using MAX spend per campaign across entire date range)
+        // This ensures each campaign is counted once with its MAX spend, matching amazonKwAdsView logic
+        $totals = [
+            'clicks' => (int) $totalsData->sum('clicks'),
+            'spend'  => (float) $totalsData->sum('max_spend'), // Sum of MAX spend per campaign
+            'orders' => (int) $totalsData->sum('orders'),
+            'sales'  => (float) $totalsData->sum('sales'),
+        ];
+
         return response()->json([
             'dates'  => $data->pluck('report_date'),
             'clicks' => $data->pluck('clicks')->map(fn($v) => (int) $v),
             'spend'  => $data->pluck('spend')->map(fn($v) => (float) $v),
             'orders' => $data->pluck('orders')->map(fn($v) => (int) $v),
             'sales'  => $data->pluck('sales')->map(fn($v) => (float) $v),
-            'totals' => [
-                'clicks' => $data->sum('clicks'),
-                'spend'  => $data->sum('spend'),
-                'orders' => $data->sum('orders'),
-                'sales'  => $data->sum('sales'),
-            ]
+            'totals' => $totals
         ]);
     }
 
@@ -1138,7 +1186,7 @@ class AmazonCampaignReportsController extends Controller
             ], 400);
         }
 
-        // First, get all data and group by campaignName and date to get MAX(cost) per campaign per date
+        // First, get all data and group by campaignName and date to get MAX(cost) per campaign per date (for chart)
         $rawData = DB::table('amazon_sb_campaign_reports')
             ->selectRaw('
                 report_date_range as report_date,
@@ -1155,7 +1203,7 @@ class AmazonCampaignReportsController extends Controller
             ->groupBy('report_date_range', 'campaignName')
             ->get();
 
-        // Now group by date and sum all campaigns (using MAX cost per campaign)
+        // Now group by date and sum all campaigns (using MAX cost per campaign) - for chart
         $data = $rawData->groupBy('report_date')->map(function ($dateGroup) {
             return (object) [
                 'report_date' => $dateGroup->first()->report_date,
@@ -1166,18 +1214,38 @@ class AmazonCampaignReportsController extends Controller
             ];
         })->values();
 
+        // Calculate totals separately: Group by campaignName across entire date range to get MAX(cost) per campaign
+        $totalsData = DB::table('amazon_sb_campaign_reports')
+            ->selectRaw('
+                campaignName,
+                MAX(cost) as max_cost,
+                SUM(clicks) as clicks,
+                SUM(purchases) as orders,
+                SUM(sales) as sales
+            ')
+            ->whereNotNull('report_date_range')
+            ->whereRaw("report_date_range >= ?", [$start])
+            ->whereRaw("report_date_range <= ?", [$end])
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1']) // Exclude period ranges, only dates
+            ->groupBy('campaignName')
+            ->get();
+
+        // Sum all campaigns (using MAX cost per campaign across entire date range)
+        // This ensures each campaign is counted once with its MAX cost, matching amazonHlAdsView logic
+        $totals = [
+            'clicks' => (int) $totalsData->sum('clicks'),
+            'spend'  => (float) $totalsData->sum('max_cost'), // Sum of MAX cost per campaign
+            'orders' => (int) $totalsData->sum('orders'),
+            'sales'  => (float) $totalsData->sum('sales'),
+        ];
+
         return response()->json([
             'dates'  => $data->pluck('report_date'),
             'clicks' => $data->pluck('clicks')->map(fn($v) => (int) $v),
             'spend'  => $data->pluck('spend')->map(fn($v) => (float) $v),
             'orders' => $data->pluck('orders')->map(fn($v) => (int) $v),
             'sales'  => $data->pluck('sales')->map(fn($v) => (float) $v),
-            'totals' => [
-                'clicks' => $data->sum('clicks'),
-                'spend'  => $data->sum('spend'),
-                'orders' => $data->sum('orders'),
-                'sales'  => $data->sum('sales'),
-            ]
+            'totals' => $totals
         ]);
     }
 
