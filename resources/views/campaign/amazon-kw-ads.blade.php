@@ -237,17 +237,17 @@
                         <!-- Clicks -->
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
-                                <div class="text-muted small">Clicks</div>
-                                <div class="h3 mb-0 fw-bold text-primary card-clicks">{{ array_sum($clicks) }}</div>
+                                <div class="text-muted small">Clicks (L30)</div>
+                                <div class="h3 mb-0 fw-bold text-primary card-clicks">{{ $cardClicks ?? 0 }}</div>
                             </div>
                         </div>
 
                         <!-- Spend -->
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
-                                <div class="text-muted small">Spend</div>
+                                <div class="text-muted small">Spend (L30)</div>
                                 <div class="h3 mb-0 fw-bold text-success card-spend">
-                                    US${{ number_format(array_sum($spend), 0) }}
+                                    US${{ number_format($cardSpend ?? 0, 0) }}
                                 </div>
                             </div>
                         </div>
@@ -255,8 +255,8 @@
                         <!-- Orders -->
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
-                                <div class="text-muted small">Orders</div>
-                                <div class="h3 mb-0 fw-bold text-danger card-orders">{{ array_sum($orders) }}</div>
+                                <div class="text-muted small">Orders (L30)</div>
+                                <div class="h3 mb-0 fw-bold text-danger card-orders">{{ $cardOrders ?? 0 }}</div>
                             </div>
                         </div>
 
@@ -265,9 +265,9 @@
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
-                                        <div class="text-muted small">Sales</div>
+                                        <div class="text-muted small">Sales (L30)</div>
                                         <div class="h3 mb-0 fw-bold text-info card-sales">
-                                            US${{ number_format(array_sum($sales), 0) }}
+                                            US${{ number_format($cardSales ?? 0, 0) }}
                                         </div>
                                     </div>
                                     <!-- Arrow button -->
@@ -1872,10 +1872,10 @@
                 chart.data.datasets[3].data = {!! json_encode($sales) !!};
                 chart.update();
                 
-                $('.card-clicks').text('{{ array_sum($clicks) }}');
-                $('.card-spend').text('US${{ number_format(array_sum($spend), 0) }}');
-                $('.card-orders').text('{{ array_sum($orders) }}');
-                $('.card-sales').text('US${{ number_format(array_sum($sales), 0) }}');
+                $('.card-clicks').text('{{ $cardClicks ?? 0 }}');
+                $('.card-spend').text('US${{ number_format($cardSpend ?? 0, 0) }}');
+                $('.card-orders').text('{{ $cardOrders ?? 0 }}');
+                $('.card-sales').text('US${{ number_format($cardSales ?? 0, 0) }}');
             });
 
         });
@@ -1950,10 +1950,10 @@
                     console.error('Chart data fetch error:', error);
                     alert('Error fetching chart data. Please try again.');
                     // Reset to default values
-                    $('.card-clicks').text('{{ array_sum($clicks) }}');
-                    $('.card-spend').text('US${{ number_format(array_sum($spend), 0) }}');
-                    $('.card-orders').text('{{ array_sum($orders) }}');
-                    $('.card-sales').text('US${{ number_format(array_sum($sales), 0) }}');
+                    $('.card-clicks').text('{{ $cardClicks ?? 0 }}');
+                    $('.card-spend').text('US${{ number_format($cardSpend ?? 0, 0) }}');
+                    $('.card-orders').text('{{ $cardOrders ?? 0 }}');
+                    $('.card-sales').text('US${{ number_format($cardSales ?? 0, 0) }}');
                 }
             });
         }

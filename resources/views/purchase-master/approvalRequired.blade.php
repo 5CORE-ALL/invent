@@ -789,16 +789,8 @@
                     accessor: row => row?.["stage"] ?? null,
                     headerSort: false,
                     formatter: function(cell) {
-                        let value = cell.getValue() ?? '';
+                        const value = cell.getValue() ?? '';
                         const rowData = cell.getRow().getData();
-                        
-                        // If to_order field is yellow (>= 0) and stage is empty or to_order_analysis, default to appr_req
-                        const toOrderValue = rowData["to_order"] ?? 0;
-                        const isToOrderYellow = toOrderValue >= 0;
-                        
-                        if ((!value || value === '' || value === 'to_order_analysis') && isToOrderYellow) {
-                            value = 'appr_req';
-                        }
 
                         return `
                         <select class="form-select form-select-sm editable-select"
@@ -1932,11 +1924,6 @@
                                     row.update({
                                         stage: newValue
                                     }, true);
-                                    
-                                    // Don't auto-filter - let the stage filter dropdown control visibility
-                                    // The row should remain visible after stage change
-                                    // Only apply filters if stage filter dropdown is set
-                                    setCombinedFilters();
                                 }
                             }
                         },

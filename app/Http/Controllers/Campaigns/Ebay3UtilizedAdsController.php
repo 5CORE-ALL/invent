@@ -202,9 +202,32 @@ class Ebay3UtilizedAdsController extends Controller
             $result[] = (object) $row;
         }
 
+        // Calculate total ACOS from ALL RUNNING campaigns (L30 data)
+        $allL30Campaigns = Ebay3PriorityReport::where('report_range', 'L30')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+
+        $totalSpendAll = 0;
+        $totalSalesAll = 0;
+
+        foreach ($allL30Campaigns as $campaign) {
+            $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
+            $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
+            $totalSpendAll += $adFees;
+            $totalSalesAll += $sales;
+        }
+
+        $totalACOSAll = $totalSalesAll > 0 ? ($totalSpendAll / $totalSalesAll) * 100 : 0;
+
         return response()->json([
             'message' => 'fetched successfully',
             'data' => $result,
+            'total_l30_spend' => round($totalSpendAll, 2),
+            'total_l30_sales' => round($totalSalesAll, 2),
+            'total_acos' => round($totalACOSAll, 2),
             'status' => 200,
         ]);
     }

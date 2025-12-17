@@ -1178,6 +1178,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/forecast.analysis', action: [ForecastAnalysisController::class, 'forecastAnalysis'])->name('forecast.analysis');
     Route::get('/approval.required', action: [ForecastAnalysisController::class, 'approvalRequired'])->name('approval.required');
     Route::get('/transit', action: [ForecastAnalysisController::class, 'transit'])->name('transit');
+    Route::get('/forecast-analysis/get-sku-quantity', action: [ForecastAnalysisController::class, 'getSkuQuantity'])->name('forecast.analysis.get.sku.quantity');
 
     Route::get('/listing-master', action: [ListingManagerController::class, 'listingmaster'])->name('listing');
 

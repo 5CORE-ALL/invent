@@ -81,11 +81,12 @@ class Kernel extends ConsoleKernel
             }
         })->everyFiveMinutes()->name('clear-laravel-log');
 
-        // Update marketplace daily metrics at 12:05 AM daily
+        // Update marketplace daily metrics every 5 minutes
         $schedule->command('app:update-marketplace-daily-metrics')
-            ->dailyAt('00:05')
+            ->everyFiveMinutes()
             ->timezone('America/Los_Angeles')
-            ->name('update-marketplace-daily-metrics');
+            ->name('update-marketplace-daily-metrics')
+            ->withoutOverlapping();
 
         // Update Amazon order periods (L30/L60) daily at 12:10 AM
         $schedule->command('app:fetch-amazon-orders --update-periods')
@@ -98,6 +99,12 @@ class Kernel extends ConsoleKernel
             ->dailyAt('00:15')
             ->timezone('America/Los_Angeles')
             ->name('fetch-new-amazon-orders');
+
+        // Fetch missing order items daily at 12:30 AM
+        $schedule->command('app:fetch-amazon-orders --fetch-missing-items')
+            ->dailyAt('00:30')
+            ->timezone('America/Los_Angeles')
+            ->name('fetch-missing-amazon-order-items');
 
         // All commands running every 5 minutes
         $schedule->command('shopify:save-daily-inventory')
