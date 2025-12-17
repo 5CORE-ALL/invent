@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Http;
 use App\Models\JungleScoutProductData;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
+use App\Models\MfrgProgress;
+use App\Models\ReadyToShip;
 
 class ForecastAnalysisController extends Controller
 {
@@ -929,6 +931,75 @@ class ForecastAnalysisController extends Controller
                 'message'=>'Something went wrong!',
                 'error'=>$e->getMessage()
             ],500);
+        }
+    }
+
+    public function getSkuQuantity(Request $request)
+    {
+        try {
+            $sku = $request->query('sku');
+            $table = $request->query('table');
+
+            if (!$sku) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU is required'
+                ], 400);
+            }
+
+            // Normalize SKU
+            $normalizeSku = fn($sku) => strtoupper(trim($sku));
+            $normalizedSku = $normalizeSku($sku);
+
+            $exists = false;
+            $quantity = 0;
+
+            switch ($table) {
+                case 'mfrg-progress':
+                    $mfrg = MfrgProgress::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])->first();
+                    if ($mfrg) {
+                        $exists = true;
+                        $quantity = floatval($mfrg->qty) ?: 0;
+                    }
+                    break;
+
+                case 'ready-to-ship':
+                    $r2s = ReadyToShip::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])->first();
+                    if ($r2s) {
+                        $exists = true;
+                        $quantity = floatval($r2s->rec_qty) ?: 0;
+                    }
+                    break;
+
+                case 'transit':
+                    $transit = TransitContainerDetail::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])
+                        ->whereNull('deleted_at')
+                        ->first();
+                    if ($transit) {
+                        $exists = true;
+                        $quantity = floatval($transit->qty) ?: 0;
+                    }
+                    break;
+
+                default:
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid table name'
+                    ], 400);
+            }
+
+            return response()->json([
+                'success' => true,
+                'exists' => $exists,
+                'quantity' => $quantity
+            ]);
+
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Something went wrong!',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
