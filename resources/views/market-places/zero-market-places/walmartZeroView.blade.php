@@ -4639,7 +4639,7 @@
                 // Save to backend via AJAX
                 if (sku) {
                     $.ajax({
-                        url: '/zero_aliexpress/reason-action/update-data',
+                        url: '/zero_walmart/reason-action/update-data',
                         method: 'POST',
                         data: {
                             sku: sku,

@@ -465,7 +465,7 @@ class WalmartZeroController extends Controller
         $value['A_Z_Reason'] = $reason;
         $value['A_Z_ActionRequired'] = $actionRequired;
         $value['A_Z_ActionTaken'] = $actionTaken;
-        $row->value = $value;
+        $row->value = json_encode($value);
         $row->save();
 
         return response()->json([

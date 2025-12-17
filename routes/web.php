@@ -952,6 +952,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_walmart/save-status', [ListingWalmartController::class, 'saveStatus']);
     Route::post('/listing_walmart/import', [ListingWalmartController::class, 'import'])->name('listing_walmart.import');
     Route::get('/listing_walmart/export', [ListingWalmartController::class, 'export'])->name('listing_walmart.export');
+    Route::get('/listing_walmart/sample', [ListingWalmartController::class, 'downloadSample'])->name('listing_walmart.sample');
 
     Route::get('/ad-cvr-walmart', action: [WalmartZeroController::class, 'adcvrWalmart'])->name('adcvr.walmart');
     Route::get('/ad-cvr-walmart-data', action: [WalmartZeroController::class, 'adcvrWalmartData'])->name('adcvr.walmart.data');
@@ -1220,6 +1221,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/dim-wt-master', [CategoryController::class, 'dimWtMaster'])->name('dim.wt.master');
     Route::get('/dim-wt-master-data-view', [CategoryController::class, 'getDimWtMasterData'])->name('dim.wt.master.data');
     Route::post('/dim-wt-master/import', [CategoryController::class, 'importDimWtMaster'])->name('dim.wt.master.import');
+    Route::post('/dim-wt-master/push-data', [CategoryController::class, 'pushDimWtDataToPlatforms'])->name('dim.wt.master.push');
     Route::get('/shipping-master', [CategoryController::class, 'shippingMaster'])->name('shipping.master');
     Route::get('/shipping-master-data-view', [CategoryController::class, 'getShippingMasterData'])->name('shipping.master.data');
     Route::post('/shipping-master/import', [CategoryController::class, 'importShippingMaster'])->name('shipping.master.import');

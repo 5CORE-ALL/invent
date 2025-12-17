@@ -150,6 +150,25 @@
             word-wrap: break-word;
             white-space: normal;
         }
+
+        .row-checkbox {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #1a56b7;
+        }
+
+        #selectAll {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #1a56b7;
+        }
+
+        #pushDataBtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 @endsection
 
@@ -175,6 +194,9 @@
                             </div>
                         </div>
                         <div class="col-md-6 text-end">
+                            <button type="button" class="btn btn-primary me-2" id="pushDataBtn" disabled>
+                                <i class="fas fa-cloud-upload-alt me-1"></i> Push Data
+                            </button>
                             <button type="button" class="btn btn-info me-2" id="importExcel">
                                 <i class="fas fa-file-upload me-1"></i> Import Excel
                             </button>
@@ -188,6 +210,9 @@
                         <table id="dim-wt-master-datatable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
+                                    <th class="text-center" style="width: 50px;">
+                                        <input type="checkbox" id="selectAll" title="Select All">
+                                    </th>
                                     <th>Image</th>
                                     <th>
                                         <div style="display: flex; align-items: center; gap: 10px;">
@@ -382,12 +407,27 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="11" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="12" class="text-center">No data found</td></tr>';
                     return;
                 }
 
                 data.forEach(item => {
                     const row = document.createElement('tr');
+
+                    // Checkbox column
+                    const checkboxCell = document.createElement('td');
+                    checkboxCell.className = 'text-center';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'row-checkbox';
+                    checkbox.value = escapeHtml(item.SKU);
+                    checkbox.setAttribute('data-sku', escapeHtml(item.SKU));
+                    checkbox.setAttribute('data-id', escapeHtml(item.id));
+                    checkbox.addEventListener('change', function() {
+                        updatePushButtonState();
+                    });
+                    checkboxCell.appendChild(checkbox);
+                    row.appendChild(checkboxCell);
 
                     // Image column
                     const imageCell = document.createElement('td');
@@ -888,10 +928,127 @@
                 }
             }
 
+            // Select All checkbox functionality
+            function setupSelectAll() {
+                const selectAllCheckbox = document.getElementById('selectAll');
+                selectAllCheckbox.addEventListener('change', function() {
+                    const checkboxes = document.querySelectorAll('.row-checkbox');
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = selectAllCheckbox.checked;
+                    });
+                    updatePushButtonState();
+                });
+            }
+
+            // Update Push Button State
+            function updatePushButtonState() {
+                const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+                const pushBtn = document.getElementById('pushDataBtn');
+                if (checkedBoxes.length > 0) {
+                    pushBtn.disabled = false;
+                    pushBtn.innerHTML = `<i class="fas fa-cloud-upload-alt me-1"></i> Push Data (${checkedBoxes.length})`;
+                } else {
+                    pushBtn.disabled = true;
+                    pushBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i> Push Data';
+                }
+            }
+
+            // Push Data functionality
+            function setupPushData() {
+                document.getElementById('pushDataBtn').addEventListener('click', async function() {
+                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+                    
+                    if (checkedBoxes.length === 0) {
+                        showToast('warning', 'Please select at least one SKU to push data');
+                        return;
+                    }
+
+                    // Get selected SKUs and their data
+                    const selectedSkus = [];
+                    checkedBoxes.forEach(checkbox => {
+                        const sku = checkbox.getAttribute('data-sku');
+                        const row = checkbox.closest('tr');
+                        if (row && sku) {
+                            // Get dimensions and weight from the row data
+                            const item = tableData.find(d => d.SKU === sku);
+                            if (item) {
+                                selectedSkus.push({
+                                    sku: sku,
+                                    id: item.id,
+                                    wt_act: item.wt_act || null,
+                                    wt_decl: item.wt_decl || null,
+                                    l: item.l || null,
+                                    w: item.w || null,
+                                    h: item.h || null
+                                });
+                            }
+                        }
+                    });
+
+                    if (selectedSkus.length === 0) {
+                        showToast('warning', 'No valid SKUs found to push');
+                        return;
+                    }
+
+                    // Confirm action
+                    if (!confirm(`Are you sure you want to push dimensions & weight data for ${selectedSkus.length} SKU(s) to all platforms?`)) {
+                        return;
+                    }
+
+                    const pushBtn = document.getElementById('pushDataBtn');
+                    const originalText = pushBtn.innerHTML;
+                    
+                    try {
+                        pushBtn.disabled = true;
+                        pushBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Pushing...';
+                        
+                        const response = await makeRequest('/dim-wt-master/push-data', 'POST', {
+                            skus: selectedSkus
+                        });
+
+                        const data = await response.json();
+                        
+                        if (!response.ok) {
+                            throw new Error(data.message || 'Failed to push data');
+                        }
+
+                        // Show detailed results
+                        let message = `Successfully pushed data for ${data.total_success || 0} SKU(s).`;
+                        if (data.total_failed > 0) {
+                            message += ` ${data.total_failed} failed.`;
+                        }
+                        
+                        if (data.results) {
+                            const platformResults = Object.entries(data.results)
+                                .map(([platform, result]) => `${platform}: ${result.success} success, ${result.failed} failed`)
+                                .join('\n');
+                            message += '\n\nPlatform Results:\n' + platformResults;
+                        }
+
+                        showToast('success', message);
+                        
+                        // Uncheck all checkboxes
+                        document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
+                        document.getElementById('selectAll').checked = false;
+                        updatePushButtonState();
+                        
+                    } catch (error) {
+                        console.error('Error pushing data:', error);
+                        showToast('danger', error.message || 'Failed to push data to platforms');
+                    } finally {
+                        pushBtn.innerHTML = originalText;
+                        pushBtn.disabled = false;
+                        updatePushButtonState();
+                    }
+                });
+            }
+
             // Initialize
             loadData();
             setupExcelExport();
             setupImport();
+            setupSelectAll();
+            setupPushData();
         });
     </script>
 @endsection
