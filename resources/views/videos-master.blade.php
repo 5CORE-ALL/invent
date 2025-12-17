@@ -5,6 +5,8 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 
     <style>
         .table-responsive {
@@ -309,6 +311,7 @@
 
 @section('script')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         @verbatim
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -483,6 +486,11 @@
                 selectSku.required = true;
                 editSku.value = '';
                 
+                // Destroy Select2 if already initialized
+                if ($(selectSku).hasClass('select2-hidden-accessible')) {
+                    $(selectSku).select2('destroy');
+                }
+                
                 // Populate SKU dropdown
                 selectSku.innerHTML = '<option value="">Choose SKU...</option>';
                 tableData.forEach(item => {
@@ -490,11 +498,25 @@
                         selectSku.innerHTML += '<option value="' + escapeHtml(item.SKU) + '">' + escapeHtml(item.SKU) + '</option>';
                     }
                 });
+                
+                // Initialize Select2 with searchable dropdown
+                $(selectSku).select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Choose SKU...',
+                    allowClear: true,
+                    width: '100%',
+                    dropdownParent: $('#videoModal')
+                });
             } else if (mode === 'edit' && sku) {
                 modalTitle.textContent = 'Edit Videos';
                 selectSku.style.display = 'none';
                 selectSku.required = false;
                 editSku.value = sku;
+                
+                // Destroy Select2 if initialized
+                if ($(selectSku).hasClass('select2-hidden-accessible')) {
+                    $(selectSku).select2('destroy');
+                }
                 
                 // Load existing data
                 const item = tableData.find(d => d.SKU === sku);
@@ -518,6 +540,14 @@
                 }
             }
 
+            // Clean up Select2 when modal is hidden
+            const modalElement = document.getElementById('videoModal');
+            modalElement.addEventListener('hidden.bs.modal', function() {
+                if ($(selectSku).hasClass('select2-hidden-accessible')) {
+                    $(selectSku).select2('destroy');
+                }
+            }, { once: true });
+
             videoModal.show();
         }
 
@@ -525,7 +555,8 @@
             const form = document.getElementById('videoForm');
             const selectSku = document.getElementById('selectSku');
             const editSku = document.getElementById('editSku');
-            const sku = editSku.value || selectSku.value;
+            // Get SKU value - use Select2 .val() if initialized, otherwise use .value
+            const sku = editSku.value || ($(selectSku).hasClass('select2-hidden-accessible') ? $(selectSku).val() : selectSku.value);
 
             if (!sku) {
                 alert('Please select a SKU');
