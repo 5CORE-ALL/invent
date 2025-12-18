@@ -5,126 +5,436 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
     <style>
+        :root {
+            --primary-color: #6366F1;
+            --secondary-color: #4F46E5;
+            --success-color: #10B981;
+            --danger-color: #EF4444;
+            --warning-color: #F59E0B;
+            --info-color: #3B82F6;
+            --light-bg: #F9FAFB;
+            --border-color: #E5E7EB;
+            --text-primary: #111827;
+            --text-secondary: #6B7280;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            background-color: var(--light-bg);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
         .stats-card {
-            background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             border-radius: 16px;
             padding: 24px;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow-lg);
             margin-bottom: 2rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
+
+        .stats-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
+        }
+
         .stats-card h4 {
-            color: rgba(255, 255, 255, 0.9);
+            color: rgba(255, 255, 255, 0.95);
             margin-bottom: 0.5rem;
+            font-weight: 600;
         }
+
         .stats-card .badge {
             font-size: 1.5rem;
             padding: 0.5rem 1rem;
             background: rgba(255, 255, 255, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
         }
+
         .table-container {
             background: white;
-            border-radius: 16px;
-            padding: 1.5rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: var(--shadow-md);
+            margin-bottom: 2rem;
+            transition: box-shadow 0.3s ease;
         }
-        th {
-            cursor: col-resize;
+
+        .table-container:hover {
+            box-shadow: var(--shadow-lg);
         }
+
+        /* Improved Search Bar */
+        #search-input {
+            border-radius: 12px;
+            border: 2px solid var(--border-color);
+            padding: 12px 20px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        #search-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        #search-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        /* Table Styling */
         #adv-master-table {
-            table-layout: fixed; /* prevents text from overflowing */
+            table-layout: fixed;
             width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        #adv-master-table thead th {
+            background: linear-gradient(135deg, #F8F9FA 0%, #E9ECEF 100%);
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 13px;
+            padding: 16px 12px;
+            border-bottom: 2px solid var(--border-color);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: col-resize;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        #adv-master-table thead th:first-child {
+            border-top-left-radius: 12px;
+        }
+
+        #adv-master-table thead th:last-child {
+            border-top-right-radius: 12px;
+        }
+
+        #adv-master-table tbody td {
+            padding: 14px 12px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+            transition: background-color 0.2s ease;
+        }
+
+        #adv-master-table tbody tr:hover {
+            background-color: #F9FAFB;
+        }
+
+        #adv-master-table tbody tr.accordion-header {
+            background: linear-gradient(135deg, #E0E7FF 0%, #C7D2FE 100%);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #adv-master-table tbody tr.accordion-header:hover {
+            background: linear-gradient(135deg, #C7D2FE 0%, #A5B4FC 100%);
+            transform: scale(1.01);
+        }
+
+        #adv-master-table tbody tr.accordion-body {
+            background-color: #FAFBFC;
+            border-left: 3px solid var(--primary-color);
+        }
+
+        #adv-master-table tbody tr.accordion-body:hover {
+            background-color: #F3F4F6;
         }
 
         #adv-master-table th,
         #adv-master-table td {
             overflow: hidden;
-            text-overflow: ellipsis; /* optional: shows "..." for long text */
+            text-overflow: ellipsis;
             white-space: nowrap;
         }
+
+        /* Button Improvements */
+        .btn-primary.rounded-circle {
+            width: 20px;
+            height: 20px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: var(--primary-color);
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .btn-primary.rounded-circle:hover {
+            background: var(--secondary-color);
+            transform: scale(1.1);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-success {
+            border-radius: 8px;
+            padding: 10px 24px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        /* Link Styling */
+        #adv-master-table a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        #adv-master-table a:hover {
+            color: var(--secondary-color);
+            background-color: rgba(99, 102, 241, 0.1);
+            text-decoration: none;
+        }
+
+        /* Modal Improvements */
+        .modal-content {
+            border-radius: 16px;
+            border: none;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            color: white;
+            border-radius: 16px 16px 0 0;
+            padding: 20px 24px;
+            border-bottom: none;
+        }
+
+        .modal-title {
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .btn-close {
+            filter: brightness(0) invert(1);
+            opacity: 0.9;
+        }
+
+        .btn-close:hover {
+            opacity: 1;
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        /* Form Input Improvements */
+        .form-control {
+            border-radius: 10px;
+            border: 2px solid var(--border-color);
+            padding: 10px 16px;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            outline: none;
+        }
+
+        /* Stats Cards in Modal */
+        .shadow.p-3.mb-1.bg-white.rounded {
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .shadow.p-3.mb-1.bg-white.rounded:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--primary-color);
+        }
+
+        /* Color Indicators */
+        .spend-color, .clicks-color, .adsales-color, .adsold-color, .cpc-color, .cvr-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: inline-block;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .spend-color {
+            background-color: #6c2bd9;
+        }
+
+        .clicks-color {
+            background-color: #00b894;
+        }
+
+        .adsales-color {
+            background-color: #ed0808fc;
+        }
+
+        .adsold-color {
+            background-color: #0984e3;
+        }
+
+        .cpc-color {
+            background-color: #0c293efc;
+        }
+
+        .cvr-color {
+            background-color: #f6da09ee;
+        }
+
+        .label-text {
+            font-weight: 700;
+            color: var(--text-primary);
+            font-size: 16px;
+        }
+
+        .title-label {
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .table-container {
+                padding: 1rem;
+                border-radius: 12px;
+            }
+
+            #adv-master-table {
+                font-size: 12px;
+            }
+
+            #adv-master-table th,
+            #adv-master-table td {
+                padding: 8px 6px;
+            }
+        }
+
         @media (min-width: 1200px) {
             .modal-fullscreen-xl-up .modal-dialog {
                 max-width: 100%;
                 margin: 0;
                 height: 100vh;
             }
+
             .modal-fullscreen-xl-up .modal-content {
                 height: 100vh;
                 border: 0;
                 border-radius: 0;
             }
+
             .modal-fullscreen-xl-up .modal-body {
                 overflow: auto;
             }
+
             .chart-box {
                 max-width: 950px;
                 margin: auto;
                 background: #fff;
                 border-radius: 20px;
-                box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+                box-shadow: var(--shadow-lg);
                 padding: 25px 35px;
             }
+
             h2 {
                 text-align: center;
-                color: #374151;
+                color: var(--text-primary);
                 font-weight: 600;
                 margin-bottom: 15px;
             }
+
             canvas {
                 margin-top: 10px;
             }
         }
-       .spend-color {
-            width: 20px;
-            height: 20px;
-            background-color: #6c2bd9;
-            border-radius: 5px;
-            display: inline-block;
+
+        /* Loading Animation */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        .clicks-color{
-            width: 20px;
-            height: 20px;
-            background-color: #00b894;
-            border-radius: 5px;
-            display: inline-block;
-            
+
+        .table-container {
+            animation: fadeIn 0.5s ease;
         }
-        .adsales-color{
-            width: 20px;
-            height: 20px;
-            background-color: #ed0808fc;
-            border-radius: 5px;
-            display: inline-block;
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
         }
-        .adsold-color{
-            width: 20px;
-            height: 20px;
-            background-color: #0984e3;
-            border-radius: 5px;
-            display: inline-block; 
+
+        ::-webkit-scrollbar-track {
+            background: var(--light-bg);
         }
-        .cpc-color{
-            width: 20px;
-            height: 20px;
-            background-color: #0c293efc;
-            border-radius: 5px;
-            display: inline-block;
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
         }
-        .cvr-color{
-            width: 20px;
-            height: 20px;
-            background-color: #f6da09ee;
-            border-radius: 5px;
-            display: inline-block;
-        }       
-        .label-text{
-            font-weight: 900;
-            color: #000000;
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
         }
-        .title-label{
-            margin-bottom: 5px;
-            font-size: 16px;
-            font-weight: 700;
+
+        /* Number Formatting */
+        .number-cell {
+            font-variant-numeric: tabular-nums;
+            font-weight: 500;
+        }
+
+        /* Empty Cell Styling */
+        #adv-master-table tbody td:empty::before {
+            content: '—';
+            color: var(--text-secondary);
+            opacity: 0.5;
+        }
+
+        /* Header Row Styling */
+        #adv-master-table thead th hr {
+            margin: 8px 0 4px 0;
+            border: none;
+            border-top: 2px solid var(--primary-color);
+            opacity: 0.3;
+        }
+
+        /* Better Visual Hierarchy */
+        #adv-master-table tbody tr.accordion-header td:first-child {
+            font-size: 15px;
+            letter-spacing: 0.3px;
+        }
+
+        /* Smooth Transitions */
+        * {
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
         }
     </style>
 @endsection
@@ -140,13 +450,14 @@
 
         <!-- Table Container -->
         <div class="table-container">
-            <div class="row">
-                <div class="col-md-4">
-                    <input type="text" class="form-control" id="search-input" placeholder="Search..." />
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h3 class="mb-0" style="color: var(--text-primary); font-weight: 700;">ADV Masters Dashboard</h3>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="position-relative" style="width: 300px;">
+                        <input type="text" class="form-control" id="search-input" placeholder="🔍 Search channels..." />
+                    </div>
                 </div>
-                <div class="col-md-4"></div>
-                <div class="col-md-4"></div>
-            <div>
+            </div>
 
             <div class="table-responsive mt-3">
                 <table class="table table-bordered table-responsive display" id="adv-master-table" style="width:100%">
@@ -168,7 +479,16 @@
                     </thead>
                     <tbody>
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
-                            <td class="text-center"><b>AMAZON</b> <button type="button" class="btn btn-primary rounded-circle p-0 ms-2" style="width: 12px; height: 12px;" data-bs-toggle="modal" data-bs-target="#amazonModal"></button></td>
+                            <td class="text-center">
+                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                    <b>AMAZON</b>
+                                    <button type="button" class="btn btn-primary rounded-circle p-0" data-bs-toggle="modal" data-bs-target="#amazonModal" title="View Graph">
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+                                            <path d="M6 0L7.5 4.5L12 6L7.5 7.5L6 12L4.5 7.5L0 6L4.5 4.5L6 0Z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $amazon_l30_sales }}</td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -328,7 +648,16 @@
                         </tr>
 
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
-                            <td class="text-center"><b>EBAY</b> <button type="button" class="btn btn-primary rounded-circle p-0 ms-2" style="width: 12px; height: 12px;" data-bs-toggle="modal" data-bs-target="#ebayModal"></button></td>
+                            <td class="text-center">
+                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                    <b>EBAY</b>
+                                    <button type="button" class="btn btn-primary rounded-circle p-0" data-bs-toggle="modal" data-bs-target="#ebayModal" title="View Graph">
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+                                            <path d="M6 0L7.5 4.5L12 6L7.5 7.5L6 12L4.5 7.5L0 6L4.5 4.5L6 0Z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay_l30_sales }}</td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -868,20 +1197,27 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="row mb-2">
+                    <div class="row mb-4">
                         <div class="col-md-3">
                             <div class="form-group">
-                                {{-- <label>From Date</label> --}}
-                                <input type="text" class="form-control amazon-from-date" name="amazon_from_date" onfocus="(this.type='date')" Placeholder="From Date" />
+                                <label class="form-label text-muted small mb-2">From Date</label>
+                                <input type="text" class="form-control amazon-from-date" name="amazon_from_date" onfocus="(this.type='date')" placeholder="Select from date" />
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="form-group">
-                                {{-- <label>To Date</label> --}}
-                                <input type="text" class="form-control amazon-to-date" name="amazon_to_date" onfocus="(this.type='date')" Placeholder="To Date"/>
+                                <label class="form-label text-muted small mb-2">To Date</label>
+                                <input type="text" class="form-control amazon-to-date" name="amazon_to_date" onfocus="(this.type='date')" placeholder="Select to date"/>
                             </div>
                         </div>
-                        <div class="col-md-3 text-start"><button class="btn btn-success amazon-go" name="amazon_go">GO</button></div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-success amazon-go w-100" name="amazon_go">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 6px; vertical-align: middle;">
+                                    <path d="M8 0L10.5 6L16 8L10.5 10L8 16L5.5 10L0 8L5.5 6L8 0Z"/>
+                                </svg>
+                                Apply Filter
+                            </button>
+                        </div>
                         <div class="col-md-3"></div>
                     </div>
                     <div class="row">
@@ -956,20 +1292,27 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="row mb-2">
+                    <div class="row mb-4">
                         <div class="col-md-3">
                             <div class="form-group">
-                                {{-- <label>From Date</label> --}}
-                                <input type="text" class="form-control ebay-from-date" name="ebay_from_date" onfocus="(this.type='date')" Placeholder="From Date" />
+                                <label class="form-label text-muted small mb-2">From Date</label>
+                                <input type="text" class="form-control ebay-from-date" name="ebay_from_date" onfocus="(this.type='date')" placeholder="Select from date" />
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="form-group">
-                                {{-- <label>To Date</label> --}}
-                                <input type="text" class="form-control ebay-to-date" name="ebay_to_date" onfocus="(this.type='date')" Placeholder="To Date"/>
+                                <label class="form-label text-muted small mb-2">To Date</label>
+                                <input type="text" class="form-control ebay-to-date" name="ebay_to_date" onfocus="(this.type='date')" placeholder="Select to date"/>
                             </div>
                         </div>
-                        <div class="col-md-3 text-start"><button class="btn btn-success ebay-go" name="ebay_go">GO</button></div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-success ebay-go w-100" name="ebay_go">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 6px; vertical-align: middle;">
+                                    <path d="M8 0L10.5 6L16 8L10.5 10L8 16L5.5 10L0 8L5.5 6L8 0Z"/>
+                                </svg>
+                                Apply Filter
+                            </button>
+                        </div>
                         <div class="col-md-3"></div>
                     </div>
                     <div class="row">
@@ -1893,6 +2236,24 @@ $(document).ready(function() {
     });
 
     /** End Amazon Graph Code **/
+
+    // Format numbers with commas for better readability
+    function formatNumber(num) {
+        if (num === null || num === undefined || num === '') return '0';
+        return parseFloat(num).toLocaleString('en-US');
+    }
+
+    // Apply number formatting to all numeric cells
+    $('#adv-master-table tbody td').each(function() {
+        let text = $(this).text().trim();
+        // Check if it's a number (not empty, not %, not a link)
+        if (text && !isNaN(text) && text !== '' && !text.includes('%') && !$(this).find('a').length) {
+            let num = parseFloat(text);
+            if (!isNaN(num) && num !== 0) {
+                $(this).text(formatNumber(num));
+            }
+        }
+    });
 
     $(".accordion-body").hide();
     $(".accordion-header").click(function() {
