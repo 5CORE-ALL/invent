@@ -1420,10 +1420,10 @@ class EbayController extends Controller
             $days = $minDays;
         }
         
-        // Use California timezone (America/Los_Angeles) and exclude current date
+        // Use California timezone (America/Los_Angeles) - show data up to and including today in California
         $californiaToday = Carbon::now('America/Los_Angeles')->startOfDay();
-        $endDate = $californiaToday->copy()->subDay(); // Yesterday in California time
-        $startDate = $endDate->copy()->subDays($days - 1); // Go back $days from yesterday
+        $endDate = $californiaToday; // Today in California time (e.g., Dec 18 when it's Dec 18 in California)
+        $startDate = $endDate->copy()->subDays($days - 1); // Go back $days from end date
         
         $chartData = [];
         $dataByDate = []; // Store data by date for filling gaps
