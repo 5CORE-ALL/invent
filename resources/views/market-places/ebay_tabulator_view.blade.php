@@ -714,11 +714,29 @@
                 });
         }
 
+        // Load eBay Ads Spend from marketplace_daily_metrics
+        function loadEbayAdsSpend() {
+            fetch('/ebay-ads-spend')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        $('#total-kw-spend-l30-badge').text('KW Spend L30: $' + Math.round(data.kw_spent).toLocaleString());
+                        $('#total-pmt-spend-l30-badge').text('PMT Spend L30: $' + Math.round(data.pmt_spent).toLocaleString());
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading eBay ads spend:', error);
+                });
+        }
+
         $(document).ready(function() {
             // Initialize charts
             initMetricsChart();
             loadMetricsData(7);
             initSkuMetricsChart();
+            
+            // Load eBay ads spend from marketplace_daily_metrics
+            loadEbayAdsSpend();
 
             // Toggle chart button
             $('#toggle-chart-btn').on('click', function() {
@@ -2341,6 +2359,23 @@
                     },
 
                     {
+                        title: "KW %",
+                        field: "kw_percent",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
+                            const pmtSpend = parseFloat(rowData['pmt_spend_L30'] || 0);
+                            const total = kwSpend + pmtSpend;
+                            const percent = total > 0 ? (kwSpend / total) * 100 : 0;
+                            return `${percent.toFixed(1)}%`;
+                        },
+                        width: 70
+                    },
+
+                    {
                         title: "PMT SPEND L30",
                         field: "pmt_spend_L30",
                         hozAlign: "center",
@@ -2356,6 +2391,23 @@
                             return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
                         },
                         width: 100
+                    },
+
+                    {
+                        title: "PMT %",
+                        field: "pmt_percent",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
+                            const pmtSpend = parseFloat(rowData['pmt_spend_L30'] || 0);
+                            const total = kwSpend + pmtSpend;
+                            const percent = total > 0 ? (pmtSpend / total) * 100 : 0;
+                            return `${percent.toFixed(1)}%`;
+                        },
+                        width: 70
                     },
                   
                     // {
@@ -2608,8 +2660,6 @@
                 const data = table.getData("active");
                 let totalTcos = 0;
                 let totalSpendL30 = 0;
-                let totalKwSpendL30 = 0;
-                let totalPmtSpendL30 = 0;
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
                 let totalLpAmt = 0;
@@ -2623,8 +2673,6 @@
                     if (parseFloat(row.INV) > 0) {
                         totalTcos += parseFloat(row['AD%'] || 0);
                         totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
-                        totalKwSpendL30 += parseFloat(row['kw_spend_L30'] || 0);
-                        totalPmtSpendL30 += parseFloat(row['pmt_spend_L30'] || 0);
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
@@ -2672,8 +2720,6 @@
 
                 $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
                 $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
-                $('#total-kw-spend-l30-badge').text('KW Spend L30: $' + Math.round(totalKwSpendL30).toLocaleString());
-                $('#total-pmt-spend-l30-badge').text('PMT Spend L30: $' + Math.round(totalPmtSpendL30).toLocaleString());
                 $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
                 $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
@@ -2844,7 +2890,7 @@
             // Toggle SPEND L30 breakdown columns
             document.addEventListener("click", function(e) {
                 if (e.target.classList.contains("toggle-spendL30-btn")) {
-                    let colsToToggle = ["kw_spend_L30", "pmt_spend_L30"];
+                    let colsToToggle = ["kw_spend_L30", "kw_percent", "pmt_spend_L30", "pmt_percent"];
 
                     colsToToggle.forEach(colField => {
                         let col = table.getColumn(colField);

@@ -1719,4 +1719,29 @@ class EbayController extends Controller
         $this->saveSpriceStatus($sku, $status);
         return response()->json(['success' => true, 'message' => 'Status updated successfully']);
     }
+
+    public function getEbayAdsSpend()
+    {
+        try {
+            // Get the latest eBay ads spend from marketplace_daily_metrics
+            $latestData = DB::table('marketplace_daily_metrics')
+                ->where('channel', 'ebay')
+                ->orderBy('date', 'desc')
+                ->select('date', 'kw_spent', 'pmt_spent')
+                ->first();
+
+            return response()->json([
+                'success' => true,
+                'date' => $latestData->date ?? null,
+                'kw_spent' => floatval($latestData->kw_spent ?? 0),
+                'pmt_spent' => floatval($latestData->pmt_spent ?? 0),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching eBay ads spend: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to fetch ads spend data'
+            ], 500);
+        }
+    }
 }
