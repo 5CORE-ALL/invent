@@ -2680,7 +2680,7 @@
                 $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt').text('$' + Math.round(totalSalesAmt));
                 $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
-                const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
+                const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100).toFixed(1) : '0.0';
                 $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
                 $('#avg-gpft-summary').text(avgGpft + '%');
             }
