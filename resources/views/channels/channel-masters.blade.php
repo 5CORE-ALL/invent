@@ -670,6 +670,16 @@
                     <input type="text" class="form-control" id="editpercentage" name="type" required>
                 </div>
 
+                <div class="mb-3">
+                    <label for="editBase" class="form-label">Base</label>
+                    <input type="number" class="form-control" id="editBase" name="base" step="0.01">
+                </div>
+
+                <div class="mb-3">
+                    <label for="editTarget" class="form-label">Target</label>
+                    <input type="number" class="form-control" id="editTarget" name="target" step="0.01">
+                </div>
+
                 </div>
                 <div class="modal-footer">
                 <button type="submit" class="btn btn-primary">Update Channel</button>
@@ -784,7 +794,8 @@
                                 Ads%
                             </th>
                             {{-- <th>Red Margin</th> --}}
-                            <th>Percentage</th>
+                            <th>Base</th>
+                            <th>Target</th>
                             <th class="text-center align-middle">
                                 <small id="growthPercentageBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
@@ -1689,7 +1700,22 @@
                             return `<span style="background:#20c997;color:white;padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
                         }
                     },
-                    { data: 'Channel Percentage', render: v => `<span class="metric-value">${toNum(v).toLocaleString('en-US')}</span>` },
+                    { 
+                        data: 'Base', 
+                        render: function (v, type) {
+                            const n = toNum(v);
+                            if (type === 'sort' || type === 'type') return n;
+                            return `<span class="metric-value">${n.toLocaleString('en-US')}</span>`;
+                        }
+                    },
+                    { 
+                        data: 'Target', 
+                        render: function (v, type) {
+                            const n = toNum(v);
+                            if (type === 'sort' || type === 'type') return n;
+                            return `<span class="metric-value">${n.toLocaleString('en-US')}</span>`;
+                        }
+                    },
                     {
                         data: 'Growth',
                         render: function (v) {
@@ -1799,6 +1825,8 @@
                                     'Ac Health': pick(item, ['account_health', 'ac_health', 'accounthealth'], ''),
                                     'Channel Percentage': pctFix(pick(item, ['channel_percentage'], 0), 0),
                                     'cogs': cogs,
+                                    'Base': toNum(pick(item, ['base', 'Base'], 0), 0),
+                                    'Target': toNum(pick(item, ['target', 'Target'], 0), 0),
                                 };
                             });
                         },
@@ -2470,6 +2498,8 @@
                             const sheetUrl = rowData["sheet_link"] || rowData["URL LINK"] || rowData["url"] || '';
                             const type = rowData["type"]?.trim() || rowData["type"] || '';
                             const percentage = rowData["Channel Percentage"];
+                            const base = rowData["Base"] || 0;
+                            const target = rowData["Target"] || 0;
 
                             // Populate modal fields
                             // $('#editChannelId').val(id);
@@ -2477,6 +2507,8 @@
                             $('#editChannelUrl').val(sheetUrl);
                             $('#editType').val(type);
                             $('#editpercentage').val(percentage);
+                            $('#editBase').val(base);
+                            $('#editTarget').val(target);
                             $('#originalChannel').val(channel);
 
 
@@ -2494,6 +2526,8 @@
                             const sheetUrl = $('#editChannelUrl').val().trim();
                             const type = $('#editType').val().trim();
                             const percentage = $('#editpercentage').val().trim();
+                            const base = $('#editBase').val().trim();
+                            const target = $('#editTarget').val().trim();
                             const originalChannel = $('#originalChannel').val().trim();
                             
 
@@ -2510,6 +2544,8 @@
                                     sheet_url: sheetUrl,
                                     type: type,
                                     channel_percentage: percentage,
+                                    base: base,
+                                    target: target,
                                     original_channel: originalChannel,
                                     _token: $('meta[name="csrf-token"]').attr('content')
                                 },

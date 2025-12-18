@@ -527,6 +527,62 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Shein -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('shein')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="shein" id="platform_shein">
+                                    <label class="form-check-label w-100" for="platform_shein">
+                                        <i class="fas fa-shopping-bag platform-icon text-danger"></i>
+                                        <strong>Shein</strong>
+                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Wayfair -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('wayfair')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="wayfair" id="platform_wayfair">
+                                    <label class="form-check-label w-100" for="platform_wayfair">
+                                        <i class="fas fa-home platform-icon text-info"></i>
+                                        <strong>Wayfair</strong>
+                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Reverb -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('reverb')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="reverb" id="platform_reverb">
+                                    <label class="form-check-label w-100" for="platform_reverb">
+                                        <i class="fas fa-guitar platform-icon text-warning"></i>
+                                        <strong>Reverb</strong>
+                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Faire -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('faire')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="faire" id="platform_faire">
+                                    <label class="form-check-label w-100" for="platform_faire">
+                                        <i class="fas fa-store platform-icon text-success"></i>
+                                        <strong>Faire</strong>
+                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="alert alert-warning mt-3">
@@ -563,6 +619,7 @@
             setupModalHandlers();
             setupButtonHandlers();
             setupPlatformModalHandlers();
+            setupPlatformCheckboxes();
         });
 
         function setupButtonHandlers() {
@@ -604,6 +661,8 @@
 
         function togglePlatform(platformId) {
             const checkbox = document.getElementById('platform_' + platformId);
+            if (!checkbox) return;
+            
             const platformItem = checkbox.closest('.platform-item');
             
             checkbox.checked = !checkbox.checked;
@@ -613,6 +672,23 @@
             } else {
                 platformItem.classList.remove('selected');
             }
+        }
+
+        // Setup platform checkbox click handlers to prevent double-toggle
+        function setupPlatformCheckboxes() {
+            document.querySelectorAll('[id^="platform_"]').forEach(checkbox => {
+                checkbox.addEventListener('click', function(e) {
+                    // Stop event from bubbling to parent platform-item
+                    e.stopPropagation();
+                    // The checkbox will handle its own checked state
+                    const platformItem = this.closest('.platform-item');
+                    if (this.checked) {
+                        platformItem.classList.add('selected');
+                    } else {
+                        platformItem.classList.remove('selected');
+                    }
+                });
+            });
         }
 
         function openPlatformSelectionModal() {
@@ -650,6 +726,10 @@
             if (document.getElementById('platform_walmart').checked) platforms.push('walmart');
             if (document.getElementById('platform_temu').checked) platforms.push('temu');
             if (document.getElementById('platform_doba').checked) platforms.push('doba');
+            if (document.getElementById('platform_shein').checked) platforms.push('shein');
+            if (document.getElementById('platform_wayfair').checked) platforms.push('wayfair');
+            if (document.getElementById('platform_reverb').checked) platforms.push('reverb');
+            if (document.getElementById('platform_faire').checked) platforms.push('faire');
 
             if (platforms.length === 0) {
                 alert('Please select at least one platform to update');
@@ -665,7 +745,11 @@
                 'ebay3': 'eBay 3 (Title 80)',
                 'walmart': 'Walmart (Title 80)',
                 'temu': 'Temu (Title 150)',
-                'doba': 'Doba (Title 100)'
+                'doba': 'Doba (Title 100)',
+                'shein': 'Shein (Title 150)',
+                'wayfair': 'Wayfair (Title 150)',
+                'reverb': 'Reverb (Title 150)',
+                'faire': 'Faire (Title 150)'
             };
 
             const platformList = platforms.map(p => platformNames[p]).join('\n');

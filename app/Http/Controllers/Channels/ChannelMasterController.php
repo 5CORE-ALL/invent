@@ -128,7 +128,7 @@ class ChannelMasterController extends Controller
         // Fetch both channel and sheet_link from ChannelMaster
         $channels = ChannelMaster::where('status', 'Active')
             ->orderBy('id', 'asc')
-            ->get(['channel', 'sheet_link', 'channel_percentage']);
+            ->get(['channel', 'sheet_link', 'channel_percentage', 'base', 'target']);
 
         if ($channels->isEmpty()) {
             return response()->json(['status' => 404, 'message' => 'No active channel found']);
@@ -191,6 +191,8 @@ class ChannelMasterController extends Controller
                 'listed_count'   => 0,
                 'W/Ads'          => 0,
                 'channel_percentage' => $channelRow->channel_percentage ?? '',
+                'base' => $channelRow->base ?? 0,
+                'target' => $channelRow->target ?? 0,
                 // '0 Sold SKU Count' => 0,
                 // 'Sold SKU Count'   => 0,
                 // 'Brand Registry'   => '',
@@ -2994,6 +2996,8 @@ class ChannelMasterController extends Controller
         $sheetUrl = $request->input('sheet_url');
         $type = $request->input('type');
         $channelPercentage = $request->input('channel_percentage');
+        $base = $request->input('base');
+        $target = $request->input('target');
 
         $channel = ChannelMaster::where('channel', $originalChannel)->first();
 
@@ -3005,6 +3009,8 @@ class ChannelMasterController extends Controller
         $channel->sheet_link = $sheetUrl;
         $channel->type = $type;
         $channel->channel_percentage = $channelPercentage;
+        $channel->base = $base;
+        $channel->target = $target;
         $channel->save();
 
         MarketplacePercentage::updateOrCreate(

@@ -174,31 +174,32 @@ class UpdateMarketplaceDailyMetrics extends Command
         // ROI = (PFT / COGS) * 100 - but COGS is LP only
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
-        // Calculate KW and PT Spent
-        $thirtyDaysAgo = Carbon::now()->subDays(31)->format('Y-m-d');
-        $yesterday = Carbon::now()->subDay()->format('Y-m-d');
+        // Calculate KW Spent - same logic as amazonKwAdsView
+        // Uses L30 report_date_range, group by campaignName to get MAX(spend), then sum
+        $kwSpentData = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('campaignName, MAX(spend) as max_spend')
+            ->where('report_date_range', 'L30')
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'") // Exclude PT and FBA campaigns
+            ->groupBy('campaignName')
+            ->get();
+        
+        $kwSpent = $kwSpentData->sum('max_spend') ?? 0;
 
-        $kwSpent = DB::table('amazon_sp_campaign_reports')
-            ->whereNotNull('report_date_range')
-            ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
-            ->whereDate('report_date_range', '<=', $yesterday)
-            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
-            ->where(function($query) {
-                $query->whereRaw("campaignName NOT LIKE '%PT'")
-                    ->whereRaw("campaignName NOT LIKE '%PT.'");
-            })
-            ->sum('spend') ?? 0;
-
-        $ptSpent = DB::table('amazon_sp_campaign_reports')
-            ->whereNotNull('report_date_range')
-            ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
-            ->whereDate('report_date_range', '<=', $yesterday)
-            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
+        // Calculate PT Spent - same logic as amazonPtAdsView
+        // Uses L30 report_date_range, group by campaignName to get MAX(spend), then sum
+        $ptSpentData = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('campaignName, MAX(spend) as max_spend')
+            ->where('report_date_range', 'L30')
             ->where(function($query) {
                 $query->whereRaw("campaignName LIKE '%PT'")
                     ->orWhereRaw("campaignName LIKE '%PT.'");
             })
-            ->sum('spend') ?? 0;
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'") // Exclude FBA PT campaigns
+            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'") // Exclude FBA PT. campaigns
+            ->groupBy('campaignName')
+            ->get();
+        
+        $ptSpent = $ptSpentData->sum('max_spend') ?? 0;
 
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $ptSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
