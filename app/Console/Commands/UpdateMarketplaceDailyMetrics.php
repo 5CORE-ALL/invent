@@ -74,9 +74,13 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAmazonMetrics($date)
     {
-        // Get L30 orders data
+        // 32 days: yesterday se 31 din pehle tak (matching AmazonSalesController)
+        $yesterday = Carbon::yesterday();
+        $startDate = $yesterday->copy()->subDays(31); // 32 days total
+
+        // Get orders using date range (like AmazonSalesController)
         $orders = AmazonOrder::with('items')
-            ->where('period', 'l30')
+            ->whereBetween('order_date', [$startDate, $yesterday->endOfDay()])
             ->where('status', '!=', 'Canceled')
             ->get();
 
@@ -104,9 +108,9 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         foreach ($orders as $order) {
             foreach ($order->items as $item) {
-                if (!$item->sku || $item->sku === '') continue;
-
+                // Count ALL items (matching Channel Master exactly)
                 $totalOrders++;
+                
                 $quantity = (int) ($item->quantity ?? 1);
                 $price = (float) ($item->price ?? 0);
                 

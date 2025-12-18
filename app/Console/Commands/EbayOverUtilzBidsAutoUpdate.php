@@ -174,6 +174,34 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             })
             ->get();
 
+        $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
+                }
+            })
+            ->get();
+
+        // Calculate total ACOS from ALL RUNNING campaigns (L30 data)
+        $allL30Campaigns = EbayPriorityReport::where('report_range', 'L30')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+
+        $totalSpendAll = 0;
+        $totalSalesAll = 0;
+
+        foreach ($allL30Campaigns as $campaign) {
+            $adFees = (float) str_replace('USD ', '', $campaign->cpc_ad_fees_payout_currency ?? 0);
+            $sales = (float) str_replace('USD ', '', $campaign->cpc_sale_amount_payout_currency ?? 0);
+            $totalSpendAll += $adFees;
+            $totalSalesAll += $sales;
+        }
+
+        $totalACOSAll = $totalSalesAll > 0 ? ($totalSpendAll / $totalSalesAll) * 100 : 0;
+
         $result = [];
 
         foreach ($productMasters as $pm) {
@@ -195,7 +223,21 @@ class EbayOverUtilzBidsAutoUpdate extends Command
                 return $campaignName === $cleanSku;
             });
 
-            if (!$matchedCampaignL7 && !$matchedCampaignL1) {
+            $matchedCampaignL30 = $ebayCampaignReportsL30->first(function ($item) use ($sku) {
+                $campaignName = strtoupper(trim(rtrim($item->campaign_name, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                return $campaignName === $cleanSku;
+            });
+
+            if (!$matchedCampaignL7 && !$matchedCampaignL1 && !$matchedCampaignL30) {
+                continue;
+            }
+
+            // Use L7 if available, otherwise fall back to L30
+            $campaignForDisplay = $matchedCampaignL7 ?? $matchedCampaignL30;
+            
+            // Only process RUNNING campaigns
+            if (!$campaignForDisplay || $campaignForDisplay->campaignStatus !== 'RUNNING') {
                 continue;
             }
 
@@ -203,15 +245,28 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             $row['INV']    = $shopify->inv ?? 0;
             $row['L30']    = $shopify->quantity ?? 0;
             $row['price']  = $ebay->ebay_price ?? 0;
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
-            $row['campaign_name'] = $matchedCampaignL7->campaign_name ?? ($matchedCampaignL1->campaign_name ?? '');
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
+            $row['campaign_id'] = $campaignForDisplay->campaign_id ?? '';
+            $row['campaign_name'] = $campaignForDisplay->campaign_name ?? '';
+            $row['campaignBudgetAmount'] = $campaignForDisplay->campaignBudgetAmount ?? '';
             $row['sku'] = $pm->sku;
 
             $row['l7_spend'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
             $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
             $row['l1_spend'] = (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0);
             $row['l1_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0);
+
+            // Calculate ACOS from L30 data (use L30 if available, otherwise use L7)
+            $matchedCampaignL30 = $matchedCampaignL30 ?? $matchedCampaignL7;
+            $adFeesL30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
+            $salesL30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0);
+            $acos = $salesL30 > 0 ? ($adFeesL30 / $salesL30) * 100 : 0;
+            
+            // If acos is 0 (no sales or no ad fees), set it to 100 for comparison
+            if ($acos === 0) {
+                $rowAcos = 100;
+            } else {
+                $rowAcos = $acos;
+            }
 
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
@@ -234,7 +289,16 @@ class EbayOverUtilzBidsAutoUpdate extends Command
                 }
             }
 
-            if ($row['NR'] !== 'NRA' && $ub7 > 90 && $row['price'] >= 30 && $row['INV'] > 0) {
+            // Apply filter conditions:
+            // Condition 1: ACOS > TOTAL_ACOS AND UB7 > 33%
+            // OR
+            // Condition 2: ACOS <= TOTAL_ACOS AND UB7 > 90%
+            $condition1 = ($rowAcos > $totalACOSAll && $ub7 > 33);
+            $condition2 = ($rowAcos <= $totalACOSAll && $ub7 > 90);
+            $matchesCondition = $condition1 || $condition2;
+
+            // Other filters: NR !== 'NRA', price >= 30, INV > 0, DIL not pink
+            if ($matchesCondition && $row['NR'] !== 'NRA' && $row['price'] >= 30 && $row['INV'] > 0) {
                 $dilColor = $this->getDilColor($row['L30'], $row['INV']);
                 if ($dilColor !== 'pink') {
                     $result[] = (object) $row;
