@@ -1515,6 +1515,70 @@
             });
 
             table.on("tableBuilt", function() {
+                // Auto-update all campaigns' NR to "RA" on page load
+                setTimeout(function() {
+                    const allRows = table.getRows();
+                    const updatePromises = [];
+                    
+                    allRows.forEach(function(row) {
+                        const rowData = row.getData();
+                        const sku = rowData.sku;
+                        
+                        // Update all campaigns (except parent SKUs) to "RA"
+                        if (sku && !sku.toLowerCase().includes('parent')) {
+                            const updatePromise = fetch('/update-ebay-nr-data', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
+                                        .getAttribute('content')
+                                },
+                                body: JSON.stringify({
+                                    sku: sku,
+                                    field: 'NR',
+                                    value: 'RA'
+                                })
+                            })
+                            .then(res => res.json())
+                            .then(data => {
+                                // Update the cell in the table to reflect the change
+                                const cell = row.getCell('NR');
+                                if (cell) {
+                                    cell.setValue('RA');
+                                    // Update the select dropdown value and styling
+                                    const cellElement = cell.getElement();
+                                    if (cellElement) {
+                                        const selectElement = cellElement.querySelector('select');
+                                        if (selectElement) {
+                                            selectElement.value = 'RA';
+                                            selectElement.style.backgroundColor = '#28a745';
+                                            selectElement.style.color = '#fff';
+                                        } else {
+                                            // If select doesn't exist yet, update the cell background
+                                            cellElement.style.backgroundColor = '#28a745';
+                                            cellElement.style.color = '#fff';
+                                        }
+                                    }
+                                }
+                                return data;
+                            })
+                            .catch(err => {
+                                console.error('Error updating NR for SKU ' + sku + ':', err);
+                                return null;
+                            });
+                            
+                            updatePromises.push(updatePromise);
+                        }
+                    });
+                    
+                    // Wait for all updates to complete
+                    Promise.all(updatePromises).then(results => {
+                        const successCount = results.filter(r => r && r.status === 200).length;
+                        if (successCount > 0) {
+                            console.log(`NR updated to "RA" for ${successCount} campaigns`);
+                        }
+                    });
+                }, 500); // Small delay to ensure table is fully rendered
 
                 function combinedFilter(data) {
 
