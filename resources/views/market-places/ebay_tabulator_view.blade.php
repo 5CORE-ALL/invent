@@ -127,6 +127,16 @@
                         <option value="NR">NR</option>
                     </select>
 
+                    <select id="ads-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">AD%</option>
+                        <option value="0-10">Below 10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-100">30-100%</option>
+                        <option value="100plus">100%+</option>
+                    </select>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -160,9 +170,9 @@
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0">Metrics Trend</h6>
                         <select id="chart-days-filter" class="form-select form-select-sm" style="width: auto;">
-                            <option value="7" selected>Last 7 Days</option>
+                            <option value="7" >Last 7 Days</option>
                             <option value="14">Last 14 Days</option>
-                            <option value="30">Last 30 Days</option>
+                            <option value="30" selected>Last 30 Days</option>
                             <option value="60">Last 60 Days</option>
                         </select>
                     </div>
@@ -193,6 +203,8 @@
                         <!-- Financial Metrics -->
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-kw-spend-l30-badge" style="color: black; font-weight: bold;">KW Spend L30: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="total-pmt-spend-l30-badge" style="color: black; font-weight: bold;">PMT Spend L30: $0.00</span>
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
@@ -253,9 +265,9 @@
                     <div class="mb-3">
                         <label class="form-label">Date Range:</label>
                         <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
-                            <option value="7" selected>Last 7 Days</option>
+                            <option value="7">Last 7 Days</option>
                             <option value="14">Last 14 Days</option>
-                            <option value="30">Last 30 Days</option>
+                            <option value="30" selected>Last 30 Days</option>
                         </select>
                     </div>
                     <div id="chart-no-data-message" class="alert alert-info" style="display: none;">
@@ -474,7 +486,7 @@
         }
 
         // Load Metrics Data
-        function loadMetricsData(days = 7) {
+        function loadMetricsData(days = 30) {
             fetch(`/ebay-metrics-history?days=${days}`)
                 .then(response => response.json())
                 .then(data => {
@@ -671,7 +683,7 @@
             });
         }
 
-        function loadSkuMetricsData(sku, days = 7) {
+        function loadSkuMetricsData(sku, days = 30) {
             console.log('Loading metrics data for SKU:', sku, 'Days:', days);
             fetch(`/ebay-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
                 .then(response => {
@@ -712,11 +724,29 @@
                 });
         }
 
+        // Load eBay Ads Spend from marketplace_daily_metrics
+        function loadEbayAdsSpend() {
+            fetch('/ebay-ads-spend')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        $('#total-kw-spend-l30-badge').text('KW Spend L30: $' + Math.round(data.kw_spent).toLocaleString());
+                        $('#total-pmt-spend-l30-badge').text('PMT Spend L30: $' + Math.round(data.pmt_spent).toLocaleString());
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading eBay ads spend:', error);
+                });
+        }
+
         $(document).ready(function() {
             // Initialize charts
             initMetricsChart();
-            loadMetricsData(7);
+            loadMetricsData(30);
             initSkuMetricsChart();
+            
+            // Load eBay ads spend from marketplace_daily_metrics
+            loadEbayAdsSpend();
 
             // Toggle chart button
             $('#toggle-chart-btn').on('click', function() {
@@ -1872,7 +1902,23 @@
                         title: "AD%",
                         field: "AD%",
                         hozAlign: "center",
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            // Custom sorter to handle the 100% case
+                            const aData = aRow.getData();
+                            const bData = bRow.getData();
+                            
+                            const aKwSpend = parseFloat(aData['kw_spend_L30'] || 0);
+                            const bKwSpend = parseFloat(bData['kw_spend_L30'] || 0);
+                            
+                            // Calculate effective AD% (100 if kw_spend > 0 and AD% is 0)
+                            let aVal = parseFloat(a || 0);
+                            let bVal = parseFloat(b || 0);
+                            
+                            if (aKwSpend > 0 && aVal === 0) aVal = 100;
+                            if (bKwSpend > 0 && bVal === 0) bVal = 100;
+                            
+                            return aVal - bVal;
+                        },
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -2339,6 +2385,23 @@
                     },
 
                     {
+                        title: "KW %",
+                        field: "kw_percent",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
+                            const pmtSpend = parseFloat(rowData['pmt_spend_L30'] || 0);
+                            const total = kwSpend + pmtSpend;
+                            const percent = total > 0 ? (kwSpend / total) * 100 : 0;
+                            return `${percent.toFixed(1)}%`;
+                        },
+                        width: 70
+                    },
+
+                    {
                         title: "PMT SPEND L30",
                         field: "pmt_spend_L30",
                         hozAlign: "center",
@@ -2354,6 +2417,23 @@
                             return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
                         },
                         width: 100
+                    },
+
+                    {
+                        title: "PMT %",
+                        field: "pmt_percent",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
+                            const pmtSpend = parseFloat(rowData['pmt_spend_L30'] || 0);
+                            const total = kwSpend + pmtSpend;
+                            const percent = total > 0 ? (pmtSpend / total) * 100 : 0;
+                            return `${percent.toFixed(1)}%`;
+                        },
+                        width: 70
                     },
                   
                     // {
@@ -2484,6 +2564,7 @@
                 const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const statusFilter = $('#status-filter').val();
+                const adsFilter = $('#ads-filter').val();
 
                 table.clearFilter(true);
 
@@ -2565,6 +2646,31 @@
                         return true;
                     });
                 }
+
+                if (adsFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const adValue = data['AD%'];
+                        const kwSpend = parseFloat(data['kw_spend_L30'] || 0);
+                        
+                        // If KW spend > 0 but AD% is 0, treat as 100% (same as formatter logic)
+                        let adPercent;
+                        if (kwSpend > 0 && (adValue === null || adValue === undefined || adValue === '' || parseFloat(adValue) === 0)) {
+                            adPercent = 100;
+                        } else if (adValue === null || adValue === undefined || adValue === '' || isNaN(parseFloat(adValue))) {
+                            // Skip items with no valid AD% value and no KW spend
+                            return false;
+                        } else {
+                            adPercent = parseFloat(adValue);
+                        }
+                        
+                        if (adsFilter === '0-10') return adPercent >= 0 && adPercent < 10;
+                        if (adsFilter === '10-20') return adPercent >= 10 && adPercent < 20;
+                        if (adsFilter === '20-30') return adPercent >= 20 && adPercent < 30;
+                        if (adsFilter === '30-100') return adPercent >= 30 && adPercent <= 100;
+                        if (adsFilter === '100plus') return adPercent > 100;
+                        return true;
+                    });
+                }
                 
                 updateCalcValues();
                 updateSummary();
@@ -2574,7 +2680,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
                 applyFilters();
             });
             
@@ -2836,7 +2942,7 @@
             // Toggle SPEND L30 breakdown columns
             document.addEventListener("click", function(e) {
                 if (e.target.classList.contains("toggle-spendL30-btn")) {
-                    let colsToToggle = ["kw_spend_L30", "pmt_spend_L30"];
+                    let colsToToggle = ["kw_spend_L30", "kw_percent", "pmt_spend_L30", "pmt_percent"];
 
                     colsToToggle.forEach(colField => {
                         let col = table.getColumn(colField);
@@ -2876,9 +2982,9 @@
                     const sku = e.target.closest('.view-sku-chart').getAttribute('data-sku');
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
-                    $('#sku-chart-days-filter').val('7');
+                    $('#sku-chart-days-filter').val('30');
                     $('#chart-no-data-message').hide();
-                    loadSkuMetricsData(sku, 7);
+                    loadSkuMetricsData(sku, 30);
                     $('#skuMetricsModal').modal('show');
                 }
             });

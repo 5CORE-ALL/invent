@@ -1411,7 +1411,7 @@ class EbayController extends Controller
 
     public function getMetricsHistory(Request $request)
     {
-        $days = $request->input('days', 7); // Default to last 7 days
+        $days = $request->input('days', 30); // Default to last 30 days
         $sku = $request->input('sku'); // Optional SKU filter
         
         // Ensure minimum 7 days if pulling from today
@@ -1420,8 +1420,10 @@ class EbayController extends Controller
             $days = $minDays;
         }
         
-        $startDate = Carbon::today()->subDays($days - 1); // -1 to include today
-        $endDate = Carbon::today();
+        // Use California timezone (America/Los_Angeles) - show data up to and including today in California
+        $californiaToday = Carbon::now('America/Los_Angeles')->startOfDay();
+        $endDate = $californiaToday; // Today in California time (e.g., Dec 18 when it's Dec 18 in California)
+        $startDate = $endDate->copy()->subDays($days - 1); // Go back $days from end date
         
         $chartData = [];
         $dataByDate = []; // Store data by date for filling gaps
@@ -1490,9 +1492,8 @@ class EbayController extends Controller
 
         // Fill in missing dates with zero values to ensure at least 7 days
         $currentDate = Carbon::parse($startDate);
-        $today = Carbon::today();
         
-        while ($currentDate->lte($today)) {
+        while ($currentDate->lte($endDate)) {
             $dateKey = $currentDate->format('Y-m-d');
             
             if (!isset($dataByDate[$dateKey])) {
@@ -1718,5 +1719,30 @@ class EbayController extends Controller
 
         $this->saveSpriceStatus($sku, $status);
         return response()->json(['success' => true, 'message' => 'Status updated successfully']);
+    }
+
+    public function getEbayAdsSpend()
+    {
+        try {
+            // Get the latest eBay ads spend from marketplace_daily_metrics
+            $latestData = DB::table('marketplace_daily_metrics')
+                ->where('channel', 'ebay')
+                ->orderBy('date', 'desc')
+                ->select('date', 'kw_spent', 'pmt_spent')
+                ->first();
+
+            return response()->json([
+                'success' => true,
+                'date' => $latestData->date ?? null,
+                'kw_spent' => floatval($latestData->kw_spent ?? 0),
+                'pmt_spent' => floatval($latestData->pmt_spent ?? 0),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching eBay ads spend: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to fetch ads spend data'
+            ], 500);
+        }
     }
 }

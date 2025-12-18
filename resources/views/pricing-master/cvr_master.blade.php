@@ -1194,6 +1194,9 @@
             height: "700px",
             pagination: true,
             paginationSize: 50,
+            initialSort: [
+                {column: "avgCvr", dir: "asc"}
+            ],
 
             rowFormatter: function(row) {
                 const data = row.getData();
@@ -1764,7 +1767,12 @@
                 title: "Avg CVR",
                 field: "avgCvr",
                 hozAlign: "center",
-              
+                headerSort: true,
+                sorter: function(a, b) {
+                    const valA = parseFloat(a) || 0;
+                    const valB = parseFloat(b) || 0;
+                    return valA - valB;
+                },
                 formatterParams: {
                     decimal: 2,
                 
@@ -2261,6 +2269,9 @@ document.addEventListener("click", function(e) {
             table.setFilter(function(data) {
                 // Parent filter
                 if (currentParentFilter && data.Parent !== currentParentFilter) return false;
+
+                // Hide parents with 0 inventory
+                if (data.is_parent && (parseFloat(data.INV) || 0) === 0) return false;
 
                 // Inv filter
                 if (currentInvFilter === "zero" && data.inv != 0) return false;

@@ -1014,6 +1014,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-pricing-data', [EbayController::class, 'ebayViewData'])->name('ebay.pricing.data');
     Route::get('/ebay-data-json', [EbayController::class, 'ebayDataJson'])->name('ebay.data.json');
     Route::get('/ebay-metrics-history', [EbayController::class, 'getMetricsHistory'])->name('ebay.metrics.history');
+    Route::get('/ebay-ads-spend', [EbayController::class, 'getEbayAdsSpend'])->name('ebay.ads.spend');
     Route::get('/ebay-column-visibility', [EbayController::class, 'getEbayColumnVisibility'])->name('ebay.column.visibility.get');
     Route::post('/ebay-column-visibility', [EbayController::class, 'setEbayColumnVisibility'])->name('ebay.column.visibility.set');
     Route::get('/ebay-export', [EbayController::class, 'exportEbayPricingData'])->name('ebay.export');
