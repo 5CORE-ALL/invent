@@ -5,6 +5,11 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* Hide sorting icons */
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+
         #image-hover-preview {
             transition: opacity 0.2s ease;
         }
@@ -101,9 +106,9 @@
 
 
         .tabulator .tabulator-header {
-            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
+            background: linear-gradient(135deg, #e8f0fe 0%, #d4e4fc 100%) !important;
             border-bottom: 2px solid #1a56b7;
-            color: #ffffff;
+            color: #000000;
             font-weight: bold;
             text-transform: uppercase;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
@@ -111,16 +116,16 @@
 
         .tabulator .tabulator-header .tabulator-col {
             background-color: transparent;
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            border-right: 1px solid rgba(0, 0, 0, 0.1);
             padding: 15px 18px;
             vertical-align: middle;
-            color: #ffffff;
+            color: #000000;
             transition: all 0.2s ease;
         }
 
         .tabulator .tabulator-header .tabulator-col-content {
             font-weight: 600;
-            color: #ffffff;
+            color: #000000;
             padding: 8px;
             white-space: nowrap;
             overflow: hidden;
@@ -129,7 +134,7 @@
         }
 
         .tabulator .tabulator-header .tabulator-col-title {
-            color: #ffffff;
+            color: #000000;
             font-size: 13px;
             font-weight: 600;
             text-transform: uppercase;
@@ -523,9 +528,9 @@
 
                       <div class="d-flex align-items-center flex-wrap gap-2">
                         <div class="dropdown">
-                            <button class="btn btn-primary dropdown-toggle d-flex align-items-center gap-1"
+                            <button class="btn btn-primary dropdown-toggle d-flex align-items-center gap-1 text-black"
                                 type="button" id="hide-column-dropdown" data-bs-toggle="dropdown">
-                                <i class="bi bi-grid-3x3-gap-fill"></i>
+                                <i class="bi bi-grid-3x3-gap-fill text-black"></i>
                                 Manage Columns
                             </button>
                             <ul class="dropdown-menu p-3 shadow-lg border rounded-3" id="column-dropdown-menu"
@@ -593,11 +598,11 @@
 
                     <div class="btn-group" id="view-filter" role="group" aria-label="View Filter">
                         <input type="radio" class="btn-check" name="viewFilter" id="parentFilter" value="parent" checked>
-                        <label class="btn btn-primary" for="parentFilter">Parent </label>
+                        <label class="btn btn-primary text-black" for="parentFilter">Parent </label>
                         <input type="radio" class="btn-check" name="viewFilter" id="skuFilter" value="sku">
-                        <label class="btn btn-primary" for="skuFilter">SKU </label>
+                        <label class="btn btn-primary text-black" for="skuFilter">SKU </label>
                         <input type="radio" class="btn-check" name="viewFilter" id="bothFilter" value="both">
-                        <label class="btn btn-primary" for="bothFilter">Both </label>
+                        <label class="btn btn-primary text-black" for="bothFilter">Both </label>
                     </div>
                     </div>
 
@@ -1333,7 +1338,58 @@
                             return element;
                             
                         },
+                    },
+
+            {
+                title: "Avg CVR",
+                field: "avgCvr",
+                hozAlign: "center",
+                headerSort: true,
+                sorter: function(a, b) {
+                    const valA = parseFloat(a) || 0;
+                    const valB = parseFloat(b) || 0;
+                    return valA - valB;
+                },
+                formatterParams: {
+                    decimal: 2,
+                },
+                formatter: function(cell) {
+                    let value = cell.getValue() || 0;
+                    if (typeof value === "string" && value.includes("%")) {
+                        value = value.replace("%", "");
                     }
+                    value = parseFloat(value);
+                    if (isNaN(value)) value = 0;
+                    const element = document.createElement("span");
+                    element.textContent = value.toFixed(1) + "%";
+                    if (value >= 0 && value <= 3) {
+                        element.style.color = "red";
+                    } else if (value > 3 && value <= 6) {
+                        element.style.backgroundColor = "yellow";
+                        element.style.color = "black";
+                        element.style.padding = "2px 4px";
+                        element.style.borderRadius = "4px";
+                    } else if (value > 6 && value <= 9) {
+                        element.style.color = "blue";
+                    } else if (value > 9 && value <= 13) {
+                        element.style.color = "green";
+                    } else if (value > 41) {
+                        element.style.color = "purple";
+                    }
+                    return element;
+                }
+            },
+
+            {
+                title: "Total Views",
+                field: "total_views",
+                hozAlign: "center",
+                headerSort: false,
+                formatter: function(cell) {
+                    const value = cell.getValue() || 0;
+                    return `<span class="text-danger">${Math.round(value)} </span>`;
+                }
+            },
 
                  ,
                   {
@@ -1480,7 +1536,7 @@
                
 
                 {
-                     title: "AVG PFT%<br><span id='avgPftHeader' style='font-size:12px; color:#fff; '></span>",
+                     title: "AVG PFT%<br><span id='avgPftHeader' style='font-size:12px; color:#000; '></span>",
                     field: "avgPftPercent",
                     hozAlign: "right",
                     headerSort: true,
@@ -1663,7 +1719,7 @@
                 },
 
                 {
-                        title: "AVG ROI%<br><span id='avgRoiHeader' style='font-size:12px; color:#fff; '></span>",
+                        title: "AVG ROI%<br><span id='avgRoiHeader' style='font-size:12px; color:#000; '></span>",
                         field: "avgRoi",
                         hozAlign: "right",
                         headerSort: true,
@@ -1762,75 +1818,6 @@
                         visible: true
                     }
                     ,
-
-            {
-                title: "Avg CVR",
-                field: "avgCvr",
-                hozAlign: "center",
-                headerSort: true,
-                sorter: function(a, b) {
-                    const valA = parseFloat(a) || 0;
-                    const valB = parseFloat(b) || 0;
-                    return valA - valB;
-                },
-                formatterParams: {
-                    decimal: 2,
-                
-            
-                },
-                formatter: function(cell) {
-                    let value = cell.getValue() || 0;
-                    // Remove % if present and parse as float
-                    if (typeof value === "string" && value.includes("%")) {
-                        value = value.replace("%", "");
-                    }
-                    value = parseFloat(value);
-                    if (isNaN(value)) value = 0;
-                    const element = document.createElement("span");
-                    // Show value with 2 decimals
-                    element.textContent = value.toFixed(1) + "%";
-                    if (value >= 0 && value <= 3) {
-                        element.style.color = "red"; // red text
-                    } else if (value > 3 && value <= 6) {
-                        element.style.backgroundColor = "yellow"; // yellow background
-                        element.style.color = "black";
-                        element.style.padding = "2px 4px";
-                        element.style.borderRadius = "4px";
-                    } else if (value > 6 && value <= 9) {
-                        element.style.color = "blue"; // blue text
-                    } else if (value > 9 && value <= 13) {
-                        element.style.color = "green"; // green text
-                    } else if (value > 41) {
-                        element.style.color = "purple"; // purple text (41 and above)
-                    }
-                    return element;
-                }
-            },
-            
-
-        {
-                    title: "Total Views",
-                    field: "total_views",
-                    hozAlign: "center",
-                    headerSort: false,
-                    formatter: function(cell) {
-                        const value = cell.getValue() || 0;
-                        return `<span class="text-danger">${Math.round(value)} </span>`;
-                    }
-                    
-                },
-
-                 {
-                    title: "Total Req Views",
-                    field: "total_req_view",
-                    hozAlign: "center",
-                    headerSort: false,
-                    formatter: function(cell) {
-                        const value = cell.getValue() || 0;
-                        return `<span class="text-dark">${Math.round(value)} </span>`;
-                    }
-                    
-                },
 
                 
 
