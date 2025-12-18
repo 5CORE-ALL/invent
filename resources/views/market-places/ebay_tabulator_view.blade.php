@@ -127,6 +127,16 @@
                         <option value="NR">NR</option>
                     </select>
 
+                    <select id="ads-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">AD%</option>
+                        <option value="0-10">Below 10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-100">30-100%</option>
+                        <option value="100plus">100%+</option>
+                    </select>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -1892,7 +1902,23 @@
                         title: "AD%",
                         field: "AD%",
                         hozAlign: "center",
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            // Custom sorter to handle the 100% case
+                            const aData = aRow.getData();
+                            const bData = bRow.getData();
+                            
+                            const aKwSpend = parseFloat(aData['kw_spend_L30'] || 0);
+                            const bKwSpend = parseFloat(bData['kw_spend_L30'] || 0);
+                            
+                            // Calculate effective AD% (100 if kw_spend > 0 and AD% is 0)
+                            let aVal = parseFloat(a || 0);
+                            let bVal = parseFloat(b || 0);
+                            
+                            if (aKwSpend > 0 && aVal === 0) aVal = 100;
+                            if (bKwSpend > 0 && bVal === 0) bVal = 100;
+                            
+                            return aVal - bVal;
+                        },
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -2538,6 +2564,7 @@
                 const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const statusFilter = $('#status-filter').val();
+                const adsFilter = $('#ads-filter').val();
 
                 table.clearFilter(true);
 
@@ -2619,6 +2646,31 @@
                         return true;
                     });
                 }
+
+                if (adsFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const adValue = data['AD%'];
+                        const kwSpend = parseFloat(data['kw_spend_L30'] || 0);
+                        
+                        // If KW spend > 0 but AD% is 0, treat as 100% (same as formatter logic)
+                        let adPercent;
+                        if (kwSpend > 0 && (adValue === null || adValue === undefined || adValue === '' || parseFloat(adValue) === 0)) {
+                            adPercent = 100;
+                        } else if (adValue === null || adValue === undefined || adValue === '' || isNaN(parseFloat(adValue))) {
+                            // Skip items with no valid AD% value and no KW spend
+                            return false;
+                        } else {
+                            adPercent = parseFloat(adValue);
+                        }
+                        
+                        if (adsFilter === '0-10') return adPercent >= 0 && adPercent < 10;
+                        if (adsFilter === '10-20') return adPercent >= 10 && adPercent < 20;
+                        if (adsFilter === '20-30') return adPercent >= 20 && adPercent < 30;
+                        if (adsFilter === '30-100') return adPercent >= 30 && adPercent <= 100;
+                        if (adsFilter === '100plus') return adPercent > 100;
+                        return true;
+                    });
+                }
                 
                 updateCalcValues();
                 updateSummary();
@@ -2628,7 +2680,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
                 applyFilters();
             });
             
