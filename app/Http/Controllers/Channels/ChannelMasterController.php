@@ -354,6 +354,7 @@ class ChannelMasterController extends Controller
         $gRoi = $metrics->roi_percentage ?? 0;
         $tacosPercentage = $metrics->tacos_percentage ?? 0;
         $nPft = $metrics->n_pft ?? 0;
+        $nRoi = $metrics->n_roi ?? 0;
         $kwSpent = $metrics->kw_spent ?? 0;
         $ptSpent = $metrics->pmt_spent ?? 0;
         
@@ -383,6 +384,7 @@ class ChannelMasterController extends Controller
             'G RoiL60'   => round($gRoiL60, 2),
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
             'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
@@ -435,6 +437,7 @@ class ChannelMasterController extends Controller
         $gRoi = $metrics->roi_percentage ?? 0;
         $tacosPercentage = $metrics->tacos_percentage ?? 0;
         $nPft = $metrics->n_pft ?? 0;
+        $nRoi = $metrics->n_roi ?? 0;
         $kwSpent = $metrics->kw_spent ?? 0;
         $pmtSpent = $metrics->pmt_spent ?? 0;
         
@@ -464,6 +467,7 @@ class ChannelMasterController extends Controller
             'G RoiL60'   => round($gRoiL60, 2),
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
             'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
