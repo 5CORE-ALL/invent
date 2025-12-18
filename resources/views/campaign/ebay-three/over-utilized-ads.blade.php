@@ -233,7 +233,6 @@
                                     <select id="inv-filter" class="form-select form-select-md">
                                         <option value="">Select INV</option>
                                         <option value="ALL">ALL</option>
-                                        <option value="INV_0">0 INV</option>
                                         <option value="OTHERS">OTHERS</option>
                                     </select>
 
@@ -1126,13 +1125,11 @@
 
                     // Inventory filter
                     let invFilterVal = $("#inv-filter").val();
-                    if (!invFilterVal) {
-                        if (parseFloat(data.INV) === 0) return false;
-                    } else if (invFilterVal === "INV_0") {
-                        if (parseFloat(data.INV) !== 0) return false;
-                    } else if (invFilterVal === "OTHERS") {
+                    // Show all campaigns by default (no filter)
+                    if (invFilterVal === "OTHERS") {
                         if (parseFloat(data.INV) === 0) return false;
                     }
+                    // ALL option shows everything, so no filtering needed
 
                     // NR filter (use only data object)
                     let nraFilterVal = $("#nra-filter").val();
