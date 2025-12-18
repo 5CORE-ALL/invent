@@ -13,6 +13,23 @@ class ADVMastersDailyData extends Model
     protected $primaryKey = 'adv_masters_daily_data_id';  
     public $timestamps = false;
 
+    protected $fillable = [
+        'date',
+        'channel',
+        'spent',
+        'clicks',
+        'ad_sales',
+        'ad_sold',
+        'missing_ads',
+        'l30_sales',
+        'cpc',
+        'cvr',
+        'acos',
+        'tacos',
+        'gpft',
+        'tpft'
+    ];
+
 
 
 

@@ -244,6 +244,20 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:fetch-temu-metrics')
             ->dailyAt('03:00')
             ->timezone('America/Los_Angeles');
+        
+        // Fetch Temu Ads Data - L30 period
+        $schedule->command('temu:fetch-ads-data --period=L30')
+            ->dailyAt('04:00')
+            ->timezone('America/Los_Angeles')
+            ->name('temu-ads-data-sync-l30')
+            ->withoutOverlapping();
+        
+        // Fetch Temu Ads Data - L60 period
+        $schedule->command('temu:fetch-ads-data --period=L60')
+            ->dailyAt('05:00')
+            ->timezone('America/Los_Angeles')
+            ->name('temu-ads-data-sync-l60')
+            ->withoutOverlapping();
         $schedule->command('app:fetch-ebay-two-metrics')
             ->dailyAt('01:00')
             ->timezone('America/Los_Angeles');
