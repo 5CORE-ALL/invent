@@ -294,12 +294,17 @@
                     headerSort: false,
                     formatter: function (cell) {
                         const value = cell.getValue();
+                        const forwarders = @json($forwarders);
+                        let options = '<option value="">Select</option>';
+                        forwarders.forEach(function(forwarder) {
+                            const selected = value === forwarder.name ? 'selected' : '';
+                            options += `<option value="${forwarder.name}" ${selected}>${forwarder.name}</option>`;
+                        });
                         return `
                             <select class="form-select form-select-sm auto-save"
                                 data-column="cha_china"
                                 style="min-width: 90px; background-color: #00ff00; color: black;">
-                                <option value="Allen" ${value === 'Allen' ? 'selected' : ''}>Allen</option>
-                                <option value="Roman" ${value === 'Roman' ? 'selected' : ''}>Roman</option>
+                                ${options}
                             </select>
                         `;
                     },

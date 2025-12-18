@@ -15,6 +15,16 @@ class ADVMastersData extends Model
     protected $primaryKey = 'adv_masters_data_id';  
     public $timestamps = false;
 
+    protected $fillable = [
+        'channel',
+        'spent',
+        'clicks',
+        'ad_sales',
+        'ad_sold',
+        'missing_ads',
+        'l30_sales'
+    ];
+
 
     protected function getAmazonAdRunningSaveAdvMasterDataProceed($request)
     {
@@ -200,31 +210,45 @@ class ADVMastersData extends Model
         try {
             DB::beginTransaction();
 
-                $updateAmazon = ADVMastersData::where('channel', 'EBAY 3')->first();
-                $updateAmazon->spent = $request->spendL30Total;
-                $updateAmazon->clicks = $request->clicksL30Total;
-                $updateAmazon->ad_sales = $request->salesL30Total;
-                $updateAmazon->ad_sold = $request->soldL30Total;
-                $updateAmazon->save();
+                $updateAmazon = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EBAY 3'],
+                    [
+                        'spent' => $request->spendL30Total,
+                        'clicks' => $request->clicksL30Total,
+                        'ad_sales' => $request->salesL30Total,
+                        'ad_sold' => $request->soldL30Total
+                    ]
+                );
 
-                $updateAmazonkw = ADVMastersData::where('channel', 'EB KW3')->first();
-                $updateAmazonkw->spent = $request->kwSpendL30Total;
-                $updateAmazonkw->clicks = $request->kwClicksL30Total;
-                $updateAmazonkw->ad_sales = $request->kwSalesL30Total;
-                $updateAmazonkw->ad_sold = $request->kwSoldL30Total;
-                $updateAmazonkw->save();
+                $updateAmazonkw = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EB KW3'],
+                    [
+                        'spent' => $request->kwSpendL30Total,
+                        'clicks' => $request->kwClicksL30Total,
+                        'ad_sales' => $request->kwSalesL30Total,
+                        'ad_sold' => $request->kwSoldL30Total
+                    ]
+                );
 
-                $updateAmazonpt = ADVMastersData::where('channel', 'EB PMT3')->first();
-                $updateAmazonpt->spent = $request->pmtSpendL30Total;
-                $updateAmazonpt->clicks = $request->pmtClicksL30Total;
-                $updateAmazonpt->ad_sales = $request->pmtSalesL30Total;
-                $updateAmazonpt->ad_sold = $request->pmtSoldL30Total;
-                $updateAmazonpt->save();
+                $updateAmazonpt = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EB PMT3'],
+                    [
+                        'spent' => $request->pmtSpendL30Total,
+                        'clicks' => $request->pmtClicksL30Total,
+                        'ad_sales' => $request->pmtSalesL30Total,
+                        'ad_sold' => $request->pmtSoldL30Total
+                    ]
+                );
      
             DB::commit();
             return 1; 
         } catch (\Exception $e) {
             DB::rollBack(); 
+            \Log::error('Ebay3 Ad Running Data Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return 0;
         }
     }
@@ -234,24 +258,35 @@ class ADVMastersData extends Model
         try {
             DB::beginTransaction();
 
-                $updateAmazon = ADVMastersData::where('channel', 'EBAY 2')->first();
-                $updateAmazon->spent = $request->spendL30Total;
-                $updateAmazon->clicks = $request->clicksL30Total;
-                $updateAmazon->ad_sales = $request->salesL30Total;
-                $updateAmazon->ad_sold = $request->soldL30Total;
-                $updateAmazon->save();
+                $updateAmazon = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EBAY 2'],
+                    [
+                        'spent' => $request->spendL30Total,
+                        'clicks' => $request->clicksL30Total,
+                        'ad_sales' => $request->salesL30Total,
+                        'ad_sold' => $request->soldL30Total
+                    ]
+                );
 
-                $updateAmazonpmt = ADVMastersData::where('channel', 'EB PMT2')->first();
-                $updateAmazonpmt->spent = $request->pmpSpendL30Total;
-                $updateAmazonpmt->clicks = $request->pmtClicksL30Total;
-                $updateAmazonpmt->ad_sales = $request->pmtSalesL30Total;
-                $updateAmazonpmt->ad_sold = $request->pmpSoldL30Total;
-                $updateAmazonpmt->save();
+                $updateAmazonpmt = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EB PMT2'],
+                    [
+                        'spent' => $request->pmpSpendL30Total,
+                        'clicks' => $request->pmtClicksL30Total,
+                        'ad_sales' => $request->pmtSalesL30Total,
+                        'ad_sold' => $request->pmpSoldL30Total
+                    ]
+                );
     
             DB::commit();
             return 1; 
         } catch (\Exception $e) {
             DB::rollBack(); 
+            \Log::error('Ebay2 Ad Running Data Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return 0;
         }
     }
@@ -261,14 +296,20 @@ class ADVMastersData extends Model
         try {
             DB::beginTransaction();
 
-                $updateAmazon = ADVMastersData::where('channel', 'EBAY 2')->first();
-                $updateAmazon->l30_sales = $request->totalSales;
-                $updateAmazon->save();
+                $updateAmazon = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EBAY 2'],
+                    ['l30_sales' => $request->totalSales]
+                );
 
             DB::commit();
             return 1; 
         } catch (\Exception $e) {
             DB::rollBack(); 
+            \Log::error('Ebay2 Total Sale Data Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return 0;
         }
     }
@@ -278,14 +319,20 @@ class ADVMastersData extends Model
         try {
             DB::beginTransaction();
 
-                $updateAmazon = ADVMastersData::where('channel', 'EBAY 3')->first();
-                $updateAmazon->l30_sales = $request->salesTotal;
-                $updateAmazon->save();
+                $updateAmazon = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EBAY 3'],
+                    ['l30_sales' => $request->salesTotal]
+                );
 
             DB::commit();
             return 1; 
         } catch (\Exception $e) {
             DB::rollBack(); 
+            \Log::error('Ebay3 Total Sale Data Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return 0;
         }
     }
@@ -295,18 +342,25 @@ class ADVMastersData extends Model
         try {
             DB::beginTransaction();
 
-                $updateEbay2 = ADVMastersData::where('channel', 'EBAY 2')->first();
-                $updateEbay2->missing_ads = $request->ptMissing;
-                $updateEbay2->save();
+                $updateEbay2 = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EBAY 2'],
+                    ['missing_ads' => $request->ptMissing]
+                );
 
-                $updateEbay2 = ADVMastersData::where('channel', 'EB PMT2')->first();
-                $updateEbay2->missing_ads = $request->ptMissing;
-                $updateEbay2->save();
+                $updateEbay2Pmt = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EB PMT2'],
+                    ['missing_ads' => $request->ptMissing]
+                );
 
             DB::commit();
             return 1; 
         } catch (\Exception $e) {
             DB::rollBack(); 
+            \Log::error('Ebay2 Missing Data Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return 0;
         }
     }
@@ -316,22 +370,30 @@ class ADVMastersData extends Model
         try {
             DB::beginTransaction();
 
-                $updateEbay2 = ADVMastersData::where('channel', 'EBAY 3')->first();
-                $updateEbay2->missing_ads = $request->totalMissingAds;
-                $updateEbay2->save();
+                $updateEbay3 = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EBAY 3'],
+                    ['missing_ads' => $request->totalMissingAds]
+                );
 
-                $updateEbay2 = ADVMastersData::where('channel', 'EB KW3')->first();
-                $updateEbay2->missing_ads = $request->kwMissing;
-                $updateEbay2->save();
+                $updateEbay3Kw = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EB KW3'],
+                    ['missing_ads' => $request->kwMissing]
+                );
 
-                $updateEbay2 = ADVMastersData::where('channel', 'EB PMT3')->first();
-                $updateEbay2->missing_ads = $request->ptMissing;
-                $updateEbay2->save();
+                $updateEbay3Pmt = ADVMastersData::updateOrCreate(
+                    ['channel' => 'EB PMT3'],
+                    ['missing_ads' => $request->ptMissing]
+                );
 
             DB::commit();
             return 1; 
         } catch (\Exception $e) {
             DB::rollBack(); 
+            \Log::error('Ebay3 Missing Data Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return 0;
         }
     }
@@ -356,10 +418,12 @@ class ADVMastersData extends Model
         }
     }
 
-    protected function getChannelAdvMasterAmazonCronDataProceed($request)
+    public static function getChannelAdvMasterAmazonCronDataProceed($request)
     {
         try {
-        DB::beginTransaction();
+            DB::beginTransaction();
+            
+            \Log::info('Amazon Cron Data: Starting data fetch');
             
             $productMasters = ProductMaster::orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
@@ -374,28 +438,120 @@ class ADVMastersData extends Model
 
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
-            $amazonKwL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            // Get KW campaigns with MAX(spend) per campaign (same logic as amazonKwAdsView)
+            // Directly sum all KW campaigns without SKU filtering (exactly like amazonKwAdsView)
+            $amazonKwL30Raw = DB::table('amazon_sp_campaign_reports')
+                ->selectRaw('
+                    campaignName,
+                    MAX(spend) as max_spend,
+                    SUM(clicks) as clicks,
+                    SUM(purchases1d) as orders,
+                    SUM(sales1d) as sales,
+                    SUM(unitsSoldSameSku30d) as unitsSoldSameSku30d,
+                    SUM(sales30d) as sales30d
+                ')
                 ->where('report_date_range', 'L30')
-                ->where(function ($q) use ($skus) {
-                    foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
-                })
-                ->where('campaignName', 'NOT LIKE', '%PT')
-                ->where('campaignName', 'NOT LIKE', '%PT.')
+                ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'") // Exclude PT and FBA campaigns
+                ->groupBy('campaignName')
                 ->get();
+            
+            // Calculate total KW spend directly - use sales30d and unitsSoldSameSku30d for totals (as it matches actual page value)
+            \Log::info('Amazon Cron Data: KW query completed, count: ' . $amazonKwL30Raw->count());
+            $total_kw_spend_l30_direct = $amazonKwL30Raw->sum('max_spend');
+            $total_kw_clicks_l30_direct = $amazonKwL30Raw->sum('clicks');
+            $total_kw_sold_l30_direct = $amazonKwL30Raw->sum('unitsSoldSameSku30d'); // unitsSoldSameSku30d = ad sold (for totals, matches actual page)
+            $total_kw_sales_l30_direct = $amazonKwL30Raw->sum('sales30d'); // sales30d = ad sales (for totals, matches actual page)
+            
+            // Convert to collection with proper structure for SKU-based matching (for row-level calculations)
+            // Use unitsSoldSameSku30d and sales30d for row-level matching (as used in AmazonAdRunningController)
+            $amazonKwL30 = collect($amazonKwL30Raw)->map(function($item) {
+                $obj = new \stdClass();
+                $obj->campaignName = $item->campaignName;
+                $obj->spend = $item->max_spend;
+                $obj->clicks = $item->clicks;
+                $obj->unitsSoldSameSku30d = $item->unitsSoldSameSku30d; // For row-level calculations
+                $obj->sales30d = $item->sales30d; // For row-level calculations
+                return $obj;
+            });
 
-            $amazonPtL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            // Get PT campaigns with MAX(spend) per campaign (same logic as amazonPtAdsView)
+            // Directly sum all PT campaigns without SKU filtering (exactly like amazonPtAdsView)
+            $amazonPtL30Raw = DB::table('amazon_sp_campaign_reports')
+                ->selectRaw('
+                    campaignName,
+                    MAX(spend) as max_spend,
+                    SUM(clicks) as clicks,
+                    SUM(purchases1d) as orders,
+                    SUM(sales1d) as sales,
+                    SUM(unitsSoldSameSku30d) as unitsSoldSameSku30d,
+                    SUM(sales30d) as sales30d,
+                    MAX(campaignStatus) as campaignStatus
+                ')
                 ->where('report_date_range', 'L30')
-                ->where(function ($q) use ($skus) {
-                    foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                ->where(function($query) {
+                    $query->whereRaw("campaignName LIKE '%PT'")
+                        ->orWhereRaw("campaignName LIKE '%PT.'");
                 })
+                ->whereRaw("campaignName NOT LIKE '%FBA PT%'") // Exclude FBA PT campaigns
+                ->whereRaw("campaignName NOT LIKE '%FBA PT.%'") // Exclude FBA PT. campaigns
+                ->groupBy('campaignName')
                 ->get();
+            
+            // Calculate total PT spend directly - use sales30d and unitsSoldSameSku30d for totals (as it matches actual page value)
+            \Log::info('Amazon Cron Data: PT query completed, count: ' . $amazonPtL30Raw->count());
+            $total_pt_spend_l30_direct = $amazonPtL30Raw->sum('max_spend');
+            $total_pt_clicks_l30_direct = $amazonPtL30Raw->sum('clicks');
+            $total_pt_sold_l30_direct = $amazonPtL30Raw->sum('unitsSoldSameSku30d'); // unitsSoldSameSku30d = ad sold (for totals, matches actual page)
+            $total_pt_sales_l30_direct = $amazonPtL30Raw->sum('sales30d'); // sales30d = ad sales (for totals, matches actual page)
+            
+            // Convert to collection with proper structure for SKU-based matching (for row-level calculations)
+            // Use unitsSoldSameSku30d and sales30d for row-level matching (as used in AmazonAdRunningController)
+            $amazonPtL30 = collect($amazonPtL30Raw)->map(function($item) {
+                $obj = new \stdClass();
+                $obj->campaignName = $item->campaignName;
+                $obj->spend = $item->max_spend;
+                $obj->clicks = $item->clicks;
+                $obj->unitsSoldSameSku30d = $item->unitsSoldSameSku30d; // For row-level calculations
+                $obj->sales30d = $item->sales30d; // For row-level calculations
+                $obj->campaignStatus = $item->campaignStatus;
+                return $obj;
+            });
 
-            $amazonHlL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            // Get HL campaigns with MAX(cost) per campaign (same logic as amazonHlAdsView)
+            // Directly sum all HL campaigns without SKU filtering (exactly like amazonHlAdsView)
+            $amazonHlL30Raw = DB::table('amazon_sb_campaign_reports')
+                ->selectRaw('
+                    campaignName,
+                    MAX(cost) as max_cost,
+                    SUM(clicks) as clicks,
+                    SUM(purchases) as orders,
+                    SUM(sales) as sales,
+                    SUM(unitsSold) as unitsSold,
+                    MAX(campaignStatus) as campaignStatus
+                ')
                 ->where('report_date_range', 'L30')
-                ->where(function ($q) use ($skus) {
-                    foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
-                })
+                ->groupBy('campaignName')
                 ->get();
+            
+            // Calculate total HL spend directly - use sales and unitsSold for totals (as it matches actual page value)
+            \Log::info('Amazon Cron Data: HL query completed, count: ' . $amazonHlL30Raw->count());
+            $total_hl_spend_l30_direct = $amazonHlL30Raw->sum('max_cost');
+            $total_hl_clicks_l30_direct = $amazonHlL30Raw->sum('clicks');
+            $total_hl_sold_l30_direct = $amazonHlL30Raw->sum('unitsSold'); // unitsSold = ad sold (for totals, matches actual page)
+            $total_hl_sales_l30_direct = $amazonHlL30Raw->sum('sales'); // sales = ad sales (for totals)
+            
+            // Convert to collection with proper structure for SKU-based matching (for row-level calculations)
+            // Use unitsSold and sales for row-level matching (as used in AmazonAdRunningController)
+            $amazonHlL30 = collect($amazonHlL30Raw)->map(function($item) {
+                $obj = new \stdClass();
+                $obj->campaignName = $item->campaignName;
+                $obj->cost = $item->max_cost;
+                $obj->clicks = $item->clicks;
+                $obj->unitsSold = $item->unitsSold; // For row-level calculations
+                $obj->sales = $item->sales; // For row-level calculations
+                $obj->campaignStatus = $item->campaignStatus;
+                return $obj;
+            });
 
             $amazonHlL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
                 ->where('report_date_range', 'L7')
@@ -444,7 +600,7 @@ class ADVMastersData extends Model
             $total_spend_l30 = 0;  
             $total_kw_spend_l30 = 0;    
             $total_pt_spend_l30 = 0;
-            $total_h1_spend_l30 = 0;
+            $total_hl_spend_l30 = 0;
             $total_clicks_l30 = 0;
             $total_kw_clicks_l30 = 0;
             $total_pt_clicks_l30 = 0;
@@ -475,6 +631,11 @@ class ADVMastersData extends Model
                     $cleanName = strtoupper(trim($item->campaignName));
                     return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
                         && strtoupper($item->campaignStatus) === 'ENABLED';
+                });
+
+                $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($sku) {
+                    $cleanName = strtoupper(trim($item->campaignName));
+                    return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
                 });
 
                 $row = [];
@@ -519,12 +680,9 @@ class ADVMastersData extends Model
                     $row['hl_sold_L30']  = 0;
                 }
             
-                $childCount = $parentSkuCounts[$parent] ?? 0;
-                $childCount = max($childCount, 1);
-
-                $hl_share_clicks_L30 = ($matchedCampaignHlL30->impressions ?? 0) / $childCount;
+                // Calculate total row metrics (KW + PT + HL)
                 $row['SPEND_L30'] = $row['pt_spend_L30'] + $row['kw_spend_L30'] + $row['hl_spend_L30'];
-                $row['CLICKS_L30'] = ($row['pt_clicks_L30'] + $row['kw_clicks_L30'] + $hl_share_clicks_L30);
+                $row['CLICKS_L30'] = $row['pt_clicks_L30'] + $row['kw_clicks_L30'] + $row['hl_clicks_L30'];
                 $row['SALES_L30'] = $row['pt_sales_L30'] + $row['kw_sales_L30'] + $row['hl_sales_L30'];
                 $row['SOLD_L30'] = $row['pt_sold_L30'] + $row['kw_sold_L30'] + $row['hl_sold_L30'];
 
@@ -549,7 +707,7 @@ class ADVMastersData extends Model
                 $total_spend_l30 = $total_spend_l30 + (is_numeric($row['SPEND_L30']) ? (float)$row['SPEND_L30'] : 0);
                 $total_kw_spend_l30 = $total_kw_spend_l30 + (is_numeric($row['kw_spend_L30']) ? (float)$row['kw_spend_L30'] : 0);
                 $total_pt_spend_l30 = $total_pt_spend_l30 + (is_numeric($row['pt_spend_L30']) ? (float)$row['pt_spend_L30'] : 0);
-                $total_h1_spend_l30 = $total_h1_spend_l30 + (is_numeric($row['hl_spend_L30']) ? (float)$row['hl_spend_L30'] : 0);
+                $total_hl_spend_l30 = $total_hl_spend_l30 + (is_numeric($row['hl_spend_L30']) ? (float)$row['hl_spend_L30'] : 0);
                 $total_clicks_l30 = $total_clicks_l30 + (is_numeric($row['CLICKS_L30']) ? (float)$row['CLICKS_L30'] : 0);
                 $total_kw_clicks_l30 = $total_kw_clicks_l30 + (is_numeric($row['kw_clicks_L30']) ? (float)$row['kw_clicks_L30'] : 0);
                 $total_pt_clicks_l30 = $total_pt_clicks_l30 + (is_numeric($row['pt_clicks_L30']) ? (float)$row['pt_clicks_L30'] : 0);
@@ -565,22 +723,30 @@ class ADVMastersData extends Model
          
             }
         
-            $total_spend_l30 = round($total_spend_l30);
-            $total_kw_spend_l30 = round($total_kw_spend_l30);
-            $total_pt_spend_l30 = round($total_pt_spend_l30);
-            $total_h1_spend_l30 = round($total_h1_spend_l30);
-            $total_clicks_l30 = round($total_clicks_l30);
-            $total_kw_clicks_l30 = round($total_kw_clicks_l30);
-            $total_pt_clicks_l30 = round($total_pt_clicks_l30);
-            $total_hl_clicks_l30 = round($total_hl_clicks_l30);
-            $total_sales_l30 = round($total_sales_l30);
-            $total_kw_sales_l30 = round($total_kw_sales_l30);
-            $total_pt_sales_l30 = round($total_pt_sales_l30);
-            $total_hl_sales_l30 = round($total_hl_sales_l30);
-            $total_sold_l30 = round($total_sold_l30);
-            $total_kw_sold_l30 = round($total_kw_sold_l30);
-            $total_pt_sold_l30 = round($total_pt_sold_l30);
-            $total_hl_sold_l30 = round($total_hl_sold_l30);        
+            // Use direct calculation for all metrics (same as amazonKwAdsView, amazonPtAdsView, amazonHlAdsView)
+            // Total Amazon = KW + PT + HL (direct sum, not SKU-based)
+            $total_kw_spend_l30 = round($total_kw_spend_l30_direct);
+            $total_pt_spend_l30 = round($total_pt_spend_l30_direct);
+            $total_hl_spend_l30 = round($total_hl_spend_l30_direct);
+            $total_spend_l30 = round($total_kw_spend_l30_direct + $total_pt_spend_l30_direct + $total_hl_spend_l30_direct);
+            
+            // Total clicks = KW + PT + HL (direct sum)
+            $total_kw_clicks_l30 = round($total_kw_clicks_l30_direct);
+            $total_pt_clicks_l30 = round($total_pt_clicks_l30_direct);
+            $total_hl_clicks_l30 = round($total_hl_clicks_l30_direct);
+            $total_clicks_l30 = round($total_kw_clicks_l30_direct + $total_pt_clicks_l30_direct + $total_hl_clicks_l30_direct);
+            
+            // Total ad sales = KW + PT + HL (direct sum)
+            $total_kw_sales_l30 = round($total_kw_sales_l30_direct);
+            $total_pt_sales_l30 = round($total_pt_sales_l30_direct);
+            $total_hl_sales_l30 = round($total_hl_sales_l30_direct);
+            $total_sales_l30 = round($total_kw_sales_l30_direct + $total_pt_sales_l30_direct + $total_hl_sales_l30_direct);
+            
+            // Total ad sold = KW + PT + HL (direct sum)
+            $total_kw_sold_l30 = round($total_kw_sold_l30_direct);
+            $total_pt_sold_l30 = round($total_pt_sold_l30_direct);
+            $total_hl_sold_l30 = round($total_hl_sold_l30_direct);
+            $total_sold_l30 = round($total_kw_sold_l30_direct + $total_pt_sold_l30_direct + $total_hl_sold_l30_direct);        
 
             $todayDate = date('Y-m-d');
 
@@ -598,38 +764,56 @@ class ADVMastersData extends Model
                 $addUpdateAmazon->save();
 
 
-            $updateAmazon = ADVMastersData::where('channel', 'AMAZON')->first();
-            $updateAmazon->spent = $total_spend_l30;
-            $updateAmazon->clicks = $total_clicks_l30;
-            $updateAmazon->ad_sales = $total_sales_l30;
-            $updateAmazon->ad_sold = $total_sold_l30;
-            $updateAmazon->save();
+            $updateAmazon = ADVMastersData::updateOrCreate(
+                ['channel' => 'AMAZON'],
+                [
+                    'spent' => $total_spend_l30,
+                    'clicks' => $total_clicks_l30,
+                    'ad_sales' => $total_sales_l30,
+                    'ad_sold' => $total_sold_l30
+                ]
+            );
 
-            $updateAmazonKw = ADVMastersData::where('channel', 'AMZ KW')->first();
-            $updateAmazonKw->spent = $total_kw_spend_l30;
-            $updateAmazonKw->clicks = $total_kw_clicks_l30;
-            $updateAmazonKw->ad_sales = $total_kw_sales_l30;
-            $updateAmazonKw->ad_sold = $total_kw_sold_l30;
-            $updateAmazonKw->save();
+            $updateAmazonKw = ADVMastersData::updateOrCreate(
+                ['channel' => 'AMZ KW'],
+                [
+                    'spent' => $total_kw_spend_l30,
+                    'clicks' => $total_kw_clicks_l30,
+                    'ad_sales' => $total_kw_sales_l30,
+                    'ad_sold' => $total_kw_sold_l30
+                ]
+            );
 
-            $updateAmazonPt = ADVMastersData::where('channel', 'AMZ PT')->first();
-            $updateAmazonPt->spent = $total_pt_spend_l30;
-            $updateAmazonPt->clicks = $total_pt_clicks_l30;
-            $updateAmazonPt->ad_sales = $total_pt_sales_l30;
-            $updateAmazonPt->ad_sold = $total_pt_sold_l30;
-            $updateAmazonPt->save();
+            $updateAmazonPt = ADVMastersData::updateOrCreate(
+                ['channel' => 'AMZ PT'],
+                [
+                    'spent' => $total_pt_spend_l30,
+                    'clicks' => $total_pt_clicks_l30,
+                    'ad_sales' => $total_pt_sales_l30,
+                    'ad_sold' => $total_pt_sold_l30
+                ]
+            );
 
-            $updateAmazonHl = ADVMastersData::where('channel', 'AMZ HL')->first();
-            $updateAmazonHl->spent = $total_h1_spend_l30;
-            $updateAmazonHl->clicks = $total_hl_clicks_l30;
-            $updateAmazonHl->ad_sales = $total_hl_sales_l30;
-            $updateAmazonHl->ad_sold = $total_hl_sold_l30;
-            $updateAmazonHl->save();
+            $updateAmazonHl = ADVMastersData::updateOrCreate(
+                ['channel' => 'AMZ HL'],
+                [
+                    'spent' => $total_hl_spend_l30,
+                    'clicks' => $total_hl_clicks_l30,
+                    'ad_sales' => $total_hl_sales_l30,
+                    'ad_sold' => $total_hl_sold_l30
+                ]
+            );
             
+            \Log::info('Amazon Cron Data: All data saved successfully');
             DB::commit();
             return 1; 
         } catch (\Exception $e) {
             DB::rollBack(); 
+            \Log::error('Amazon Cron Data Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return 0;
         }
     }
@@ -780,17 +964,20 @@ class ADVMastersData extends Model
             $addUpdateAmazon->missing_ads = $totalMissingAds;
             $addUpdateAmazon->save();
 
-            $updateAmazon = ADVMastersData::where('channel', 'AMAZON')->first();
-            $updateAmazon->missing_ads = $totalMissingAds;
-            $updateAmazon->save();
+            $updateAmazon = ADVMastersData::updateOrCreate(
+                ['channel' => 'AMAZON'],
+                ['missing_ads' => $totalMissingAds]
+            );
 
-            $updateAmazonKw = ADVMastersData::where('channel', 'AMZ KW')->first();
-            $updateAmazonKw->missing_ads = $kwMissing;
-            $updateAmazonKw->save();
+            $updateAmazonKw = ADVMastersData::updateOrCreate(
+                ['channel' => 'AMZ KW'],
+                ['missing_ads' => $kwMissing]
+            );
 
-            $updateAmazonPt = ADVMastersData::where('channel', 'AMZ PT')->first();
-            $updateAmazonPt->missing_ads = $ptMissing;
-            $updateAmazonPt->save();
+            $updateAmazonPt = ADVMastersData::updateOrCreate(
+                ['channel' => 'AMZ PT'],
+                ['missing_ads' => $ptMissing]
+            );
 
          DB::commit();
             return 1; 
@@ -845,9 +1032,10 @@ class ADVMastersData extends Model
             $addUpdateAmazon->l30_sales = $total_sales;
             $addUpdateAmazon->save();
 
-            $updateAmazon = ADVMastersData::where('channel', 'AMAZON')->first();
-            $updateAmazon->l30_sales = $total_sales;
-            $updateAmazon->save();
+            $updateAmazon = ADVMastersData::updateOrCreate(
+                ['channel' => 'AMAZON'],
+                ['l30_sales' => $total_sales]
+            );
 
             DB::commit();
             return 1; 
@@ -857,7 +1045,7 @@ class ADVMastersData extends Model
         }
     }
 
-    protected function getChannelAdvMasterEbayCronDataProceed($request)
+    public static function getChannelAdvMasterEbayCronDataProceed($request)
     {
         try {
         DB::beginTransaction();
@@ -888,10 +1076,17 @@ class ADVMastersData extends Model
                     }
                 })->get();
 
-            $itemIds = $ebayMetricData->pluck('item_id')->toArray();
-            $ebayGeneralReportsL30 = EbayGeneralReport::where('report_range', 'L30')
-                ->whereIn('listing_id', $itemIds)
-                ->get();
+            $itemIds = $ebayMetricData->pluck('item_id')->filter()->toArray();
+            $ebayGeneralReportsL30 = !empty($itemIds) 
+                ? EbayGeneralReport::where('report_range', 'L30')
+                    ->whereIn('listing_id', $itemIds)
+                    ->get()
+                : collect();
+            
+            \Log::info('Ebay Cron: PMT Data Query', [
+                'item_ids_count' => count($itemIds),
+                'general_reports_count' => $ebayGeneralReportsL30->count()
+            ]);
 
             $total_kw_spend_l30 = 0;
             $total_kw_clicks_l30 = 0;
@@ -953,21 +1148,24 @@ class ADVMastersData extends Model
                 $sku = strtolower(trim($row['sku'] ?? ''));
                 if (strpos($sku, 'parent ') == false)
                 {
+                    // Count KW data only if KW campaign exists
                     if($row['campaignName'] !== '')
                     {
                         $total_spend_l30 = $total_spend_l30 +  $row['SPEND_L30'];
                         $total_click_l30 = $total_click_l30 + $row['CLICKS_L30']; 
                         $total_sales_l30 = $total_sales_l30 + $row['SALES_L30']; 
                         $total_sold_l30 = $total_sold_l30 + $row['SOLD_L30'];
-                        $total_pmt_spend_l30 = $total_pmt_spend_l30 + $row['pmt_spend_L30']; 
-                        $total_pmt_clicks_l30 = $total_pmt_clicks_l30 + $row['pmt_clicks_L30']; 
-                        $total_pmt_sales_l30 = $total_pmt_sales_l30 + $row['pmt_sales_L30'];
-                        $total_pmt_sold_l30 = $total_pmt_sold_l30 + $row['pmt_sold_L30'];
                         $total_kw_spend_l30 = $total_kw_spend_l30 + $row['kw_spend_L30']; 
                         $total_kw_clicks_l30 = $total_kw_clicks_l30 + $row['kw_clicks_L30'];
                         $total_kw_sales_l30 = $total_kw_sales_l30 + $row['kw_sales_L30']; 
                         $total_kw_sold_l30 = $total_kw_sold_l30 + $row['kw_sold_L30']; 
                     }
+                    
+                    // Count PMT data separately (even if KW campaign doesn't exist)
+                    $total_pmt_spend_l30 = $total_pmt_spend_l30 + $row['pmt_spend_L30']; 
+                    $total_pmt_clicks_l30 = $total_pmt_clicks_l30 + $row['pmt_clicks_L30']; 
+                    $total_pmt_sales_l30 = $total_pmt_sales_l30 + $row['pmt_sales_L30'];
+                    $total_pmt_sold_l30 = $total_pmt_sold_l30 + $row['pmt_sold_L30'];
                 }
             }
 
@@ -983,7 +1181,14 @@ class ADVMastersData extends Model
             $total_kw_spend_l30 = round($total_kw_spend_l30); 
             $total_kw_clicks_l30 = round($total_kw_clicks_l30);
             $total_kw_sales_l30 = round($total_kw_sales_l30);
-            $total_kw_sold_l30 = round($total_kw_sold_l30); 
+            $total_kw_sold_l30 = round($total_kw_sold_l30);
+            
+            \Log::info('Ebay Cron: PMT Totals', [
+                'pmt_spend' => $total_pmt_spend_l30,
+                'pmt_clicks' => $total_pmt_clicks_l30,
+                'pmt_sales' => $total_pmt_sales_l30,
+                'pmt_sold' => $total_pmt_sold_l30
+            ]); 
             
             $addUpdateAmazon = ADVMastersDailyData::where([['date', '=', $todayDate], ['channel', '=', 'EBAY']])->first();
             if(isset($addUpdateAmazon) && !empty($addUpdateAmazon)){
@@ -999,36 +1204,50 @@ class ADVMastersData extends Model
             $addUpdateAmazon->save();
         
 
-            $updateEbay = ADVMastersData::where('channel', 'EBAY')->first();
-            $updateEbay->spent = $total_spend_l30;
-            $updateEbay->clicks = $total_click_l30;
-            $updateEbay->ad_sales = $total_sales_l30;
-            $updateEbay->ad_sold = $total_sold_l30;
-            $updateEbay->save();
+            $updateEbay = ADVMastersData::updateOrCreate(
+                ['channel' => 'EBAY'],
+                [
+                    'spent' => $total_spend_l30,
+                    'clicks' => $total_click_l30,
+                    'ad_sales' => $total_sales_l30,
+                    'ad_sold' => $total_sold_l30
+                ]
+            );
 
-            $updateEbayKw = ADVMastersData::where('channel', 'EB KW')->first();
-            $updateEbayKw->spent = $total_kw_spend_l30;
-            $updateEbayKw->clicks = $total_kw_clicks_l30;
-            $updateEbayKw->ad_sales = $total_kw_sales_l30;
-            $updateEbayKw->ad_sold = $total_kw_sold_l30;
-            $updateEbayKw->save();
+            $updateEbayKw = ADVMastersData::updateOrCreate(
+                ['channel' => 'EB KW'],
+                [
+                    'spent' => $total_kw_spend_l30,
+                    'clicks' => $total_kw_clicks_l30,
+                    'ad_sales' => $total_kw_sales_l30,
+                    'ad_sold' => $total_kw_sold_l30
+                ]
+            );
 
-            $updateEbayPmt = ADVMastersData::where('channel', 'EB PMT')->first();
-            $updateEbayPmt->spent = $total_pmt_spend_l30;
-            $updateEbayPmt->clicks = $total_pmt_clicks_l30;
-            $updateEbayPmt->ad_sales = $total_pmt_sales_l30;
-            $updateEbayPmt->ad_sold = $total_pmt_sold_l30;
-            $updateEbayPmt->save();
+            $updateEbayPmt = ADVMastersData::updateOrCreate(
+                ['channel' => 'EB PMT'],
+                [
+                    'spent' => $total_pmt_spend_l30,
+                    'clicks' => $total_pmt_clicks_l30,
+                    'ad_sales' => $total_pmt_sales_l30,
+                    'ad_sold' => $total_pmt_sold_l30
+                ]
+            );
 
             DB::commit();
             return 1; 
         } catch (\Exception $e) {
             DB::rollBack(); 
+            \Log::error('Ebay Cron Data Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return 0;
         }
     }
 
-    protected function getChannelAdvMasterEbayCronMissingDataProceed($request)
+    public static function getChannelAdvMasterEbayCronMissingDataProceed($request)
     {
         try {
         DB::beginTransaction();
@@ -1151,27 +1370,35 @@ class ADVMastersData extends Model
             $addUpdateAmazon->save();
         
 
-            $updateEbay = ADVMastersData::where('channel', 'EBAY')->first();
-            $updateEbay->missing_ads = $totalMissingAds;
-            $updateEbay->save();
+            $updateEbay = ADVMastersData::updateOrCreate(
+                ['channel' => 'EBAY'],
+                ['missing_ads' => $totalMissingAds]
+            );
 
-            $updateEbayKw = ADVMastersData::where('channel', 'EB KW')->first();
-            $updateEbayKw->missing_ads = $kwMissing;
-            $updateEbayKw->save();
+            $updateEbayKw = ADVMastersData::updateOrCreate(
+                ['channel' => 'EB KW'],
+                ['missing_ads' => $kwMissing]
+            );
 
-            $updateEbayPmt = ADVMastersData::where('channel', 'EB PMT')->first();
-            $updateEbayPmt->missing_ads = $ptMissing;
-            $updateEbayPmt->save();
+            $updateEbayPmt = ADVMastersData::updateOrCreate(
+                ['channel' => 'EB PMT'],
+                ['missing_ads' => $ptMissing]
+            );
         
             DB::commit();
             return 1; 
         } catch (\Exception $e) {
             DB::rollBack(); 
+            \Log::error('Ebay Cron Missing Data Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return 0;
         }
     }
 
-    protected function getChannelAdvMasterEbayCronTotalSaleDataProceed($request)
+    public static function getChannelAdvMasterEbayCronTotalSaleDataProceed($request)
     {
         try {
         DB::beginTransaction();
@@ -1224,14 +1451,20 @@ class ADVMastersData extends Model
             $addUpdateAmazon->save();
         
 
-            $updateEbay = ADVMastersData::where('channel', 'EBAY')->first();
-            $updateEbay->l30_sales = $total_ebay_sales;
-            $updateEbay->save();
+            $updateEbay = ADVMastersData::updateOrCreate(
+                ['channel' => 'EBAY'],
+                ['l30_sales' => $total_ebay_sales]
+            );
             
             DB::commit();
             return 1; 
         } catch (\Exception $e) {
             DB::rollBack(); 
+            \Log::error('Ebay Cron Total Sale Data Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return 0;
         }
     }

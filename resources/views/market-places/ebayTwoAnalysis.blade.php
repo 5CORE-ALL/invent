@@ -1608,6 +1608,7 @@
                             <span class="badge bg-primary fs-5 p-2" id="total-sales-summary-badge" style="color: black; font-weight: bold;">Total Sales: $0.00</span>
                             <span class="badge bg-success fs-5 p-2" id="total-pft-summary-badge" style="color: black; font-weight: bold;">Total PFT: 0%</span>
                             <span class="badge bg-info fs-5 p-2" id="total-grpft-summary-badge" style="color: black; font-weight: bold;">Total GRPFT: 0%</span>
+                            <span class="badge bg-secondary fs-5 p-2" id="total-roi-summary-badge" style="color: white; font-weight: bold;">Total ROI: 0%</span>
                             <span class="badge bg-warning fs-5 p-2" id="total-ad-spend-summary-badge" style="color: black; font-weight: bold;">Total AD Spend: $0.00</span>
                             <span class="badge bg-danger fs-5 p-2" id="total-el30-summary-badge" style="color: black; font-weight: bold;">Total EL 30: 0</span>
                             <span class="badge bg-danger fs-5 p-2" id="zero-sold-count-summary" style="color: white; font-weight: bold;">0 SOLD: 0</span>
@@ -5632,14 +5633,6 @@
                         if (item.NR !== 'NRA') {
                             metrics.viewsTotal += views;
                         }
-                        // Only count ROI when we have valid price and LP (similar to PFT/GRPFT)
-                        const itemPriceForRoi = parseFloat(item['eBay Price']) || 0;
-                        const itemLpForRoi = parseFloat(item.LP || item.LP_productmaster) || 0;
-                        const roiValue = parseFloat(item.Roi) || 0;
-                        if (itemPriceForRoi > 0 && itemLpForRoi > 0 && !isNaN(roiValue) && isFinite(roiValue)) {
-                            metrics.roiSum += roiValue;
-                            metrics.roiCount++;
-                        }
                         const tacosValue = parseFloat(item.Tacos30) || 0;
                         if (!isNaN(tacosValue) && isFinite(tacosValue)) {
                             metrics.tacosTotal += tacosValue;
@@ -5690,6 +5683,13 @@
                             if (!isNaN(itemTprft) && isFinite(itemTprft)) {
                                 metrics.tprftTotal += itemTprft * 100;
                                 metrics.tprftCount++;
+                            }
+                            
+                            // ROI calculation (same pattern as GRPFT/PFT/TPRFT)
+                            const roiValue = parseFloat(item.Roi);
+                            if (!isNaN(roiValue) && isFinite(roiValue)) {
+                                metrics.roiSum += roiValue;
+                                metrics.roiCount++;
                             }
                         }
                         
@@ -5778,7 +5778,7 @@
                     $('#pft-total').text(pftAvg.toFixed(0) + '%');
                     $('#tprft-total').text(tprftAvg.toFixed(0) + '%');
                     const roiAvg = metrics.roiCount > 0 ? (metrics.roiSum / metrics.roiCount) : 0;
-                    $('#roi-total').text(Math.round(roiAvg) + '%');
+                    $('#roi-total').text(roiAvg.toFixed(0) + '%');
                     const tacosAvg = metrics.tacosCount > 0 ? (metrics.tacosTotal / metrics.tacosCount) : 0;
                     $('#tacos-total').text(Math.round(tacosAvg * 100) + '%');
                     $('#cvr-total').text(Math.round((metrics.scvrSum / divisor) * 100) + '%');
@@ -5787,6 +5787,7 @@
                     $('#total-pft-summary-badge').text('Total PFT: ' + pftAvg.toFixed(0) + '%');
                     $('#total-sales-summary-badge').text('Total Sales: $' + metrics.totalSalesTotal.toFixed(2));
                     $('#total-grpft-summary-badge').text('Total GRPFT: ' + grpftAvg.toFixed(0) + '%');
+                    $('#total-roi-summary-badge').text('Total ROI: ' + roiAvg.toFixed(0) + '%');
                     $('#total-ad-spend-summary-badge').text('Total AD Spend: $' + metrics.totalAdSpend.toFixed(2));
                     $('#total-el30-summary-badge').text('Total EL 30: ' + metrics.el30Total.toLocaleString());
 
@@ -5817,6 +5818,7 @@
                 $('#total-pft-summary-badge').text('Total PFT: 0%');
                 $('#total-sales-summary-badge').text('Total Sales: $0.00');
                 $('#total-grpft-summary-badge').text('Total GRPFT: 0%');
+                $('#total-roi-summary-badge').text('Total ROI: 0%');
                 $('#total-ad-spend-summary-badge').text('Total AD Spend: $0.00');
                 $('#total-el30-summary-badge').text('Total EL 30: 0');
                 $('#zero-sold-count-summary').text('0 SOLD: 0');

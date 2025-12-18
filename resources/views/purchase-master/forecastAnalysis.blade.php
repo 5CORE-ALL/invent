@@ -1923,13 +1923,15 @@
                     const field = isSelect ? $el.data('type') : $el.data('field');
                     const originalValue = isDate ? $el.data('original') : null;
 
-                    if (field === "Stage") {
+                    if (field === "Stage" && newValue === "appr_req") {
                         const row = table.getRow(sku);
-                        const approvedQty = row ? row.getData()["MOQ"] : null;
+                        const rowData = row ? row.getData() : null;
+                        const approvedQty = rowData ? rowData["MOQ"] : null;
+                        const previousStage = rowData ? (rowData["stage"] || '') : '';
                         
                         if (!approvedQty || approvedQty === "0" || parseInt(approvedQty) === 0) {
                             alert("MOQ cannot be empty or zero.");
-                            $el.val('');
+                            $el.val(previousStage); // Restore previous stage value
                             return;
                         }
                     }

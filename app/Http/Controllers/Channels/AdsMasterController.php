@@ -3837,7 +3837,26 @@ class AdsMasterController extends Controller
 
     public function getChannelAdvMasterAmazonCronData(Request $request)
     {
-        return ADVMastersData::getChannelAdvMasterAmazonCronDataProceed($request);
+        try {
+            $result = ADVMastersData::getChannelAdvMasterAmazonCronDataProceed($request);
+            if ($result == 1) {
+                return response()->json(['success' => true, 'message' => 'Amazon cron data updated successfully']);
+            } else {
+                return response()->json(['success' => false, 'message' => 'Failed to update Amazon cron data. Check logs for details.'], 500);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Amazon Cron Controller Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Error: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
     }
 
     public function getChannelAdvMasterAmazonCronMissingData(Request $request)
@@ -3852,17 +3871,74 @@ class AdsMasterController extends Controller
 
     public function getChannelAdvMasterEbayCronData(Request $request)
     {
-        return ADVMastersData::getChannelAdvMasterEbayCronDataProceed($request);
+        try {
+            $result = ADVMastersData::getChannelAdvMasterEbayCronDataProceed($request);
+            if ($result == 1) {
+                return response()->json(['success' => true, 'message' => 'Ebay cron data updated successfully']);
+            } else {
+                return response()->json(['success' => false, 'message' => 'Failed to update Ebay cron data. Check logs for details.'], 500);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Ebay Cron Controller Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Error: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
     }
 
     public function getChannelAdvMasterEbayCronMissingData(Request $request)
     {
-        return ADVMastersData::getChannelAdvMasterEbayCronMissingDataProceed($request);
+        try {
+            $result = ADVMastersData::getChannelAdvMasterEbayCronMissingDataProceed($request);
+            if ($result == 1) {
+                return response()->json(['success' => true, 'message' => 'Ebay missing ads data updated successfully']);
+            } else {
+                return response()->json(['success' => false, 'message' => 'Failed to update Ebay missing ads data. Check logs for details.'], 500);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Ebay Missing Ads Cron Controller Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Error: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
     }
 
     public function getChannelAdvMasterEbayCronTotalSaleData(Request $request)
     {
-        return ADVMastersData::getChannelAdvMasterEbayCronTotalSaleDataProceed($request);
+        try {
+            $result = ADVMastersData::getChannelAdvMasterEbayCronTotalSaleDataProceed($request);
+            if ($result == 1) {
+                return response()->json(['success' => true, 'message' => 'Ebay total sales data updated successfully']);
+            } else {
+                return response()->json(['success' => false, 'message' => 'Failed to update Ebay total sales data. Check logs for details.'], 500);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Ebay Total Sales Cron Controller Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Error: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
     }
 
 

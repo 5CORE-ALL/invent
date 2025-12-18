@@ -4,6 +4,7 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChinaLoad;
+use App\Models\Supplier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -12,7 +13,8 @@ class ChinaLoadController extends Controller
     public function index()
     {
         $chinaLoads = ChinaLoad::all();
-        return view('purchase-master.china_load.index', compact('chinaLoads'));
+        $forwarders = Supplier::where('type', 'Forwarders')->orderBy('name')->get();
+        return view('purchase-master.china_load.index', compact('chinaLoads', 'forwarders'));
     }
 
     public function inlineUpdateBySl(Request $request)

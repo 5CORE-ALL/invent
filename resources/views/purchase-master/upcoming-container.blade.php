@@ -333,13 +333,29 @@
             }
 
             function updateBalances() {
-                const visibleRows = getVisibleRowsData();
+                const containerFilter = document.getElementById("filter-container").value;
                 const paymentTerm = document.getElementById("filter-payment-term").value;
+                const searchKeyword = document.getElementById("container-planning-search").value.toLowerCase().trim();
+                const allData = table.getData();
+                
+                // If container filter or search is applied, filter by that; otherwise use all data
+                let rowsToCalculate = [];
+                if (containerFilter) {
+                    // Filter by container number from dropdown
+                    rowsToCalculate = allData.filter(row => row.container_number === containerFilter);
+                } else if (searchKeyword) {
+                    // Filter by search keyword (container number search)
+                    rowsToCalculate = allData.filter(row => 
+                        row.container_number && row.container_number.toLowerCase().includes(searchKeyword)
+                    );
+                } else {
+                    rowsToCalculate = allData;
+                }
 
                 let totalBalance = 0;
                 let termBalance = 0;
 
-                visibleRows.forEach(row => {
+                rowsToCalculate.forEach(row => {
                     let bal = parseFloat(row.balance || 0);
                     totalBalance += bal;
 
