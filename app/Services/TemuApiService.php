@@ -9,6 +9,7 @@ use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductStockMapping;
+use Carbon\Carbon;
 
 class TemuApiService
 {
@@ -344,6 +345,117 @@ public function getInventory1()
     \Log::info('Total Temu inventory items collected: ' . count($allItems));
 
     return $allItems;
+}
+
+/**
+ * Fetch Temu ads data for a specific goods ID
+ * 
+ * @param string $goodsId
+ * @param int $startTs Unix timestamp in milliseconds
+ * @param int $endTs Unix timestamp in milliseconds
+ * @return array|null
+ */
+public function fetchAdsData($goodsId, $startTs = null, $endTs = null)
+{
+    if ($startTs === null) {
+        $startTs = Carbon::now()->subDays(30)->startOfDay()->timestamp * 1000;
+    }
+    if ($endTs === null) {
+        $endTs = Carbon::yesterday()->endOfDay()->timestamp * 1000;
+    }
+
+    $requestBody = [
+        'type' => 'temu.searchrec.ad.reports.goods.query',
+        'goodsId' => $goodsId,
+        'startTs' => $startTs,
+        'endTs' => $endTs,
+    ];
+
+    $signedRequest = $this->generateSignValue($requestBody);
+
+    $request = Http::withHeaders([
+        'Content-Type' => 'application/json',
+    ]);
+
+    if (env('FILESYSTEM_DRIVER') === 'local') {
+        $request = $request->withoutVerifying();
+    }
+
+    try {
+        $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
+
+        if ($response->failed()) {
+            Log::error("Temu Ads API request failed for Goods ID: {$goodsId}", [
+                'status' => $response->status(),
+                'body' => $response->body()
+            ]);
+            return null;
+        }
+
+        $data = $response->json();
+
+        if (!($data['success'] ?? false)) {
+            Log::error("Temu Ads API error for Goods ID: {$goodsId}", [
+                'error' => $data['errorMsg'] ?? 'Unknown error',
+                'errorCode' => $data['errorCode'] ?? null
+            ]);
+            return null;
+        }
+
+        return $data['result'] ?? null;
+    } catch (\Exception $e) {
+        Log::error("Exception fetching Temu ads data for Goods ID: {$goodsId}", [
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+/**
+ * Fetch ads data for all goods IDs
+ * 
+ * @param array $goodsIds
+ * @param string $period L30 or L60
+ * @return array
+ */
+public function fetchAllAdsData(array $goodsIds, $period = 'L30')
+{
+    $results = [];
+    
+    $ranges = [
+        'L30' => [
+            'startTs' => Carbon::now()->subDays(30)->startOfDay()->timestamp * 1000,
+            'endTs' => Carbon::yesterday()->endOfDay()->timestamp * 1000,
+        ],
+        'L60' => [
+            'startTs' => Carbon::now()->subDays(60)->startOfDay()->timestamp * 1000,
+            'endTs' => Carbon::now()->subDays(31)->endOfDay()->timestamp * 1000,
+        ],
+    ];
+
+    $range = $ranges[$period] ?? $ranges['L30'];
+
+    foreach ($goodsIds as $goodsId) {
+        $data = $this->fetchAdsData($goodsId, $range['startTs'], $range['endTs']);
+        
+        if ($data) {
+            $summary = $data['reportInfo']['reportsSummary'] ?? null;
+            if ($summary) {
+                $results[$goodsId] = [
+                    'impressions' => $summary['imprCntAll']['val'] ?? 0,
+                    'clicks' => $summary['clkCntAll']['val'] ?? 0,
+                    'ctr' => isset($summary['clkCntAll']['val']) && isset($summary['imprCntAll']['val']) && $summary['imprCntAll']['val'] > 0
+                        ? ($summary['clkCntAll']['val'] / $summary['imprCntAll']['val']) * 100
+                        : 0,
+                ];
+            }
+        }
+        
+        // Rate limiting - small delay between requests
+        usleep(200000); // 0.2 seconds
+    }
+
+    return $results;
 }
 
 }
