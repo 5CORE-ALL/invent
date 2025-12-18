@@ -203,6 +203,11 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $ptSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
+        
+        // Net Profit Amount = Total PFT - (KW Spent + PT Spent)
+        $netProfitAmount = $totalPft - ($kwSpent + $ptSpent);
+        // N ROI = (Net Profit / COGS) * 100
+        $nRoi = $totalCogs > 0 ? ($netProfitAmount / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -217,6 +222,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'l30_sales' => $totalRevenue,
             'tacos_percentage' => $tacosPercentage,
             'n_pft' => $nPft,
+            'n_roi' => $nRoi,
             'kw_spent' => $kwSpent,
             'pmt_spent' => $ptSpent,
         ];
@@ -354,6 +360,11 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
+        
+        // Net Profit Amount = Total PFT - (KW Spent + PMT Spent)
+        $netProfitAmount = $totalPft - ($kwSpent + $pmtSpent);
+        // N ROI = (Net Profit / COGS) * 100
+        $nRoi = $totalCogs > 0 ? ($netProfitAmount / $totalCogs) * 100 : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -368,6 +379,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'l30_sales' => $totalRevenue,
             'tacos_percentage' => $tacosPercentage,
             'n_pft' => $nPft,
+            'n_roi' => $nRoi,
             'kw_spent' => $kwSpent,
             'pmt_spent' => $pmtSpent,
         ];
