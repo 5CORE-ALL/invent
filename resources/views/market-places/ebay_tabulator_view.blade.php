@@ -193,6 +193,8 @@
                         <!-- Financial Metrics -->
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-kw-spend-l30-badge" style="color: black; font-weight: bold;">KW Spend L30: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="total-pmt-spend-l30-badge" style="color: black; font-weight: bold;">PMT Spend L30: $0.00</span>
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
@@ -2606,6 +2608,8 @@
                 const data = table.getData("active");
                 let totalTcos = 0;
                 let totalSpendL30 = 0;
+                let totalKwSpendL30 = 0;
+                let totalPmtSpendL30 = 0;
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
                 let totalLpAmt = 0;
@@ -2619,6 +2623,8 @@
                     if (parseFloat(row.INV) > 0) {
                         totalTcos += parseFloat(row['AD%'] || 0);
                         totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
+                        totalKwSpendL30 += parseFloat(row['kw_spend_L30'] || 0);
+                        totalPmtSpendL30 += parseFloat(row['pmt_spend_L30'] || 0);
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
@@ -2666,6 +2672,8 @@
 
                 $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
                 $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
+                $('#total-kw-spend-l30-badge').text('KW Spend L30: $' + Math.round(totalKwSpendL30).toLocaleString());
+                $('#total-pmt-spend-l30-badge').text('PMT Spend L30: $' + Math.round(totalPmtSpendL30).toLocaleString());
                 $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
                 $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
