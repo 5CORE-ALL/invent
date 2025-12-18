@@ -794,8 +794,20 @@
                                 Ads%
                             </th>
                             {{-- <th>Red Margin</th> --}}
-                            <th>Base</th>
-                            <th>Target</th>
+                            <th class="text-center align-middle">
+                                <small id="baseTotalBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0
+                                </small><br>
+                                Base
+                            </th>
+                            <th class="text-center align-middle">
+                                <small id="targetTotalBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0
+                                </small><br>
+                                Target
+                            </th>
                             <th class="text-center align-middle">
                                 <small id="growthPercentageBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
@@ -1100,6 +1112,8 @@
             let l30SalesTotal = 0;
             let l60OrdersTotal = 0;
             let l30OrdersTotal = 0;
+            let baseTotalSum = 0;
+            let targetTotalSum = 0;
             let growthValues = [];
             let gprofitValues = [];
             let groiValues = [];
@@ -1126,12 +1140,16 @@
                     const growth = parseNumber(row['Growth'] || 0);
                     const gprofit = parseNumber(row['Gprofit%'] || row['Growth%'] || 0);
                     const groi = parseNumber(row['G Roi%'] || row['G.Rents'] || 0);
+                    const baseVal = parseNumber(row['Base'] || 0);
+                    const targetVal = parseNumber(row['Target'] || 0);
 
                     // Add to totals
                     l60SalesTotal += l60Sales;
                     l30SalesTotal += l30Sales;
                     l60OrdersTotal += l60Orders;
                     l30OrdersTotal += l30Orders;
+                    baseTotalSum += baseVal;
+                    targetTotalSum += targetVal;
 
                     // Collect for averages
                     if (!isNaN(growth)) growthValues.push(growth);
@@ -1157,12 +1175,16 @@
             const gprofitBadge = document.getElementById('gprofitPercentage');
             const groiBadge = document.getElementById('groiPercentageBadge');
             const nPftBadge = document.getElementById('nPftPercentageBadge');
+            const baseTotalBadge = document.getElementById('baseTotalBadge');
+            const targetTotalBadge = document.getElementById('targetTotalBadge');
 
             if (l60Badge) l60Badge.textContent = Math.round(l60SalesTotal).toLocaleString('en-US');
             if (l30Badge) l30Badge.textContent = Math.round(l30SalesTotal).toLocaleString('en-US');
             if (l60OrdersBadge) l60OrdersBadge.textContent = Math.round(l60OrdersTotal).toLocaleString('en-US');
             if (l30OrdersBadge) l30OrdersBadge.textContent = Math.round(l30OrdersTotal).toLocaleString('en-US');
             if (growthBadge) growthBadge.textContent = growthTotal.toFixed(0) + '%';
+            if (baseTotalBadge) baseTotalBadge.textContent = Math.round(baseTotalSum).toLocaleString('en-US');
+            if (targetTotalBadge) targetTotalBadge.textContent = Math.round(targetTotalSum).toLocaleString('en-US');
 
             // Calculate G profit and G roi using totalPft, totalL30Sales, totalCogs
             let totalPft = 0;
@@ -1667,7 +1689,7 @@
                             else if (n > 15 && n <= 25) { bg = '#007bff'; } // Blue: 15.01 to 25
                             else if (n > 25 && n <= 40) { bg = '#00ff00'; color = 'black'; } // Green: 25 to 40
                             else { bg = '#8000ff'; } // Purple: above 40
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n.toFixed(1)}%</span>`;
                         }
                     },
 
