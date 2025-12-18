@@ -1076,7 +1076,7 @@
     <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-body d-flex align-items-center" style="gap: 12px;">
+                {{-- <div class="card-body d-flex align-items-center" style="gap: 12px;">
                     <div id="percent-edit-div" class="d-flex align-items-center">
                         <div class="input-group" style="width: 150px;">
                             <input type="number" id="updateAllSkusPercent" class="form-control" min="0"
@@ -1105,7 +1105,7 @@
                             <i class="fa fa-eye-slash"></i> Hide SKU
                         </button>
                     </div>
-                </div>
+                </div> --}}
             </div>
         </div>
     </div>
