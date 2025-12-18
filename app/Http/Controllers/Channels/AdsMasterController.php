@@ -4071,6 +4071,16 @@ class AdsMasterController extends Controller
                 'name' => 'eBay 3 Total Sales',
                 'method' => 'getEbay3TotalSaleSaveDataProceed',
                 'type' => 'ebay3'
+            ],
+            [
+                'name' => 'Walmart Main Data',
+                'method' => 'getAdvWalmartRunningSaveDataProceed',
+                'type' => 'walmart'
+            ],
+            [
+                'name' => 'G Shopping Main Data',
+                'method' => 'getAdvShopifyGShoppingSaveDataProceed',
+                'type' => 'gshopping'
             ]
         ];
 

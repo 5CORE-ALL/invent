@@ -19,6 +19,7 @@ use App\Models\Ebay3GeneralReport;
 use App\Models\Ebay3PriorityReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonDataView;
+use App\Models\WalmartProductSheet;
 
 class ADVMastersData extends Model
 {
@@ -198,17 +199,103 @@ class ADVMastersData extends Model
         }
     }
 
-    protected function getAdvWalmartRunningSaveDataProceed($request)
+    public static function getAdvWalmartRunningSaveDataProceed($request)
     {
-         try {
+        try {
             DB::beginTransaction();
+            
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get();
+            
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            $normalizeSku = fn($sku) => strtoupper(trim($sku));
+            $normalizedSkus = array_map($normalizeSku, $skus);
+            
+            // Get Walmart campaign reports for L30
+            $walmartCampaignReportsL30 = DB::table('walmart_campaign_reports')
+                ->where('report_range', 'L30')
+                ->whereIn('campaignName', $normalizedSkus)
+                ->get();
+            
+            // Get Walmart prices from WalmartProductSheet for sales calculation
+            $walmartProductSheets = WalmartProductSheet::whereIn('sku', $skus)
+                ->get()
+                ->keyBy(function($item) use ($normalizeSku) {
+                    return $normalizeSku($item->sku ?? '');
+                });
+            
+            // Calculate totals directly from database
+            $total_spend_l30 = 0;
+            $total_clicks_l30 = 0;
+            $total_sales_l30 = 0;
+            $total_sold_l30 = 0;
+            
+            foreach ($walmartCampaignReportsL30 as $report) {
+                $campaignName = $normalizeSku($report->campaignName ?? '');
+                // Skip if it's a parent SKU
+                if (str_starts_with($campaignName, 'PARENT ')) {
+                    continue;
+                }
+                
+                $spend = floatval($report->spend ?? 0);
+                $clicks = intval($report->clicks ?? 0);
+                $sold = intval($report->sold ?? 0);
+                
+                // Calculate sales: sold * price (if price available)
+                $price = 0;
+                if (isset($walmartProductSheets[$campaignName])) {
+                    $price = floatval($walmartProductSheets[$campaignName]->price ?? 0);
+                }
+                $sales = $sold * $price;
+                
+                $total_spend_l30 += $spend;
+                $total_clicks_l30 += $clicks;
+                $total_sales_l30 += $sales;
+                $total_sold_l30 += $sold;
+            }
+            
+            // Round values
+            $total_spend_l30 = round($total_spend_l30);
+            $total_clicks_l30 = round($total_clicks_l30);
+            $total_sales_l30 = round($total_sales_l30);
+            $total_sold_l30 = round($total_sold_l30);
+            
+            // Calculate metrics
+            $cpc = $total_clicks_l30 > 0 ? round($total_spend_l30 / $total_clicks_l30, 2) : 0;
+            $cvr = $total_clicks_l30 > 0 ? round(($total_sold_l30 / $total_clicks_l30) * 100, 2) : 0;
+            $acos = $total_sales_l30 > 0 ? round(($total_spend_l30 / $total_sales_l30) * 100, 2) : 0;
+            $tacos = 0; // Will be calculated when l30_sales is available
 
-                $updateEbay = ADVMastersData::where('channel', 'WALMART')->first();
-                $updateEbay->spent = $request->spendL30Total;
-                $updateEbay->clicks = $request->clicksL30Total;
-                $updateEbay->ad_sales = $request->salesL30Total;
-                $updateEbay->ad_sold = $request->soldL30Total;
-                $updateEbay->save();
+            // Save to main table
+            ADVMastersData::updateOrCreate(
+                ['channel' => 'WALMART'],
+                [
+                    'spent' => $total_spend_l30,
+                    'clicks' => $total_clicks_l30,
+                    'ad_sales' => $total_sales_l30,
+                    'ad_sold' => $total_sold_l30
+                ]
+            );
+
+            // Save daily data for WALMART
+            $todayDate = date('Y-m-d');
+            ADVMastersDailyData::updateOrCreate(
+                ['date' => $todayDate, 'channel' => 'WALMART'],
+                [
+                    'spent' => $total_spend_l30,
+                    'clicks' => $total_clicks_l30,
+                    'ad_sales' => $total_sales_l30,
+                    'ad_sold' => $total_sold_l30,
+                    'cpc' => $cpc,
+                    'cvr' => $cvr,
+                    'acos' => $acos,
+                    'tacos' => $tacos,
+                    'gpft' => 0,
+                    'tpft' => 0
+                ]
+            );
     
             DB::commit();
             return 1; 
@@ -432,39 +519,7 @@ class ADVMastersData extends Model
                 ]
             );
             
-            // Save daily data for EB KW3
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB KW3'],
-                [
-                    'spent' => $total_kw_spend_l30,
-                    'clicks' => $total_kw_clicks_l30,
-                    'ad_sales' => $total_kw_sales_l30,
-                    'ad_sold' => $total_kw_sold_l30,
-                    'cpc' => $ebay3kw_cpc,
-                    'cvr' => $ebay3kw_cvr,
-                    'acos' => $ebay3kw_acos,
-                    'tacos' => $ebay3kw_tacos,
-                    'gpft' => 0,
-                    'tpft' => 0
-                ]
-            );
-            
-            // Save daily data for EB PMT3
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB PMT3'],
-                [
-                    'spent' => $total_pmt_spend_l30,
-                    'clicks' => $total_pmt_clicks_l30,
-                    'ad_sales' => $total_pmt_sales_l30,
-                    'ad_sold' => $total_pmt_sold_l30,
-                    'cpc' => $ebay3pmt_cpc,
-                    'cvr' => $ebay3pmt_cvr,
-                    'acos' => $ebay3pmt_acos,
-                    'tacos' => $ebay3pmt_tacos,
-                    'gpft' => 0,
-                    'tpft' => 0
-                ]
-            );
+            // Sub-channels daily data removed - only main channel data is saved
      
             DB::commit();
             return 1; 
@@ -606,22 +661,7 @@ class ADVMastersData extends Model
                 ]
             );
             
-            // Save daily data for EB PMT2
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB PMT2'],
-                [
-                    'spent' => $total_pmt_spend_l30,
-                    'clicks' => $total_pmt_clicks_l30,
-                    'ad_sales' => $total_pmt_sales_l30,
-                    'ad_sold' => $total_pmt_sold_l30,
-                    'cpc' => $ebay2pmt_cpc,
-                    'cvr' => $ebay2pmt_cvr,
-                    'acos' => $ebay2pmt_acos,
-                    'tacos' => $ebay2pmt_tacos,
-                    'gpft' => 0,
-                    'tpft' => 0
-                ]
-            );
+            // Sub-channels daily data removed - only main channel data is saved
     
             DB::commit();
             return 1; 
@@ -688,18 +728,7 @@ class ADVMastersData extends Model
                 ]
             );
             
-            // Also update TACOS for EB PMT2 sub-channel
-            $ebay2pmtData = ADVMastersData::where('channel', 'EB PMT2')->first();
-            $ebay2pmt_spent = $ebay2pmtData->spent ?? 0;
-            $ebay2pmt_tacos = $total_ebay2_sales > 0 ? round(($ebay2pmt_spent / $total_ebay2_sales) * 100, 2) : 0;
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB PMT2'],
-                [
-                    'l30_sales' => $total_ebay2_sales,
-                    'tacos' => $ebay2pmt_tacos
-                ]
-            );
+            // TACOS is already calculated and saved for main EBAY 2 channel above
 
             DB::commit();
             return 1;
@@ -763,30 +792,7 @@ class ADVMastersData extends Model
                 ]
             );
             
-            // Also update TACOS for EB KW3 and EB PMT3 sub-channels
-            $ebay3kwData = ADVMastersData::where('channel', 'EB KW3')->first();
-            $ebay3kw_spent = $ebay3kwData->spent ?? 0;
-            $ebay3kw_tacos = $total_ebay3_sales > 0 ? round(($ebay3kw_spent / $total_ebay3_sales) * 100, 2) : 0;
-            
-            $ebay3pmtData = ADVMastersData::where('channel', 'EB PMT3')->first();
-            $ebay3pmt_spent = $ebay3pmtData->spent ?? 0;
-            $ebay3pmt_tacos = $total_ebay3_sales > 0 ? round(($ebay3pmt_spent / $total_ebay3_sales) * 100, 2) : 0;
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB KW3'],
-                [
-                    'l30_sales' => $total_ebay3_sales,
-                    'tacos' => $ebay3kw_tacos
-                ]
-            );
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB PMT3'],
-                [
-                    'l30_sales' => $total_ebay3_sales,
-                    'tacos' => $ebay3pmt_tacos
-                ]
-            );
+            // TACOS is already calculated and saved for main EBAY 3 channel above
 
             DB::commit();
             return 1;
@@ -815,13 +821,9 @@ class ADVMastersData extends Model
             $todayDate = date('Y-m-d');
             $ptMissing = (int)($request->ptMissing ?? 0);
             
+            // Save daily data for main channel only (not sub-channels)
             ADVMastersDailyData::updateOrCreate(
                 ['date' => $todayDate, 'channel' => 'EBAY 2'],
-                ['missing_ads' => $ptMissing]
-            );
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB PMT2'],
                 ['missing_ads' => $ptMissing]
             );
 
@@ -859,19 +861,10 @@ class ADVMastersData extends Model
             $kwMissing = (int)($request->kwMissing ?? 0);
             $ptMissing = (int)($request->ptMissing ?? 0);
             
+            // Save daily data for main channel only (not sub-channels)
             ADVMastersDailyData::updateOrCreate(
                 ['date' => $todayDate, 'channel' => 'EBAY 3'],
                 ['missing_ads' => $totalMissingAds]
-            );
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB KW3'],
-                ['missing_ads' => $kwMissing]
-            );
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB PMT3'],
-                ['missing_ads' => $ptMissing]
             );
 
             DB::commit();
@@ -882,17 +875,73 @@ class ADVMastersData extends Model
         }
     }
 
-    protected function getAdvShopifyGShoppingSaveDataProceed($request)
+    public static function getAdvShopifyGShoppingSaveDataProceed($request)
     {
         try {
             DB::beginTransaction();
+            
+            // Get last 30 days data from google_ads_campaigns table
+            $thirtyDaysAgo = date('Y-m-d', strtotime('-30 days'));
+            $today = date('Y-m-d');
+            
+            // Calculate totals from google_ads_campaigns table
+            $gShoppingData = DB::table('google_ads_campaigns')
+                ->selectRaw('
+                    SUM(metrics_clicks) as total_clicks,
+                    SUM(metrics_cost_micros) / 1000000 as total_spend,
+                    SUM(ga4_ad_sales) as total_ad_sales,
+                    SUM(ga4_sold_units) as total_ad_sold
+                ')
+                ->whereDate('date', '>=', $thirtyDaysAgo)
+                ->whereDate('date', '<=', $today)
+                ->where('campaign_status', 'ENABLED')
+                ->first();
+            
+            $total_spend_l30 = floatval($gShoppingData->total_spend ?? 0);
+            $total_clicks_l30 = intval($gShoppingData->total_clicks ?? 0);
+            $total_ad_sales_l30 = floatval($gShoppingData->total_ad_sales ?? 0);
+            $total_ad_sold_l30 = intval($gShoppingData->total_ad_sold ?? 0);
+            
+            // Round values
+            $total_spend_l30 = round($total_spend_l30);
+            $total_clicks_l30 = round($total_clicks_l30);
+            $total_ad_sales_l30 = round($total_ad_sales_l30);
+            $total_ad_sold_l30 = round($total_ad_sold_l30);
 
-                $updateAmazon = ADVMastersData::where('channel', 'G SHOPPING')->first();
-                $updateAmazon->spent = $request->spendL30Total;
-                $updateAmazon->clicks = $request->clicksl30Total;
-                $updateAmazon->ad_sales = $request->adSalesl30Total;
-                $updateAmazon->ad_sold = $request->adSoldl30Total;
-                $updateAmazon->save();
+            // Calculate metrics
+            $cpc = $total_clicks_l30 > 0 ? round($total_spend_l30 / $total_clicks_l30, 2) : 0;
+            $cvr = $total_clicks_l30 > 0 ? round(($total_ad_sold_l30 / $total_clicks_l30) * 100, 2) : 0;
+            $acos = $total_ad_sales_l30 > 0 ? round(($total_spend_l30 / $total_ad_sales_l30) * 100, 2) : 0;
+            $tacos = 0; // Will be calculated when l30_sales is available
+
+            // Save to main table
+            ADVMastersData::updateOrCreate(
+                ['channel' => 'G SHOPPING'],
+                [
+                    'spent' => $total_spend_l30,
+                    'clicks' => $total_clicks_l30,
+                    'ad_sales' => $total_ad_sales_l30,
+                    'ad_sold' => $total_ad_sold_l30
+                ]
+            );
+
+            // Save daily data for G SHOPPING
+            $todayDate = date('Y-m-d');
+            ADVMastersDailyData::updateOrCreate(
+                ['date' => $todayDate, 'channel' => 'G SHOPPING'],
+                [
+                    'spent' => $total_spend_l30,
+                    'clicks' => $total_clicks_l30,
+                    'ad_sales' => $total_ad_sales_l30,
+                    'ad_sold' => $total_ad_sold_l30,
+                    'cpc' => $cpc,
+                    'cvr' => $cvr,
+                    'acos' => $acos,
+                    'tacos' => $tacos,
+                    'gpft' => 0,
+                    'tpft' => 0
+                ]
+            );
                  
             DB::commit();
             return 1; 
@@ -1251,7 +1300,7 @@ class ADVMastersData extends Model
             $hl_acos = $total_hl_sales_l30 > 0 ? round(($total_hl_spend_l30 / $total_hl_sales_l30) * 100, 2) : 0;
             $hl_tacos = 0; // TACOS requires l30_sales which is not available in this cron
 
-            // Save daily data for main channel and all sub-channels
+            // Save daily data for main channel only (not sub-channels)
             ADVMastersDailyData::updateOrCreate(
                 ['date' => $todayDate, 'channel' => 'AMAZON'],
                 [
@@ -1265,54 +1314,6 @@ class ADVMastersData extends Model
                     'tacos' => $amazon_tacos,
                     'gpft' => 0, // GPFT calculation requires additional data (profit margins)
                     'tpft' => 0  // TPFT calculation requires additional data (profit margins)
-                ]
-            );
-
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'AMZ KW'],
-                [
-                    'spent' => $total_kw_spend_l30,
-                    'clicks' => $total_kw_clicks_l30,
-                    'ad_sales' => $total_kw_sales_l30,
-                    'ad_sold' => $total_kw_sold_l30,
-                    'cpc' => $kw_cpc,
-                    'cvr' => $kw_cvr,
-                    'acos' => $kw_acos,
-                    'tacos' => $kw_tacos,
-                    'gpft' => 0,
-                    'tpft' => 0
-                ]
-            );
-
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'AMZ PT'],
-                [
-                    'spent' => $total_pt_spend_l30,
-                    'clicks' => $total_pt_clicks_l30,
-                    'ad_sales' => $total_pt_sales_l30,
-                    'ad_sold' => $total_pt_sold_l30,
-                    'cpc' => $pt_cpc,
-                    'cvr' => $pt_cvr,
-                    'acos' => $pt_acos,
-                    'tacos' => $pt_tacos,
-                    'gpft' => 0,
-                    'tpft' => 0
-                ]
-            );
-
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'AMZ HL'],
-                [
-                    'spent' => $total_hl_spend_l30,
-                    'clicks' => $total_hl_clicks_l30,
-                    'ad_sales' => $total_hl_sales_l30,
-                    'ad_sold' => $total_hl_sold_l30,
-                    'cpc' => $hl_cpc,
-                    'cvr' => $hl_cvr,
-                    'acos' => $hl_acos,
-                    'tacos' => $hl_tacos,
-                    'gpft' => 0,
-                    'tpft' => 0
                 ]
             );
 
@@ -1505,19 +1506,10 @@ class ADVMastersData extends Model
             $ptMissing = round($ptMissing);
 
             // Save missing ads daily data for main channel and sub-channels
+            // Save daily data for main channel only (not sub-channels)
             ADVMastersDailyData::updateOrCreate(
                 ['date' => $todayDate, 'channel' => 'AMAZON'],
                 ['missing_ads' => $totalMissingAds]
-            );
-
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'AMZ KW'],
-                ['missing_ads' => $kwMissing]
-            );
-
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'AMZ PT'],
-                ['missing_ads' => $ptMissing]
             );
 
             $updateAmazon = ADVMastersData::updateOrCreate(
@@ -1603,42 +1595,7 @@ class ADVMastersData extends Model
                 ]
             );
             
-            // Also update TACOS for AMZ KW, AMZ PT, and AMZ HL sub-channels
-            $amazonKwData = ADVMastersData::where('channel', 'AMZ KW')->first();
-            $amazonKw_spent = $amazonKwData->spent ?? 0;
-            $amazonKw_tacos = $total_sales > 0 ? round(($amazonKw_spent / $total_sales) * 100, 2) : 0;
-            
-            $amazonPtData = ADVMastersData::where('channel', 'AMZ PT')->first();
-            $amazonPt_spent = $amazonPtData->spent ?? 0;
-            $amazonPt_tacos = $total_sales > 0 ? round(($amazonPt_spent / $total_sales) * 100, 2) : 0;
-            
-            $amazonHlData = ADVMastersData::where('channel', 'AMZ HL')->first();
-            $amazonHl_spent = $amazonHlData->spent ?? 0;
-            $amazonHl_tacos = $total_sales > 0 ? round(($amazonHl_spent / $total_sales) * 100, 2) : 0;
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'AMZ KW'],
-                [
-                    'l30_sales' => $total_sales,
-                    'tacos' => $amazonKw_tacos
-                ]
-            );
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'AMZ PT'],
-                [
-                    'l30_sales' => $total_sales,
-                    'tacos' => $amazonPt_tacos
-                ]
-            );
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'AMZ HL'],
-                [
-                    'l30_sales' => $total_sales,
-                    'tacos' => $amazonHl_tacos
-                ]
-            );
+            // TACOS is already calculated and saved for main AMAZON channel above
 
             $updateAmazon = ADVMastersData::updateOrCreate(
                 ['channel' => 'AMAZON'],
@@ -1822,7 +1779,7 @@ class ADVMastersData extends Model
             $ebay_pmt_acos = $total_pmt_sales_l30 > 0 ? round(($total_pmt_spend_l30 / $total_pmt_sales_l30) * 100, 2) : 0;
             $ebay_pmt_tacos = 0; // TACOS requires l30_sales which is not available in this cron
             
-            // Save daily data for main channel and all sub-channels
+            // Save daily data for main channel only (not sub-channels)
             ADVMastersDailyData::updateOrCreate(
                 ['date' => $todayDate, 'channel' => 'EBAY'],
                 [
@@ -1836,38 +1793,6 @@ class ADVMastersData extends Model
                     'tacos' => $ebay_tacos,
                     'gpft' => 0, // GPFT calculation requires additional data (profit margins)
                     'tpft' => 0  // TPFT calculation requires additional data (profit margins)
-                ]
-            );
-
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB KW'],
-                [
-                    'spent' => $total_kw_spend_l30,
-                    'clicks' => $total_kw_clicks_l30,
-                    'ad_sales' => $total_kw_sales_l30,
-                    'ad_sold' => $total_kw_sold_l30,
-                    'cpc' => $ebay_kw_cpc,
-                    'cvr' => $ebay_kw_cvr,
-                    'acos' => $ebay_kw_acos,
-                    'tacos' => $ebay_kw_tacos,
-                    'gpft' => 0,
-                    'tpft' => 0
-                ]
-            );
-
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB PMT'],
-                [
-                    'spent' => $total_pmt_spend_l30,
-                    'clicks' => $total_pmt_clicks_l30,
-                    'ad_sales' => $total_pmt_sales_l30,
-                    'ad_sold' => $total_pmt_sold_l30,
-                    'cpc' => $ebay_pmt_cpc,
-                    'cvr' => $ebay_pmt_cvr,
-                    'acos' => $ebay_pmt_acos,
-                    'tacos' => $ebay_pmt_tacos,
-                    'gpft' => 0,
-                    'tpft' => 0
                 ]
             );
         
@@ -2022,19 +1947,10 @@ class ADVMastersData extends Model
             $ptMissing = $ptMissing + $bothMissing;
 
             // Save missing ads daily data for main channel and sub-channels
+            // Save daily data for main channel only (not sub-channels)
             ADVMastersDailyData::updateOrCreate(
                 ['date' => $todayDate, 'channel' => 'EBAY'],
                 ['missing_ads' => $totalMissingAds]
-            );
-
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB KW'],
-                ['missing_ads' => $kwMissing]
-            );
-
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB PMT'],
-                ['missing_ads' => $ptMissing]
             );
         
 
@@ -2123,30 +2039,7 @@ class ADVMastersData extends Model
                 ]
             );
             
-            // Also update TACOS for EB KW and EB PMT sub-channels
-            $ebayKwData = ADVMastersData::where('channel', 'EB KW')->first();
-            $ebayKw_spent = $ebayKwData->spent ?? 0;
-            $ebayKw_tacos = $total_ebay_sales > 0 ? round(($ebayKw_spent / $total_ebay_sales) * 100, 2) : 0;
-            
-            $ebayPmtData = ADVMastersData::where('channel', 'EB PMT')->first();
-            $ebayPmt_spent = $ebayPmtData->spent ?? 0;
-            $ebayPmt_tacos = $total_ebay_sales > 0 ? round(($ebayPmt_spent / $total_ebay_sales) * 100, 2) : 0;
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB KW'],
-                [
-                    'l30_sales' => $total_ebay_sales,
-                    'tacos' => $ebayKw_tacos
-                ]
-            );
-            
-            ADVMastersDailyData::updateOrCreate(
-                ['date' => $todayDate, 'channel' => 'EB PMT'],
-                [
-                    'l30_sales' => $total_ebay_sales,
-                    'tacos' => $ebayPmt_tacos
-                ]
-            );
+            // TACOS is already calculated and saved for main EBAY channel above
 
             $updateEbay = ADVMastersData::updateOrCreate(
                 ['channel' => 'EBAY'],
