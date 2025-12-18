@@ -809,6 +809,13 @@
                                 Target
                             </th>
                             <th class="text-center align-middle">
+                                <small id="shortfallBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0%
+                                </small><br>
+                                Shortfall
+                            </th>
+                            <th class="text-center align-middle">
                                 <small id="growthPercentageBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
                                     0%
@@ -1185,6 +1192,11 @@
             if (growthBadge) growthBadge.textContent = growthTotal.toFixed(0) + '%';
             if (baseTotalBadge) baseTotalBadge.textContent = Math.round(baseTotalSum).toLocaleString('en-US');
             if (targetTotalBadge) targetTotalBadge.textContent = Math.round(targetTotalSum).toLocaleString('en-US');
+            
+            // Calculate and update shortfall badge
+            const shortfallBadge = document.getElementById('shortfallBadge');
+            let overallShortfall = targetTotalSum !== 0 ? ((l30SalesTotal - targetTotalSum) / targetTotalSum) * 100 : 0;
+            if (shortfallBadge) shortfallBadge.textContent = Math.round(overallShortfall) + '%';
 
             // Calculate G profit and G roi using totalPft, totalL30Sales, totalCogs
             let totalPft = 0;
@@ -1719,7 +1731,7 @@
                         data: 'Ads%',
                         render: function (v) {
                             const n = pctFix(v);
-                            return `<span style="background:#20c997;color:white;padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
+                            return `<span style="background:#20c997;color:white;padding:2px 6px;border-radius:4px;">${n.toFixed(1)}%</span>`;
                         }
                     },
                     { 
@@ -1736,6 +1748,25 @@
                             const n = toNum(v);
                             if (type === 'sort' || type === 'type') return n;
                             return `<span class="metric-value">${n.toLocaleString('en-US')}</span>`;
+                        }
+                    },
+                    { 
+                        data: null, 
+                        render: function (v, type, row) {
+                            const l30Sales = toNum(row['L30 Sales']);
+                            const target = toNum(row['Target']);
+                            if (target === 0) {
+                                if (type === 'sort' || type === 'type') return 0;
+                                return '-';
+                            }
+                            const shortfall = ((l30Sales - target) / target) * 100;
+                            if (type === 'sort' || type === 'type') return shortfall;
+                            let bg = '', color = 'white';
+                            if (shortfall < 0) { bg = '#ff0000'; } // Red: negative (below target)
+                            else if (shortfall >= 0 && shortfall < 10) { bg = '#ffff00'; color = 'black'; } // Yellow: 0 to 10
+                            else if (shortfall >= 10 && shortfall < 25) { bg = '#00ff00'; color = 'black'; } // Green: 10 to 25
+                            else { bg = '#8000ff'; } // Purple: above 25
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(shortfall)}%</span>`;
                         }
                     },
                     {
