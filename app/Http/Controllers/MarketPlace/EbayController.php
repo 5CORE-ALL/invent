@@ -1411,7 +1411,7 @@ class EbayController extends Controller
 
     public function getMetricsHistory(Request $request)
     {
-        $days = $request->input('days', 7); // Default to last 7 days
+        $days = $request->input('days', 30); // Default to last 30 days
         $sku = $request->input('sku'); // Optional SKU filter
         
         // Ensure minimum 7 days if pulling from today
@@ -1420,8 +1420,10 @@ class EbayController extends Controller
             $days = $minDays;
         }
         
-        $startDate = Carbon::today()->subDays($days - 1); // -1 to include today
-        $endDate = Carbon::today();
+        // Use California timezone (America/Los_Angeles) and exclude current date
+        $californiaToday = Carbon::now('America/Los_Angeles')->startOfDay();
+        $endDate = $californiaToday->copy()->subDay(); // Yesterday in California time
+        $startDate = $endDate->copy()->subDays($days - 1); // Go back $days from yesterday
         
         $chartData = [];
         $dataByDate = []; // Store data by date for filling gaps
@@ -1490,9 +1492,8 @@ class EbayController extends Controller
 
         // Fill in missing dates with zero values to ensure at least 7 days
         $currentDate = Carbon::parse($startDate);
-        $today = Carbon::today();
         
-        while ($currentDate->lte($today)) {
+        while ($currentDate->lte($endDate)) {
             $dateKey = $currentDate->format('Y-m-d');
             
             if (!isset($dataByDate[$dateKey])) {

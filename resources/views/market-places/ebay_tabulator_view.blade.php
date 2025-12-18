@@ -160,9 +160,9 @@
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0">Metrics Trend</h6>
                         <select id="chart-days-filter" class="form-select form-select-sm" style="width: auto;">
-                            <option value="7" selected>Last 7 Days</option>
+                            <option value="7" >Last 7 Days</option>
                             <option value="14">Last 14 Days</option>
-                            <option value="30">Last 30 Days</option>
+                            <option value="30" selected>Last 30 Days</option>
                             <option value="60">Last 60 Days</option>
                         </select>
                     </div>
@@ -255,9 +255,9 @@
                     <div class="mb-3">
                         <label class="form-label">Date Range:</label>
                         <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
-                            <option value="7" selected>Last 7 Days</option>
+                            <option value="7">Last 7 Days</option>
                             <option value="14">Last 14 Days</option>
-                            <option value="30">Last 30 Days</option>
+                            <option value="30" selected>Last 30 Days</option>
                         </select>
                     </div>
                     <div id="chart-no-data-message" class="alert alert-info" style="display: none;">
@@ -476,7 +476,7 @@
         }
 
         // Load Metrics Data
-        function loadMetricsData(days = 7) {
+        function loadMetricsData(days = 30) {
             fetch(`/ebay-metrics-history?days=${days}`)
                 .then(response => response.json())
                 .then(data => {
@@ -673,7 +673,7 @@
             });
         }
 
-        function loadSkuMetricsData(sku, days = 7) {
+        function loadSkuMetricsData(sku, days = 30) {
             console.log('Loading metrics data for SKU:', sku, 'Days:', days);
             fetch(`/ebay-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
                 .then(response => {
@@ -732,7 +732,7 @@
         $(document).ready(function() {
             // Initialize charts
             initMetricsChart();
-            loadMetricsData(7);
+            loadMetricsData(30);
             initSkuMetricsChart();
             
             // Load eBay ads spend from marketplace_daily_metrics
@@ -2930,9 +2930,9 @@
                     const sku = e.target.closest('.view-sku-chart').getAttribute('data-sku');
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
-                    $('#sku-chart-days-filter').val('7');
+                    $('#sku-chart-days-filter').val('30');
                     $('#chart-no-data-message').hide();
-                    loadSkuMetricsData(sku, 7);
+                    loadSkuMetricsData(sku, 30);
                     $('#skuMetricsModal').modal('show');
                 }
             });
