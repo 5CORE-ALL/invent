@@ -1276,6 +1276,10 @@ class ProductMasterController extends Controller
                 'walmart' => 'title80',
                 'temu' => 'title150',
                 'doba' => 'title100',
+                'shein' => 'title150',
+                'wayfair' => 'title150',
+                'reverb' => 'title150',
+                'faire' => 'title150',
             ];
 
             $results = [];
@@ -1386,6 +1390,18 @@ class ProductMasterController extends Controller
                 
                 case 'doba':
                     return $this->updateDobaTitle($sku, $title);
+                
+                case 'shein':
+                    return $this->updateSheinTitle($sku, $title);
+                
+                case 'wayfair':
+                    return $this->updateWayfairTitle($sku, $title);
+                
+                case 'reverb':
+                    return $this->updateReverbTitle($sku, $title);
+                
+                case 'faire':
+                    return $this->updateFaireTitle($sku, $title);
                 
                 default:
                     Log::warning("Unknown platform: {$platform}");
@@ -1961,6 +1977,747 @@ class ProductMasterController extends Controller
         } catch (\Exception $e) {
             Log::error("✗ Exception updating Temu title for SKU {$sku}: " . $e->getMessage());
             Log::error("Stack trace: " . $e->getTraceAsString());
+            return false;
+        }
+    }
+
+    private function updateSheinTitle($sku, $title)
+    {
+        try {
+            Log::info("Starting Shein title update for SKU: {$sku}, Title: {$title}");
+            
+            // Try to get credentials - check both possible variable names
+            // First try OPEN_KEY_ID and SECRET_KEY (for signature generation)
+            // If not found, try APP_ID and APP_SECRET/APP_S
+            $openKeyId = env('SHEIN_OPEN_KEY_ID') ?: env('SHEIN_APP_ID');
+            $secretKey = env('SHEIN_SECRET_KEY') ?: env('SHEIN_APP_SECRET') ?: env('SHEIN_APP_S');
+
+            if (!$openKeyId || !$secretKey) {
+                $missing = [];
+                if (!$openKeyId) {
+                    $missing[] = 'SHEIN_OPEN_KEY_ID or SHEIN_APP_ID';
+                }
+                if (!$secretKey) {
+                    $missing[] = 'SHEIN_SECRET_KEY or SHEIN_APP_SECRET or SHEIN_APP_S';
+                }
+                
+                $errorMsg = "Shein credentials not configured. Missing: " . implode(', ', $missing);
+                Log::error($errorMsg);
+                Log::error("Please add the following to your .env file:");
+                Log::error("SHEIN_APP_ID=your_app_id");
+                Log::error("SHEIN_APP_SECRET=your_app_secret");
+                Log::error("OR use:");
+                Log::error("SHEIN_OPEN_KEY_ID=your_open_key_id");
+                Log::error("SHEIN_SECRET_KEY=your_secret_key");
+                
+                // Also log to platform_debug.log for easier debugging
+                file_put_contents(storage_path('logs/platform_debug.log'), 
+                    date('Y-m-d H:i:s') . " - SHEIN ERROR: {$errorMsg}\n", FILE_APPEND);
+                
+                return false;
+            }
+
+            Log::info("✓ Shein credentials found - Using: " . (env('SHEIN_OPEN_KEY_ID') ? 'SHEIN_OPEN_KEY_ID' : 'SHEIN_APP_ID'));
+
+            // Check if product exists in your local DB/view
+            $sheinProduct = \App\Models\SheinDataView::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+            
+            if (!$sheinProduct) {
+                Log::error("SKU {$sku} not found in SheinDataView. Product may not be listed on Shein.");
+                return false;
+            }
+            
+            Log::info("Found Shein product for SKU: {$sku}");
+
+            // Generate signature for the update endpoint
+            $endpoint = "/open-api/openapi-business-backend/product/update";
+            $timestamp = round(microtime(true) * 1000);
+            $random = \Illuminate\Support\Str::random(5);
+            
+            // IMPORTANT: Shein API signature requires SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY
+            // These are DIFFERENT from SHEIN_APP_ID and SHEIN_APP_SECRET
+            // Check if we have the correct credentials for signature
+            $signatureOpenKeyId = env('SHEIN_OPEN_KEY_ID');
+            $signatureSecretKey = env('SHEIN_SECRET_KEY');
+            
+            // If we don't have OPEN_KEY_ID, try using APP_ID (they might be the same value)
+            // But this will likely fail - user needs to add SHEIN_OPEN_KEY_ID to .env
+            if (!$signatureOpenKeyId) {
+                $signatureOpenKeyId = $openKeyId; // Use APP_ID as fallback
+                Log::warning("⚠️ SHEIN_OPEN_KEY_ID not found, using SHEIN_APP_ID for signature.");
+                Log::warning("⚠️ This will likely cause signature errors. Please add SHEIN_OPEN_KEY_ID to .env file.");
+            }
+            
+            if (!$signatureSecretKey) {
+                $signatureSecretKey = $secretKey; // Use APP_SECRET as fallback
+                Log::warning("⚠️ SHEIN_SECRET_KEY not found, using SHEIN_APP_SECRET for signature.");
+                Log::warning("⚠️ This will likely cause signature errors. Please add SHEIN_SECRET_KEY to .env file.");
+            }
+            
+            // Generate signature using the credentials
+            // Signature format: randomKey + base64(hmac_sha256(openKeyId & timestamp & path, secretKey + randomKey))
+            // Note: The path should be the endpoint path without query parameters
+            $value = $signatureOpenKeyId . "&" . $timestamp . "&" . $endpoint;
+            $key = $signatureSecretKey . $random;
+            $hmacResult = hash_hmac('sha256', $value, $key, false); // false means return hexadecimal
+            $base64Signature = base64_encode($hmacResult);
+            $signature = $random . $base64Signature;
+            
+            Log::info("Generated Shein signature - OpenKeyId: " . substr($signatureOpenKeyId, 0, 10) . "... (Using: " . (env('SHEIN_OPEN_KEY_ID') ? 'OPEN_KEY_ID' : 'APP_ID fallback') . ")");
+            
+            $baseUrl = env('SHEIN_BASE_URL', 'https://openapi.sheincorp.com');
+            $url = $baseUrl . $endpoint;
+
+            // Log all available fields from SheinDataView for debugging
+            $sheinProductArray = $sheinProduct->toArray();
+            Log::info("SheinDataView fields for SKU {$sku}: " . json_encode($sheinProductArray));
+            
+            // Check if value field contains product data
+            $valueData = $sheinProduct->value ?? [];
+            if (is_string($valueData)) {
+                $valueData = json_decode($valueData, true) ?? [];
+            }
+            Log::info("SheinDataView value data: " . json_encode($valueData));
+            
+            // Get product identifier - Shein uses SKU code (sellerSku) for updates
+            // Try multiple possible field names
+            $skuCode = $sheinProduct->sku_code 
+                ?? $sheinProduct->seller_sku 
+                ?? $sheinProduct->sellerSku 
+                ?? $valueData['skuCode'] 
+                ?? $valueData['sellerSku'] 
+                ?? $valueData['sku']
+                ?? $sku;
+            
+            $spuCode = $sheinProduct->spu_code 
+                ?? $sheinProduct->spu_id 
+                ?? $sheinProduct->spuCode 
+                ?? $valueData['spuCode'] 
+                ?? $valueData['spu_id'] 
+                ?? $valueData['spu']
+                ?? null;
+            
+            Log::info("Using SKU Code: {$skuCode}, SPU Code: " . ($spuCode ?? 'null'));
+
+            // Shein API payload structure - try different formats
+            // Format 1: Using skuCode (most common)
+            $payload = [
+                "skuCode" => $skuCode,
+                "productName" => $title,
+            ];
+            
+            // If we have SPU code, also include it (some endpoints require both)
+            if ($spuCode) {
+                $payload["spuCode"] = $spuCode;
+            }
+
+            Log::info("Shein API call - Endpoint: {$endpoint}, SKU: {$sku}, SKU Code: {$skuCode}");
+            Log::info("Shein API payload: " . json_encode($payload));
+
+            sleep(2); // Gentle rate limiting
+
+            // Use the signature OpenKeyId in the header (must match what was used for signature)
+            $headerOpenKeyId = $signatureOpenKeyId ?? $openKeyId;
+            
+            Log::info("Sending request with headers - OpenKeyId: " . substr($headerOpenKeyId, 0, 10) . "...");
+            
+            $response = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->withHeaders([
+                    "Language" => "en-us",
+                    "x-lt-openKeyId" => $headerOpenKeyId,
+                    "x-lt-timestamp" => $timestamp,
+                    "x-lt-signature" => $signature,
+                    "Content-Type" => "application/json",
+                ])
+                ->timeout(30)
+                ->post($url, $payload);
+
+            $status = $response->status();
+            $body = $response->body();
+            
+            Log::info("Shein API response status: {$status}");
+            Log::info("Shein API response body: {$body}");
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+                Log::info("Shein API response data: " . json_encode($responseData));
+
+                // Check for success indicators in Shein API response
+                // Shein API typically returns: { "code": 0, "message": "success", "data": {...} }
+                $code = $responseData['code'] ?? $responseData['errorCode'] ?? $responseData['status'] ?? null;
+                $message = $responseData['message'] ?? $responseData['errorMsg'] ?? $responseData['msg'] ?? '';
+                
+                // Check if there's an info object with status
+                if (isset($responseData['info'])) {
+                    $infoCode = $responseData['info']['code'] ?? null;
+                    $infoMsg = $responseData['info']['message'] ?? '';
+                    if ($infoCode !== null) {
+                        $code = $infoCode;
+                        $message = $infoMsg;
+                    }
+                }
+
+                // Success codes: 0, 200, or success status
+                if ($code === 0 || $code === 200 || $code === '0' || 
+                    (isset($responseData['success']) && $responseData['success']) ||
+                    (isset($responseData['info']['success']) && $responseData['info']['success'])) {
+                    Log::info("✓ Successfully updated Shein title for SKU: {$sku}");
+                    return true;
+                } else {
+                    Log::error("✗ Shein update failed - Code: {$code}, Message: {$message}");
+                    Log::error("Full response: " . json_encode($responseData, JSON_PRETTY_PRINT));
+                    return false;
+                }
+            } else {
+                Log::error("✗ HTTP failure updating Shein title for SKU {$sku}. Status: {$status}, Body: {$body}");
+
+                if ($status == 401) {
+                    $errorMsg = "Authentication failed (401). This usually means:";
+                    $errorMsg .= "\n1. Signature verification failed - The signature was generated incorrectly";
+                    $errorMsg .= "\n2. Wrong credentials - SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY are required for API calls";
+                    $errorMsg .= "\n3. SHEIN_APP_ID and SHEIN_APP_SECRET are DIFFERENT from SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY";
+                    $errorMsg .= "\n\nPlease check:";
+                    $errorMsg .= "\n- Do you have SHEIN_OPEN_KEY_ID in .env? (Required for signature)";
+                    $errorMsg .= "\n- Do you have SHEIN_SECRET_KEY in .env? (Required for signature)";
+                    $errorMsg .= "\n- These are different from SHEIN_APP_ID and SHEIN_APP_SECRET";
+                    Log::error($errorMsg);
+                } elseif ($status == 403) {
+                    Log::error("Missing permissions - check API permissions in Shein Seller Center");
+                } elseif ($status == 429) {
+                    Log::error("Rate limited - wait and retry");
+                }
+
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("✗ Exception updating Shein title for SKU {$sku}: " . $e->getMessage());
+            Log::error("Stack trace: " . $e->getTraceAsString());
+            return false;
+        }
+    }
+
+    private function updateWayfairTitle($sku, $title)
+    {
+        try {
+            Log::info("Starting Wayfair title update for SKU: {$sku}, Title: {$title}");
+            
+            // Get Wayfair credentials from env (similar to Amazon approach)
+            $clientId = env('WAYFAIR_CLIENT_ID');
+            $clientSecret = env('WAYFAIR_CLIENT_SECRET');
+            
+            if (!$clientId || !$clientSecret) {
+                Log::warning("Wayfair credentials not configured");
+                return false;
+            }
+            
+            // Authenticate and get access token (similar to Amazon)
+            $authResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->asForm()
+                ->post('https://sso.auth.wayfair.com/oauth/token', [
+                    'grant_type' => 'client_credentials',
+                    'client_id' => $clientId,
+                    'client_secret' => $clientSecret,
+                ]);
+            
+            if (!$authResponse->successful()) {
+                Log::error("Failed to authenticate with Wayfair API. Status: " . $authResponse->status());
+                return false;
+            }
+            
+            $accessToken = $authResponse->json('access_token');
+            if (!$accessToken) {
+                Log::error("Failed to get Wayfair access token");
+                return false;
+            }
+            
+            // Get supplier ID from env (if available)
+            $supplierId = env('WAYFAIR_SUPPLIER_ID');
+            
+            // Use GraphQL mutation to update product name (Wayfair's direct API method)
+            $graphqlMutation = <<<'GRAPHQL'
+mutation UpdateProductName($inventory: [inventoryInput!]!) {
+  inventory {
+    save(
+      inventory: $inventory,
+      feed_kind: DIFFERENTIAL
+    ) {
+      handle
+      submittedAt
+      errors {
+        key
+        message
+      }
+    }
+  }
+}
+GRAPHQL;
+            
+            // Build inventory input
+            $inventoryInput = [
+                [
+                    'supplierPartNumber' => $sku,
+                    'productNameAndOptions' => $title,
+                ]
+            ];
+            
+            // Add supplierId if available
+            if ($supplierId) {
+                $inventoryInput[0]['supplierId'] = $supplierId;
+            }
+            
+            // Make GraphQL request (similar to Amazon's direct PATCH)
+            $response = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json',
+                ])
+                ->timeout(30)
+                ->post('https://api.wayfair.com/v1/graphql', [
+                    'query' => $graphqlMutation,
+                    'variables' => [
+                        'inventory' => $inventoryInput
+                    ],
+                ]);
+            
+            // Check response (similar to Amazon's success check)
+            if ($response->successful()) {
+                $responseData = $response->json();
+                
+                // Check for GraphQL errors
+                if (isset($responseData['errors']) && !empty($responseData['errors'])) {
+                    $errorMsg = $responseData['errors'][0]['message'] ?? 'Unknown error';
+                    Log::error("✗ Failed to update Wayfair title for SKU {$sku}: " . $errorMsg);
+                    
+                    // Provide helpful message for verification errors
+                    if (strpos($errorMsg, 'not been verified') !== false || strpos($errorMsg, 'verification') !== false) {
+                        Log::error("⚠️ Wayfair API Verification Required. Contact Wayfair support to enable product update permissions.");
+                    }
+                    
+                    return false;
+                }
+                
+                // Check inventory save result
+                $inventoryResult = $responseData['data']['inventory']['save'] ?? null;
+                
+                if ($inventoryResult) {
+                    // Check for errors in the save result
+                    $saveErrors = $inventoryResult['errors'] ?? [];
+                    if (!empty($saveErrors)) {
+                        $errorMsg = $saveErrors[0]['message'] ?? 'Unknown error';
+                        Log::error("✗ Failed to update Wayfair title for SKU {$sku}: " . $errorMsg);
+                        return false;
+                    }
+                    
+                    // Success - similar to Amazon's success check
+                    if (isset($inventoryResult['handle']) || isset($inventoryResult['submittedAt'])) {
+                        Log::info("✓ Successfully updated Wayfair title for SKU: {$sku}");
+                        return true;
+                    }
+                }
+                
+                Log::error("✗ Failed to update Wayfair title for SKU {$sku}: Unexpected response structure");
+                return false;
+            } else {
+                Log::error("✗ Failed to update Wayfair title for SKU {$sku}: " . $response->body());
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("✗ Exception updating Wayfair title for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    private function updateReverbTitle($sku, $title)
+    {
+        try {
+            Log::info("Starting Reverb title update for SKU: {$sku}, Title: {$title}");
+            
+            // Get Reverb API token from env or config
+            $reverbToken = env('REVERB_TOKEN') ?? config('services.reverb.token');
+            
+            if (!$reverbToken) {
+                Log::warning("Reverb token not configured in .env file");
+                Log::warning("Required: REVERB_TOKEN or set in config/services.php");
+                return false;
+            }
+            
+            Log::info("✓ Reverb token found");
+            
+            // Step 1: Get listing by SKU to find the listing ID
+            $listingsUrl = 'https://api.reverb.com/api/my/listings';
+            $listingsResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $reverbToken,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                    'Content-Type' => 'application/hal+json',
+                ])
+                ->timeout(30)
+                ->get($listingsUrl, [
+                    'sku' => $sku,
+                    'state' => 'all', // Get all states (active, draft, etc.)
+                ]);
+            
+            if (!$listingsResponse->successful()) {
+                Log::error("Failed to fetch Reverb listings for SKU {$sku}. Status: " . $listingsResponse->status() . ", Body: " . $listingsResponse->body());
+                return false;
+            }
+            
+            $listingsData = $listingsResponse->json();
+            $listings = $listingsData['listings'] ?? [];
+            
+            if (empty($listings)) {
+                Log::warning("No Reverb listing found for SKU: {$sku}");
+                return false;
+            }
+            
+            // Find the listing with matching SKU (in case there are multiple)
+            $listing = null;
+            foreach ($listings as $item) {
+                if (isset($item['sku']) && strtoupper(trim($item['sku'])) === strtoupper(trim($sku))) {
+                    $listing = $item;
+                    break;
+                }
+            }
+            
+            if (!$listing) {
+                Log::warning("No matching Reverb listing found for SKU: {$sku}");
+                return false;
+            }
+            
+            $listingId = $listing['id'] ?? null;
+            
+            if (!$listingId) {
+                Log::error("Reverb listing found but no ID available for SKU: {$sku}");
+                return false;
+            }
+            
+            Log::info("Found Reverb listing ID: {$listingId} for SKU: {$sku}");
+            
+            // Step 2: Update the listing title using PUT request
+            $updateUrl = "https://api.reverb.com/api/listings/{$listingId}";
+            
+            // Rate limiting delay
+            sleep(1);
+            
+            $updateResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $reverbToken,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                    'Content-Type' => 'application/hal+json',
+                ])
+                ->timeout(30)
+                ->put($updateUrl, [
+                    'title' => $title,
+                ]);
+            
+            $status = $updateResponse->status();
+            $body = $updateResponse->body();
+            
+            Log::info("Reverb API update response status: {$status}");
+            Log::info("Reverb API update response body: {$body}");
+            
+            if ($updateResponse->successful()) {
+                $responseData = $updateResponse->json();
+                
+                // Reverb API returns listing data nested under 'listing' key
+                $listing = $responseData['listing'] ?? $responseData;
+                
+                // Check if title was updated successfully
+                if (isset($listing['title'])) {
+                    // Verify the title matches (or at least we got a listing back)
+                    if ($listing['title'] === $title || isset($listing['id'])) {
+                        Log::info("✓ Successfully updated Reverb title for SKU: {$sku}, Listing ID: {$listingId}");
+                        Log::info("Updated title: " . $listing['title']);
+                        return true;
+                    }
+                } elseif (isset($responseData['id'])) {
+                    // If we got a listing object back directly, assume success
+                    Log::info("✓ Successfully updated Reverb title for SKU: {$sku}, Listing ID: {$listingId}");
+                    return true;
+                } elseif (isset($responseData['message'])) {
+                    // Sometimes Reverb returns a message indicating success
+                    // Check if it's a success message (not an error)
+                    $message = $responseData['message'] ?? '';
+                    if (stripos($message, 'sold out') !== false || stripos($message, 'updated') !== false || stripos($message, 'success') !== false) {
+                        // Even if message says "sold out", if we got 200 and listing data, it's a success
+                        if (isset($responseData['listing']['id'])) {
+                            Log::info("✓ Successfully updated Reverb title for SKU: {$sku}, Listing ID: {$listingId} (Message: {$message})");
+                            return true;
+                        }
+                    }
+                }
+                
+                Log::warning("Reverb update response structure unexpected: " . json_encode($responseData));
+                return false;
+            } else {
+                Log::error("✗ HTTP failure updating Reverb title for SKU {$sku}. Status: {$status}, Body: {$body}");
+                
+                if ($status == 401) {
+                    Log::error("Authentication failed (401). Check REVERB_TOKEN in .env file");
+                } elseif ($status == 403) {
+                    Log::error("Permission denied (403). Check API permissions in Reverb account");
+                } elseif ($status == 404) {
+                    Log::error("Listing not found (404). Listing ID: {$listingId}");
+                } elseif ($status == 429) {
+                    Log::error("Rate limited (429) - wait and retry");
+                }
+                
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("✗ Exception updating Reverb title for SKU {$sku}: " . $e->getMessage());
+            Log::error("Stack trace: " . $e->getTraceAsString());
+            return false;
+        }
+    }
+
+    private function updateFaireTitle($sku, $title)
+    {
+        try {
+            Log::info("Starting Faire title update for SKU: {$sku}, Title: {$title}");
+            
+            // Get Faire Bearer token from env - try multiple possible variable names
+            $bearerToken = env('FAIRE_BEARER_TOKEN') 
+                ?? env('FAIRE_ACCESS_TOKEN') 
+                ?? env('FAIRE_APP_SECRET')
+                ?? env('FAIRE_TOKEN');
+            
+            $isOAuthToken = false;
+            
+            // If no direct token, try to get access token via OAuth
+            if (!$bearerToken) {
+                $appId = env('FAIRE_APP_ID');
+                $appSecret = env('FAIRE_APP_SECRET');
+                $refreshToken = env('FAIRE_REFRESH_TOKEN');
+                
+                if ($appId && $appSecret && $refreshToken) {
+                    Log::info("No direct token found, attempting OAuth token refresh...");
+                    try {
+                        $tokenResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
+                            ->post('https://www.faire.com/api/external-api-oauth2/token', [
+                                'applicationId' => $appId,
+                                'applicationSecret' => $appSecret,
+                                'grantType' => 'REFRESH_TOKEN',
+                                'refreshToken' => $refreshToken,
+                            ]);
+                        
+                        if ($tokenResponse->successful()) {
+                            $bearerToken = $tokenResponse->json('access_token');
+                            if ($bearerToken) {
+                                $isOAuthToken = true;
+                                Log::info("✓ Successfully obtained Faire access token via OAuth refresh");
+                            }
+                        } else {
+                            Log::warning("OAuth token refresh failed. Status: " . $tokenResponse->status() . ", Body: " . $tokenResponse->body());
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning("OAuth token refresh exception: " . $e->getMessage());
+                    }
+                }
+            } else {
+                // Check if it's an OAuth token (from FAIRE_ACCESS_TOKEN) vs Bearer token
+                // If it's from FAIRE_ACCESS_TOKEN, it's likely an OAuth token
+                if (env('FAIRE_ACCESS_TOKEN')) {
+                    $isOAuthToken = true;
+                }
+            }
+            
+            if (!$bearerToken) {
+                Log::warning("Faire Bearer token not configured");
+                Log::warning("Required one of:");
+                Log::warning("  - FAIRE_BEARER_TOKEN (direct Bearer token from Faire Brand Portal > Settings > API)");
+                Log::warning("  - FAIRE_ACCESS_TOKEN (OAuth access token)");
+                Log::warning("  - FAIRE_APP_ID + FAIRE_APP_SECRET + FAIRE_REFRESH_TOKEN (for OAuth flow)");
+                return false;
+            }
+            
+            Log::info("✓ Faire token found (length: " . strlen($bearerToken) . " characters, type: " . ($isOAuthToken ? "OAuth" : "Bearer") . ")");
+            
+            // Step 1: Try to get product ID from FaireDataView first (faster)
+            $productId = null;
+            $faireDataView = \App\Models\FaireDataView::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+            
+            if ($faireDataView && $faireDataView->value) {
+                $value = is_array($faireDataView->value) ? $faireDataView->value : json_decode($faireDataView->value, true);
+                if (is_array($value)) {
+                    // Try common product ID field names
+                    $productId = $value['id'] ?? $value['product_id'] ?? $value['productId'] ?? $value['productId'] ?? null;
+                    if ($productId) {
+                        Log::info("Found Faire product ID from FaireDataView: {$productId} for SKU: {$sku}");
+                    }
+                }
+            }
+            
+            // Step 2: If no product ID from database, fetch from API
+            if (!$productId) {
+                Log::info("Product ID not found in FaireDataView, fetching from Faire API...");
+                
+                // GET https://www.faire.com/external-api/v2/products
+                $productsUrl = 'https://www.faire.com/external-api/v2/products';
+                
+                // Use appropriate header based on token type
+                $headers = [
+                    'Accept' => 'application/json',
+                ];
+                
+                if ($isOAuthToken) {
+                    // OAuth tokens use X-FAIRE-OAUTH-ACCESS-TOKEN header
+                    $headers['X-FAIRE-OAUTH-ACCESS-TOKEN'] = $bearerToken;
+                } else {
+                    // Bearer tokens use Authorization header
+                    $headers['Authorization'] = 'Bearer ' . $bearerToken;
+                }
+                
+                $productsResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
+                    ->withHeaders($headers)
+                    ->timeout(30)
+                    ->get($productsUrl);
+                
+                if (!$productsResponse->successful()) {
+                    Log::error("Failed to fetch Faire products. Status: " . $productsResponse->status() . ", Body: " . $productsResponse->body());
+                    
+                    if ($productsResponse->status() == 401) {
+                        Log::error("Authentication failed (401). Check Faire credentials in .env file - token may be invalid or expired");
+                        Log::error("Try: FAIRE_BEARER_TOKEN, FAIRE_ACCESS_TOKEN, or FAIRE_APP_ID + FAIRE_APP_SECRET + FAIRE_REFRESH_TOKEN");
+                    } elseif ($productsResponse->status() == 403) {
+                        Log::error("Permission denied (403). Check API permissions in Faire Brand Portal");
+                    }
+                    
+                    return false;
+                }
+                
+                $productsData = $productsResponse->json();
+                $products = $productsData['products'] ?? [];
+                
+                if (empty($products)) {
+                    Log::warning("No Faire products found in API response");
+                    return false;
+                }
+                
+                Log::info("Fetched " . count($products) . " products from Faire, searching for SKU: {$sku}");
+                
+                // Find the product with matching SKU
+                $product = null;
+                $variant = null;
+                
+                foreach ($products as $item) {
+                    // Check if product SKU matches
+                    if (isset($item['sku']) && strtoupper(trim($item['sku'])) === strtoupper(trim($sku))) {
+                        $product = $item;
+                        break;
+                    }
+                    
+                    // Check variants for matching SKU
+                    if (isset($item['variants']) && is_array($item['variants'])) {
+                        foreach ($item['variants'] as $v) {
+                            if (isset($v['sku']) && strtoupper(trim($v['sku'])) === strtoupper(trim($sku))) {
+                                $product = $item;
+                                $variant = $v;
+                                break 2;
+                            }
+                        }
+                    }
+                }
+                
+                if (!$product) {
+                    Log::warning("No matching Faire product found for SKU: {$sku}");
+                    return false;
+                }
+                
+                $productId = $product['id'] ?? null;
+                
+                if (!$productId) {
+                    Log::error("Faire product found but no ID available for SKU: {$sku}");
+                    return false;
+                }
+                
+                Log::info("Found Faire product ID from API: {$productId} for SKU: {$sku}" . ($variant ? " (variant)" : ""));
+            }
+            
+            // Step 3: Update the product title using PATCH request
+            // PATCH https://www.faire.com/external-api/v2/products/{ID}
+            $updateUrl = "https://www.faire.com/external-api/v2/products/{$productId}";
+            
+            // Rate limiting delay
+            sleep(1);
+            
+            // Build update payload - update name field
+            $updatePayload = [
+                'name' => $title
+            ];
+            
+            Log::info("Faire API PATCH request - URL: {$updateUrl}, Payload: " . json_encode($updatePayload));
+            
+            // Use appropriate header based on token type
+            $updateHeaders = [
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ];
+            
+            if ($isOAuthToken) {
+                // OAuth tokens use X-FAIRE-OAUTH-ACCESS-TOKEN header
+                $updateHeaders['X-FAIRE-OAUTH-ACCESS-TOKEN'] = $bearerToken;
+            } else {
+                // Bearer tokens use Authorization header
+                $updateHeaders['Authorization'] = 'Bearer ' . $bearerToken;
+            }
+            
+            $updateResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->withHeaders($updateHeaders)
+                ->timeout(30)
+                ->patch($updateUrl, $updatePayload);
+            
+            $status = $updateResponse->status();
+            $body = $updateResponse->body();
+            
+            Log::info("Faire API update response status: {$status}");
+            Log::info("Faire API update response body: {$body}");
+            
+            // Check response (similar to Amazon's success check)
+            if ($updateResponse->successful()) {
+                $responseData = $updateResponse->json();
+                
+                // Check if title was updated successfully
+                if (isset($responseData['name']) && $responseData['name'] === $title) {
+                    Log::info("✓ Successfully updated Faire title for SKU: {$sku}, Product ID: {$productId}");
+                    return true;
+                } elseif (isset($responseData['id'])) {
+                    // If we got a product object back, assume success
+                    Log::info("✓ Successfully updated Faire title for SKU: {$sku}, Product ID: {$productId}");
+                    return true;
+                } else {
+                    Log::error("✗ Failed to update Faire title for SKU {$sku}: Unexpected response structure. Response: " . json_encode($responseData));
+                    return false;
+                }
+            } else {
+                Log::error("✗ Failed to update Faire title for SKU {$sku}. Status: {$status}, Body: {$body}");
+                
+                if ($status == 401) {
+                    Log::error("Authentication failed (401). Check Faire credentials in .env file - token may be invalid or expired");
+                    Log::error("Try: FAIRE_BEARER_TOKEN, FAIRE_ACCESS_TOKEN, or FAIRE_APP_ID + FAIRE_APP_SECRET + FAIRE_REFRESH_TOKEN");
+                } elseif ($status == 403) {
+                    Log::error("Permission denied (403). Check API permissions in Faire Brand Portal - ensure product update permissions are enabled");
+                } elseif ($status == 404) {
+                    Log::error("Product not found (404). Product ID: {$productId} may not exist");
+                } elseif ($status == 429) {
+                    Log::error("Rate limited (429) - wait and retry");
+                } elseif ($status == 400) {
+                    Log::error("Bad request (400). Check request payload - may need different field name or format");
+                }
+                
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("✗ Exception updating Faire title for SKU {$sku}: " . $e->getMessage());
+            Log::error("Exception trace: " . $e->getTraceAsString());
             return false;
         }
     }

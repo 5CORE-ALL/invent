@@ -33,22 +33,55 @@ class ListingShopifyB2CController extends Controller
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $statusData = ShopifyB2CListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Get status data, handling duplicates by taking the most recent non-empty record
+        $statusData = ShopifyB2CListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->filter(function ($record) {
+                // Filter out records with empty or null values
+                $value = is_array($record->value) ? $record->value : (json_decode($record->value, true) ?? []);
+                return !empty($value) && (isset($value['rl_nrl']) || isset($value['nr_req']) || isset($value['listed']) || isset($value['live_inactive']) || isset($value['buyer_link']) || isset($value['seller_link']));
+            })
+            ->keyBy('sku');
 
         $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData) {
             $childSku = $item->sku;
             $item->INV = $shopifyData[$childSku]->inv ?? 0;
             $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
-            $item->nr_req = null;
-            $item->listed = null;
-            $item->buyer_link = null;
-            $item->seller_link = null;
+            
+            // If status exists, fill values from JSON
             if (isset($statusData[$childSku])) {
                 $status = $statusData[$childSku]->value;
-                $item->nr_req = $status['nr_req'] ?? null;
-                $item->listed = $status['listed'] ?? null;
-                $item->buyer_link = $status['buyer_link'] ?? null;
-                $item->seller_link = $status['seller_link'] ?? null;
+                if (is_string($status)) {
+                    $status = json_decode($status, true) ?? [];
+                }
+                if (is_array($status) && !empty($status)) {
+                    // Use stored values, support both old 'nr_req' and new 'rl_nrl'
+                    $item->rl_nrl = $status['rl_nrl'] ?? $status['nr_req'] ?? (floatval($item->INV) > 0 ? 'RL' : 'NRL');
+                    // Map old values to new values if needed
+                    if (isset($status['nr_req']) && !isset($status['rl_nrl'])) {
+                        $item->rl_nrl = ($status['nr_req'] === 'REQ') ? 'RL' : (($status['nr_req'] === 'NR') ? 'NRL' : $item->rl_nrl);
+                    }
+                    $item->listed = $status['listed'] ?? null;
+                    $item->live_inactive = $status['live_inactive'] ?? null;
+                    $item->buyer_link = $status['buyer_link'] ?? null;
+                    $item->seller_link = $status['seller_link'] ?? null;
+                } else {
+                    // Empty status - set defaults
+                    $item->rl_nrl = floatval($item->INV) > 0 ? 'RL' : 'NRL';
+                    $item->listed = null;
+                    $item->live_inactive = null;
+                    $item->buyer_link = null;
+                    $item->seller_link = null;
+                }
+            } else {
+                // No status record exists - set defaults based on INV
+                $item->rl_nrl = floatval($item->INV) > 0 ? 'RL' : 'NRL';
+                $item->listed = null;
+                $item->live_inactive = null;
+                $item->buyer_link = null;
+                $item->seller_link = null;
             }
             return $item;
         })->values();
@@ -63,29 +96,48 @@ class ListingShopifyB2CController extends Controller
     {
         $validated = $request->validate([
             'sku' => 'required|string',
-            'nr_req' => 'nullable|string',
+            'rl_nrl' => 'nullable|string',
             'listed' => 'nullable|string',
-            'buyer_link' => 'nullable|url',
-            'seller_link' => 'nullable|url',
+            'live_inactive' => 'nullable|string',
+            'buyer_link' => 'nullable|string',
+            'seller_link' => 'nullable|string',
         ]);
 
-        $sku = $validated['sku'];
-        $status = ShopifyB2CListingStatus::where('sku', $sku)->first();
+        $sku = trim($validated['sku']);
+        
+        // Get the most recent non-empty record, or create new
+        $status = ShopifyB2CListingStatus::where('sku', $sku)
+            ->orderBy('updated_at', 'desc')
+            ->first();
 
-        $existing = $status ? $status->value : [];
+        // If we have a record, use its value, otherwise start fresh
+        if ($status) {
+            $existing = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+            
+            // If existing is empty array, start fresh
+            if (empty($existing)) {
+                $existing = [];
+            }
+        } else {
+            $existing = [];
+        }
 
-        // Only update the fields that are present in the request
-        $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
+        // Only update the fields that are present in the request and not empty
+        $fields = ['rl_nrl', 'listed', 'live_inactive', 'buyer_link', 'seller_link'];
         foreach ($fields as $field) {
-            if ($request->has($field)) {
+            if ($request->has($field) && $request->input($field) !== null && $request->input($field) !== '') {
                 $existing[$field] = $validated[$field];
             }
         }
 
-        ShopifyB2CListingStatus::updateOrCreate(
-            ['sku' => $validated['sku']],
-            ['value' => $existing]
-        );
+        // Clean up: Delete any duplicate records for this SKU before creating/updating
+        ShopifyB2CListingStatus::where('sku', $sku)->delete();
+
+        // Create a single clean record
+        ShopifyB2CListingStatus::create([
+            'sku' => $sku,
+            'value' => $existing
+        ]);
 
         return response()->json(['status' => 'success']);
     }
@@ -138,62 +190,183 @@ class ListingShopifyB2CController extends Controller
 
     public function import(Request $request)
     {
-        $request->validate([
-            'file' => 'required|mimes:csv,txt',
-        ]);
+        try {
+            $request->validate([
+                'file' => 'required|mimes:csv,txt',
+            ]);
 
-        $file = $request->file('file');
-        $rows = array_map('str_getcsv', file($file));
-        // $header = array_map('trim', $rows[0]); // first row = header
-        $header = array_map(function ($h) {
-            return trim(preg_replace('/^\xEF\xBB\xBF/', '', $h)); // remove BOM if present
-        }, $rows[0]);
+            $file = $request->file('file');
+            $content = file_get_contents($file->getRealPath());
+            
+            // Remove BOM if present
+            $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+            
+            // Detect delimiter (tab or comma)
+            $firstLine = strtok($content, "\n");
+            $delimiter = (strpos($firstLine, "\t") !== false) ? "\t" : ",";
 
-        unset($rows[0]);
+            // Parse CSV with detected delimiter
+            $rows = array_map(function($line) use ($delimiter) {
+                return str_getcsv($line, $delimiter);
+            }, explode("\n", $content));
 
-        $allowedHeaders = ['sku','listed', 'buyer_link', 'seller_link'];
-        foreach ($header as $h) {
-            if (!in_array($h, $allowedHeaders)) {
+            // Process header
+            $header = array_map('trim', $rows[0]);
+            unset($rows[0]);
+
+            // Allowed headers: SKU is required, plus all editable fields
+            // Explicitly exclude: parent, inv, listing_status (these are read-only/computed)
+            $requiredHeaders = ['sku'];
+            $allowedHeaders = ['sku', 'rl_nrl', 'nr_req', 'listed', 'live_inactive', 'buyer_link', 'seller_link'];
+            $excludedHeaders = ['parent', 'inv', 'listing_status', 'listing status'];
+            
+            // Normalize header keys to lowercase for comparison
+            $headerLower = array_map('strtolower', $header);
+            
+            // Check if SKU is present
+            if (!in_array('sku', $headerLower)) {
                 return response()->json([
-                    'error' => "Invalid header '$h'. Allowed headers: " . implode(', ', $allowedHeaders)
+                    'error' => "Required header 'sku' is missing. CSV must include 'sku' column."
                 ], 422);
             }
-        }
 
-        foreach ($rows as $row) {
-            if (count($row) < 1) {
-                continue; // skip empty
+            // Check for excluded headers and reject them
+            $foundExcluded = [];
+            $excludedLower = array_map('strtolower', $excludedHeaders);
+            foreach ($headerLower as $index => $h) {
+                if (in_array($h, $excludedLower)) {
+                    $foundExcluded[] = $header[$index];
+                }
+            }
+            
+            if (!empty($foundExcluded)) {
+                return response()->json([
+                    'error' => "Excluded header(s) found: " . implode(', ', $foundExcluded) . ". These columns (parent, inv, listing_status) cannot be imported. Please remove them from your CSV file."
+                ], 422);
             }
 
-            $rowData = array_combine($header, $row);
-            $sku = trim($rowData['sku'] ?? '');
-
-            if (!$sku) {
-                continue;
+            // Validate all headers are allowed
+            $invalidHeaders = [];
+            $allowedLower = array_map('strtolower', $allowedHeaders);
+            foreach ($headerLower as $index => $h) {
+                if (!in_array($h, $allowedLower)) {
+                    $invalidHeaders[] = $header[$index];
+                }
+            }
+            
+            if (!empty($invalidHeaders)) {
+                return response()->json([
+                    'error' => "Invalid header(s): " . implode(', ', $invalidHeaders) . ". Allowed headers: sku, rl_nrl, listed, live_inactive, buyer_link, seller_link"
+                ], 422);
             }
 
-            // Only import SKUs that exist in product_masters
-            if (!ProductMaster::where('sku', $sku)->exists()) {
-                continue;
-            }
+            $processedCount = 0;
+            $skippedCount = 0;
+            $errorCount = 0;
 
-            $status = ShopifyB2CListingStatus::where('sku', $sku)->first();
-            $existing = $status ? $status->value : [];
+            foreach ($rows as $index => $row) {
+                if (count($row) < 1 || (count($row) === 1 && trim($row[0]) === '')) {
+                    $skippedCount++;
+                    continue;
+                }
 
-            $fields = ['listed', 'buyer_link', 'seller_link'];
-            foreach ($fields as $field) {
-                if (array_key_exists($field, $rowData) && $rowData[$field] !== '') {
-                    $existing[$field] = $rowData[$field];
+                // Pad row with empty strings if it has fewer columns than header
+                $headerCount = count($header);
+                $rowCount = count($row);
+                if ($rowCount < $headerCount) {
+                    $row = array_pad($row, $headerCount, '');
+                }
+                
+                // Trim row if it has more columns than header
+                if ($rowCount > $headerCount) {
+                    $row = array_slice($row, 0, $headerCount);
+                }
+
+                $rowData = array_combine($header, $row);
+                
+                // Normalize keys to lowercase for case-insensitive matching
+                $rowDataNormalized = [];
+                foreach ($rowData as $key => $value) {
+                    $rowDataNormalized[strtolower($key)] = $value;
+                }
+                
+                $sku = trim($rowDataNormalized['sku'] ?? '');
+
+                if (!$sku) {
+                    $skippedCount++;
+                    continue;
+                }
+
+                try {
+                    // Only import SKUs that exist in product_masters
+                    if (!ProductMaster::where('sku', $sku)->whereNull('deleted_at')->exists()) {
+                        $skippedCount++;
+                        continue;
+                    }
+
+                    // Get the most recent non-empty record, or start fresh
+                    $status = ShopifyB2CListingStatus::where('sku', $sku)
+                        ->orderBy('updated_at', 'desc')
+                        ->first();
+
+                    if ($status) {
+                        $existing = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+                        if (empty($existing)) {
+                            $existing = [];
+                        }
+                    } else {
+                        $existing = [];
+                    }
+
+                    // Import editable fields (case-insensitive matching)
+                    $fields = ['rl_nrl', 'listed', 'live_inactive', 'buyer_link', 'seller_link'];
+                    foreach ($fields as $field) {
+                        $fieldKey = strtolower($field);
+                        if (array_key_exists($fieldKey, $rowDataNormalized) && trim($rowDataNormalized[$fieldKey]) !== '') {
+                            $existing[$field] = trim($rowDataNormalized[$fieldKey]);
+                        }
+                    }
+                    
+                    // Support legacy 'nr_req' field for backward compatibility
+                    $nrReqKey = strtolower('nr_req');
+                    if (array_key_exists($nrReqKey, $rowDataNormalized) && trim($rowDataNormalized[$nrReqKey]) !== '' && !isset($existing['rl_nrl'])) {
+                        $nrReq = trim($rowDataNormalized[$nrReqKey]);
+                        $existing['rl_nrl'] = ($nrReq === 'REQ') ? 'RL' : (($nrReq === 'NR') ? 'NRL' : $nrReq);
+                    }
+                    
+                    // Note: parent, inv, and listing_status columns are ignored as they are read-only or computed
+
+                    // Clean up duplicates before creating/updating
+                    ShopifyB2CListingStatus::where('sku', $sku)->delete();
+
+                    // Create a single clean record
+                    ShopifyB2CListingStatus::create([
+                        'sku' => $sku,
+                        'value' => $existing
+                    ]);
+                    
+                    $processedCount++;
+                    
+                } catch (\Exception $rowError) {
+                    $errorCount++;
                 }
             }
 
-            ShopifyB2CListingStatus::updateOrCreate(
-                ['sku' => $sku],
-                ['value' => $existing]
-            );
-        }
+            $message = 'CSV imported successfully';
+            if ($errorCount > 0) {
+                $message .= " (Processed: $processedCount, Skipped: $skippedCount, Errors: $errorCount)";
+            }
 
-        return response()->json(['success' => 'CSV imported successfully']);
+            return response()->json([
+                'success' => $message,
+                'processed' => $processedCount,
+                'skipped' => $skippedCount,
+                'errors' => $errorCount
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Import failed: ' . $e->getMessage()], 500);
+        }
     }
 
 
@@ -201,10 +374,11 @@ class ListingShopifyB2CController extends Controller
     {
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="listing_status.csv"',
+            'Content-Disposition' => 'attachment; filename="shopifyb2c_listing_export.csv"',
         ];
 
-        $columns = ['sku', 'listed', 'buyer_link', 'seller_link'];
+        // Export columns: Parent, SKU, INV (for reference), and all editable fields (excluding Listing Status as it's computed)
+        $columns = ['parent', 'sku', 'inv', 'rl_nrl', 'listed', 'live_inactive', 'buyer_link', 'seller_link'];
 
         $callback = function () use ($columns) {
             $file = fopen('php://output', 'w');
@@ -212,19 +386,100 @@ class ListingShopifyB2CController extends Controller
             // Write header row
             fputcsv($file, $columns);
 
-            // Fetch all SKUs from product master
-            $productMasters = ProductMaster::pluck('sku');
+            // Fetch all products from product master
+            $productMasters = ProductMaster::whereNull('deleted_at')->get();
+            $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-            foreach ($productMasters as $sku) {
-                $status = ShopifyB2CListingStatus::where('sku', $sku)->first();
+            // Get Shopify inventory data
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+            // Get all status data
+            $statusData = ShopifyB2CListingStatus::whereIn('sku', $skus)
+                ->orderBy('updated_at', 'desc')
+                ->get()
+                ->keyBy('sku');
+
+            foreach ($productMasters as $product) {
+                $sku = $product->sku;
+                $shopifyItem = $shopifyData[$sku] ?? null;
+                $status = $statusData[$sku] ?? null;
+
+                $statusValue = [];
+                if ($status) {
+                    $statusValue = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+                }
+
+                // Handle rl_nrl with backward compatibility for nr_req
+                $rlNrl = $statusValue['rl_nrl'] ?? '';
+                if (empty($rlNrl) && isset($statusValue['nr_req'])) {
+                    $rlNrl = ($statusValue['nr_req'] === 'REQ') ? 'RL' : (($statusValue['nr_req'] === 'NR') ? 'NRL' : '');
+                }
 
                 $row = [
-                    'sku'         => $sku,
-                    'listed'      => $status->value['listed'] ?? '',
-                    'buyer_link'  => $status->value['buyer_link'] ?? '',
-                    'seller_link' => $status->value['seller_link'] ?? '',
+                    'parent'       => $product->parent ?? '',
+                    'sku'          => $sku,
+                    'inv'          => $shopifyItem ? ($shopifyItem->inv ?? 0) : 0,
+                    'rl_nrl'       => $rlNrl,
+                    'listed'       => $statusValue['listed'] ?? '',
+                    'live_inactive' => $statusValue['live_inactive'] ?? '',
+                    'buyer_link'   => $statusValue['buyer_link'] ?? '',
+                    'seller_link'  => $statusValue['seller_link'] ?? '',
                 ];
 
+                fputcsv($file, $row);
+            }
+
+            fclose($file);
+        };
+
+        return new StreamedResponse($callback, 200, $headers);
+    }
+
+    public function downloadSample()
+    {
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="shopifyb2c_listing_import_sample.csv"',
+        ];
+
+        // Sample file columns: Only editable fields (exclude parent, inv, listing_status)
+        $columns = ['sku', 'rl_nrl', 'listed', 'live_inactive', 'buyer_link', 'seller_link'];
+
+        $callback = function () use ($columns) {
+            $file = fopen('php://output', 'w');
+
+            // Write header row
+            fputcsv($file, $columns);
+
+            // Write sample data rows
+            $sampleRows = [
+                [
+                    'sku' => 'EXAMPLE-SKU-001',
+                    'rl_nrl' => 'RL',
+                    'listed' => 'Listed',
+                    'live_inactive' => 'Live',
+                    'buyer_link' => 'https://www.shopify.com/buyer-link-example',
+                    'seller_link' => 'https://www.shopify.com/seller-link-example'
+                ],
+                [
+                    'sku' => 'EXAMPLE-SKU-002',
+                    'rl_nrl' => 'NRL',
+                    'listed' => 'Pending',
+                    'live_inactive' => 'Inactive',
+                    'buyer_link' => '',
+                    'seller_link' => ''
+                ],
+                [
+                    'sku' => 'EXAMPLE-SKU-003',
+                    'rl_nrl' => 'RL',
+                    'listed' => 'Listed',
+                    'live_inactive' => 'Live',
+                    'buyer_link' => 'https://www.shopify.com/buyer-link-example-2',
+                    'seller_link' => 'https://www.shopify.com/seller-link-example-2'
+                ]
+            ];
+
+            foreach ($sampleRows as $row) {
                 fputcsv($file, $row);
             }
 

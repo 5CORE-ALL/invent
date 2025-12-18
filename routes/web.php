@@ -952,6 +952,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_walmart/save-status', [ListingWalmartController::class, 'saveStatus']);
     Route::post('/listing_walmart/import', [ListingWalmartController::class, 'import'])->name('listing_walmart.import');
     Route::get('/listing_walmart/export', [ListingWalmartController::class, 'export'])->name('listing_walmart.export');
+    Route::get('/listing_walmart/sample', [ListingWalmartController::class, 'downloadSample'])->name('listing_walmart.sample');
 
     Route::get('/ad-cvr-walmart', action: [WalmartZeroController::class, 'adcvrWalmart'])->name('adcvr.walmart');
     Route::get('/ad-cvr-walmart-data', action: [WalmartZeroController::class, 'adcvrWalmartData'])->name('adcvr.walmart.data');
@@ -1048,6 +1049,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_macys/save-status', [ListingMacysController::class, 'saveStatus']);
     Route::post('/listing_macys/import', [ListingMacysController::class, 'import'])->name('listing_macys.import');
     Route::get('/listing_macys/export', [ListingMacysController::class, 'export'])->name('listing_macys.export');
+    Route::get('/listing_macys/sample', [ListingMacysController::class, 'downloadSample'])->name('listing_macys.sample');
     Route::get('/macys', [MacyController::class, 'macyView'])->name('macys');
     Route::post('/macys/saveLowProfit', [MacyController::class, 'saveLowProfit']);
     Route::get('/macys-zero-view', action: [MacyZeroController::class, 'macyZeroView'])->name('macy.zero.view');
@@ -1062,6 +1064,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_shopifyb2c/save-status', [ListingShopifyB2CController::class, 'saveStatus']);
     Route::post('/listing_shopifyb2c/import', [ListingShopifyB2CController::class, 'import'])->name('listing_shopifyb2c.import');
     Route::get('/listing_shopifyb2c/export', [ListingShopifyB2CController::class, 'export'])->name('listing_shopifyb2c.export');
+    Route::get('/listing_shopifyb2c/sample', [ListingShopifyB2CController::class, 'downloadSample'])->name('listing_shopifyb2c.sample');
     Route::get('/shopifyB2C-zero-view', action: [Shopifyb2cZeroController::class, 'shopifyb2cZeroView'])->name('shopifyB2C.zero.view');
     Route::get('/shopifyB2C-low-visibility-view', action: [Shopifyb2cLowVisibilityController::class, 'shopifyb2cLowVisibilityView'])->name('shopifyB2C.low.visibility.view');
     Route::get('/shopifyB2C', [Shopifyb2cController::class, 'shopifyb2cView'])->name('shopifyB2C');
@@ -1077,6 +1080,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_wayfair/save-status', [ListingWayfairController::class, 'saveStatus']);
     Route::post('/listing_wayfair/import', [ListingWayfairController::class, 'import'])->name('listing_wayfair.import');
     Route::get('/listing_wayfair/export', [ListingWayfairController::class, 'export'])->name('listing_wayfair.export');
+    Route::get('/listing_wayfair/sample', [ListingWayfairController::class, 'downloadSample'])->name('listing_wayfair.sample');
     Route::get('/Wayfair-zero-view', action: [WayfairZeroController::class, 'wayfairZeroView'])->name('wayfair.zero.view');
     Route::get('/Wayfair-low-visibility-view', action: [WayfairLowVisibilityController::class, 'wayfairLowVisibilityView'])->name('wayfair.low.visibility.view');
     Route::get('/Wayfair', [WayfairController::class, 'wayfairView'])->name('Wayfair');
@@ -1105,6 +1109,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb', [ReverbController::class, 'reverbView'])->name('reverb');
     Route::post('/listing_reverb/import', [ListingReverbController::class, 'import'])->name('listing_reverb.import');
     Route::get('/listing_reverb/export', [ListingReverbController::class, 'export'])->name('listing_reverb.export');
+    Route::get('/listing_reverb/sample', [ListingReverbController::class, 'downloadSample'])->name('listing_reverb.sample');
     Route::post('/reverb/saveLowProfit', [ReverbController::class, 'saveLowProfit']);
     Route::get('/reverb/zero/view', [ReverbZeroController::class, 'index'])->name('reverb.zero.view');
     Route::get('/reverb-low-visiblity-view', [ReverbLowVisibilityController::class, 'reverbLowVisibilityview'])->name('reverb.low.visibility.view');
@@ -1221,6 +1226,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/dim-wt-master', [CategoryController::class, 'dimWtMaster'])->name('dim.wt.master');
     Route::get('/dim-wt-master-data-view', [CategoryController::class, 'getDimWtMasterData'])->name('dim.wt.master.data');
     Route::post('/dim-wt-master/import', [CategoryController::class, 'importDimWtMaster'])->name('dim.wt.master.import');
+    Route::post('/dim-wt-master/push-data', [CategoryController::class, 'pushDimWtDataToPlatforms'])->name('dim.wt.master.push');
     Route::get('/shipping-master', [CategoryController::class, 'shippingMaster'])->name('shipping.master');
     Route::get('/shipping-master-data-view', [CategoryController::class, 'getShippingMasterData'])->name('shipping.master.data');
     Route::post('/shipping-master/import', [CategoryController::class, 'importShippingMaster'])->name('shipping.master.import');
@@ -1586,6 +1592,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_aliexpress/save-status', [ListingAliexpressController::class, 'saveStatus']);
     Route::post('/listing_aliexpress/import', [ListingAliexpressController::class, 'import'])->name('listing_aliexpress.import');
     Route::get('/listing_aliexpress/export', [ListingAliexpressController::class, 'export'])->name('listing_aliexpress.export');
+    Route::get('/listing_aliexpress/sample', [ListingAliexpressController::class, 'downloadSample'])->name('listing_aliexpress.sample');
 
     Route::get('aliexpressAnalysis', action: [AliexpressController::class, 'overallAliexpress']);
     Route::get('/aliexpress/view-data', [AliexpressController::class, 'getViewAliexpressData']);

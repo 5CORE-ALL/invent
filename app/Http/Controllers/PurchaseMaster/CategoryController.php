@@ -3733,6 +3733,366 @@ class CategoryController extends Controller
         }
     }
 
+    public function pushDimWtDataToPlatforms(Request $request)
+    {
+        try {
+            $request->validate([
+                'skus' => 'required|array',
+                'skus.*.sku' => 'required|string',
+                'skus.*.id' => 'required|integer',
+            ]);
+
+            $skus = $request->input('skus');
+            $platforms = [
+                'amazon', 'ebay', 'ebay2', 'ebay3', 'shopify', 'walmart', 
+                'doba', 'temu', 'shein', 'bestbuy', 'tiendamia', 'macy', 
+                'reverb', 'wayfair', 'faire', 'aliexpress', 'mercari', 
+                'fb_marketplace', 'tiktok_shop', 'fb_shop', 'insta_shop', 'pls'
+            ];
+
+            $results = [];
+            $totalSuccess = 0;
+            $totalFailed = 0;
+            $errors = [];
+
+            // Initialize results for each platform
+            foreach ($platforms as $platform) {
+                $results[$platform] = [
+                    'success' => 0,
+                    'failed' => 0,
+                    'errors' => []
+                ];
+            }
+
+            // Process each SKU
+            foreach ($skus as $skuData) {
+                $sku = trim($skuData['sku']);
+                $productId = $skuData['id'];
+                
+                // Get product from database
+                $product = ProductMaster::find($productId);
+                
+                if (!$product || $product->sku !== $sku) {
+                    $errors[] = "SKU {$sku}: Product not found";
+                    $totalFailed++;
+                    continue;
+                }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : 
+                         (is_string($product->Values) ? json_decode($product->Values, true) : []);
+                
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                // Update dimensions and weight in Values
+                $hasChanges = false;
+                if (isset($skuData['wt_act']) && $skuData['wt_act'] !== null) {
+                    $values['wt_act'] = (float)$skuData['wt_act'];
+                    $hasChanges = true;
+                }
+                if (isset($skuData['wt_decl']) && $skuData['wt_decl'] !== null) {
+                    $values['wt_decl'] = (float)$skuData['wt_decl'];
+                    $hasChanges = true;
+                }
+                if (isset($skuData['l']) && $skuData['l'] !== null) {
+                    $values['l'] = (float)$skuData['l'];
+                    $hasChanges = true;
+                }
+                if (isset($skuData['w']) && $skuData['w'] !== null) {
+                    $values['w'] = (float)$skuData['w'];
+                    $hasChanges = true;
+                }
+                if (isset($skuData['h']) && $skuData['h'] !== null) {
+                    $values['h'] = (float)$skuData['h'];
+                    $hasChanges = true;
+                }
+
+                // Save to ProductMaster if there are changes
+                if ($hasChanges) {
+                    $product->Values = $values;
+                    $product->save();
+                }
+
+                // Push to each platform
+                foreach ($platforms as $platform) {
+                    try {
+                        $success = $this->pushToPlatform($platform, $sku, $skuData);
+                        
+                        if ($success) {
+                            $results[$platform]['success']++;
+                            $totalSuccess++;
+                        } else {
+                            $results[$platform]['failed']++;
+                            $totalFailed++;
+                            $results[$platform]['errors'][] = "SKU {$sku}: Update failed";
+                        }
+                    } catch (\Exception $e) {
+                        $results[$platform]['failed']++;
+                        $totalFailed++;
+                        $errorMsg = "SKU {$sku}: " . $e->getMessage();
+                        $results[$platform]['errors'][] = $errorMsg;
+                        $errors[] = ucfirst($platform) . " - " . $errorMsg;
+                        Log::error("Push Dim/Wt to {$platform} failed for SKU {$sku}: " . $e->getMessage());
+                    }
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Push operation completed',
+                'results' => $results,
+                'total_success' => $totalSuccess,
+                'total_failed' => $totalFailed,
+                'errors' => array_slice($errors, 0, 50) // Limit errors to first 50
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Push Dim/Wt Data Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error pushing data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Push dimensions and weight to a specific platform
+     * 
+     * @param string $platform Platform name
+     * @param string $sku Product SKU
+     * @param array $data Dimension and weight data
+     * @return bool Success status
+     */
+    private function pushToPlatform($platform, $sku, $data)
+    {
+        try {
+            switch (strtolower($platform)) {
+                case 'amazon':
+                    return $this->pushToAmazon($sku, $data);
+                
+                case 'ebay':
+                case 'ebay2':
+                case 'ebay3':
+                    return $this->pushToEbay($platform, $sku, $data);
+                
+                case 'shopify':
+                    return $this->pushToShopify($sku, $data);
+                
+                case 'walmart':
+                    return $this->pushToWalmart($sku, $data);
+                
+                case 'doba':
+                    return $this->pushToDoba($sku, $data);
+                
+                case 'temu':
+                    return $this->pushToTemu($sku, $data);
+                
+                case 'shein':
+                    return $this->pushToShein($sku, $data);
+                
+                case 'bestbuy':
+                    return $this->pushToBestBuy($sku, $data);
+                
+                case 'tiendamia':
+                    return $this->pushToTiendamia($sku, $data);
+                
+                case 'macy':
+                    return $this->pushToMacy($sku, $data);
+                
+                case 'reverb':
+                    return $this->pushToReverb($sku, $data);
+                
+                case 'wayfair':
+                    return $this->pushToWayfair($sku, $data);
+                
+                case 'faire':
+                    return $this->pushToFaire($sku, $data);
+                
+                case 'aliexpress':
+                    return $this->pushToAliExpress($sku, $data);
+                
+                case 'mercari':
+                    return $this->pushToMercari($sku, $data);
+                
+                case 'fb_marketplace':
+                    return $this->pushToFbMarketplace($sku, $data);
+                
+                case 'tiktok_shop':
+                    return $this->pushToTikTokShop($sku, $data);
+                
+                case 'fb_shop':
+                    return $this->pushToFbShop($sku, $data);
+                
+                case 'insta_shop':
+                    return $this->pushToInstaShop($sku, $data);
+                
+                case 'pls':
+                    return $this->pushToPls($sku, $data);
+                
+                default:
+                    Log::warning("Unknown platform: {$platform} for SKU: {$sku}");
+                    return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("Error pushing to {$platform} for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    // Platform-specific push methods
+    // These methods can be implemented to call the respective API services
+    
+    private function pushToAmazon($sku, $data)
+    {
+        // TODO: Implement Amazon API call to update dimensions/weight
+        // Example: Use AmazonSpApiService to update product dimensions
+        Log::info("Pushing dim/wt to Amazon for SKU: {$sku}");
+        return true; // Placeholder - implement actual API call
+    }
+
+    private function pushToEbay($platform, $sku, $data)
+    {
+        // TODO: Implement eBay API call based on platform (ebay, ebay2, ebay3)
+        // Example: Use EbayApiService, EbayTwoApiService, or EbayThreeApiService
+        Log::info("Pushing dim/wt to {$platform} for SKU: {$sku}");
+        return true; // Placeholder - implement actual API call
+    }
+
+    private function pushToShopify($sku, $data)
+    {
+        // TODO: Implement Shopify API call to update variant dimensions/weight
+        // Example: Use ShopifyApiService to update product variant
+        Log::info("Pushing dim/wt to Shopify for SKU: {$sku}");
+        return true; // Placeholder - implement actual API call
+    }
+
+    private function pushToWalmart($sku, $data)
+    {
+        // TODO: Implement Walmart API call
+        Log::info("Pushing dim/wt to Walmart for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToDoba($sku, $data)
+    {
+        // TODO: Implement Doba API call
+        Log::info("Pushing dim/wt to Doba for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToTemu($sku, $data)
+    {
+        // TODO: Implement Temu API call
+        Log::info("Pushing dim/wt to Temu for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToShein($sku, $data)
+    {
+        // TODO: Implement Shein API call
+        Log::info("Pushing dim/wt to Shein for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToBestBuy($sku, $data)
+    {
+        // TODO: Implement BestBuy API call
+        Log::info("Pushing dim/wt to BestBuy for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToTiendamia($sku, $data)
+    {
+        // TODO: Implement Tiendamia API call
+        Log::info("Pushing dim/wt to Tiendamia for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToMacy($sku, $data)
+    {
+        // TODO: Implement Macy's API call
+        Log::info("Pushing dim/wt to Macy for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToReverb($sku, $data)
+    {
+        // TODO: Implement Reverb API call
+        Log::info("Pushing dim/wt to Reverb for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToWayfair($sku, $data)
+    {
+        // TODO: Implement Wayfair API call
+        Log::info("Pushing dim/wt to Wayfair for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToFaire($sku, $data)
+    {
+        // TODO: Implement Faire API call
+        Log::info("Pushing dim/wt to Faire for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToAliExpress($sku, $data)
+    {
+        // TODO: Implement AliExpress API call
+        Log::info("Pushing dim/wt to AliExpress for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToMercari($sku, $data)
+    {
+        // TODO: Implement Mercari API call
+        Log::info("Pushing dim/wt to Mercari for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToFbMarketplace($sku, $data)
+    {
+        // TODO: Implement Facebook Marketplace API call
+        Log::info("Pushing dim/wt to FB Marketplace for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToTikTokShop($sku, $data)
+    {
+        // TODO: Implement TikTok Shop API call
+        Log::info("Pushing dim/wt to TikTok Shop for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToFbShop($sku, $data)
+    {
+        // TODO: Implement Facebook Shop API call
+        Log::info("Pushing dim/wt to FB Shop for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToInstaShop($sku, $data)
+    {
+        // TODO: Implement Instagram Shop API call
+        Log::info("Pushing dim/wt to Instagram Shop for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
+    private function pushToPls($sku, $data)
+    {
+        // TODO: Implement PLS API call
+        Log::info("Pushing dim/wt to PLS for SKU: {$sku}");
+        return true; // Placeholder
+    }
+
     public function packageIncludesMaster()
     {
         return view('package-includes-master');

@@ -1006,7 +1006,7 @@
             border-color: #dae0e5;
         }
 
-        .nr-req-dropdown {
+        .rl-nrl-dropdown {
             width: 100%;
             padding: 4px 8px;
             border-radius: 4px;
@@ -1017,19 +1017,19 @@
             cursor: pointer;
         }
 
-        .nr-req-dropdown .req-option {
+        .rl-nrl-dropdown .rl-option {
             background-color: #28a745;
             /* Green */
             color: white;
         }
 
-        .nr-req-dropdown .nr-option {
+        .rl-nrl-dropdown .nrl-option {
             background-color: #dc3545;
             /* Red */
             color: white;
         }
 
-        .nr-req-dropdown option {
+        .rl-nrl-dropdown option {
             padding: 4px 8px;
             font-weight: bold;
         }
@@ -1059,6 +1059,68 @@
         .listed-dropdown .pending-option {
             background-color: #dc3545;
             /* Red */
+            color: white;
+        }
+
+        .live-inactive-dropdown {
+            width: 100%;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        .live-inactive-dropdown option {
+            padding: 4px 8px;
+            font-weight: bold;
+        }
+
+        .live-inactive-dropdown .live-option {
+            background-color: #28a745;
+            /* Green */
+            color: white;
+        }
+
+        .live-inactive-dropdown .inactive-option {
+            background-color: #6c757d;
+            /* Gray */
+            color: white;
+        }
+
+        .listing-status-cell {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            display: inline-block;
+            min-width: 80px;
+        }
+
+        .listing-status-cell.listed {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .listing-status-cell.missing {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .listing-status-cell.nrl {
+            background-color: #ffc107;
+            color: #212529;
+        }
+
+        .listing-status-cell.live {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .listing-status-cell.inactive {
+            background-color: #6c757d;
             color: white;
         }
     </style>
@@ -1093,11 +1155,11 @@
                         </div>
                         <div class="form-row">
                             <div class="form-group col-md-6">
-                                <label for="nr-req-filter" class="mr-2">NRL/REQ:</label>
+                                <label for="nr-req-filter" class="mr-2">RL/NRL:</label>
                                 <select id="nr-req-filter" class="form-control form-control-sm">
                                     <option value="all">All</option>
-                                    <option value="REQ">REQ</option>
-                                    <option value="NR">NRL</option>
+                                    <option value="RL">RL</option>
+                                    <option value="NRL">NRL</option>
                                 </select>
                             </div>
                             <div class="form-group col-md-6">
@@ -1147,7 +1209,7 @@
 
                             <div class="modal-body">
 
-                                <a href="{{ asset('sample_excel/sample_listing_file.csv') }}" download class="btn btn-outline-secondary mb-3">📄 Download Sample File</a>
+                                <a href="{{ route('listing_walmart.sample') }}" class="btn btn-outline-secondary mb-3">📄 Download Sample File</a>
 
                                 <input type="file" id="importFile" name="file" accept=".csv,.txt" class="form-control" />
                                 <small class="text-muted">Only CSV or TXT files are supported.</small>
@@ -1165,7 +1227,6 @@
                         <table class="custom-resizable-table" id="walmartListing-table">
                             <thead>
                                 <tr>
-                                    <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th>
                                     <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center sortable-header">
@@ -1181,7 +1242,7 @@
                                     <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center sortable">
                                             <div class="d-flex align-items-center">
-                                                Sku <span class="sort-arrow">↓</span>
+                                                SKU <span class="sort-arrow">↓</span>
                                             </div>
                                             <div class="mt-1 dropdown-search-container">
                                                 <input type="text" class="form-control form-control-sm sku-search"
@@ -1199,21 +1260,17 @@
                                             <div class="metric-total" id="inv-total">0</div>
                                         </div>
                                     </th>
-                                    <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="rl_nrl" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
-                                                NRL/REQ
+                                                RL/NRL
                                             </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="req-total"
-                                                style="display:inline-block; background:#43dc35; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0</div>
                                         </div>
                                     </th>
-                                    <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="link" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
-                                                LINK
+                                                Link
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                             <div class="metric-total" id="without-link-total"
@@ -1237,6 +1294,20 @@
                                                     style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:4px 12px; font-weight:600; font-size:15px; margin-left:6px;">
                                                     0
                                                 </span>
+                                            </div>
+                                        </div>
+                                    </th>
+                                    <th data-field="live_inactive" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                Live/Inactive
+                                            </div>
+                                        </div>
+                                    </th>
+                                    <th data-field="listing_status" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                Listing Status
                                             </div>
                                         </div>
                                     </th>
@@ -1420,13 +1491,13 @@
                             tableData = [];
                         }
 
-                        // Set default value for nr_req if missing and INV > 0
+                        // Set default values if missing
                         tableData = tableData.map(item => ({
                             ...item,
-                            nr_req: item.nr_req || (parseFloat(item.INV) > 0 ? 'REQ' :
-                                'NR'),
-                            listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' :
-                                'Listed')
+                            // Support both old nr_req and new rl_nrl fields
+                            rl_nrl: item.rl_nrl || (item.nr_req === 'REQ' ? 'RL' : (item.nr_req === 'NR' ? 'NRL' : (parseFloat(item.INV) > 0 ? 'RL' : 'NRL'))),
+                            listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' : 'Listed'),
+                            live_inactive: item.live_inactive || 'Live'
                         }));
 
                         filteredData = [...tableData];
@@ -1449,7 +1520,7 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="5" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="8" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
@@ -1489,7 +1560,7 @@
                 });
 
                 if ($tbody.children().length === 0) {
-                    $tbody.append('<tr><td colspan="5" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="8" class="text-center">No matching records found</td></tr>');
                 }
 
                 updatePaginationInfo();
@@ -1532,37 +1603,59 @@
                 });
             });
 
+            // Helper function to compute listing status (defined at top level for reuse)
+            function computeListingStatus(rlNrl, listed, liveInactive) {
+                // Priority order: NRL has highest priority, then Listed/Pending, then Live/Inactive
+                if (rlNrl === 'NRL') {
+                    return { status: 'NRL', class: 'nrl' };
+                } else if (listed === 'Listed') {
+                    return { status: 'Listed', class: 'listed' };
+                } else if (listed === 'Pending') {
+                    return { status: 'Missing', class: 'missing' };
+                } else if (liveInactive === 'Live') {
+                    return { status: 'Live', class: 'live' };
+                } else if (liveInactive === 'Inactive') {
+                    return { status: 'Inactive', class: 'inactive' };
+                }
+                return { status: '', class: '' };
+            }
+
             // Helper function to create a table row
             function createTableRow(item, index) {
                 const $row = $('<tr>');
 
                 // Add a blue background color if the SKU contains "PARENT"
-                if (item.sku.includes('PARENT')) {
+                if (item.sku && item.sku.includes('PARENT')) {
                     $row.addClass('parent-row');
                 }
 
-                $row.append($('<td>').text(index)); // SL No.
-                $row.append($('<td>').text(item.parent)); // Parent
-                $row.append($('<td>').text(item.sku)); // SKU
-                $row.append($('<td>').text(item.INV)); // INV
+                // Parent
+                $row.append($('<td>').text(item.parent || ''));
+                
+                // SKU
+                $row.append($('<td>').text(item.sku || ''));
+                
+                // INV
+                $row.append($('<td>').text(item.INV || 0));
 
-                // NR/REQ dropdown only for non-parent rows
-                if (!item.sku.includes('PARENT')) {
-                    const $dropdown = $('<select>')
-                        .addClass('nr-req-dropdown form-control form-control-sm')
-                        .append('<option value="REQ" class="req-option">REQ</option>')
-                        .append('<option value="NR" class="nr-option">NRL</option>');
+                // RL/NRL dropdown only for non-parent rows
+                if (!item.sku || !item.sku.includes('PARENT')) {
+                    const $rlNrlDropdown = $('<select>')
+                        .addClass('rl-nrl-dropdown form-control form-control-sm')
+                        .append('<option value="RL" class="rl-option">RL</option>')
+                        .append('<option value="NRL" class="nrl-option">NRL</option>');
 
-                    const initialValue = item.nr_req || 'REQ';
-                    $dropdown.val(initialValue);
+                    // Support both old nr_req and new rl_nrl fields
+                    let initialValue = item.rl_nrl || (item.nr_req === 'REQ' ? 'RL' : (item.nr_req === 'NR' ? 'NRL' : 'RL'));
+                    $rlNrlDropdown.val(initialValue);
 
-                    if (initialValue === 'REQ') {
-                        $dropdown.css('background-color', '#28a745').css('color', 'white');
-                    } else if (initialValue === 'NR') {
-                        $dropdown.css('background-color', '#dc3545').css('color', 'white');
+                    if (initialValue === 'RL') {
+                        $rlNrlDropdown.css('background-color', '#28a745').css('color', 'white');
+                    } else if (initialValue === 'NRL') {
+                        $rlNrlDropdown.css('background-color', '#dc3545').css('color', 'white');
                     }
 
-                    $row.append($('<td>').append($dropdown));
+                    $row.append($('<td>').append($rlNrlDropdown));
                 } else {
                     $row.append($('<td>').text('')); // Empty cell for parent rows
                 }
@@ -1571,7 +1664,6 @@
                 const $linkCell = $('<td>');
 
                 // Buyer Link
-
                 if (item.buyer_link) {
                     $linkCell.append(
                         `<a href="${item.buyer_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Buyer</a>`
@@ -1579,7 +1671,6 @@
                 }
 
                 // Seller Link
-
                 if (item.seller_link) {
                     $linkCell.append(
                         `<a href="${item.seller_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Seller</a>`
@@ -1587,7 +1678,7 @@
                 }
 
                 // Pen icon (always show for non-parent rows, or adjust as needed)
-                if (!item.sku.includes('PARENT')) {
+                if (!item.sku || !item.sku.includes('PARENT')) {
                     $linkCell.append(
                         $('<i>')
                         .addClass('fas fa-pen text-primary link-edit-icon')
@@ -1603,7 +1694,7 @@
                 $row.append($linkCell);
 
                 // Listed/Pending dropdown only for non-parent rows
-                if (!item.sku.includes('PARENT')) {
+                if (!item.sku || !item.sku.includes('PARENT')) {
                     const $listedDropdown = $('<select>')
                         .addClass('listed-dropdown form-control form-control-sm')
                         .append('<option value="Listed" class="listed-option">Listed</option>')
@@ -1619,6 +1710,47 @@
                     }
 
                     $row.append($('<td>').append($listedDropdown));
+                } else {
+                    $row.append($('<td>').text('')); // Empty cell for parent rows
+                }
+
+                // Live/Inactive dropdown only for non-parent rows
+                if (!item.sku || !item.sku.includes('PARENT')) {
+                    const $liveInactiveDropdown = $('<select>')
+                        .addClass('live-inactive-dropdown form-control form-control-sm')
+                        .append('<option value="Live" class="live-option">Live</option>')
+                        .append('<option value="Inactive" class="inactive-option">Inactive</option>');
+
+                    const liveInactiveValue = item.live_inactive || 'Live';
+                    $liveInactiveDropdown.val(liveInactiveValue);
+
+                    if (liveInactiveValue === 'Live') {
+                        $liveInactiveDropdown.css('background-color', '#28a745').css('color', 'white');
+                    } else if (liveInactiveValue === 'Inactive') {
+                        $liveInactiveDropdown.css('background-color', '#6c757d').css('color', 'white');
+                    }
+
+                    $row.append($('<td>').append($liveInactiveDropdown));
+                } else {
+                    $row.append($('<td>').text('')); // Empty cell for parent rows
+                }
+
+                // Listing Status (computed column) only for non-parent rows
+                if (!item.sku || !item.sku.includes('PARENT')) {
+                    const rlNrl = item.rl_nrl || (item.nr_req === 'REQ' ? 'RL' : (item.nr_req === 'NR' ? 'NRL' : 'RL'));
+                    const listed = item.listed || 'Pending';
+                    const liveInactive = item.live_inactive || 'Live';
+                    const statusInfo = computeListingStatus(rlNrl, listed, liveInactive);
+                    
+                    const $statusCell = $('<td>');
+                    if (statusInfo.status) {
+                        $statusCell.append(
+                            $('<span>')
+                                .addClass('listing-status-cell ' + statusInfo.class)
+                                .text(statusInfo.status)
+                        );
+                    }
+                    $row.append($statusCell);
                 } else {
                     $row.append($('<td>').text('')); // Empty cell for parent rows
                 }
@@ -1805,10 +1937,12 @@
                     };
 
                     filteredData.forEach(item => {
-                        if (parseFloat(item.INV) > 0 && !item.sku.includes('PARENT')) {
+                        if (parseFloat(item.INV) > 0 && item.sku && !item.sku.includes('PARENT')) {
                             metrics.invTotal += parseFloat(item.INV) || 0;
 
-                            if (item.nr_req === 'REQ') {
+                            // Support both old nr_req and new rl_nrl fields
+                            const rlNrl = item.rl_nrl || (item.nr_req === 'REQ' ? 'RL' : (item.nr_req === 'NR' ? 'NRL' : null));
+                            if (rlNrl === 'RL') {
                                 metrics.reqTotal++;
                             }
                             if (!item.buyer_link && !item.seller_link) {
@@ -2182,7 +2316,7 @@
             });
 
             // AJAX function to save to DB (unified function)
-            function saveStatusToDB(sku, data) {
+            function saveStatusToDB(sku, data, callback) {
                 if (!sku) {
                     showNotification('danger', 'SKU is required!');
                     return;
@@ -2204,7 +2338,11 @@
                             Object.assign(item, data);
                         }
                         calculateTotals(); // Recalculate totals after update
-                        renderTable();     // Optionally re-render table if needed
+                        if (callback && typeof callback === 'function') {
+                            callback();
+                        } else {
+                            renderTable(); // Re-render table if no callback
+                        }
                     },
                     error: function(xhr) {
                         console.error('Save error:', xhr.responseText);
@@ -2213,37 +2351,111 @@
                 });
             }
 
-            // NR/REQ dropdown change handler
-            $(document).on('change', '.nr-req-dropdown', function() {
+            // RL/NRL dropdown change handler
+            $(document).on('change', '.rl-nrl-dropdown', function() {
                 const $row = $(this).closest('tr');
-                const sku = $row.find('td').eq(2).text().trim();
-                const nr_req = $(this).val();
+                const sku = $row.find('td').eq(1).text().trim(); // SKU is now at index 1 (after Parent)
+                const rl_nrl = $(this).val();
+                const $dropdown = $(this);
 
                 if (!sku) {
                     showNotification('danger', 'SKU not found!');
                     return;
                 }
 
+                // Update dropdown color
+                if (rl_nrl === 'RL') {
+                    $dropdown.css('background-color', '#28a745').css('color', 'white');
+                } else if (rl_nrl === 'NRL') {
+                    $dropdown.css('background-color', '#dc3545').css('color', 'white');
+                }
+
                 saveStatusToDB(sku, {
-                    nr_req: nr_req
+                    rl_nrl: rl_nrl
+                }, function() {
+                    // Update listing status after save
+                    updateListingStatus($row);
                 });
             });
 
             // Listed dropdown change handler
             $(document).on('change', '.listed-dropdown', function() {
                 const $row = $(this).closest('tr');
-                const sku = $row.find('td').eq(2).text().trim();
+                const sku = $row.find('td').eq(1).text().trim(); // SKU is now at index 1 (after Parent)
                 const listed = $(this).val();
+                const $dropdown = $(this);
 
                 if (!sku) {
                     showNotification('danger', 'SKU not found!');
                     return;
                 }
 
+                // Update dropdown color
+                if (listed === 'Listed') {
+                    $dropdown.css('background-color', '#28a745').css('color', 'white');
+                } else if (listed === 'Pending') {
+                    $dropdown.css('background-color', '#dc3545').css('color', 'white');
+                }
+
                 saveStatusToDB(sku, {
                     listed: listed
+                }, function() {
+                    // Update listing status after save
+                    updateListingStatus($row);
                 });
             });
+
+            // Live/Inactive dropdown change handler
+            $(document).on('change', '.live-inactive-dropdown', function() {
+                const $row = $(this).closest('tr');
+                const sku = $row.find('td').eq(1).text().trim(); // SKU is now at index 1 (after Parent)
+                const live_inactive = $(this).val();
+                const $dropdown = $(this);
+
+                if (!sku) {
+                    showNotification('danger', 'SKU not found!');
+                    return;
+                }
+
+                // Update dropdown color
+                if (live_inactive === 'Live') {
+                    $dropdown.css('background-color', '#28a745').css('color', 'white');
+                } else if (live_inactive === 'Inactive') {
+                    $dropdown.css('background-color', '#6c757d').css('color', 'white');
+                }
+
+                saveStatusToDB(sku, {
+                    live_inactive: live_inactive
+                }, function() {
+                    // Update listing status after save
+                    updateListingStatus($row);
+                });
+            });
+
+            // Function to update listing status cell in a row
+            function updateListingStatus($row) {
+                // Get values directly from the row's dropdowns (columns: Parent=0, SKU=1, INV=2, RL/NRL=3, Link=4, Listed/Pending=5, Live/Inactive=6, Listing Status=7)
+                const $rlNrlDropdown = $row.find('td').eq(3).find('.rl-nrl-dropdown');
+                const $listedDropdown = $row.find('td').eq(5).find('.listed-dropdown');
+                const $liveInactiveDropdown = $row.find('td').eq(6).find('.live-inactive-dropdown');
+                
+                const rlNrl = $rlNrlDropdown.length ? $rlNrlDropdown.val() : 'RL';
+                const listed = $listedDropdown.length ? $listedDropdown.val() : 'Pending';
+                const liveInactive = $liveInactiveDropdown.length ? $liveInactiveDropdown.val() : 'Live';
+                
+                const statusInfo = computeListingStatus(rlNrl, listed, liveInactive);
+
+                // Update the listing status cell (last column, index 7)
+                const $statusCell = $row.find('td').eq(7);
+                $statusCell.empty();
+                if (statusInfo.status) {
+                    $statusCell.append(
+                        $('<span>')
+                            .addClass('listing-status-cell ' + statusInfo.class)
+                            .text(statusInfo.status)
+                    );
+                }
+            }
 
             // Save links when submitting the modal
             $('#submitLinks').on('click', function(e) {
@@ -2272,8 +2484,11 @@
                     // Show all rows
                     filteredData = [...tableData];
                 } else {
-                    // Filter rows based on NR/REQ value
-                    filteredData = tableData.filter(item => item.nr_req === selectedValue);
+                    // Filter rows based on RL/NRL value (support both old and new field names)
+                    filteredData = tableData.filter(item => {
+                        const rlNrl = item.rl_nrl || (item.nr_req === 'REQ' ? 'RL' : (item.nr_req === 'NR' ? 'NRL' : null));
+                        return rlNrl === selectedValue;
+                    });
                 }
 
                 currentPage = 1; // Reset to the first page

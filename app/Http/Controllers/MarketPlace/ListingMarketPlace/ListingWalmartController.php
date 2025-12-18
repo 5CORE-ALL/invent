@@ -41,7 +41,7 @@ class ListingWalmartController extends Controller
             ->filter(function ($record) {
                 // Filter out records with empty or null values
                 $value = is_array($record->value) ? $record->value : (json_decode($record->value, true) ?? []);
-                return !empty($value) && (isset($value['nr_req']) || isset($value['listed']) || isset($value['buyer_link']) || isset($value['seller_link']));
+                return !empty($value) && (isset($value['rl_nrl']) || isset($value['nr_req']) || isset($value['listed']) || isset($value['live_inactive']) || isset($value['buyer_link']) || isset($value['seller_link']));
             })
             ->keyBy('sku');
 
@@ -57,22 +57,29 @@ class ListingWalmartController extends Controller
                     $status = json_decode($status, true) ?? [];
                 }
                 if (is_array($status) && !empty($status)) {
-                    // Use stored values or calculate defaults based on INV
-                    $item->nr_req = $status['nr_req'] ?? (floatval($item->INV) > 0 ? 'REQ' : 'NR');
+                    // Use stored values, support both old 'nr_req' and new 'rl_nrl'
+                    $item->rl_nrl = $status['rl_nrl'] ?? $status['nr_req'] ?? (floatval($item->INV) > 0 ? 'RL' : 'NRL');
+                    // Map old values to new values if needed
+                    if (isset($status['nr_req']) && !isset($status['rl_nrl'])) {
+                        $item->rl_nrl = ($status['nr_req'] === 'REQ') ? 'RL' : (($status['nr_req'] === 'NR') ? 'NRL' : $item->rl_nrl);
+                    }
                     $item->listed = $status['listed'] ?? null;
+                    $item->live_inactive = $status['live_inactive'] ?? null;
                     $item->buyer_link = $status['buyer_link'] ?? null;
                     $item->seller_link = $status['seller_link'] ?? null;
                 } else {
                     // Empty status - set defaults
-                    $item->nr_req = floatval($item->INV) > 0 ? 'REQ' : 'NR';
+                    $item->rl_nrl = floatval($item->INV) > 0 ? 'RL' : 'NRL';
                     $item->listed = null;
+                    $item->live_inactive = null;
                     $item->buyer_link = null;
                     $item->seller_link = null;
                 }
             } else {
                 // No status record exists - set defaults based on INV
-                $item->nr_req = floatval($item->INV) > 0 ? 'REQ' : 'NR';
+                $item->rl_nrl = floatval($item->INV) > 0 ? 'RL' : 'NRL';
                 $item->listed = null;
+                $item->live_inactive = null;
                 $item->buyer_link = null;
                 $item->seller_link = null;
             }
@@ -89,8 +96,9 @@ class ListingWalmartController extends Controller
     {
         $validated = $request->validate([
             'sku' => 'required|string',
-            'nr_req' => 'nullable|string',
+            'rl_nrl' => 'nullable|string',
             'listed' => 'nullable|string',
+            'live_inactive' => 'nullable|string',
             'buyer_link' => 'nullable|string',
             'seller_link' => 'nullable|string',
         ]);
@@ -115,7 +123,7 @@ class ListingWalmartController extends Controller
         }
 
         // Only update the fields that are present in the request and not empty
-        $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
+        $fields = ['rl_nrl', 'listed', 'live_inactive', 'buyer_link', 'seller_link'];
         foreach ($fields as $field) {
             if ($request->has($field) && $request->input($field) !== null && $request->input($field) !== '') {
                 $existing[$field] = $validated[$field];
@@ -148,7 +156,7 @@ class ListingWalmartController extends Controller
             ->filter(function ($record) {
                 // Filter out records with empty or null values
                 $value = is_array($record->value) ? $record->value : (json_decode($record->value, true) ?? []);
-                return !empty($value) && (isset($value['nr_req']) || isset($value['listed']) || isset($value['buyer_link']) || isset($value['seller_link']));
+                return !empty($value) && (isset($value['rl_nrl']) || isset($value['nr_req']) || isset($value['listed']) || isset($value['live_inactive']) || isset($value['buyer_link']) || isset($value['seller_link']));
             })
             ->keyBy('sku');
 
@@ -174,9 +182,9 @@ class ListingWalmartController extends Controller
                 }
             }
 
-            // NR/REQ logic
-            $nrReq = ($status && isset($status['nr_req'])) ? $status['nr_req'] : (floatval($inv) > 0 ? 'REQ' : 'NR');
-            if ($nrReq === 'REQ') {
+            // RL/NRL logic (support legacy nr_req for backward compatibility)
+            $rlNrl = ($status && isset($status['rl_nrl'])) ? $status['rl_nrl'] : (($status && isset($status['nr_req'])) ? (($status['nr_req'] === 'REQ') ? 'RL' : 'NRL') : (floatval($inv) > 0 ? 'RL' : 'NRL'));
+            if ($rlNrl === 'RL') {
                 $reqCount++;
             }
 
@@ -223,13 +231,50 @@ class ListingWalmartController extends Controller
             $header = array_map('trim', $rows[0]);
             unset($rows[0]);
 
-            $allowedHeaders = ['sku', 'nr_req', 'listed', 'buyer_link', 'seller_link'];
-            foreach ($header as $h) {
-                if (!in_array($h, $allowedHeaders)) {
-                    return response()->json([
-                        'error' => "Invalid header '$h'. Allowed headers: " . implode(', ', $allowedHeaders)
-                    ], 422);
+            // Allowed headers: SKU is required, plus all editable fields
+            // Explicitly exclude: parent, inv, listing_status (these are read-only/computed)
+            $requiredHeaders = ['sku'];
+            $allowedHeaders = ['sku', 'rl_nrl', 'nr_req', 'listed', 'live_inactive', 'buyer_link', 'seller_link'];
+            $excludedHeaders = ['parent', 'inv', 'listing_status', 'listing status'];
+            
+            // Normalize header keys to lowercase for comparison
+            $headerLower = array_map('strtolower', $header);
+            
+            // Check if SKU is present
+            if (!in_array('sku', $headerLower)) {
+                return response()->json([
+                    'error' => "Required header 'sku' is missing. CSV must include 'sku' column."
+                ], 422);
+            }
+
+            // Check for excluded headers and reject them
+            $foundExcluded = [];
+            $excludedLower = array_map('strtolower', $excludedHeaders);
+            foreach ($headerLower as $index => $h) {
+                if (in_array($h, $excludedLower)) {
+                    $foundExcluded[] = $header[$index];
                 }
+            }
+            
+            if (!empty($foundExcluded)) {
+                return response()->json([
+                    'error' => "Excluded header(s) found: " . implode(', ', $foundExcluded) . ". These columns (parent, inv, listing_status) cannot be imported. Please remove them from your CSV file."
+                ], 422);
+            }
+
+            // Validate all headers are allowed
+            $invalidHeaders = [];
+            $allowedLower = array_map('strtolower', $allowedHeaders);
+            foreach ($headerLower as $index => $h) {
+                if (!in_array($h, $allowedLower)) {
+                    $invalidHeaders[] = $header[$index];
+                }
+            }
+            
+            if (!empty($invalidHeaders)) {
+                return response()->json([
+                    'error' => "Invalid header(s): " . implode(', ', $invalidHeaders) . ". Allowed headers: sku, rl_nrl, listed, live_inactive, buyer_link, seller_link"
+                ], 422);
             }
 
             $processedCount = 0;
@@ -255,7 +300,14 @@ class ListingWalmartController extends Controller
                 }
 
                 $rowData = array_combine($header, $row);
-                $sku = trim($rowData['sku'] ?? '');
+                
+                // Normalize keys to lowercase for case-insensitive matching
+                $rowDataNormalized = [];
+                foreach ($rowData as $key => $value) {
+                    $rowDataNormalized[strtolower($key)] = $value;
+                }
+                
+                $sku = trim($rowDataNormalized['sku'] ?? '');
 
                 if (!$sku) {
                     $skippedCount++;
@@ -264,7 +316,7 @@ class ListingWalmartController extends Controller
 
                 try {
                     // Only import SKUs that exist in product_masters
-                    if (!ProductMaster::where('sku', $sku)->exists()) {
+                    if (!ProductMaster::where('sku', $sku)->whereNull('deleted_at')->exists()) {
                         $skippedCount++;
                         continue;
                     }
@@ -283,12 +335,23 @@ class ListingWalmartController extends Controller
                         $existing = [];
                     }
 
-                    $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
+                    // Import editable fields (case-insensitive matching)
+                    $fields = ['rl_nrl', 'listed', 'live_inactive', 'buyer_link', 'seller_link'];
                     foreach ($fields as $field) {
-                        if (array_key_exists($field, $rowData) && $rowData[$field] !== '') {
-                            $existing[$field] = trim($rowData[$field]);
+                        $fieldKey = strtolower($field);
+                        if (array_key_exists($fieldKey, $rowDataNormalized) && trim($rowDataNormalized[$fieldKey]) !== '') {
+                            $existing[$field] = trim($rowDataNormalized[$fieldKey]);
                         }
                     }
+                    
+                    // Support legacy 'nr_req' field for backward compatibility
+                    $nrReqKey = strtolower('nr_req');
+                    if (array_key_exists($nrReqKey, $rowDataNormalized) && trim($rowDataNormalized[$nrReqKey]) !== '' && !isset($existing['rl_nrl'])) {
+                        $nrReq = trim($rowDataNormalized[$nrReqKey]);
+                        $existing['rl_nrl'] = ($nrReq === 'REQ') ? 'RL' : (($nrReq === 'NR') ? 'NRL' : $nrReq);
+                    }
+                    
+                    // Note: parent, inv, and listing_status columns are ignored as they are read-only or computed
 
                     // Clean up duplicates before creating/updating
                     WalmartListingStatus::where('sku', $sku)->delete();
@@ -328,10 +391,11 @@ class ListingWalmartController extends Controller
     {
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="listing_status.csv"',
+            'Content-Disposition' => 'attachment; filename="walmart_listing_export.csv"',
         ];
 
-        $columns = ['sku', 'nr_req', 'listed', 'buyer_link', 'seller_link'];
+        // Export columns: Parent, SKU, INV (for reference), and all editable fields (excluding Listing Status as it's computed)
+        $columns = ['parent', 'sku', 'inv', 'rl_nrl', 'listed', 'live_inactive', 'buyer_link', 'seller_link'];
 
         $callback = function () use ($columns) {
             $file = fopen('php://output', 'w');
@@ -339,20 +403,100 @@ class ListingWalmartController extends Controller
             // Write header row
             fputcsv($file, $columns);
 
-            // Fetch all SKUs from product master
-            $productMasters = ProductMaster::pluck('sku');
+            // Fetch all products from product master
+            $productMasters = ProductMaster::whereNull('deleted_at')->get();
+            $skus = $productMasters->pluck('sku')->unique()->toArray();
 
-            foreach ($productMasters as $sku) {
-                $status = WalmartListingStatus::where('sku', $sku)->first();
+            // Get Shopify inventory data
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+            // Get all status data
+            $statusData = WalmartListingStatus::whereIn('sku', $skus)
+                ->orderBy('updated_at', 'desc')
+                ->get()
+                ->keyBy('sku');
+
+            foreach ($productMasters as $product) {
+                $sku = $product->sku;
+                $shopifyItem = $shopifyData[$sku] ?? null;
+                $status = $statusData[$sku] ?? null;
+
+                $statusValue = [];
+                if ($status) {
+                    $statusValue = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+                }
+
+                // Handle rl_nrl with backward compatibility for nr_req
+                $rlNrl = $statusValue['rl_nrl'] ?? '';
+                if (empty($rlNrl) && isset($statusValue['nr_req'])) {
+                    $rlNrl = ($statusValue['nr_req'] === 'REQ') ? 'RL' : (($statusValue['nr_req'] === 'NR') ? 'NRL' : '');
+                }
 
                 $row = [
-                    'sku'         => $sku,
-                    'nr_req'      => $status->value['nr_req'] ?? '',
-                    'listed'      => $status->value['listed'] ?? '',
-                    'buyer_link'  => $status->value['buyer_link'] ?? '',
-                    'seller_link' => $status->value['seller_link'] ?? '',
+                    'parent'       => $product->parent ?? '',
+                    'sku'          => $sku,
+                    'inv'          => $shopifyItem->inv ?? 0,
+                    'rl_nrl'       => $rlNrl,
+                    'listed'       => $statusValue['listed'] ?? '',
+                    'live_inactive' => $statusValue['live_inactive'] ?? '',
+                    'buyer_link'   => $statusValue['buyer_link'] ?? '',
+                    'seller_link'  => $statusValue['seller_link'] ?? '',
                 ];
 
+                fputcsv($file, $row);
+            }
+
+            fclose($file);
+        };
+
+        return new StreamedResponse($callback, 200, $headers);
+    }
+
+    public function downloadSample()
+    {
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="walmart_listing_import_sample.csv"',
+        ];
+
+        // Sample file columns: Only editable fields (exclude parent, inv, listing_status)
+        $columns = ['sku', 'rl_nrl', 'listed', 'live_inactive', 'buyer_link', 'seller_link'];
+
+        $callback = function () use ($columns) {
+            $file = fopen('php://output', 'w');
+
+            // Write header row
+            fputcsv($file, $columns);
+
+            // Write sample data rows
+            $sampleRows = [
+                [
+                    'sku' => 'EXAMPLE-SKU-001',
+                    'rl_nrl' => 'RL',
+                    'listed' => 'Listed',
+                    'live_inactive' => 'Live',
+                    'buyer_link' => 'https://www.walmart.com/buyer-link-example',
+                    'seller_link' => 'https://www.walmart.com/seller-link-example'
+                ],
+                [
+                    'sku' => 'EXAMPLE-SKU-002',
+                    'rl_nrl' => 'NRL',
+                    'listed' => 'Pending',
+                    'live_inactive' => 'Inactive',
+                    'buyer_link' => '',
+                    'seller_link' => ''
+                ],
+                [
+                    'sku' => 'EXAMPLE-SKU-003',
+                    'rl_nrl' => 'RL',
+                    'listed' => 'Listed',
+                    'live_inactive' => 'Live',
+                    'buyer_link' => 'https://www.walmart.com/buyer-link-example-2',
+                    'seller_link' => 'https://www.walmart.com/seller-link-example-2'
+                ]
+            ];
+
+            foreach ($sampleRows as $row) {
                 fputcsv($file, $row);
             }
 
