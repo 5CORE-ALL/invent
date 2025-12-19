@@ -732,12 +732,12 @@ class FbaDataController extends Controller
          // --- Calculate all profit & ROI metrics (same as analytics) ---
          
          // PFT and ROI calculations matching analytics exactly (using same LP and FBA_SHIP sources)
-         $pft = ($PRICE > 0) ? (($PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $PRICE : 0;
-         $roi = ($LP_FOR_PFT > 0) ? (($PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
+         $pft = ($PRICE > 0) ? (($PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $PRICE : 0;
+         $roi = ($LP_FOR_PFT > 0) ? (($PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
          
          // SPFT and SROI calculations matching analytics exactly (using same LP and FBA_SHIP sources)
-         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $S_PRICE : 0;
-         $sroi = ($LP_FOR_PFT > 0) ? (($S_PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
+         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $S_PRICE : 0;
+         $sroi = ($LP_FOR_PFT > 0) ? (($S_PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
 
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
@@ -816,7 +816,7 @@ class FbaDataController extends Controller
             'FBA_CVR' => $this->colorService->getCvrHtml($cvr),
             'Listed' => $manual ? ($manual->data['listed'] ?? false) : false,
             'Live' => $manual ? ($manual->data['live'] ?? false) : false,
-            'Pft%' => $this->colorService->getValueHtml($pftPercentage),
+            'Gpft' => $this->colorService->getValueHtml($pftPercentage),
             'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
             'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
             'SGPFT%' => $this->colorService->getValueHtml($sgpftPercentage),
@@ -1107,7 +1107,7 @@ class FbaDataController extends Controller
             'Dec' => $children->sum('Dec'),
             'is_parent' => true,
             'NRL_FBA' => '',
-            'Pft%' => '',
+            'Gpft' => '',
             'ROI%' => '',
             'GPFT%' => '',
             'S_Price' => '',

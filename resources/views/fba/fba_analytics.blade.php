@@ -132,8 +132,8 @@
                                 hozAlign: "center"
                             },
                             {
-                                title: "Pft%",
-                                field: "Pft%",
+                                title: "Gpft",
+                                field: "Gpft",
                                 hozAlign: "center"
                             },
                             {
