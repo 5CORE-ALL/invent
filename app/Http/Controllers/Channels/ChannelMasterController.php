@@ -92,6 +92,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Spatie\FlareClient\Api;
 
 class ChannelMasterController extends Controller
@@ -126,9 +127,19 @@ class ChannelMasterController extends Controller
     public function getViewChannelData(Request $request)
     {
         // Fetch both channel and sheet_link from ChannelMaster
+        $columns = ['channel', 'sheet_link', 'channel_percentage'];
+        
+        // Check if 'base' and 'target' columns exist before adding them
+        if (Schema::hasColumn('channel_master', 'base')) {
+            $columns[] = 'base';
+        }
+        if (Schema::hasColumn('channel_master', 'target')) {
+            $columns[] = 'target';
+        }
+        
         $channels = ChannelMaster::where('status', 'Active')
             ->orderBy('id', 'asc')
-            ->get(['channel', 'sheet_link', 'channel_percentage', 'base', 'target']);
+            ->get($columns);
 
         if ($channels->isEmpty()) {
             return response()->json(['status' => 404, 'message' => 'No active channel found']);
