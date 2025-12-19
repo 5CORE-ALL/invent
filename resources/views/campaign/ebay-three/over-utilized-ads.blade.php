@@ -972,11 +972,7 @@
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
 
                             var sbid = 0;
-                            if(l1_cpc > l7_cpc){
-                                sbid = (l1_cpc * 0.95).toFixed(2);
-                            }else{
-                                sbid = (l1_cpc * 0.95).toFixed(2);
-                            }
+                            sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                             return sbid;
                         },
                     },
@@ -999,11 +995,7 @@
                                 var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
 
                                 var sbid = 0;
-                                if(l1_cpc > l7_cpc){
-                                    sbid = (l1_cpc * 0.95).toFixed(2);
-                                }else{
-                                    sbid = (l1_cpc * 0.95).toFixed(2);
-                                }
+                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                                 updateBid(sbid, rowData.campaign_id);
                             }
                         }
@@ -1225,11 +1217,7 @@
                         var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
 
                         var sbid = 0;
-                        if(l1_cpc > l7_cpc){
-                            sbid = (l1_cpc * 0.95).toFixed(2);
-                        }else{
-                            sbid = (l1_cpc * 0.95).toFixed(2);
-                        }
+                        sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
 
                         campaignIds.push(rowData.campaign_id);
                         bids.push(sbid);
@@ -1237,7 +1225,7 @@
                 });
                 console.log("Campaign IDs:", campaignIds);
                 console.log("Bids:", bids);
-                fetch('/update-ebay-keywords-bid-price', {
+                fetch('/update-ebay3-keywords-bid-price', {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1255,10 +1243,37 @@
                     if (data.status === 200) {
                         alert("Keywords updated successfully!");
                     } else {
-                        alert("Something went wrong: " + data.message);
+                        // Check for Premium Ads error
+                        let errorMessage = data.message || "Something went wrong";
+                        if (data.data && Array.isArray(data.data)) {
+                            const premiumAdsErrors = data.data.filter(item => 
+                                item.status === 'error' && 
+                                item.message && 
+                                item.message.includes('Premium Ads')
+                            );
+                            
+                            if (premiumAdsErrors.length > 0) {
+                                const successCount = data.data.filter(item => item.status !== 'error').length;
+                                errorMessage = "⚠️ Some campaigns use Premium Ads (beta feature).\n\n" +
+                                    "Premium Ads campaigns: " + premiumAdsErrors.length + "\n" +
+                                    "Successfully updated: " + successCount + " keywords\n\n" +
+                                    "Bid updates are not available for Premium Ads campaigns.\n" +
+                                    "This is an eBay API limitation.";
+                            } else {
+                                // Show first error message
+                                const firstError = data.data.find(item => item.status === 'error');
+                                if (firstError) {
+                                    errorMessage = firstError.message || errorMessage;
+                                }
+                            }
+                        }
+                        alert(errorMessage);
                     }
                 })
-                .catch(err => console.error(err))
+                .catch(err => {
+                    console.error(err);
+                    alert("Network error: " + err.message);
+                })
                 .finally(() => {
                     overlay.style.display = "none";
                 });
@@ -1270,7 +1285,7 @@
 
                 console.log("Updating bid for Campaign ID:", campaignId, "New Bid:", aprBid);
 
-                fetch('/update-ebay-keywords-bid-price', {
+                fetch('/update-ebay3-keywords-bid-price', {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1288,10 +1303,35 @@
                     if (data.status === 200) {
                         alert("Keywords updated successfully!");
                     } else {
-                        alert("Something went wrong: " + data.message);
+                        // Check for Premium Ads error
+                        let errorMessage = data.message || "Something went wrong";
+                        if (data.data && Array.isArray(data.data)) {
+                            const premiumAdsError = data.data.find(item => 
+                                item.status === 'error' && 
+                                item.message && 
+                                item.message.includes('Premium Ads')
+                            );
+                            
+                            if (premiumAdsError) {
+                                errorMessage = "⚠️ Premium Ads Campaign\n\n" +
+                                    "This campaign uses Premium Ads (beta feature).\n" +
+                                    "Bid updates are not available for Premium Ads campaigns.\n\n" +
+                                    "This is an eBay API limitation, not a system error.";
+                            } else {
+                                // Show first error message
+                                const firstError = data.data.find(item => item.status === 'error');
+                                if (firstError) {
+                                    errorMessage = firstError.message || errorMessage;
+                                }
+                            }
+                        }
+                        alert(errorMessage);
                     }
                 })
-                .catch(err => console.error(err))
+                .catch(err => {
+                    console.error(err);
+                    alert("Network error: " + err.message);
+                })
                 .finally(() => {
                     overlay.style.display = "none";
                 });
