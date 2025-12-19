@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Ebay 3 - Utilized', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Ebay - Utilized', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -160,8 +160,8 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Ebay 3 - Utilized',
-        'sub_title' => 'Ebay 3 - Utilized',
+        'page_title' => 'Ebay - Utilized',
+        'sub_title' => 'Ebay - Utilized',
     ])
     <div class="row">
         <div class="col-12">
@@ -171,7 +171,7 @@
                         <!-- Title -->
                         <h4 class="fw-bold text-primary mb-3 d-flex align-items-center">
                             <i class="fa-solid fa-chart-line me-2"></i>
-                            Ebay 3 Utilized's
+                            Ebay Utilized's
                         </h4>
 
                         <!-- Filters Row -->
@@ -343,6 +343,7 @@
                         let budget = parseFloat(row.campaignBudgetAmount) || 0;
                         let l7_spend = parseFloat(row.l7_spend || 0);
                         let l1_spend = parseFloat(row.l1_spend || 0);
+                        let price = parseFloat(row.price || 0);
                         let inv = parseFloat(row.INV || 0);
 
                         let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
@@ -359,7 +360,7 @@
                         let dilColor = getDilColor(dilDecimal);
                         let isPink = (dilColor === "pink");
 
-                        // Mutually exclusive categorization (same as controller for eBay3)
+                        // Mutually exclusive categorization (same as controller)
                         let categorized = false;
 
                         // Over-utilized check (priority 1)
@@ -373,14 +374,14 @@
                         }
 
                         // Under-utilized check (priority 2: only if not over-utilized)
-                        // Same as controller: ub7 < 70 && ub1 < 70 && !isPink
-                        if (!categorized && ub7 < 70 && ub1 < 70 && !isPink) {
+                        // Same as controller: ub7 < 70 && ub1 < 70 && price >= 30 && inv > 0 && !isPink
+                        if (!categorized && ub7 < 70 && ub1 < 70 && price >= 30 && inv > 0 && !isPink) {
                             underCount++;
                             categorized = true;
                         }
 
                         // Correctly-utilized check (priority 3: only if not already categorized)
-                        // Same as controller for eBay3: (ub7 >= 70 && ub7 <= 90) && (ub1 >= 70 && ub1 <= 90)
+                        // Same as controller: ub7 >= 70 && ub7 <= 90 (only ub7, not ub1)
                         if (!categorized && ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90) {
                             correctlyCount++;
                         }
@@ -445,8 +446,8 @@
             });
 
             var table = new Tabulator("#budget-under-table", {
-                index: "Sku",
-                ajaxURL: "/ebay-3/utilized/ads/data",
+                index: "sku",
+                ajaxURL: "/ebay/utilized/ads/data",
                 layout: "fitData",
                 movableColumns: true,
                 resizableColumns: true,
@@ -454,7 +455,7 @@
                 virtualDom: true,
                 rowFormatter: function(row) {
                     const data = row.getData();
-                    const sku = data["Sku"] || '';
+                    const sku = data["sku"] || '';
                     if (sku.toUpperCase().includes("PARENT")) {
                         row.getElement().classList.add("parent-row");
                     }
@@ -775,7 +776,7 @@
                     let dilColor = getDilColor(dilDecimal);
                     if (dilColor === "pink") return false;
                 } else if (currentUtilizationType === 'correctly') {
-                    if (!((ub7 >= 70 && ub7 <= 90) || (ub1 >= 70 && ub1 <= 90))) return false;
+                    if (!((ub7 >= 70 && ub7 <= 90) && (ub1 >= 70 && ub1 <= 90))) return false;
                 }
 
                 // Global search filter
@@ -881,7 +882,7 @@
                     let field = e.target.getAttribute("data-field");
                     let value = e.target.value;
 
-                    fetch('/update-ebay3-nr-data', {
+                    fetch('/update-ebay-nr-data', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -954,7 +955,7 @@
                     }
                 });
 
-                fetch('/update-ebay3-keywords-bid-price', {
+                fetch('/update-ebay-keywords-bid-price', {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -991,7 +992,7 @@
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
 
-                fetch('/update-ebay3-keywords-bid-price', {
+                fetch('/update-ebay-keywords-bid-price', {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1039,7 +1040,7 @@
         let utilizationChartInstance = null;
 
         function loadUtilizationCounts() {
-            fetch('/ebay-3/get-utilization-counts')
+            fetch('/ebay/get-utilization-counts')
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 200) {
@@ -1064,7 +1065,7 @@
 
             modal.show();
 
-            fetch('/ebay-3/get-utilization-chart-data?type=' + type)
+            fetch('/ebay/get-utilization-chart-data?type=' + type)
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 200 && data.data && data.data.length > 0) {

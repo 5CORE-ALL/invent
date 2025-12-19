@@ -177,7 +177,7 @@ class StoreEbayUtilizationCounts extends Command
             }
 
             // Correctly-utilized: ub7 >= 70 && ub7 <= 90
-            if ($ub7 >= 70 && $ub7 <= 90) {
+            if (($ub7 >= 70 && $ub7 <= 90) && ($ub1 >= 70 && $ub1 <= 90)) {
                 $correctlyUtilizedCount++;
             }
         }

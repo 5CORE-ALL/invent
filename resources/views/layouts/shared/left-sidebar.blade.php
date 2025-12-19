@@ -2098,6 +2098,9 @@
                                         <a href="{{ route('ebay.running.ads') }}">Ebay Running Ads</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('ebay.utilized') }}">Ebay Utilized's</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('ebay-over-uti') }}">Ebay OVER UTIL.</a>
                                     </li>
                                     <li>

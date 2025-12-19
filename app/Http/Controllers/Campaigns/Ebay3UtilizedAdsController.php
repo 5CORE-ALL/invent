@@ -1524,8 +1524,8 @@ class Ebay3UtilizedAdsController extends Controller
                     $categorized = true;
                 }
 
-                // Correctly-utilized: (ub7 >= 70 && ub7 <= 90) || (ub1 >= 70 && ub1 <= 90) (only if not already categorized)
-                if (!$categorized && (($ub7 >= 70 && $ub7 <= 90) || ($ub1 >= 70 && $ub1 <= 90))) {
+                // Correctly-utilized: (ub7 >= 70 && ub7 <= 90) && (ub1 >= 70 && ub1 <= 90) (only if not already categorized)
+                if (!$categorized && (($ub7 >= 70 && $ub7 <= 90) && ($ub1 >= 70 && $ub1 <= 90))) {
                     $correctlyUtilizedCount++;
                     $categorized = true;
                 }
