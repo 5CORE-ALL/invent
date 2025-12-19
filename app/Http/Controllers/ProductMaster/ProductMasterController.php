@@ -280,9 +280,9 @@ class ProductMasterController extends Controller
         $request->headers->set('Accept', 'application/json');
 
         $validated = $request->validate([
-            'parent' => 'required|string',
+            'parent' => 'nullable|string',
             'sku' => 'required|string',
-            'Values' => 'required',
+            'Values' => 'nullable',
             'unit' => 'required|string',
             'image' => 'nullable|file|image|max:5120', // 5MB max
         ]);
@@ -291,53 +291,29 @@ class ProductMasterController extends Controller
         $sku = $validated['sku'];
         $isParentSku = stripos($sku, 'PARENT') !== false;
 
-        // Validate Values JSON contains required fields (skip for PARENT SKUs)
-        $values = is_array($validated['Values']) ? $validated['Values'] : json_decode($validated['Values'], true);
-        
-        if (!is_array($values)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid Values data format'
-            ], 422);
+        // Validate Values JSON (optional field)
+        $values = [];
+        if (isset($validated['Values']) && $validated['Values'] !== null) {
+            $values = is_array($validated['Values']) ? $validated['Values'] : json_decode($validated['Values'], true);
+            
+            if (!is_array($values)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid Values data format'
+                ], 422);
+            }
         }
 
         // Skip required field validation for PARENT SKUs
+        // Only unit and sku are required, all other fields are optional
         if (!$isParentSku) {
-            $requiredFields = [
-                'label_qty' => 'Label QTY',
-                'status' => 'Status',
-                'cp' => 'CP',
-                'wt_act' => 'WT ACT',
-                'wt_decl' => 'WT DECL',
-                'ship' => 'SHIP',
-                'upc' => 'UPC',
-                'w' => 'W',
-                'l' => 'L',
-                'h' => 'H'
-            ];
-
-            $missingFields = [];
-            foreach ($requiredFields as $field => $label) {
-                if (!isset($values[$field]) || $values[$field] === '' || $values[$field] === null) {
-                    $missingFields[] = $label;
-                }
-            }
-
-            if (!empty($missingFields)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'The following fields are required: ' . implode(', ', $missingFields),
-                    'errors' => $missingFields
-                ], 422);
-            }
-
-            // Validate numeric fields
+            // Validate numeric fields only if they are provided (optional validation)
             $numericFields = ['label_qty', 'cp', 'wt_act', 'wt_decl', 'w', 'l', 'h'];
             $invalidNumeric = [];
             foreach ($numericFields as $field) {
                 if (isset($values[$field]) && $values[$field] !== '' && $values[$field] !== null) {
                     if (!is_numeric($values[$field]) || floatval($values[$field]) < 0) {
-                        $invalidNumeric[] = $requiredFields[$field] ?? $field;
+                        $invalidNumeric[] = $field;
                     }
                 }
             }
@@ -744,15 +720,56 @@ class ProductMasterController extends Controller
             'to_sku' => 'required|string|different:from_sku',
         ]);
 
-        // Update both SKUs with given group_id
-        ProductMaster::whereIn('sku', [$request->from_sku, $request->to_sku])
-            ->update(['group_id' => $request->group_id]);
+        DB::beginTransaction();
+        try {
+            // Get the current products
+            $fromProduct = ProductMaster::where('sku', $request->from_sku)->first();
+            $toProduct = ProductMaster::where('sku', $request->to_sku)->first();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Products linked successfully',
-            'group_id' => $request->group_id,
-        ]);
+            if (!$fromProduct || !$toProduct) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'One or both SKUs not found',
+                ], 404);
+            }
+
+            $fromGroupId = $fromProduct->group_id;
+            $toGroupId = $toProduct->group_id;
+
+            // Only assign group_id to SKUs that don't have one (don't overwrite existing)
+            $updatedCount = 0;
+            
+            if (!$fromGroupId) {
+                $fromProduct->group_id = $request->group_id;
+                $fromProduct->save();
+                $updatedCount++;
+            }
+            
+            if (!$toGroupId) {
+                $toProduct->group_id = $request->group_id;
+                $toProduct->save();
+                $updatedCount++;
+            }
+
+            DB::commit();
+
+            $message = $updatedCount > 0 
+                ? "Products linked successfully. {$updatedCount} SKU(s) assigned to group {$request->group_id}."
+                : "Both SKUs already have group IDs assigned. No changes made.";
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'group_id' => $request->group_id,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Link products failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to link products: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function linkedProductsList()
@@ -1280,6 +1297,8 @@ class ProductMasterController extends Controller
                 'wayfair' => 'title150',
                 'reverb' => 'title150',
                 'faire' => 'title150',
+                'aliexpress' => 'title150',
+                'tiktok' => 'title150',
             ];
 
             $results = [];
@@ -1402,6 +1421,12 @@ class ProductMasterController extends Controller
                 
                 case 'faire':
                     return $this->updateFaireTitle($sku, $title);
+                
+                case 'aliexpress':
+                    return $this->updateAliexpressTitle($sku, $title);
+                
+                case 'tiktok':
+                    return $this->updateTiktokTitle($sku, $title);
                 
                 default:
                     Log::warning("Unknown platform: {$platform}");
@@ -2476,27 +2501,31 @@ GRAPHQL;
         }
     }
 
-    private function updateFaireTitle($sku, $title)
+    private function updateFaireTitle($sku, $newTitle)
     {
         try {
-            Log::info("Starting Faire title update for SKU: {$sku}, Title: {$title}");
+            Log::info("Starting Faire title update for SKU: {$sku}, New Title: {$newTitle}");
             
-            // Get Faire Bearer token from env - try multiple possible variable names
-            $bearerToken = env('FAIRE_BEARER_TOKEN') 
+            // Get Faire credentials from .env
+            $appId = env('FAIRE_APP_ID');
+            $appSecret = env('FAIRE_APP_SECRET');
+            $redirectUrl = env('FAIRE_REDIRECT_URL');
+            
+            // Try to get access token - first check for direct token, then try OAuth
+            $token = env('FAIRE_BEARER_TOKEN') 
                 ?? env('FAIRE_ACCESS_TOKEN') 
-                ?? env('FAIRE_APP_SECRET')
                 ?? env('FAIRE_TOKEN');
             
-            $isOAuthToken = false;
-            
-            // If no direct token, try to get access token via OAuth
-            if (!$bearerToken) {
-                $appId = env('FAIRE_APP_ID');
-                $appSecret = env('FAIRE_APP_SECRET');
-                $refreshToken = env('FAIRE_REFRESH_TOKEN');
+            // If no direct token and we have OAuth credentials, try to get access token
+            if (!$token && $appId && $appSecret) {
+                Log::info("No direct token found, attempting to get access token via OAuth...");
                 
-                if ($appId && $appSecret && $refreshToken) {
-                    Log::info("No direct token found, attempting OAuth token refresh...");
+                // Check if we have a refresh token or authorization code
+                $refreshToken = env('FAIRE_REFRESH_TOKEN');
+                $authCode = env('FAIRE_AUTH_CODE') ?? env('code'); // Also check 'code' variable from .env
+                
+                if ($refreshToken) {
+                    // Use refresh token to get new access token
                     try {
                         $tokenResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
                             ->post('https://www.faire.com/api/external-api-oauth2/token', [
@@ -2507,9 +2536,8 @@ GRAPHQL;
                             ]);
                         
                         if ($tokenResponse->successful()) {
-                            $bearerToken = $tokenResponse->json('access_token');
-                            if ($bearerToken) {
-                                $isOAuthToken = true;
+                            $token = $tokenResponse->json('access_token');
+                            if ($token) {
                                 Log::info("✓ Successfully obtained Faire access token via OAuth refresh");
                             }
                         } else {
@@ -2518,26 +2546,74 @@ GRAPHQL;
                     } catch (\Exception $e) {
                         Log::warning("OAuth token refresh exception: " . $e->getMessage());
                     }
-                }
-            } else {
-                // Check if it's an OAuth token (from FAIRE_ACCESS_TOKEN) vs Bearer token
-                // If it's from FAIRE_ACCESS_TOKEN, it's likely an OAuth token
-                if (env('FAIRE_ACCESS_TOKEN')) {
-                    $isOAuthToken = true;
+                } elseif ($authCode) {
+                    // Use authorization code to get access token
+                    try {
+                        // Ensure redirectUrl has proper format
+                        if ($redirectUrl && !preg_match('/^https?:\/\//', $redirectUrl)) {
+                            $redirectUrl = 'http://' . $redirectUrl;
+                        }
+                        
+                        $oauthPayload = [
+                            'applicationId' => $appId,
+                            'applicationSecret' => $appSecret,
+                            'redirectUrl' => $redirectUrl,
+                            'scope' => ['READ_PRODUCTS', 'WRITE_PRODUCTS'], // Required scope for product updates
+                            'grantType' => 'AUTHORIZATION_CODE',
+                            'authorizationCode' => $authCode,
+                        ];
+                        
+                        Log::info("Attempting OAuth token exchange with authorization code (code length: " . strlen($authCode) . ")");
+                        
+                        $tokenResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
+                            ->post('https://www.faire.com/api/external-api-oauth2/token', $oauthPayload);
+                        
+                        if ($tokenResponse->successful()) {
+                            $token = $tokenResponse->json('access_token');
+                            if ($token) {
+                                Log::info("✓ Successfully obtained Faire access token via OAuth authorization code");
+                            } else {
+                                Log::warning("OAuth response successful but no access_token in response: " . $tokenResponse->body());
+                            }
+                        } else {
+                            Log::warning("OAuth authorization code exchange failed. Status: " . $tokenResponse->status() . ", Body: " . $tokenResponse->body());
+                            Log::warning("OAuth payload sent: " . json_encode(array_merge($oauthPayload, ['applicationSecret' => '***HIDDEN***', 'authorizationCode' => '***HIDDEN***'])));
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning("OAuth authorization code exchange exception: " . $e->getMessage());
+                        Log::warning("Exception trace: " . $e->getTraceAsString());
+                    }
                 }
             }
             
-            if (!$bearerToken) {
-                Log::warning("Faire Bearer token not configured");
-                Log::warning("Required one of:");
-                Log::warning("  - FAIRE_BEARER_TOKEN (direct Bearer token from Faire Brand Portal > Settings > API)");
-                Log::warning("  - FAIRE_ACCESS_TOKEN (OAuth access token)");
-                Log::warning("  - FAIRE_APP_ID + FAIRE_APP_SECRET + FAIRE_REFRESH_TOKEN (for OAuth flow)");
+            if (!$token) {
+                Log::warning("Faire access token not available");
+                Log::warning("Configured credentials: FAIRE_APP_ID=" . ($appId ? "✓" : "✗") . ", FAIRE_APP_SECRET=" . ($appSecret ? "✓" : "✗"));
+                Log::warning("Please ensure you have either:");
+                Log::warning("  - FAIRE_BEARER_TOKEN or FAIRE_ACCESS_TOKEN (direct token)");
+                Log::warning("  - FAIRE_REFRESH_TOKEN (for OAuth refresh)");
+                Log::warning("  - FAIRE_AUTH_CODE (for OAuth authorization code exchange)");
                 return false;
             }
+
+            Log::info("✓ Faire token found (length: " . strlen($token) . " characters)");
+
+            $baseUrl = 'https://www.faire.com/external-api/v2';
             
-            Log::info("✓ Faire token found (length: " . strlen($bearerToken) . " characters, type: " . ($isOAuthToken ? "OAuth" : "Bearer") . ")");
-            
+            // Try both header formats - Faire API may accept either
+            $headerFormats = [
+                [
+                    'X-FAIRE-ACCESS-TOKEN' => $token,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ],
+                [
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ]
+            ];
+
             // Step 1: Try to get product ID from FaireDataView first (faster)
             $productId = null;
             $faireDataView = \App\Models\FaireDataView::where('sku', $sku)
@@ -2549,175 +2625,593 @@ GRAPHQL;
                 $value = is_array($faireDataView->value) ? $faireDataView->value : json_decode($faireDataView->value, true);
                 if (is_array($value)) {
                     // Try common product ID field names
-                    $productId = $value['id'] ?? $value['product_id'] ?? $value['productId'] ?? $value['productId'] ?? null;
+                    $productId = $value['id'] ?? $value['product_id'] ?? $value['productId'] ?? $value['product']['id'] ?? null;
                     if ($productId) {
                         Log::info("Found Faire product ID from FaireDataView: {$productId} for SKU: {$sku}");
                     }
                 }
             }
-            
-            // Step 2: If no product ID from database, fetch from API
+
+            // Step 2: If no product ID from database, fetch from API with pagination
             if (!$productId) {
                 Log::info("Product ID not found in FaireDataView, fetching from Faire API...");
                 
-                // GET https://www.faire.com/external-api/v2/products
-                $productsUrl = 'https://www.faire.com/external-api/v2/products';
-                
-                // Use appropriate header based on token type
-                $headers = [
-                    'Accept' => 'application/json',
-                ];
-                
-                if ($isOAuthToken) {
-                    // OAuth tokens use X-FAIRE-OAUTH-ACCESS-TOKEN header
-                    $headers['X-FAIRE-OAUTH-ACCESS-TOKEN'] = $bearerToken;
-                } else {
-                    // Bearer tokens use Authorization header
-                    $headers['Authorization'] = 'Bearer ' . $bearerToken;
-                }
-                
-                $productsResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
-                    ->withHeaders($headers)
-                    ->timeout(30)
-                    ->get($productsUrl);
-                
-                if (!$productsResponse->successful()) {
-                    Log::error("Failed to fetch Faire products. Status: " . $productsResponse->status() . ", Body: " . $productsResponse->body());
+                $limit = 50;
+                $cursor = null;
+                $found = false;
+                $listSuccess = false;
+
+                // Try both header formats for product listing
+                foreach ($headerFormats as $headerIndex => $testHeaders) {
+                    Log::info("Trying header format " . ($headerIndex + 1) . " for product list...");
                     
-                    if ($productsResponse->status() == 401) {
-                        Log::error("Authentication failed (401). Check Faire credentials in .env file - token may be invalid or expired");
-                        Log::error("Try: FAIRE_BEARER_TOKEN, FAIRE_ACCESS_TOKEN, or FAIRE_APP_ID + FAIRE_APP_SECRET + FAIRE_REFRESH_TOKEN");
-                    } elseif ($productsResponse->status() == 403) {
-                        Log::error("Permission denied (403). Check API permissions in Faire Brand Portal");
-                    }
-                    
-                    return false;
-                }
-                
-                $productsData = $productsResponse->json();
-                $products = $productsData['products'] ?? [];
-                
-                if (empty($products)) {
-                    Log::warning("No Faire products found in API response");
-                    return false;
-                }
-                
-                Log::info("Fetched " . count($products) . " products from Faire, searching for SKU: {$sku}");
-                
-                // Find the product with matching SKU
-                $product = null;
-                $variant = null;
-                
-                foreach ($products as $item) {
-                    // Check if product SKU matches
-                    if (isset($item['sku']) && strtoupper(trim($item['sku'])) === strtoupper(trim($sku))) {
-                        $product = $item;
-                        break;
-                    }
-                    
-                    // Check variants for matching SKU
-                    if (isset($item['variants']) && is_array($item['variants'])) {
-                        foreach ($item['variants'] as $v) {
-                            if (isset($v['sku']) && strtoupper(trim($v['sku'])) === strtoupper(trim($sku))) {
-                                $product = $item;
-                                $variant = $v;
-                                break 2;
+                    do {
+                        $query = ['limit' => $limit];
+                        if ($cursor) $query['cursor'] = $cursor;
+
+                        $listResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
+                            ->withHeaders($testHeaders)
+                            ->timeout(30)
+                            ->get("{$baseUrl}/products", $query);
+
+                        if (!$listResponse->successful()) {
+                            $status = $listResponse->status();
+                            $body = $listResponse->body();
+                            
+                            if ($status == 401 && $headerIndex == 0) {
+                                // Try next header format if first one fails with 401
+                                Log::warning("Product list failed with 401 using header format 1, trying format 2...");
+                                break; // Break out of do-while, try next header format
                             }
+                            
+                            Log::error("Product list failed. Status: {$status}, Body: {$body}");
+                            
+                            if ($status == 401) {
+                                Log::error("Authentication failed (401). Check Faire token in .env file - token may be invalid or expired");
+                                Log::error("Verify token is valid in Faire Brand Portal > Settings > API");
+                            } elseif ($status == 403) {
+                                Log::error("Permission denied (403). Check API permissions in Faire Brand Portal");
+                            }
+                            
+                            if ($headerIndex == count($headerFormats) - 1) {
+                                // Last header format failed, return false
+                                return false;
+                            }
+                            continue; // Try next header format
+                        }
+
+                        $listSuccess = true;
+                        $data = $listResponse->json();
+
+                        foreach ($data['products'] ?? [] as $product) {
+                            // Check product SKU
+                            if (isset($product['sku']) && strtoupper(trim($product['sku'])) === strtoupper(trim($sku))) {
+                                $productId = $product['id'];
+                                $found = true;
+                                break 3; // Found - break out of do-while, foreach, and header format loop
+                            }
+                            
+                            // Check variants for matching SKU
+                            foreach ($product['variants'] ?? [] as $variant) {
+                                if (($variant['sku'] ?? '') === $sku || strtoupper(trim($variant['sku'] ?? '')) === strtoupper(trim($sku))) {
+                                    $productId = $product['id'];
+                                    $found = true;
+                                    break 4; // Found - break out of all loops
+                                }
+                            }
+                        }
+
+                        $cursor = $data['pagination']['next_cursor'] ?? null;
+                    } while ($cursor && !$found && $listSuccess);
+                    
+                    if ($found || $listSuccess) {
+                        break; // Found product or got successful response, stop trying header formats
+                    }
+                }
+
+                if (!$productId) {
+                    Log::error("No product found for SKU: {$sku} in Faire API");
+                    return false;
+                }
+
+                Log::info("Found Faire Product ID from API: {$productId}");
+            }
+
+            // Step 3: First, get the full product to see its structure
+            Log::info("Fetching Faire product details for ID: {$productId}");
+            $currentProduct = null;
+            $workingHeaders = null;
+            
+            // Try both header formats to get product details
+            foreach ($headerFormats as $headerIndex => $testHeaders) {
+                $getProductResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
+                    ->withHeaders($testHeaders)
+                    ->timeout(30)
+                    ->get("{$baseUrl}/products/{$productId}");
+
+                if ($getProductResponse->successful()) {
+                    $currentProduct = $getProductResponse->json();
+                    $workingHeaders = $testHeaders; // Remember which header format worked
+                    Log::info("Faire product structure: " . json_encode(array_keys($currentProduct ?? [])));
+                    break; // Found working header format
+                } else {
+                    Log::warning("Could not fetch product details with header format " . ($headerIndex + 1) . ", trying next...");
+                }
+            }
+            
+            if (!$currentProduct) {
+                Log::warning("Could not fetch product details with any header format, proceeding with update anyway");
+                $workingHeaders = $headerFormats[0]; // Use first header format as default
+            }
+
+            // Step 4: Update product name (title) - try multiple payload formats
+            // Rate limiting delay
+            sleep(1);
+
+            Log::info("Updating Faire product ID: {$productId} with title: {$newTitle}");
+
+            // Try different payload formats and methods
+            $updateAttempts = [
+                [
+                    'method' => 'PATCH',
+                    'payload' => ['name' => $newTitle],
+                    'description' => 'PATCH with name only'
+                ],
+                [
+                    'method' => 'PATCH',
+                    'payload' => [
+                        'name' => $newTitle,
+                        'short_description' => $newTitle
+                    ],
+                    'description' => 'PATCH with name and short_description'
+                ],
+                [
+                    'method' => 'PUT',
+                    'payload' => ['name' => $newTitle],
+                    'description' => 'PUT with name only'
+                ],
+            ];
+
+            // If we have the current product and it has variants, try updating variants too
+            if ($currentProduct && isset($currentProduct['variants']) && is_array($currentProduct['variants'])) {
+                $variantUpdates = [];
+                foreach ($currentProduct['variants'] as $variant) {
+                    if (isset($variant['id'])) {
+                        $variantUpdates[] = [
+                            'id' => $variant['id'],
+                            'name' => $newTitle
+                        ];
+                    }
+                }
+                if (!empty($variantUpdates)) {
+                    $updateAttempts[] = [
+                        'method' => 'PATCH',
+                        'payload' => [
+                            'name' => $newTitle,
+                            'variants' => $variantUpdates
+                        ],
+                        'description' => 'PATCH with name and variant updates'
+                    ];
+                }
+            }
+
+            // Also try updating variants directly if product has variants
+            if ($currentProduct && isset($currentProduct['variants']) && is_array($currentProduct['variants'])) {
+                foreach ($currentProduct['variants'] as $variant) {
+                    if (isset($variant['id']) && isset($variant['sku']) && 
+                        (strtoupper(trim($variant['sku'])) === strtoupper(trim($sku)))) {
+                        // Found matching variant, try updating it directly
+                        $variantId = $variant['id'];
+                        $updateAttempts[] = [
+                            'method' => 'PATCH',
+                            'payload' => ['name' => $newTitle],
+                            'description' => "PATCH variant {$variantId} name directly",
+                            'is_variant' => true,
+                            'variant_id' => $variantId
+                        ];
+                        Log::info("Found matching variant ID: {$variantId} for SKU: {$sku}");
+                    }
+                }
+            }
+
+            $lastError = null;
+            foreach ($updateAttempts as $attempt) {
+                Log::info("Trying Faire update: {$attempt['description']}");
+                
+                // Try both header formats for each update attempt
+                $updateSuccess = false;
+                foreach ($headerFormats as $headerIndex => $testHeaders) {
+                    $httpClient = \Illuminate\Support\Facades\Http::withoutVerifying()
+                        ->withHeaders($testHeaders)
+                        ->timeout(30);
+                    
+                    // Determine endpoint - variant or product
+                    if (isset($attempt['is_variant']) && $attempt['is_variant']) {
+                        $endpoint = "{$baseUrl}/products/{$productId}/variants/{$attempt['variant_id']}";
+                    } else {
+                        $endpoint = "{$baseUrl}/products/{$productId}";
+                    }
+
+                    if ($attempt['method'] === 'PUT') {
+                        $updateResponse = $httpClient->put($endpoint, $attempt['payload']);
+                    } else {
+                        $updateResponse = $httpClient->patch($endpoint, $attempt['payload']);
+                    }
+
+                    $status = $updateResponse->status();
+                    $body = $updateResponse->body();
+
+                    Log::info("Faire update status: {$status} (method: {$attempt['method']}, header format: " . ($headerIndex + 1) . ", endpoint: {$endpoint})");
+                    Log::info("Faire update body: {$body}");
+
+                    if ($updateResponse->successful()) {
+                        $responseData = $updateResponse->json();
+                        
+                        // Check if title was updated successfully
+                        if (isset($responseData['name']) && $responseData['name'] === $newTitle) {
+                            Log::info("✓ Successfully updated Faire title for SKU: {$sku}, Product ID: {$productId} using {$attempt['description']} with header format " . ($headerIndex + 1));
+                            return true;
+                        } elseif (isset($responseData['id'])) {
+                            // If we got a product/variant object back, assume success
+                            Log::info("✓ Successfully updated Faire title for SKU: {$sku}, Product ID: {$productId} using {$attempt['description']} with header format " . ($headerIndex + 1));
+                            return true;
+                        } else {
+                            // Still consider it successful if status was 200/204
+                            if ($status == 200 || $status == 204) {
+                                Log::info("✓ Faire update returned {$status} - assuming success with header format " . ($headerIndex + 1));
+                                return true;
+                            }
+                        }
+                        $updateSuccess = true; // Got successful response, stop trying other header formats
+                        break;
+                    } else {
+                        $lastError = [
+                            'status' => $status,
+                            'body' => $body,
+                            'method' => $attempt['method'],
+                            'description' => $attempt['description'],
+                            'header_format' => $headerIndex + 1,
+                            'endpoint' => $endpoint
+                        ];
+                        
+                        // If 401 with first header format, try second
+                        if ($status == 401 && $headerIndex == 0) {
+                            Log::warning("Faire update failed with 401 using header format 1, trying format 2...");
+                            continue; // Try next header format
+                        }
+                        
+                        // If it's a 400 error, try next method/header combination
+                        if ($status == 400) {
+                            Log::warning("Faire update failed with 400 using {$attempt['description']} with header format " . ($headerIndex + 1));
+                            if ($headerIndex == count($headerFormats) - 1) {
+                                // Last header format, try next method
+                                break; // Break out of header format loop, continue to next attempt
+                            }
+                            continue; // Try next header format
+                        }
+                        
+                        // For other errors, log but continue
+                        Log::warning("Faire update failed with {$status} using {$attempt['description']} with header format " . ($headerIndex + 1));
+                        
+                        if ($headerIndex == count($headerFormats) - 1) {
+                            // Last header format failed, move to next attempt
+                            break;
                         }
                     }
                 }
                 
-                if (!$product) {
-                    Log::warning("No matching Faire product found for SKU: {$sku}");
-                    return false;
+                if ($updateSuccess) {
+                    break; // Success, stop trying other attempts
                 }
                 
-                $productId = $product['id'] ?? null;
+                // Small delay between attempts
+                sleep(1);
+            }
+
+            // If we get here, all attempts failed
+            if ($lastError) {
+                Log::error("✗ All Faire update attempts failed. Last error - Status: {$lastError['status']}, Method: {$lastError['method']}, Body: {$lastError['body']}");
                 
-                if (!$productId) {
-                    Log::error("Faire product found but no ID available for SKU: {$sku}");
-                    return false;
+                if ($lastError['status'] == 401) {
+                    Log::error("Authentication failed (401). Check Faire token in .env file - token may be invalid or expired");
+                    Log::error("Try regenerating token in Faire Brand Portal > Settings > API");
+                } elseif ($lastError['status'] == 403) {
+                    Log::error("Permission denied (403). Check API permissions in Faire Brand Portal - ensure product update permissions are enabled");
+                } elseif ($lastError['status'] == 404) {
+                    Log::error("Product not found (404). Product ID: {$productId} may not exist or be accessible");
+                } elseif ($lastError['status'] == 400) {
+                    Log::error("Bad request (400). The API may require additional fields or a different payload format");
+                    Log::error("Response: {$lastError['body']}");
+                } elseif ($lastError['status'] == 429) {
+                    Log::error("Rate limited (429) - wait and retry");
                 }
-                
-                Log::info("Found Faire product ID from API: {$productId} for SKU: {$sku}" . ($variant ? " (variant)" : ""));
             }
             
-            // Step 3: Update the product title using PATCH request
-            // PATCH https://www.faire.com/external-api/v2/products/{ID}
-            $updateUrl = "https://www.faire.com/external-api/v2/products/{$productId}";
+            return false;
+
+        } catch (\Exception $e) {
+            Log::error("✗ Exception updating Faire title for SKU {$sku}: " . $e->getMessage());
+            Log::error("Stack trace: " . $e->getTraceAsString());
+            return false;
+        }
+    }
+
+    private function updateAliexpressTitle($sku, $newTitle, $language = 'en')
+    {
+        try {
+            Log::info("Starting AliExpress title update for SKU: {$sku}, Title: {$newTitle}");
             
+            $appKey = env('ALIEXPRESS_APP_KEY');
+            $appSecret = env('ALIEXPRESS_APP_SECRET');
+            $accessToken = env('ALIEXPRESS_ACCESS_TOKEN');
+            
+            if (!$appKey || !$appSecret || !$accessToken) {
+                Log::warning("AliExpress credentials missing in .env");
+                Log::warning("Required: ALIEXPRESS_APP_KEY, ALIEXPRESS_APP_SECRET, and ALIEXPRESS_ACCESS_TOKEN");
+                return false;
+            }
+
+            Log::info("✓ AliExpress credentials found (access token length: " . strlen($accessToken) . " characters)");
+
+            // Step 1: Try to get product_id from database first (faster)
+            $productId = null;
+            
+            $aliexpressDataView = \App\Models\AliexpressDataView::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+            
+            if ($aliexpressDataView && $aliexpressDataView->value) {
+                $value = is_array($aliexpressDataView->value) ? $aliexpressDataView->value : json_decode($aliexpressDataView->value, true);
+                if (is_array($value)) {
+                    $productId = $value['product_id'] ?? $value['productId'] ?? $value['id'] ?? null;
+                    if ($productId) {
+                        Log::info("Found AliExpress product ID from AliexpressDataView: {$productId} for SKU: {$sku}");
+                    }
+                }
+            }
+
+            // Step 2: If no product ID from database, we need it to update
+            if (!$productId) {
+                Log::error("Product ID not found for SKU: {$sku} in AliexpressDataView");
+                Log::error("AliExpress API requires product_id to update title. Please ensure product is synced to AliexpressDataView.");
+                return false;
+            }
+
+            Log::info("Found AliExpress product_id: {$productId}");
+
+            // Step 3: Update product title using Aliexpress Open Platform API
+            // Using aliexpress.solution.product.edit method
+            $baseUrl = 'https://api-sg.aliexpress.com/sync';
+            $timestamp = round(microtime(true) * 1000); // milliseconds
+
+            $updateParams = [
+                'app_key' => $appKey,
+                'timestamp' => $timestamp,
+                'access_token' => $accessToken,
+                'sign_method' => 'sha256',
+                'method' => 'aliexpress.solution.product.edit',
+                'product_id' => $productId,
+                'subject' => $newTitle, // Product title field in Aliexpress
+            ];
+
+            // Generate signature (Aliexpress requires signature)
+            $paramsForSign = $updateParams;
+            unset($paramsForSign['sign']); // Remove sign if exists
+            ksort($paramsForSign);
+
+            $signStr = $appSecret;
+            foreach ($paramsForSign as $key => $val) {
+                if ($val !== null && $val !== '') {
+                    $signStr .= $key . $val;
+                }
+            }
+            $signStr .= $appSecret;
+
+            $signature = strtoupper(hash_hmac('sha256', $signStr, $appSecret));
+            $updateParams['sign'] = $signature;
+
             // Rate limiting delay
             sleep(1);
-            
-            // Build update payload - update name field
-            $updatePayload = [
-                'name' => $title
-            ];
-            
-            Log::info("Faire API PATCH request - URL: {$updateUrl}, Payload: " . json_encode($updatePayload));
-            
-            // Use appropriate header based on token type
-            $updateHeaders = [
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-            ];
-            
-            if ($isOAuthToken) {
-                // OAuth tokens use X-FAIRE-OAUTH-ACCESS-TOKEN header
-                $updateHeaders['X-FAIRE-OAUTH-ACCESS-TOKEN'] = $bearerToken;
-            } else {
-                // Bearer tokens use Authorization header
-                $updateHeaders['Authorization'] = 'Bearer ' . $bearerToken;
-            }
-            
+
+            Log::info("Updating AliExpress product ID: {$productId} with title: {$newTitle}");
+
             $updateResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
-                ->withHeaders($updateHeaders)
+                ->asForm()
                 ->timeout(30)
-                ->patch($updateUrl, $updatePayload);
-            
+                ->post($baseUrl, $updateParams);
+
             $status = $updateResponse->status();
             $body = $updateResponse->body();
-            
-            Log::info("Faire API update response status: {$status}");
-            Log::info("Faire API update response body: {$body}");
-            
-            // Check response (similar to Amazon's success check)
+
+            Log::info("AliExpress update status: {$status}");
+            Log::info("AliExpress update body: {$body}");
+
             if ($updateResponse->successful()) {
                 $responseData = $updateResponse->json();
                 
-                // Check if title was updated successfully
-                if (isset($responseData['name']) && $responseData['name'] === $title) {
-                    Log::info("✓ Successfully updated Faire title for SKU: {$sku}, Product ID: {$productId}");
-                    return true;
-                } elseif (isset($responseData['id'])) {
-                    // If we got a product object back, assume success
-                    Log::info("✓ Successfully updated Faire title for SKU: {$sku}, Product ID: {$productId}");
+                // Check response structure (Aliexpress API response format)
+                if (isset($responseData['aliexpress_solution_product_edit_response'])) {
+                    $result = $responseData['aliexpress_solution_product_edit_response'];
+                    if (isset($result['result']) && isset($result['result']['success']) && $result['result']['success'] == true) {
+                        Log::info("✓ Successfully updated AliExpress title for SKU: {$sku}, Product ID: {$productId}");
+                        return true;
+                    } else {
+                        $errorMsg = $result['result']['error_message'] ?? $result['result']['error_msg'] ?? 'Unknown error';
+                        Log::error("✗ AliExpress update failed: {$errorMsg}");
+                        return false;
+                    }
+                } elseif (isset($responseData['error_response'])) {
+                    $error = $responseData['error_response'];
+                    $errorMsg = $error['msg'] ?? $error['message'] ?? 'Unknown error';
+                    $errorCode = $error['code'] ?? 'N/A';
+                    Log::error("✗ AliExpress API error [{$errorCode}]: {$errorMsg}");
+                    return false;
+                } elseif (strpos($body, '"success":true') !== false || strpos($body, '"success": true') !== false) {
+                    Log::info("✓ Successfully updated AliExpress title for SKU: {$sku}, Product ID: {$productId}");
                     return true;
                 } else {
-                    Log::error("✗ Failed to update Faire title for SKU {$sku}: Unexpected response structure. Response: " . json_encode($responseData));
+                    Log::error("✗ Update failed - unexpected response structure. Response: " . json_encode($responseData));
                     return false;
                 }
             } else {
-                Log::error("✗ Failed to update Faire title for SKU {$sku}. Status: {$status}, Body: {$body}");
+                Log::error("✗ AliExpress update failed. Status: {$status}, Body: {$body}");
                 
                 if ($status == 401) {
-                    Log::error("Authentication failed (401). Check Faire credentials in .env file - token may be invalid or expired");
-                    Log::error("Try: FAIRE_BEARER_TOKEN, FAIRE_ACCESS_TOKEN, or FAIRE_APP_ID + FAIRE_APP_SECRET + FAIRE_REFRESH_TOKEN");
+                    Log::error("Authentication failed (401). Check ALIEXPRESS_ACCESS_TOKEN - may be invalid or expired");
                 } elseif ($status == 403) {
-                    Log::error("Permission denied (403). Check API permissions in Faire Brand Portal - ensure product update permissions are enabled");
-                } elseif ($status == 404) {
-                    Log::error("Product not found (404). Product ID: {$productId} may not exist");
-                } elseif ($status == 429) {
-                    Log::error("Rate limited (429) - wait and retry");
+                    Log::error("Permission denied (403). Check API permissions in AliExpress Open Platform");
                 } elseif ($status == 400) {
-                    Log::error("Bad request (400). Check request payload - may need different field name or format");
+                    Log::error("Bad request (400). Check request parameters and signature");
                 }
                 
                 return false;
             }
+
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Faire title for SKU {$sku}: " . $e->getMessage());
-            Log::error("Exception trace: " . $e->getTraceAsString());
+            Log::error("✗ Exception updating AliExpress title for SKU {$sku}: " . $e->getMessage());
+            Log::error("Stack trace: " . $e->getTraceAsString());
+            return false;
+        }
+    }
+
+    private function updateTiktokTitle($sku, $newTitle)
+    {
+        try {
+            Log::info("Starting TikTok title update for SKU: {$sku}, Title: {$newTitle}");
+            
+            // Get TikTok Shop API credentials from .env - try multiple variable name formats
+            $appKey = env('TIKTOK_APP_KEY') 
+                ?? env('TIKTOK_CLIENT_KEY') 
+                ?? env('TIKTOK_APP_ID')
+                ?? env('TIKTOK_KEY');
+            $appSecret = env('TIKTOK_APP_SECRET') 
+                ?? env('TIKTOK_CLIENT_SECRET') 
+                ?? env('TIKTOK_SECRET');
+            $accessToken = env('TIKTOK_ACCESS_TOKEN')
+                ?? env('TIKTOK_TOKEN')
+                ?? env('TIKTOK_BEARER_TOKEN');
+            
+            if (!$appKey || !$appSecret || !$accessToken) {
+                Log::warning("TikTok credentials missing in .env");
+                Log::warning("Required: TIKTOK_APP_KEY (or TIKTOK_CLIENT_KEY/TIKTOK_APP_ID), TIKTOK_APP_SECRET (or TIKTOK_CLIENT_SECRET), and TIKTOK_ACCESS_TOKEN (or TIKTOK_TOKEN)");
+                Log::warning("Please check your .env file and ensure TikTok credentials are configured");
+                return false;
+            }
+
+            Log::info("✓ TikTok credentials found (access token length: " . strlen($accessToken) . " characters)");
+
+            // Step 1: Try to get product_id from database first (faster)
+            $productId = null;
+            
+            $tiktokDataView = \App\Models\TiktokShopDataView::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+            
+            if ($tiktokDataView && $tiktokDataView->value) {
+                $value = is_array($tiktokDataView->value) ? $tiktokDataView->value : json_decode($tiktokDataView->value, true);
+                if (is_array($value)) {
+                    $productId = $value['product_id'] ?? $value['productId'] ?? $value['id'] ?? null;
+                    if ($productId) {
+                        Log::info("Found TikTok product ID from TiktokShopDataView: {$productId} for SKU: {$sku}");
+                    }
+                }
+            }
+
+            // Step 2: If no product ID from database, we need it to update
+            if (!$productId) {
+                Log::error("Product ID not found for SKU: {$sku} in TiktokShopDataView");
+                Log::error("TikTok API requires product_id to update title. Please ensure product is synced to TiktokShopDataView.");
+                return false;
+            }
+
+            Log::info("Found TikTok product_id: {$productId}");
+
+            // Step 3: Update product title using TikTok Shop API
+            // TikTok Shop API endpoint for updating product
+            $baseUrl = 'https://open-api.tiktokglobalshop.com';
+            $shopId = env('TIKTOK_SHOP_ID'); // Optional, may be required for some endpoints
+            
+            // TikTok Shop API uses Bearer token authentication
+            $headers = [
+                'Authorization' => 'Bearer ' . $accessToken,
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ];
+
+            // TikTok Shop API endpoint for updating product title
+            // Using /product/202309/products/{product_id} endpoint
+            $updatePayload = [
+                'title' => $newTitle,
+            ];
+
+            // Rate limiting delay
+            sleep(1);
+
+            Log::info("Updating TikTok product ID: {$productId} with title: {$newTitle}");
+
+            // Try different TikTok API endpoints
+            $endpoints = [
+                "/product/202309/products/{$productId}",
+                "/api/products/{$productId}",
+                "/open_api/v1/product/update",
+            ];
+
+            $success = false;
+            foreach ($endpoints as $endpoint) {
+                $url = $baseUrl . $endpoint;
+                
+                Log::info("Trying TikTok endpoint: {$url}");
+
+                $updateResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
+                    ->withHeaders($headers)
+                    ->timeout(30)
+                    ->patch($url, $updatePayload);
+
+                $status = $updateResponse->status();
+                $body = $updateResponse->body();
+
+                Log::info("TikTok update status: {$status}");
+                Log::info("TikTok update body: {$body}");
+
+                if ($updateResponse->successful()) {
+                    $responseData = $updateResponse->json();
+                    
+                    // Check for success indicators
+                    if (isset($responseData['data']) || isset($responseData['success']) || isset($responseData['message'])) {
+                        Log::info("✓ Successfully updated TikTok title for SKU: {$sku}, Product ID: {$productId}");
+                        $success = true;
+                        break;
+                    }
+                } elseif ($status == 404) {
+                    // Endpoint not found, try next one
+                    continue;
+                } else {
+                    // Log error but continue to next endpoint
+                    Log::warning("TikTok endpoint {$endpoint} failed. Status: {$status}");
+                }
+            }
+
+            if (!$success) {
+                Log::error("✗ TikTok update failed for all endpoints. Last status: {$status}, Body: {$body}");
+                
+                if ($status == 401) {
+                    Log::error("Authentication failed (401). Check TIKTOK_ACCESS_TOKEN - may be invalid or expired");
+                } elseif ($status == 403) {
+                    Log::error("Permission denied (403). Check API permissions in TikTok Shop Developer Portal");
+                } elseif ($status == 400) {
+                    Log::error("Bad request (400). Check request parameters and payload format");
+                }
+                
+                return false;
+            }
+
+            return true;
+
+        } catch (\Exception $e) {
+            Log::error("✗ Exception updating TikTok title for SKU {$sku}: " . $e->getMessage());
+            Log::error("Stack trace: " . $e->getTraceAsString());
             return false;
         }
     }

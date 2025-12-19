@@ -270,6 +270,7 @@ use App\Http\Controllers\MarketPlace\TiktokController;
 use App\Http\Controllers\PurchaseMaster\SupplierRFQController;
 use App\Http\Controllers\StockMappingController;
 use App\Http\Controllers\MissingListingController;
+use App\Http\Controllers\StockMissingListingController;
 use App\Http\Controllers\ProductMarketing;
 use App\Http\Controllers\FacebookAdsController;
 use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
@@ -372,6 +373,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/export-zero-visibility-csv', [ZeroVisibilityMasterController::class, 'exportCsv'])->name('zero.export.csv');
     Route::post('/update-ra-checkbox', [ZeroVisibilityMasterController::class, 'updateRaCheckbox']);
     Route::post('/update-sheet-link', [ZeroVisibilityMasterController::class, 'updateSheetLink']);
+
+    //Stock Missing Listing
+    Route::get('/stock-missing-listing', [StockMissingListingController::class, 'index'])->name('stock.missing.listing');
+    Route::get('/stock-missing-listing/data', [StockMissingListingController::class, 'getStockMissingListingData'])->name('stock.missing.listing.data');
 
     //Listing Audit Master
     Route::get('/listing-audit-master', [ListingAuditMasterController::class, 'index'])->name('listing.audit');
