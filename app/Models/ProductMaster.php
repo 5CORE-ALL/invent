@@ -78,4 +78,7 @@ class ProductMaster extends Model
         'sales' => 'array',
         'views' => 'array',
     ];
+
+    protected $guarded = ['group_id'];
+
 }

@@ -583,6 +583,34 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Aliexpress -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('aliexpress')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="aliexpress" id="platform_aliexpress">
+                                    <label class="form-check-label w-100" for="platform_aliexpress">
+                                        <i class="fas fa-shopping-cart platform-icon text-danger"></i>
+                                        <strong>Aliexpress</strong>
+                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TikTok -->
+                        <div class="col-md-6 mb-3">
+                            <div class="platform-item" onclick="togglePlatform('tiktok')">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="tiktok" id="platform_tiktok">
+                                    <label class="form-check-label w-100" for="platform_tiktok">
+                                        <i class="fab fa-tiktok platform-icon text-dark"></i>
+                                        <strong>TikTok</strong>
+                                        <span class="badge bg-primary platform-badge">Title 150</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="alert alert-warning mt-3">
@@ -730,6 +758,8 @@
             if (document.getElementById('platform_wayfair').checked) platforms.push('wayfair');
             if (document.getElementById('platform_reverb').checked) platforms.push('reverb');
             if (document.getElementById('platform_faire').checked) platforms.push('faire');
+            if (document.getElementById('platform_aliexpress').checked) platforms.push('aliexpress');
+            if (document.getElementById('platform_tiktok').checked) platforms.push('tiktok');
 
             if (platforms.length === 0) {
                 alert('Please select at least one platform to update');
@@ -749,7 +779,9 @@
                 'shein': 'Shein (Title 150)',
                 'wayfair': 'Wayfair (Title 150)',
                 'reverb': 'Reverb (Title 150)',
-                'faire': 'Faire (Title 150)'
+                'faire': 'Faire (Title 150)',
+                'aliexpress': 'Aliexpress (Title 150)',
+                'tiktok': 'TikTok (Title 150)'
             };
 
             const platformList = platforms.map(p => platformNames[p]).join('\n');
