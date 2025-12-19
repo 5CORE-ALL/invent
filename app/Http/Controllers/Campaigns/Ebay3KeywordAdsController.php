@@ -64,7 +64,13 @@ class Ebay3KeywordAdsController extends Controller
 
             $row['campaignName']        = $matchedCampaigns->pluck('campaign_name')->unique()->implode(', ');
             $row['campaignBudgetAmount'] = $matchedCampaigns->sum('campaignBudgetAmount');
-            $row['campaignStatus']      = $matchedCampaigns->pluck('campaignStatus')->unique()->implode(', ');
+            
+            // Prioritize RUNNING status, otherwise use the first unique status
+            $statuses = $matchedCampaigns->pluck('campaignStatus')->unique()->values();
+            $runningStatus = $statuses->first(function ($status) {
+                return strtoupper(trim($status)) === 'RUNNING';
+            });
+            $row['campaignStatus'] = $runningStatus ?? $statuses->first() ?? '';
 
             foreach ($periods as $period) {
                 $periodMatches = $matchedCampaigns->where('report_range', $period);
@@ -157,7 +163,7 @@ class Ebay3KeywordAdsController extends Controller
                 $row['campaignBudgetAmount'] = $campaign->campaignBudgetAmount ?? 0;
                 $row['INV'] = $shopify->inv ?? 0;
                 $row['L30'] = $shopify->quantity ?? 0;
-                $row['price'] = $ebayMetrics[$pm->sku]->ebay_price ?? 0;
+                $row['price'] = isset($ebayMetrics[$pm->sku]) ? ($ebayMetrics[$pm->sku]->ebay_price ?? 0) : 0;
 
                 $adFees = (float) str_replace('USD ', '', $campaign->cpc_ad_fees_payout_currency ?? 0);
                 $sales  = (float) str_replace('USD ', '', $campaign->cpc_sale_amount_payout_currency ?? 0);
@@ -248,15 +254,15 @@ class Ebay3KeywordAdsController extends Controller
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($sku) {
-                return stripos($item->campaign_name, $sku) !== false;
+                return $item->campaign_name && stripos($item->campaign_name, $sku) !== false;
             });
 
             $matchedCampaignL1 = $ebayCampaignReportsL1->first(function ($item) use ($sku) {
-                return stripos($item->campaign_name, $sku) !== false;
+                return $item->campaign_name && stripos($item->campaign_name, $sku) !== false;
             });
 
             $matchedCampaignL30 = $ebayCampaignReportsL30->first(function ($item) use ($sku) {
-                return stripos($item->campaign_name, $sku) !== false;
+                return $item->campaign_name && stripos($item->campaign_name, $sku) !== false;
             });
 
             $row = [];
@@ -264,12 +270,12 @@ class Ebay3KeywordAdsController extends Controller
             $row['sku']    = $pm->sku;
             $row['INV']    = $shopify->inv ?? 0;
             $row['L30']    = $shopify->quantity ?? 0;
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
-            $row['campaignName'] = $matchedCampaignL7->campaign_name ?? ($matchedCampaignL1->campaign_name ?? '');
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
+            $row['campaign_id'] = $matchedCampaignL7 ? ($matchedCampaignL7->campaign_id ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaign_id ?? '') : '');
+            $row['campaignName'] = $matchedCampaignL7 ? ($matchedCampaignL7->campaign_name ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaign_name ?? '') : '');
+            $row['campaignBudgetAmount'] = $matchedCampaignL7 ? ($matchedCampaignL7->campaignBudgetAmount ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignBudgetAmount ?? '') : '');
 
-            $adFees   = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
-            $sales    = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0 );
+            $adFees   = $matchedCampaignL30 ? (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0) : 0;
+            $sales    = $matchedCampaignL30 ? (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0) : 0;
 
             $acos = $sales > 0 ? ($adFees / $sales) * 100 : 0;
             
@@ -279,10 +285,10 @@ class Ebay3KeywordAdsController extends Controller
                 $row['acos'] = $acos;
             }
 
-            $row['l7_spend'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
-            $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
-            $row['l1_spend'] = (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0);
-            $row['l1_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0);
+            $row['l7_spend'] = $matchedCampaignL7 ? (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0) : 0;
+            $row['l7_cpc'] = $matchedCampaignL7 ? (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0) : 0;
+            $row['l1_spend'] = $matchedCampaignL1 ? (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0) : 0;
+            $row['l1_cpc'] = $matchedCampaignL1 ? (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0) : 0;
 
             $row['NR'] = '';
             $row['NRL'] = '';
