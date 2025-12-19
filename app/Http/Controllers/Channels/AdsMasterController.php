@@ -3696,19 +3696,60 @@ class AdsMasterController extends Controller
             'amazon_l30_sales', 'amazon_spent', 'amazon_clicks', 'amazon_ad_sales', 'amazon_ad_sold', 'amazon_missing_ads', 'amazonkw_l30_sales', 'amazonkw_spent', 'amazonkw_clicks', 'amazonkw_ad_sales', 'amazonkw_ad_sold', 'amazonkw_missing_ads', 'amazonpt_l30_sales', 'amazonpt_spent', 'amazonpt_clicks', 'amazonpt_ad_sales', 'amazonpt_ad_sold', 'amazonpt_missing_ads', 'amazonhl_l30_sales', 'amazonhl_spent', 'amazonhl_clicks', 'amazonhl_ad_sales', 'amazonhl_ad_sold', 'amazonhl_missing_ads', 'ebay_l30_sales', 'ebay_spent', 'ebay_clicks', 'ebay_ad_sales', 'ebay_ad_sold', 'ebay_missing_ads', 'ebaykw_l30_sales', 'ebaykw_spent', 'ebaykw_clicks', 'ebaykw_ad_sales', 'ebaykw_ad_sold', 'ebaykw_missing_ads', 'ebaypmt_l30_sales', 'ebaypmt_spent', 'ebaypmt_clicks', 'ebaypmt_ad_sales', 'ebaypmt_ad_sold', 'ebaypmt_missing_ads', 'ebay2_l30_sales', 'ebay2_spent', 'ebay2_clicks', 'ebay2_ad_sales', 'ebay2_ad_sold', 'ebay2_missing_ads', 'ebay2pmt_l30_sales', 'ebay2pmt_spent', 'ebay2pmt_clicks', 'ebay2pmt_ad_sales', 'ebay2pmt_ad_sold', 'ebay2pmt_missing_ads', 'ebay3_l30_sales', 'ebay3_spent', 'ebay3_clicks', 'ebay3_ad_sales', 'ebay3_ad_sold', 'ebay3_missing_ads', 'ebay3kw_l30_sales', 'ebay3kw_spent', 'ebay3kw_clicks', 'ebay3kw_ad_sales', 'ebay3kw_ad_sold', 'ebay3kw_missing_ads', 'ebay3pmt_l30_sales', 'ebay3pmt_spent', 'ebay3pmt_clicks', 'ebay3pmt_ad_sales', 'ebay3pmt_ad_sold', 'ebay3pmt_missing_ads', 'walmart_l30_sales', 'walmart_spent', 'walmart_clicks', 'walmart_ad_sales', 'walmart_ad_sold', 'walmart_missing_ads', 'gshoping_l30_sales', 'gshoping_spent', 'gshoping_clicks', 'gshoping_ad_sales', 'gshoping_ad_sold', 'gshoping_missing_ads', 'total_l30_sales', 'total_spent', 'total_clicks', 'total_ad_sales', 'total_ad_sold', 'total_missing'
         ];
 
+        // Round individual values first
         foreach ($roundVars as $varName) {
             if (isset($$varName)) {
                 $$varName = round((float) $$varName);
             }
         }
+        
+        // Calculate Amazon total from sub-channels (KW + PT + HL) AFTER rounding to match frontend display
+        $amazon_spent_calculated = $amazonkw_spent + $amazonpt_spent + $amazonhl_spent;
+        $amazon_clicks_calculated = $amazonkw_clicks + $amazonpt_clicks + $amazonhl_clicks;
+        $amazon_ad_sales_calculated = $amazonkw_ad_sales + $amazonpt_ad_sales + $amazonhl_ad_sales;
+        $amazon_ad_sold_calculated = $amazonkw_ad_sold + $amazonpt_ad_sold + $amazonhl_ad_sold;
+        
+        // Use calculated values for Amazon total (sum of rounded sub-channels)
+        $amazon_spent = $amazon_spent_calculated;
+        $amazon_clicks = $amazon_clicks_calculated;
+        $amazon_ad_sales = $amazon_ad_sales_calculated;
+        $amazon_ad_sold = $amazon_ad_sold_calculated;
+        
+        // Calculate eBay totals from sub-channels (after rounding)
+        $ebay_spent_calculated = $ebaykw_spent + $ebaypmt_spent;
+        $ebay_clicks_calculated = $ebaykw_clicks + $ebaypmt_clicks;
+        $ebay_ad_sales_calculated = $ebaykw_ad_sales + $ebaypmt_ad_sales;
+        $ebay_ad_sold_calculated = $ebaykw_ad_sold + $ebaypmt_ad_sold;
+        
+        $ebay_spent = $ebay_spent_calculated;
+        $ebay_clicks = $ebay_clicks_calculated;
+        $ebay_ad_sales = $ebay_ad_sales_calculated;
+        $ebay_ad_sold = $ebay_ad_sold_calculated;
+        
+        // Calculate eBay 2 and eBay 3 totals from sub-channels (after rounding)
+        $ebay2_spent = $ebay2pmt_spent; // eBay 2 only has PMT
+        $ebay2_clicks = $ebay2pmt_clicks;
+        $ebay2_ad_sales = $ebay2pmt_ad_sales;
+        $ebay2_ad_sold = $ebay2pmt_ad_sold;
+        
+        $ebay3_spent_calculated = $ebay3kw_spent + $ebay3pmt_spent;
+        $ebay3_clicks_calculated = $ebay3kw_clicks + $ebay3pmt_clicks;
+        $ebay3_ad_sales_calculated = $ebay3kw_ad_sales + $ebay3pmt_ad_sales;
+        $ebay3_ad_sold_calculated = $ebay3kw_ad_sold + $ebay3pmt_ad_sold;
+        
+        $ebay3_spent = $ebay3_spent_calculated;
+        $ebay3_clicks = $ebay3_clicks_calculated;
+        $ebay3_ad_sales = $ebay3_ad_sales_calculated;
+        $ebay3_ad_sold = $ebay3_ad_sold_calculated;
 
-        // Calculate totals - all variables are initialized to 0, so safe to add directly
-        $total_l30_sales = $amazon_l30_sales + $amazonkw_l30_sales + $amazonpt_l30_sales + $amazonhl_l30_sales + $ebay_l30_sales + $ebaykw_l30_sales + $ebaypmt_l30_sales + $ebay2_l30_sales + $ebay2pmt_l30_sales + $ebay3_l30_sales + $ebay3kw_l30_sales + $ebay3pmt_l30_sales + $walmart_l30_sales + $gshoping_l30_sales;
-        $total_spent = $amazon_spent + $amazonkw_spent + $amazonpt_spent + $amazonhl_spent + $ebay_spent + $ebaykw_spent + $ebaypmt_spent + $ebay2_spent + $ebay2pmt_spent + $ebay3_spent + $ebay3kw_spent + $ebay3pmt_spent + $walmart_spent + $gshoping_spent;
-        $total_clicks = $amazon_clicks + $amazonkw_clicks + $amazonpt_clicks + $amazonhl_clicks + $ebay_clicks + $ebaykw_clicks + $ebaypmt_clicks + $ebay2_clicks + $ebay2pmt_clicks + $ebay3_clicks + $ebay3kw_clicks + $ebay3pmt_clicks + $walmart_clicks + $gshoping_clicks;
-        $total_ad_sales = $amazon_ad_sales + $amazonkw_ad_sales + $amazonpt_ad_sales + $amazonhl_ad_sales + $ebay_ad_sales + $ebaykw_ad_sales + $ebaypmt_ad_sales + $ebay2_ad_sales + $ebay2pmt_ad_sales + $ebay3_ad_sales + $ebay3kw_ad_sales + $ebay3pmt_ad_sales + $walmart_ad_sales + $gshoping_ad_sales;
-        $total_ad_sold = $amazon_ad_sold + $amazonkw_ad_sold + $amazonpt_ad_sold + $amazonhl_ad_sold + $ebay_ad_sold + $ebaykw_ad_sold + $ebaypmt_ad_sold + $ebay2_ad_sold + $ebay2pmt_ad_sold + $ebay3_ad_sold + $ebay3kw_ad_sold + $ebay3pmt_ad_sold + $walmart_ad_sold + $gshoping_ad_sold;
-        $total_missing = $amazon_missing_ads + $amazonkw_missing_ads + $amazonpt_missing_ads + $amazonhl_missing_ads + $ebay_missing_ads + $ebaykw_missing_ads + $ebaypmt_missing_ads + $ebay2_missing_ads + $ebay2pmt_missing_ads + $ebay3_missing_ads + $ebay3kw_missing_ads + $ebay3pmt_missing_ads + $walmart_missing_ads + $gshoping_missing_ads;  
+        // Calculate totals - use main channel l30_sales only (not sub-channels, they're duplicates)
+        $total_l30_sales = $amazon_l30_sales + $ebay_l30_sales + $ebay2_l30_sales + $ebay3_l30_sales + $walmart_l30_sales + $gshoping_l30_sales;
+        $total_spent = $amazon_spent + $ebay_spent + $ebay2_spent + $ebay3_spent + $walmart_spent + $gshoping_spent;
+        // Calculate totals - use main channel values only (not sub-channels to avoid double counting)
+        $total_clicks = $amazon_clicks + $ebay_clicks + $ebay2_clicks + $ebay3_clicks + $walmart_clicks + $gshoping_clicks;
+        $total_ad_sales = $amazon_ad_sales + $ebay_ad_sales + $ebay2_ad_sales + $ebay3_ad_sales + $walmart_ad_sales + $gshoping_ad_sales;
+        $total_ad_sold = $amazon_ad_sold + $ebay_ad_sold + $ebay2_ad_sold + $ebay3_ad_sold + $walmart_ad_sold + $gshoping_ad_sold;
+        $total_missing = $amazon_missing_ads + $ebay_missing_ads + $ebay2_missing_ads + $ebay3_missing_ads + $walmart_missing_ads + $gshoping_missing_ads;  
 
         /** START AMZON GRAPH DATA **/
 
@@ -3837,7 +3878,26 @@ class AdsMasterController extends Controller
 
     public function getChannelAdvMasterAmazonCronData(Request $request)
     {
-        return ADVMastersData::getChannelAdvMasterAmazonCronDataProceed($request);
+        try {
+            $result = ADVMastersData::getChannelAdvMasterAmazonCronDataProceed($request);
+            if ($result == 1) {
+                return response()->json(['success' => true, 'message' => 'Amazon cron data updated successfully']);
+            } else {
+                return response()->json(['success' => false, 'message' => 'Failed to update Amazon cron data. Check logs for details.'], 500);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Amazon Cron Controller Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Error: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
     }
 
     public function getChannelAdvMasterAmazonCronMissingData(Request $request)
@@ -3852,18 +3912,296 @@ class AdsMasterController extends Controller
 
     public function getChannelAdvMasterEbayCronData(Request $request)
     {
-        return ADVMastersData::getChannelAdvMasterEbayCronDataProceed($request);
+        try {
+            $result = ADVMastersData::getChannelAdvMasterEbayCronDataProceed($request);
+            if ($result == 1) {
+                return response()->json(['success' => true, 'message' => 'Ebay cron data updated successfully']);
+            } else {
+                return response()->json(['success' => false, 'message' => 'Failed to update Ebay cron data. Check logs for details.'], 500);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Ebay Cron Controller Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Error: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
     }
 
     public function getChannelAdvMasterEbayCronMissingData(Request $request)
     {
-        return ADVMastersData::getChannelAdvMasterEbayCronMissingDataProceed($request);
+        try {
+            $result = ADVMastersData::getChannelAdvMasterEbayCronMissingDataProceed($request);
+            if ($result == 1) {
+                return response()->json(['success' => true, 'message' => 'Ebay missing ads data updated successfully']);
+            } else {
+                return response()->json(['success' => false, 'message' => 'Failed to update Ebay missing ads data. Check logs for details.'], 500);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Ebay Missing Ads Cron Controller Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Error: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
     }
 
     public function getChannelAdvMasterEbayCronTotalSaleData(Request $request)
     {
-        return ADVMastersData::getChannelAdvMasterEbayCronTotalSaleDataProceed($request);
+        try {
+            $result = ADVMastersData::getChannelAdvMasterEbayCronTotalSaleDataProceed($request);
+            if ($result == 1) {
+                return response()->json(['success' => true, 'message' => 'Ebay total sales data updated successfully']);
+            } else {
+                return response()->json(['success' => false, 'message' => 'Failed to update Ebay total sales data. Check logs for details.'], 500);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Ebay Total Sales Cron Controller Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return response()->json([
+                'success' => false, 
+                'message' => 'Error: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
+        }
     }
 
+    /**
+     * Consolidated Cron Job - Runs all ADV Masters cron jobs sequentially
+     * This method executes all Amazon and eBay cron jobs in the correct order
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function runAllAdvMastersCronJobs(Request $request)
+    {
+        // Increase memory limit for cron jobs
+        ini_set('memory_limit', '512M');
+        set_time_limit(600); // 10 minutes timeout
+        
+        try {
+            $startTime = microtime(true);
+            $results = [
+                'success' => true,
+                'message' => 'All cron jobs executed',
+                'timestamp' => now()->toDateTimeString(),
+                'jobs' => [],
+                'summary' => [
+                    'total' => 0,
+                    'succeeded' => 0,
+                    'failed' => 0
+                ],
+                'execution_time' => 0
+            ];
 
+        // Define all cron jobs in execution order
+        $cronJobs = [
+            [
+                'name' => 'Amazon Main Data',
+                'method' => 'getChannelAdvMasterAmazonCronDataProceed',
+                'type' => 'amazon'
+            ],
+            [
+                'name' => 'Amazon Missing Ads',
+                'method' => 'getChannelAdvMasterAmazonCronMissingDataProceed',
+                'type' => 'amazon'
+            ],
+            [
+                'name' => 'Amazon Total Sales',
+                'method' => 'getChannelAdvMasterAmazonCronTotalSaleDataProceed',
+                'type' => 'amazon'
+            ],
+            [
+                'name' => 'eBay Main Data',
+                'method' => 'getChannelAdvMasterEbayCronDataProceed',
+                'type' => 'ebay'
+            ],
+            [
+                'name' => 'eBay Missing Ads',
+                'method' => 'getChannelAdvMasterEbayCronMissingDataProceed',
+                'type' => 'ebay'
+            ],
+            [
+                'name' => 'eBay Total Sales',
+                'method' => 'getChannelAdvMasterEbayCronTotalSaleDataProceed',
+                'type' => 'ebay'
+            ],
+            [
+                'name' => 'eBay 2 Main Data',
+                'method' => 'getEbay2AdvRunningAdDataSaveProceed',
+                'type' => 'ebay2'
+            ],
+            [
+                'name' => 'eBay 2 Missing Ads',
+                'method' => 'getAdvEbay2MissingSaveDataProceed',
+                'type' => 'ebay2'
+            ],
+            [
+                'name' => 'eBay 2 Total Sales',
+                'method' => 'getEbay2TotsalSaleDataSaveProceed',
+                'type' => 'ebay2'
+            ],
+            [
+                'name' => 'eBay 3 Main Data',
+                'method' => 'getAdvEbay3AdRunningDataSaveProceed',
+                'type' => 'ebay3'
+            ],
+            [
+                'name' => 'eBay 3 Missing Ads',
+                'method' => 'getEbay3MissingDataSaveProceed',
+                'type' => 'ebay3'
+            ],
+            [
+                'name' => 'eBay 3 Total Sales',
+                'method' => 'getEbay3TotalSaleSaveDataProceed',
+                'type' => 'ebay3'
+            ],
+            [
+                'name' => 'Walmart Main Data',
+                'method' => 'getAdvWalmartRunningSaveDataProceed',
+                'type' => 'walmart'
+            ],
+            [
+                'name' => 'G Shopping Main Data',
+                'method' => 'getAdvShopifyGShoppingSaveDataProceed',
+                'type' => 'gshopping'
+            ]
+        ];
+
+        \Log::info('Starting consolidated ADV Masters cron job execution', [
+            'total_jobs' => count($cronJobs),
+            'timestamp' => now()->toDateTimeString()
+        ]);
+
+        // Execute each cron job
+        foreach ($cronJobs as $job) {
+            $jobStartTime = microtime(true);
+            $jobResult = [
+                'name' => $job['name'],
+                'type' => $job['type'],
+                'status' => 'pending',
+                'message' => '',
+                'execution_time' => 0,
+                'error' => null
+            ];
+
+            try {
+                \Log::info("Executing cron job: {$job['name']}");
+                
+                // Call the static method from ADVMastersData model using call_user_func
+                $methodName = $job['method'];
+                if (!method_exists(ADVMastersData::class, $methodName)) {
+                    throw new \Exception("Method {$methodName} does not exist in ADVMastersData");
+                }
+                $result = call_user_func([ADVMastersData::class, $methodName], $request);
+                
+                $jobExecutionTime = round((microtime(true) - $jobStartTime) * 1000, 2); // in milliseconds
+                
+                if ($result == 1) {
+                    $jobResult['status'] = 'success';
+                    $jobResult['message'] = "{$job['name']} completed successfully";
+                    $results['summary']['succeeded']++;
+                    \Log::info("Cron job completed: {$job['name']}", [
+                        'execution_time_ms' => $jobExecutionTime
+                    ]);
+                } else {
+                    $jobResult['status'] = 'failed';
+                    $jobResult['message'] = "{$job['name']} returned failure status";
+                    $results['summary']['failed']++;
+                    $results['success'] = false;
+                    \Log::warning("Cron job failed: {$job['name']}", [
+                        'execution_time_ms' => $jobExecutionTime
+                    ]);
+                }
+                
+                $jobResult['execution_time'] = $jobExecutionTime;
+                
+            } catch (\Exception $e) {
+                $jobExecutionTime = round((microtime(true) - $jobStartTime) * 1000, 2);
+                $jobResult['status'] = 'error';
+                $jobResult['message'] = "Error executing {$job['name']}";
+                $jobResult['error'] = [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ];
+                $jobResult['execution_time'] = $jobExecutionTime;
+                $results['summary']['failed']++;
+                $results['success'] = false;
+                
+                \Log::error("Cron job error: {$job['name']}", [
+                    'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString(),
+                    'execution_time_ms' => $jobExecutionTime
+                ]);
+            }
+            
+            $results['jobs'][] = $jobResult;
+            $results['summary']['total']++;
+            
+            // Free memory after each job
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
+            }
+            
+            // Log memory usage
+            $memoryUsage = round(memory_get_usage(true) / 1024 / 1024, 2);
+            $memoryPeak = round(memory_get_peak_usage(true) / 1024 / 1024, 2);
+            \Log::info("Memory usage after {$job['name']}", [
+                'current_mb' => $memoryUsage,
+                'peak_mb' => $memoryPeak
+            ]);
+        }
+
+        $totalExecutionTime = round((microtime(true) - $startTime) * 1000, 2); // in milliseconds
+        $results['execution_time'] = $totalExecutionTime;
+        $results['message'] = $results['success'] 
+            ? "All cron jobs completed successfully in {$totalExecutionTime}ms"
+            : "Cron jobs completed with {$results['summary']['failed']} failure(s) in {$totalExecutionTime}ms";
+
+        \Log::info('Consolidated ADV Masters cron job execution completed', [
+            'summary' => $results['summary'],
+            'total_execution_time_ms' => $totalExecutionTime
+        ]);
+
+            $statusCode = $results['success'] ? 200 : 207; // 207 Multi-Status for partial success
+            
+            return response()->json($results, $statusCode);
+        } catch (\Exception $e) {
+            \Log::error('Consolidated Cron Job Fatal Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Fatal error executing consolidated cron jobs: ' . $e->getMessage(),
+                'error' => [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ],
+                'timestamp' => now()->toDateTimeString()
+            ], 500);
+        }
+    }
 }

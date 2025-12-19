@@ -116,6 +116,7 @@
                         <span class="badge fs-6 p-2" id="kw-spent-badge" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>
                         <span class="badge fs-6 p-2" id="tacos-percentage-badge" style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0%</span>
                         <span class="badge fs-6 p-2" id="m-pft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="n-roi-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                         <span class="badge fs-6 p-2" id="ads-percentage-badge" style="background-color: #20c997; color: white; font-weight: bold; display: none;">Ads %: 0%</span>
                         <span class="badge fs-6 p-2" id="pft-percentage-filtered-badge" style="background-color: #17a2b8; color: white; font-weight: bold; display: none;">PFT %: 0%</span>
                     </div>
@@ -563,6 +564,11 @@
             // Calculate N PFT: GPFT % - TACOS %
             const mPft = pftPercentage - tacosPercentage;
             
+            // Calculate N ROI: (Net Profit / Total COGS) * 100
+            // Net Profit = Total PFT - (KW Spent + PT Spent)
+            const netProfit = totalPft - (KW_SPENT + PT_SPENT);
+            const nRoi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
+            
             // Calculate Ads %: (Sum of unique SKU KW+PT / Total Sales) * 100
             const totalUniqueSkuSpend = Object.values(uniqueSkuSpend).reduce((sum, spend) => sum + spend, 0);
             const adsPercentage = totalRevenue > 0 ? (totalUniqueSkuSpend / totalRevenue) * 100 : 0;
@@ -599,6 +605,7 @@
             $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
             $('#tacos-percentage-badge').text('TACOS %: ' + Math.round(tacosPercentage) + '%');
             $('#m-pft-badge').text('N PFT: ' + Math.round(mPft) + '%');
+            $('#n-roi-badge').text('N ROI: ' + Math.round(nRoi) + '%');
             
             // Show/hide Ads % and PFT % badges based on filter status
             if (isFiltered) {

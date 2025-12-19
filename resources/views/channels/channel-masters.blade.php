@@ -670,6 +670,16 @@
                     <input type="text" class="form-control" id="editpercentage" name="type" required>
                 </div>
 
+                <div class="mb-3">
+                    <label for="editBase" class="form-label">Base</label>
+                    <input type="number" class="form-control" id="editBase" name="base" step="0.01">
+                </div>
+
+                <div class="mb-3">
+                    <label for="editTarget" class="form-label">Target</label>
+                    <input type="number" class="form-control" id="editTarget" name="target" step="0.01">
+                </div>
+
                 </div>
                 <div class="modal-footer">
                 <button type="submit" class="btn btn-primary">Update Channel</button>
@@ -770,6 +780,13 @@
                                 G ROI%
                             </th>
                             <th class="text-center align-middle">
+                                <small class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0%
+                                </small><br>
+                                Ads%
+                            </th>
+                            <th class="text-center align-middle">
                                 <small id="nPftPercentageBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
                                     0%
@@ -777,14 +794,34 @@
                                 N PFT
                             </th>
                             <th class="text-center align-middle">
-                                <small class="badge bg-dark text-white mb-1"
+                                <small id="nRoiBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
                                     0%
                                 </small><br>
-                                Ads%
+                                N ROI
                             </th>
                             {{-- <th>Red Margin</th> --}}
-                            <th>Percentage</th>
+                            <th class="text-center align-middle">
+                                <small id="baseTotalBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0
+                                </small><br>
+                                Base
+                            </th>
+                            <th class="text-center align-middle">
+                                <small id="targetTotalBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0
+                                </small><br>
+                                Target
+                            </th>
+                            <th class="text-center align-middle">
+                                <small id="shortfallBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0%
+                                </small><br>
+                                Shortfall
+                            </th>
                             <th class="text-center align-middle">
                                 <small id="growthPercentageBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
@@ -1089,6 +1126,8 @@
             let l30SalesTotal = 0;
             let l60OrdersTotal = 0;
             let l30OrdersTotal = 0;
+            let baseTotalSum = 0;
+            let targetTotalSum = 0;
             let growthValues = [];
             let gprofitValues = [];
             let groiValues = [];
@@ -1115,12 +1154,16 @@
                     const growth = parseNumber(row['Growth'] || 0);
                     const gprofit = parseNumber(row['Gprofit%'] || row['Growth%'] || 0);
                     const groi = parseNumber(row['G Roi%'] || row['G.Rents'] || 0);
+                    const baseVal = parseNumber(row['Base'] || 0);
+                    const targetVal = parseNumber(row['Target'] || 0);
 
                     // Add to totals
                     l60SalesTotal += l60Sales;
                     l30SalesTotal += l30Sales;
                     l60OrdersTotal += l60Orders;
                     l30OrdersTotal += l30Orders;
+                    baseTotalSum += baseVal;
+                    targetTotalSum += targetVal;
 
                     // Collect for averages
                     if (!isNaN(growth)) growthValues.push(growth);
@@ -1146,12 +1189,21 @@
             const gprofitBadge = document.getElementById('gprofitPercentage');
             const groiBadge = document.getElementById('groiPercentageBadge');
             const nPftBadge = document.getElementById('nPftPercentageBadge');
+            const baseTotalBadge = document.getElementById('baseTotalBadge');
+            const targetTotalBadge = document.getElementById('targetTotalBadge');
 
             if (l60Badge) l60Badge.textContent = Math.round(l60SalesTotal).toLocaleString('en-US');
             if (l30Badge) l30Badge.textContent = Math.round(l30SalesTotal).toLocaleString('en-US');
             if (l60OrdersBadge) l60OrdersBadge.textContent = Math.round(l60OrdersTotal).toLocaleString('en-US');
             if (l30OrdersBadge) l30OrdersBadge.textContent = Math.round(l30OrdersTotal).toLocaleString('en-US');
             if (growthBadge) growthBadge.textContent = growthTotal.toFixed(0) + '%';
+            if (baseTotalBadge) baseTotalBadge.textContent = Math.round(baseTotalSum).toLocaleString('en-US');
+            if (targetTotalBadge) targetTotalBadge.textContent = Math.round(targetTotalSum).toLocaleString('en-US');
+            
+            // Calculate and update shortfall badge
+            const shortfallBadge = document.getElementById('shortfallBadge');
+            let overallShortfall = targetTotalSum !== 0 ? ((l30SalesTotal - targetTotalSum) / targetTotalSum) * 100 : 0;
+            if (shortfallBadge) shortfallBadge.textContent = Math.round(overallShortfall) + '%';
 
             // Calculate G profit and G roi using totalPft, totalL30Sales, totalCogs
             let totalPft = 0;
@@ -1169,10 +1221,13 @@
 
                 const l30Sales = parseNumber(row['L30 Sales'] || 0);
                 const gprofitPercent = parseNumber(row['Gprofit%'] || 0);
+                const adsPercent = parseNumber(row['Ads%'] || 0);
 
                 // convert % → absolute profit amount for this row
                 const profitAmount = (gprofitPercent / 100) * l30Sales;
                 
+                // Calculate ads amount from Ads%
+                const adsAmount = (adsPercent / 100) * l30Sales;
 
                 totalPft += profitAmount;
                 totalL30Sales += l30Sales;
@@ -1186,9 +1241,25 @@
             // if (gprofitBadge) gprofitBadge.textContent = gProfit !== null ? gProfit.toFixed(1) + '%' : 'N/A';
             if (groiBadge) groiBadge.textContent = gRoi !== null ? gRoi.toFixed(1) + '%' : 'N/A';
             
-            // Calculate N PFT = (sum of PFT / sum of L30 Sales) * 100
-            let nPft = totalL30Sales !== 0 ? (totalPft / totalL30Sales) * 100 : null;
+            // Calculate total Ads% from all rows
+            let totalAdsPercent = 0;
+            let totalAdsAmount = 0;
+            data.forEach(function(row) {
+                const l30Sales = parseNumber(row['L30 Sales'] || 0);
+                const adsPercent = parseNumber(row['Ads%'] || 0);
+                totalAdsAmount += (adsPercent / 100) * l30Sales;
+            });
+            let avgAdsPercent = totalL30Sales !== 0 ? (totalAdsAmount / totalL30Sales) * 100 : 0;
+            
+            // N PFT = G PFT - Ads%
+            let nPft = gProfit !== null ? gProfit - avgAdsPercent : null;
             if (nPftBadge) nPftBadge.textContent = nPft !== null ? nPft.toFixed(1) + '%' : 'N/A';
+            
+            // N ROI = (Net Profit / COGS) * 100 where Net Profit = Total PFT - Ads Amount
+            const nRoiBadge = document.getElementById('nRoiBadge');
+            let netProfit = totalPft - totalAdsAmount;
+            let nRoi = totalCogs !== 0 ? (netProfit / totalCogs) * 100 : null;
+            if (nRoiBadge) nRoiBadge.textContent = nRoi !== null ? nRoi.toFixed(1) + '%' : 'N/A';
 
             $("#profit_margin").html(gProfit.toFixed(1)+'%');
             $("#sales_roi").html(gRoi.toFixed(1)+'%');
@@ -1656,7 +1727,7 @@
                             else if (n > 15 && n <= 25) { bg = '#007bff'; } // Blue: 15.01 to 25
                             else if (n > 25 && n <= 40) { bg = '#00ff00'; color = 'black'; } // Green: 25 to 40
                             else { bg = '#8000ff'; } // Purple: above 40
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n.toFixed(1)}%</span>`;
                         }
                     },
 
@@ -1664,21 +1735,11 @@
                         data: 'G ROI%',
                         render: function (v) {
                             const n = pctFix(v);
-                            let bg = '', color = 'black';
-                            if (n <= 50) { bg = '#ff0000'; color = 'white'; }
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
-                        }
-                    },
-                    {
-                        data: 'N PFT',
-                        render: function (v) {
-                            const n = pctFix(v);
                             let bg = '', color = 'white';
-                            if (n < 10) { bg = '#ff0000'; } // Red: below 10
-                            else if (n >= 10 && n <= 15) { bg = '#ffff00'; color = 'black'; } // Yellow: 10 to 15
-                            else if (n > 15 && n <= 25) { bg = '#007bff'; } // Blue: 15.01 to 25
-                            else if (n > 25 && n <= 40) { bg = '#00ff00'; color = 'black'; } // Green: 25 to 40
-                            else { bg = '#8000ff'; } // Purple: above 40
+                            if (n <= 50) { bg = '#ff0000'; } // Red: 50 and below
+                            else if (n > 50 && n <= 75) { bg = '#ffff00'; color = 'black'; } // Yellow: 50-75
+                            else if (n > 75 && n <= 125) { bg = '#00ff00'; color = 'black'; } // Green: 75-125
+                            else { bg = '#8000ff'; } // Purple: above 125
                             return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
                         }
                     },
@@ -1686,10 +1747,102 @@
                         data: 'Ads%',
                         render: function (v) {
                             const n = pctFix(v);
-                            return `<span style="background:#20c997;color:white;padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
+                            return `<span style="background:#20c997;color:white;padding:2px 6px;border-radius:4px;">${n.toFixed(1)}%</span>`;
                         }
                     },
-                    { data: 'Channel Percentage', render: v => `<span class="metric-value">${toNum(v).toLocaleString('en-US')}</span>` },
+                    {
+                        data: null,
+                        render: function (v, type, row) {
+                            const channel = (row['Channel'] || '').trim().toLowerCase();
+                            let nPft = 0;
+                            
+                            // For Amazon and eBay, use the N PFT from backend
+                            if (channel === 'amazon' || channel === 'ebay') {
+                                nPft = pctFix(row['N PFT'] || 0);
+                            } else {
+                                // For other channels, calculate N PFT = GPFT% - Ads%
+                                const gpft = pctFix(row['Gprofit%'] || 0);
+                                const ads = pctFix(row['Ads%'] || 0);
+                                nPft = gpft - ads;
+                            }
+                            
+                            if (type === 'sort' || type === 'type') return nPft;
+                            
+                            let bg = '', color = 'white';
+                            if (nPft < 10) { bg = '#ff0000'; } // Red: below 10
+                            else if (nPft >= 10 && nPft <= 15) { bg = '#ffff00'; color = 'black'; } // Yellow: 10 to 15
+                            else if (nPft > 15 && nPft <= 25) { bg = '#007bff'; } // Blue: 15.01 to 25
+                            else if (nPft > 25 && nPft <= 40) { bg = '#00ff00'; color = 'black'; } // Green: 25 to 40
+                            else { bg = '#8000ff'; } // Purple: above 40
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(nPft)}%</span>`;
+                        }
+                    },
+                    {
+                        data: null,
+                        render: function (v, type, row) {
+                            const channel = (row['Channel'] || '').trim().toLowerCase();
+                            let nRoi = 0;
+                            
+                            // For Amazon and eBay, use the N ROI from backend
+                            if (channel === 'amazon' || channel === 'ebay') {
+                                nRoi = pctFix(row['N ROI'] || 0);
+                            } else {
+                                // For other channels, calculate N ROI = (Net Profit / COGS) * 100
+                                // Net Profit = (GPFT% - Ads%) / 100 * L30 Sales
+                                const gpft = pctFix(row['Gprofit%'] || 0);
+                                const ads = pctFix(row['Ads%'] || 0);
+                                const l30Sales = toNum(row['L30 Sales'] || 0);
+                                const cogs = toNum(row['cogs'] || 0);
+                                
+                                const netProfitAmount = ((gpft - ads) / 100) * l30Sales;
+                                nRoi = cogs !== 0 ? (netProfitAmount / cogs) * 100 : 0;
+                            }
+                            
+                            if (type === 'sort' || type === 'type') return nRoi;
+                            
+                            let bg = '', color = 'white';
+                            if (nRoi <= 50) { bg = '#ff0000'; } // Red: 50 and below
+                            else if (nRoi > 50 && nRoi <= 75) { bg = '#ffff00'; color = 'black'; } // Yellow: 50-75
+                            else if (nRoi > 75 && nRoi <= 125) { bg = '#00ff00'; color = 'black'; } // Green: 75-125
+                            else { bg = '#8000ff'; } // Purple: above 125
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(nRoi)}%</span>`;
+                        }
+                    },
+                    { 
+                        data: 'Base', 
+                        render: function (v, type) {
+                            const n = toNum(v);
+                            if (type === 'sort' || type === 'type') return n;
+                            return `<span class="metric-value">${n.toLocaleString('en-US')}</span>`;
+                        }
+                    },
+                    { 
+                        data: 'Target', 
+                        render: function (v, type) {
+                            const n = toNum(v);
+                            if (type === 'sort' || type === 'type') return n;
+                            return `<span class="metric-value">${n.toLocaleString('en-US')}</span>`;
+                        }
+                    },
+                    { 
+                        data: null, 
+                        render: function (v, type, row) {
+                            const l30Sales = toNum(row['L30 Sales']);
+                            const target = toNum(row['Target']);
+                            if (target === 0) {
+                                if (type === 'sort' || type === 'type') return 0;
+                                return '-';
+                            }
+                            const shortfall = ((l30Sales - target) / target) * 100;
+                            if (type === 'sort' || type === 'type') return shortfall;
+                            let bg = '', color = 'white';
+                            if (shortfall < 0) { bg = '#ff0000'; } // Red: negative (below target)
+                            else if (shortfall >= 0 && shortfall < 10) { bg = '#ffff00'; color = 'black'; } // Yellow: 0 to 10
+                            else if (shortfall >= 10 && shortfall < 25) { bg = '#00ff00'; color = 'black'; } // Green: 10 to 25
+                            else { bg = '#8000ff'; } // Purple: above 25
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(shortfall)}%</span>`;
+                        }
+                    },
                     {
                         data: 'Growth',
                         render: function (v) {
@@ -1769,6 +1922,7 @@
                                 let gprofitL60  = pctFix(pick(item, ['Gprofitl60'], 0));
                                 let cogs = pctFix(pick(item, ['cogs'], 0));
                                 let nPft = pctFix(pick(item, ['N PFT', 'n_pft', 'nPft'], 0));
+                                let nRoi = pctFix(pick(item, ['N ROI', 'n_roi', 'nRoi'], 0));
                                 let adsPercentage = pctFix(pick(item, ['Ads%', 'ads_percentage', 'adsPercentage'], 0));
 
                                 return {
@@ -1786,6 +1940,7 @@
                                     'GprofitL60': gprofitL60,
                                     'G ROI%': groi,
                                     'N PFT': nPft,
+                                    'N ROI': nRoi,
                                     'Ads%': adsPercentage,
                                     'Red Margin': toNum(pick(item, ['red_margin', 'Total_pft', 'total_pft'], 0), 0),
                                     'NR': toNum(pick(item, ['nr','NR'], 0), 0),
@@ -1799,6 +1954,8 @@
                                     'Ac Health': pick(item, ['account_health', 'ac_health', 'accounthealth'], ''),
                                     'Channel Percentage': pctFix(pick(item, ['channel_percentage'], 0), 0),
                                     'cogs': cogs,
+                                    'Base': toNum(pick(item, ['base', 'Base'], 0), 0),
+                                    'Target': toNum(pick(item, ['target', 'Target'], 0), 0),
                                 };
                             });
                         },
@@ -2470,6 +2627,8 @@
                             const sheetUrl = rowData["sheet_link"] || rowData["URL LINK"] || rowData["url"] || '';
                             const type = rowData["type"]?.trim() || rowData["type"] || '';
                             const percentage = rowData["Channel Percentage"];
+                            const base = rowData["Base"] || 0;
+                            const target = rowData["Target"] || 0;
 
                             // Populate modal fields
                             // $('#editChannelId').val(id);
@@ -2477,6 +2636,8 @@
                             $('#editChannelUrl').val(sheetUrl);
                             $('#editType').val(type);
                             $('#editpercentage').val(percentage);
+                            $('#editBase').val(base);
+                            $('#editTarget').val(target);
                             $('#originalChannel').val(channel);
 
 
@@ -2494,6 +2655,8 @@
                             const sheetUrl = $('#editChannelUrl').val().trim();
                             const type = $('#editType').val().trim();
                             const percentage = $('#editpercentage').val().trim();
+                            const base = $('#editBase').val().trim();
+                            const target = $('#editTarget').val().trim();
                             const originalChannel = $('#originalChannel').val().trim();
                             
 
@@ -2510,6 +2673,8 @@
                                     sheet_url: sheetUrl,
                                     type: type,
                                     channel_percentage: percentage,
+                                    base: base,
+                                    target: target,
                                     original_channel: originalChannel,
                                     _token: $('meta[name="csrf-token"]').attr('content')
                                 },

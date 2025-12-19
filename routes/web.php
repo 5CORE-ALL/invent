@@ -290,6 +290,10 @@ use App\Http\Controllers\Sales\MercariController;
 */
 
 /** Start Cron Job Routes **/
+// Consolidated Cron Job - Runs all cron jobs in sequence (Recommended)
+Route::get('/channel/adv/master/cron/all', [ChannelAdsMasterController::class, 'runAllAdvMastersCronJobs'])->name('adv.masters.cron.all');
+
+// Individual Cron Job Routes (for backward compatibility or specific use cases)
 Route::get('/channel/adv/master/amazon/cron', [ChannelAdsMasterController::class, 'getChannelAdvMasterAmazonCronData']);
 Route::get('/adv/master/missing/amazon/cron', [ChannelAdsMasterController::class, 'getChannelAdvMasterAmazonCronMissingData']);
 Route::get('/adv/master/totalsale/amazon/cron', [ChannelAdsMasterController::class, 'getChannelAdvMasterAmazonCronTotalSaleData']);

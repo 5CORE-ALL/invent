@@ -104,6 +104,8 @@
                             style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0%</span>
                         <span class="badge fs-6 p-2" id="m-pft-badge"
                             style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="n-roi-badge"
+                            style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                     </div>
                 </div>
             </div>
@@ -494,6 +496,11 @@
                 const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
                 const tacosPercentage = totalRevenue > 0 ? (PMT_SPENT / totalRevenue) * 100 : 0;
                 const mPft = pftPercentage - tacosPercentage;
+                
+                // Calculate N ROI: (Net Profit / Total COGS) * 100
+                // Net Profit = Total PFT - PMT Spent
+                const netProfit = totalPft - PMT_SPENT;
+                const nRoi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
 
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
@@ -515,6 +522,7 @@
                 $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
                 $('#tacos-percentage-badge').text('TACOS %: ' + Math.round(tacosPercentage) + '%');
                 $('#m-pft-badge').text('N PFT: ' + Math.round(mPft) + '%');
+                $('#n-roi-badge').text('N ROI: ' + Math.round(nRoi) + '%');
             }
 
             // Build Column Visibility Dropdown

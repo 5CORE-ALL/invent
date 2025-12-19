@@ -16,33 +16,31 @@ class AmazonSalesController extends Controller
     public function index()
     {
         // Calculate KW Spent - same logic as amazonKwAdsView
-        // Uses date-wise data (last 30 days actual dates), NOT L30 period range
-        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(31)->format('Y-m-d');
-        $yesterday = \Carbon\Carbon::now()->subDay()->format('Y-m-d');
-
-        $kwSpent = DB::table('amazon_sp_campaign_reports')
-            ->whereNotNull('report_date_range')
-            ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
-            ->whereDate('report_date_range', '<=', $yesterday)
-            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
-            ->where(function($query) {
-                $query->whereRaw("campaignName NOT LIKE '%PT'")
-                    ->whereRaw("campaignName NOT LIKE '%PT.'");
-            })
-            ->sum('spend') ?? 0;
+        // Uses L30 report_date_range, group by campaignName to get MAX(spend), then sum
+        $kwSpentData = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('campaignName, MAX(spend) as max_spend')
+            ->where('report_date_range', 'L30')
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'") // Exclude PT and FBA campaigns
+            ->groupBy('campaignName')
+            ->get();
+        
+        $kwSpent = $kwSpentData->sum('max_spend') ?? 0;
 
         // Calculate PT Spent - same logic as amazonPtAdsView
-        // Uses date-wise data (last 30 days actual dates), NOT L30 period range
-        $ptSpent = DB::table('amazon_sp_campaign_reports')
-            ->whereNotNull('report_date_range')
-            ->whereDate('report_date_range', '>=', $thirtyDaysAgo)
-            ->whereDate('report_date_range', '<=', $yesterday)
-            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
+        // Uses L30 report_date_range, group by campaignName to get MAX(spend), then sum
+        $ptSpentData = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('campaignName, MAX(spend) as max_spend')
+            ->where('report_date_range', 'L30')
             ->where(function($query) {
                 $query->whereRaw("campaignName LIKE '%PT'")
                     ->orWhereRaw("campaignName LIKE '%PT.'");
             })
-            ->sum('spend') ?? 0;
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'") // Exclude FBA PT campaigns
+            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'") // Exclude FBA PT. campaigns
+            ->groupBy('campaignName')
+            ->get();
+        
+        $ptSpent = $ptSpentData->sum('max_spend') ?? 0;
 
         return view('sales.amazon_daily_sales_data', [
             'kwSpent' => (float) $kwSpent,

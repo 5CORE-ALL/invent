@@ -128,7 +128,7 @@ class ChannelMasterController extends Controller
         // Fetch both channel and sheet_link from ChannelMaster
         $channels = ChannelMaster::where('status', 'Active')
             ->orderBy('id', 'asc')
-            ->get(['channel', 'sheet_link', 'channel_percentage']);
+            ->get(['channel', 'sheet_link', 'channel_percentage', 'base', 'target']);
 
         if ($channels->isEmpty()) {
             return response()->json(['status' => 404, 'message' => 'No active channel found']);
@@ -191,6 +191,8 @@ class ChannelMasterController extends Controller
                 'listed_count'   => 0,
                 'W/Ads'          => 0,
                 'channel_percentage' => $channelRow->channel_percentage ?? '',
+                'base' => $channelRow->base ?? 0,
+                'target' => $channelRow->target ?? 0,
                 // '0 Sold SKU Count' => 0,
                 // 'Sold SKU Count'   => 0,
                 // 'Brand Registry'   => '',
@@ -352,6 +354,7 @@ class ChannelMasterController extends Controller
         $gRoi = $metrics->roi_percentage ?? 0;
         $tacosPercentage = $metrics->tacos_percentage ?? 0;
         $nPft = $metrics->n_pft ?? 0;
+        $nRoi = $metrics->n_roi ?? 0;
         $kwSpent = $metrics->kw_spent ?? 0;
         $ptSpent = $metrics->pmt_spent ?? 0;
         
@@ -381,6 +384,7 @@ class ChannelMasterController extends Controller
             'G RoiL60'   => round($gRoiL60, 2),
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
             'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
@@ -433,6 +437,7 @@ class ChannelMasterController extends Controller
         $gRoi = $metrics->roi_percentage ?? 0;
         $tacosPercentage = $metrics->tacos_percentage ?? 0;
         $nPft = $metrics->n_pft ?? 0;
+        $nRoi = $metrics->n_roi ?? 0;
         $kwSpent = $metrics->kw_spent ?? 0;
         $pmtSpent = $metrics->pmt_spent ?? 0;
         
@@ -462,6 +467,7 @@ class ChannelMasterController extends Controller
             'G RoiL60'   => round($gRoiL60, 2),
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
             'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
@@ -2994,6 +3000,8 @@ class ChannelMasterController extends Controller
         $sheetUrl = $request->input('sheet_url');
         $type = $request->input('type');
         $channelPercentage = $request->input('channel_percentage');
+        $base = $request->input('base');
+        $target = $request->input('target');
 
         $channel = ChannelMaster::where('channel', $originalChannel)->first();
 
@@ -3005,6 +3013,8 @@ class ChannelMasterController extends Controller
         $channel->sheet_link = $sheetUrl;
         $channel->type = $type;
         $channel->channel_percentage = $channelPercentage;
+        $channel->base = $base;
+        $channel->target = $target;
         $channel->save();
 
         MarketplacePercentage::updateOrCreate(

@@ -1515,7 +1515,6 @@
             });
 
             table.on("tableBuilt", function() {
-
                 function combinedFilter(data) {
 
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
