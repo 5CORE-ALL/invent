@@ -2529,6 +2529,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-3/over-utilized', 'ebay3OverUtilizedAdsView')->name('ebay3.over.utilized');
         Route::get('/ebay-3/under-utilized', 'ebay3UnderUtilizedAdsView')->name('ebay3.under.utilized');
         Route::get('/ebay-3/correctly-utilized', 'ebay3CorrectlyUtilizedAdsView')->name('ebay3.correctly.utilized');
+        Route::get('/ebay-3/utilized', 'ebay3UtilizedView')->name('ebay3.utilized');
+        Route::get('/ebay-3/get-utilization-counts', 'getEbay3UtilizationCounts');
+        Route::get('/ebay-3/get-utilization-chart-data', 'getEbay3UtilizationChartData');
         Route::get('/ebay-3/utilized/ads/data', 'getEbay3UtilizedAdsData');
         Route::get('/ebay-3/over-utilized/filter', 'filterOverUtilizedAds')->name('ebay3.over.utilized.filter');
         Route::get('/ebay-3/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay3.over.utilized.campaign-chart');
