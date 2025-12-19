@@ -406,6 +406,31 @@
 
             $(document).ready(function () {
 
+                // Function to generate new group_id
+                function generateNewGroupId() {
+                    $.ajax({
+                        url: '/linked-products-data-list',
+                        method: 'GET',
+                        success: function (response) {
+                            if (response.data && response.data.length > 0) {
+                                // Get the maximum group_id from the response
+                                const maxGroupId = Math.max(...response.data.map(item => parseInt(item.group_id) || 0));
+                                const newGroupId = maxGroupId + 1;
+                                $('#group_id').val(newGroupId);
+                            } else {
+                                // If no groups exist, start from 1001
+                                const newGroupId = 1001;
+                                $('#group_id').val(newGroupId);
+                            }
+                        },
+                        error: function () {
+                            // Fallback: use current value + 1 or start from 1001
+                            const currentGroupId = parseInt($('#group_id').val()) || 1000;
+                            $('#group_id').val(currentGroupId + 1);
+                        }
+                    });
+                }
+
                 $('#stockBalanceForm').on('submit', function (e) {
                     e.preventDefault();
                     const formData = $(this).serialize();
@@ -415,8 +440,8 @@
                         data: formData,
                         success: function (response) {
                             $('#addWarehouseModal').modal('hide');
-                            loadData();
-                            $('#stockBalanceForm')[0].reset();
+                            // Refresh the page to show updated data
+                            window.location.reload();
                         },
                         error: function (xhr) {
                             console.log(xhr.responseJSON);
@@ -450,6 +475,9 @@
                     $('#stockBalanceForm')[0].reset();
                     $('#warehouseId').val('');
                     $('#warehouseModalLabel').text('Create Stock Transfer');
+
+                    // Generate new group_id when opening the form
+                    generateNewGroupId();
 
                     const ohioTime = new Date(
                         new Intl.DateTimeFormat('en-US', {
