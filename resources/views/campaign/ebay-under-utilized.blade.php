@@ -1065,7 +1065,7 @@
                     let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
-                    if (!(ub7 < 70)) return false;
+                    if (!(ub7 < 70 && ub1 < 70)) return false;
 
                     // price < 30
                     let price = parseFloat(data.price || 0);

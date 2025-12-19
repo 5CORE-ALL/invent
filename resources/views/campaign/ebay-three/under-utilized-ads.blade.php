@@ -445,13 +445,23 @@
                             var row = cell.getRow().getData();
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
-
+                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
+                            var l7_spend = parseFloat(row.l7_spend) || 0;
+                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                             var sbid = 0;
-                            if(l1_cpc > l7_cpc) {
-                                sbid = Math.floor(l1_cpc * 1.05 * 100) / 100;
-                            }else{
-                                sbid = Math.floor(l7_cpc * 1.05 * 100) / 100;
+
+                            // Calculate SBID based on UB7 ranges:
+                            // - If UB7 < 10%: SBID = 0.50
+                            // - If UB7 is between 10%-50%: SBID = L7_CPC * 1.2
+                            // - Else (UB7 > 50%): SBID = L7_CPC * 1.10
+                            if (ub7 < 10) {
+                                sbid = 0.50;
+                            } else if (ub7 >= 10 && ub7 <= 50) {
+                                sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
+                            } else {
+                                sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
                             }
+                            
                             sbid = sbid.toFixed(2);
                             return sbid;
                         },
@@ -471,14 +481,22 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains("update-row-btn")) {
                                 var rowData = cell.getRow().getData();
-                                var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
                                 var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
+                                var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
+                                var l7_spend = parseFloat(rowData.l7_spend) || 0;
+                                var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
 
                                 var sbid = 0;
-                                if(l1_cpc > l7_cpc) {
-                                    sbid = Math.floor(l1_cpc * 1.05 * 100) / 100;
-                                }else{
-                                    sbid = Math.floor(l7_cpc * 1.05 * 100) / 100;
+                                // Calculate SBID based on UB7 ranges:
+                                // - If UB7 < 10%: SBID = 0.50
+                                // - If UB7 is between 10%-50%: SBID = L7_CPC * 1.2
+                                // - Else (UB7 > 50%): SBID = L7_CPC * 1.10
+                                if (ub7 < 10) {
+                                    sbid = 0.50;
+                                } else if (ub7 >= 10 && ub7 <= 50) {
+                                    sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
+                                } else {
+                                    sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
                                 }
                                 sbid = sbid.toFixed(2);
                                 updateBid(sbid, rowData.campaign_id);
@@ -541,7 +559,7 @@
                     let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
-                    if (!(ub7 < 70)) return false;
+                    if (!(ub7 < 70 && ub1 < 70)) return false;
 
                     // Pink DIL filter (exclude pink rows)
                     let l30 = parseFloat(data.L30);
@@ -641,14 +659,22 @@
                     if(rowEl && rowEl.offsetParent !== null){
                         
                         var rowData = row.getData();
-                        var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
                         var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
+                        var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
+                        var l7_spend = parseFloat(rowData.l7_spend) || 0;
+                        var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
 
                         var sbid = 0;
-                        if(l1_cpc > l7_cpc) {
-                            sbid = Math.floor(l1_cpc * 1.05 * 100) / 100;
-                        }else{
-                            sbid = Math.floor(l7_cpc * 1.05 * 100) / 100;
+                        // Calculate SBID based on UB7 ranges:
+                        // - If UB7 < 10%: SBID = 0.50
+                        // - If UB7 is between 10%-50%: SBID = L7_CPC * 1.2
+                        // - Else (UB7 > 50%): SBID = L7_CPC * 1.10
+                        if (ub7 < 10) {
+                            sbid = 0.50;
+                        } else if (ub7 >= 10 && ub7 <= 50) {
+                            sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
+                        } else {
+                            sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
                         }
                         sbid = sbid.toFixed(2);
 
@@ -658,7 +684,7 @@
                 });
                 console.log("Campaign IDs:", campaignIds);
                 console.log("Bids:", bids);
-                fetch('/update-ebay-keywords-bid-price', {
+                fetch('/update-ebay3-keywords-bid-price', {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -676,10 +702,34 @@
                     if (data.status === 200) {
                         alert("Keywords updated successfully!");
                     } else {
-                        alert("Something went wrong: " + data.message);
+                        // Check for Premium Ads error
+                        let errorMessage = data.message || "Something went wrong";
+                        if (data.data && Array.isArray(data.data)) {
+                            const premiumAdsErrors = data.data.filter(item => 
+                                item.status === 'error' && 
+                                item.message && 
+                                item.message.includes('Premium Ads')
+                            );
+                            
+                            if (premiumAdsErrors.length > 0) {
+                                errorMessage = "⚠️ Campaign uses Premium Ads (beta feature).\n\n" +
+                                    "Bid updates are not available for Premium Ads campaigns.\n" +
+                                    "This is an eBay API limitation, not a system error.";
+                            } else {
+                                // Show first error message
+                                const firstError = data.data.find(item => item.status === 'error');
+                                if (firstError) {
+                                    errorMessage = firstError.message || errorMessage;
+                                }
+                            }
+                        }
+                        alert(errorMessage);
                     }
                 })
-                .catch(err => console.error(err))
+                .catch(err => {
+                    console.error(err);
+                    alert("Network error: " + err.message);
+                })
                 .finally(() => {
                     overlay.style.display = "none";
                 });
@@ -691,7 +741,7 @@
 
                 console.log("Updating bid for Campaign ID:", campaignId, "New Bid:", aprBid);
 
-                fetch('/update-ebay-keywords-bid-price', {
+                fetch('/update-ebay3-keywords-bid-price', {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -709,10 +759,35 @@
                     if (data.status === 200) {
                         alert("Keywords updated successfully!");
                     } else {
-                        alert("Something went wrong: " + data.message);
+                        // Check for Premium Ads error
+                        let errorMessage = data.message || "Something went wrong";
+                        if (data.data && Array.isArray(data.data)) {
+                            const premiumAdsError = data.data.find(item => 
+                                item.status === 'error' && 
+                                item.message && 
+                                item.message.includes('Premium Ads')
+                            );
+                            
+                            if (premiumAdsError) {
+                                errorMessage = "⚠️ Premium Ads Campaign\n\n" +
+                                    "This campaign uses Premium Ads (beta feature).\n" +
+                                    "Bid updates are not available for Premium Ads campaigns.\n\n" +
+                                    "This is an eBay API limitation, not a system error.";
+                            } else {
+                                // Show first error message
+                                const firstError = data.data.find(item => item.status === 'error');
+                                if (firstError) {
+                                    errorMessage = firstError.message || errorMessage;
+                                }
+                            }
+                        }
+                        alert(errorMessage);
                     }
                 })
-                .catch(err => console.error(err))
+                .catch(err => {
+                    console.error(err);
+                    alert("Network error: " + err.message);
+                })
                 .finally(() => {
                     overlay.style.display = "none";
                 });
@@ -722,14 +797,22 @@
                 let filteredData = table.getData("active");
 
                 let exportData = filteredData.map(row => {
-                    let l1_cpc = parseFloat(row.l1_cpc || 0);
                     let l7_cpc = parseFloat(row.l7_cpc || 0);
+                    let budget = parseFloat(row.campaignBudgetAmount || 0);
+                    let l7_spend = parseFloat(row.l7_spend || 0);
+                    let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     let sbid = 0;
 
-                    if(l1_cpc > l7_cpc) {
-                        sbid = Math.floor(l1_cpc * 1.05 * 100) / 100;
-                    }else{
-                        sbid = Math.floor(l7_cpc * 1.05 * 100) / 100;
+                    // Calculate SBID based on UB7 ranges:
+                    // - If UB7 < 10%: SBID = 0.50
+                    // - If UB7 is between 10%-50%: SBID = L7_CPC * 1.2
+                    // - Else (UB7 > 50%): SBID = L7_CPC * 1.10
+                    if (ub7 < 10) {
+                        sbid = 0.50;
+                    } else if (ub7 >= 10 && ub7 <= 50) {
+                        sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
+                    } else {
+                        sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
                     }
                     sbid = sbid.toFixed(2);
 

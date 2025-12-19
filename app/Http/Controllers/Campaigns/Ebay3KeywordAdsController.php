@@ -55,8 +55,35 @@ class Ebay3KeywordAdsController extends Controller
                 if (is_array($raw)) $row['NR'] = $raw['NR'] ?? null;
             }
 
-            $matchedCampaigns = $allCampaigns->filter(function ($c) use ($sku, $normalize) {
-                return $normalize($c->campaign_name) === $sku;
+            $matchedCampaigns = $allCampaigns->filter(function ($c) use ($sku, $normalize, $pm) {
+                if (!$c->campaign_name) {
+                    return false;
+                }
+                
+                $campaignName = $normalize($c->campaign_name);
+                
+                // Exact match first
+                if ($campaignName === $sku) {
+                    return true;
+                }
+                
+                // For PARENT campaigns, also match campaigns that contain or start with the SKU part (without "PARENT ")
+                if (str_starts_with($pm->sku, 'PARENT ')) {
+                    $skuWithoutParent = str_replace('PARENT ', '', $pm->sku);
+                    $skuWithoutParentNormalized = $normalize($skuWithoutParent);
+                    
+                    // Match campaigns that start with the SKU (e.g., "12 WF" matches "12 WF A", "12 WF B", etc.)
+                    if (stripos($campaignName, $skuWithoutParentNormalized) === 0) {
+                        return true;
+                    }
+                    
+                    // Also try exact match with the SKU without "PARENT " (in case campaign is named "12 WF" not "PARENT 12 WF")
+                    if ($campaignName === $skuWithoutParentNormalized) {
+                        return true;
+                    }
+                }
+                
+                return false;
             });
 
 
