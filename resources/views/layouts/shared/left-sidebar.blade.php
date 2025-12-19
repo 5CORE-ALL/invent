@@ -970,6 +970,10 @@
                             </a>
                         </li>
 
+                        <li>
+                            <a href="{{ route('stock.missing.listing') }}">Stock Missing Listing</a>
+                        </li>
+
                         {{-- <li>
                             <a href="{{ url('listing-master-counts') }}">Low Visibility Masters</a>
                         </li> --}}
