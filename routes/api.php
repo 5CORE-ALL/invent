@@ -67,6 +67,10 @@ Route::post('/sync-sheets', [GoogleSheetsController::class, 'syncAllSheets']);
 
 Route::get('/sync-inv-l30-to-sheet', [ApiController::class, 'syncInvAndL30ToSheet']);
 
+// Views Pull Data routes
+Route::get('/views-pull-data', [ApiController::class, 'getViewsPullData']);
+Route::get('/views-pull-data/sync', [ApiController::class, 'fetchAndStoreViewsPullData']);
+
 // Public API - No authentication required
 Route::get('/product', [ProductMasterController::class, 'getProductBySku']);
 Route::get('/test-doba-connection', [PricingMasterViewsController::class, 'testDobaConnection']); // Debug route

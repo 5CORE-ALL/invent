@@ -709,8 +709,7 @@
                                             <span class="badge text-dark fs-4  me-2">Total Views : <span id="total_views">0</span></span>
                                             <span class="badge text-dark fs-4  me-2">Avg CVR : <span id="avgCvr">0%</span></span>
                                             <span class="badge text-dark fs-4  me-2">Total L30 : <span id="total_l30_count"></span></span>
-                                            <span class="badge text-dark fs-4  me-2">Total L60 : <span id="total_l60_count"></span></span>
-                                              <span class="badge text-dark fs-4  me-2 ">Total L30 Views Data  : <span id="total_l30_count_data"></span></span>
+                                            <span class="badge text-dark fs-4  me-2" style="display: none;">Total L60 : <span id="total_l60_count"></span></span>
                                             
                                         </div>
                                     </div>
@@ -2811,7 +2810,6 @@ document.addEventListener("click", function(e) {
             document.getElementById('avgCvr').textContent = data.avgCvr ? `${data.avgCvr}` : "0";   
             document.getElementById('total_l30_count').textContent = data.total_l30_count ? `${data.total_l30_count}` : "0";   
             document.getElementById('total_l60_count').textContent = data.total_l60_count ? `${data.total_l60_count}` : "0";   
-            document.getElementById('total_l30_count_data').textContent = data.total_l30_count_data ? `${data.total_l30_count_data}` : "0";   
             const imgEl = document.getElementById('ovl30Img');
 
             if (imgEl) {
