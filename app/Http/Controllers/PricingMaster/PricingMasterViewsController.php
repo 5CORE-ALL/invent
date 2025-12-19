@@ -75,6 +75,7 @@ use App\Models\EbayPriorityReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\WalmartCampaignReport;
 use App\Models\ShopifyMetaCampaign;
+use App\Models\ViewsPullData;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\View\ViewServiceProvider;
 use App\Models\BusinessFiveCoreSheetdata;
@@ -542,6 +543,9 @@ class PricingMasterViewsController extends Controller
             ->select('sku', 'price', 'p_l30', 'p_l60')
             ->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $plsStatuses = DB::table('pls_listing_statuses')->whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        
+        // Views Pull Data - for TEMU, Wayfair, TikTok, Walmart, Aliexpress views from Google Sheet
+        $viewsPullDataLookup = ViewsPullData::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
 
         // LITE MODE OPTIMIZATION: Skip heavy campaign and LMP queries for initial load
         // These will be loaded on-demand when user clicks the OVL30 eye icon
@@ -714,6 +718,9 @@ class PricingMasterViewsController extends Controller
 
             $walmartSheet = $walmartProductSheetLookup[$sku] ?? null;
             $dobaSheet = $dobaProductSheetLookup[$sku] ?? null;
+            
+            // Views Pull Data - for TEMU, Wayfair, TikTok, Walmart, Aliexpress views
+            $viewsPullData = $viewsPullDataLookup[$sku] ?? null;
 
             // Get Shopify data for L30 and INV
             $shopifyItem = $shopifyData[trim(strtoupper($sku))] ?? null;
@@ -722,19 +729,21 @@ class PricingMasterViewsController extends Controller
             $shopify_l30 = $shopifyItem ? ($shopifyItem->shopify_l30 ?? 0) : 0;
 
             // Calculate total views
+            // Use views_pull_data for TEMU, Wayfair, TikTok, Walmart, Aliexpress (if available)
             $total_views = ($amazon ? ($amazon->sessions_l30 ?? 0) : 0) +
                 ($ebay ? ($ebay->views ?? 0) : 0) +
                 ($ebay2 ? ($ebay2->views ?? 0) : 0) +
                 ($ebay3 ? ($ebay3->views ?? 0) : 0) +
                 ($shein ? ($shein->views_clicks ?? 0) : 0) +
                 ($reverb ? ($reverb->views ?? 0) : 0) +
-                ($temuMetric ? ($temuMetric->product_clicks_l30 ?? 0) : 0) +
-                ($tiktok ? ($tiktok->views ?? 0) : 0) +
-                ($wayfairSheetLookup[$sku]->views ?? 0) +
+                ($viewsPullData ? (int)($viewsPullData->temu ?? 0) : ($temuMetric ? ($temuMetric->product_clicks_l30 ?? 0) : 0)) +
+                ($viewsPullData ? (int)($viewsPullData->tiktok ?? 0) : ($tiktok ? ($tiktok->views ?? 0) : 0)) +
+                ($viewsPullData ? (int)($viewsPullData->wayfair ?? 0) : ($wayfairSheetLookup[$sku]->views ?? 0)) +
                 ($fbMarketplaceSheet[$sku]->views ?? 0) +
                 ($mercariWoShipSheet[$sku]->views ?? 0) +
                 ($mercariWShipSheet[$sku]->views ?? 0) +
-                ($walmartSheet ? ($walmartSheet->views ?? 0) : 0) +
+                ($viewsPullData ? (int)($viewsPullData->walmart ?? 0) : ($walmartSheet ? ($walmartSheet->views ?? 0) : 0)) +
+                ($viewsPullData ? (int)($viewsPullData->aliexpress ?? 0) : 0) +
                 ($dobaSheet ? ($dobaSheet->views ?? 0) : 0);
 
             // Calculate total L30 and L60 counts
@@ -1082,7 +1091,7 @@ class PricingMasterViewsController extends Controller
                 'temu_l30' => $temuMetric ? (float) ($temuMetric->quantity_purchased_l30 ?? 0) : 0,
                 'temu_l60' => $temuMetric ? (float) ($temuMetric->quantity_purchased_l60 ?? 0) : 0,
                 'temu_dil' => $temuMetric ? (float) ($temuMetric->dil ?? 0) : 0,
-                'temu_views' => $temuMetric ? (float) ($temuMetric->product_clicks_l30 ?? 0) : 0,
+                'temu_views' => $viewsPullData ? ($viewsPullData->temu !== null ? (int)$viewsPullData->temu : 'N/A') : ($temuMetric ? (float) ($temuMetric->product_clicks_l30 ?? 0) : 'N/A'),
                 'temu_pft' => $temuMetric && ($temuMetric->temu_sheet_price ?? 0) > 0 ? (($temuMetric->temu_sheet_price * 0.87 - $lp - $temuship) / $temuMetric->temu_sheet_price) : 0,
                 'temu_roi' => $temuMetric && $lp > 0 && ($temuMetric->temu_sheet_price ?? 0) > 0 ? (($temuMetric->temu_sheet_price * 0.87 - $lp - $temuship) / $lp) : 0,
                 'temu_cvr' => $temuMetric ? $this->calculateCVR($temuMetric->quantity_purchased_l30 ?? 0, $temuMetric->product_clicks_l30 ?? 0) : null,
@@ -1094,7 +1103,7 @@ class PricingMasterViewsController extends Controller
                 'walmart_l30' => $walmart ? ($walmart->l30 ?? 0) : 0,
                 'walmart_l60' => $walmart ? ($walmart->l60 ?? 0) : 0,
                 'walmart_dil' => $walmart ? ($walmart->dil ?? 0) : 0,
-                'walmart_views' => $walmartSheet ? ($walmartSheet->views ?? 0) : 0,
+                'walmart_views' => $viewsPullData ? ($viewsPullData->walmart !== null ? (int)$viewsPullData->walmart : 'N/A') : ($walmartSheet ? ($walmartSheet->views ?? 0) : 'N/A'),
                 'walmart_sgpft' => $walmart && ($walmart->price ?? 0) > 0 ? (($walmart->price * 0.80 - $lp - $ship) / $walmart->price) * 100 : 0,
                 'walmart_pft' => $walmart && ($walmart->price ?? 0) > 0 ? (($walmart->price * 0.80 - $lp - $ship) / $walmart->price) - (($walmart_advt_percent ?? 0) / 100) : 0,
                 'walmart_roi' => $walmart && $lp > 0 && ($walmart->price ?? 0) > 0 ? (($walmart->price * 0.80 - $lp - $ship) / $lp) : 0,
@@ -1172,7 +1181,7 @@ class PricingMasterViewsController extends Controller
                 'tiktok_price' => $tiktok ? ($tiktok->price ?? 0) : 0,
                 'tiktok_l30' => $tiktok ? ($tiktok->shopify_tiktokl30 ?? 0) : 0,
                 'tiktok_l60' => $tiktok ? ($tiktok->shopify_tiktokl60 ?? 0) : 0,
-                'tiktok_views' => $tiktok ? ($tiktok->views ?? 0) : 0,
+                'tiktok_views' => $viewsPullData ? ($viewsPullData->tiktok !== null ? (int)$viewsPullData->tiktok : 'N/A') : ($tiktok ? ($tiktok->views ?? 0) : 'N/A'),
                 'tiktok_sgpft' => $tiktok && ($tiktok->price ?? 0) > 0 ? (($tiktok->price * 0.80 - $lp - $ship) / $tiktok->price) * 100 : 0,
                 'tiktok_pft' => $tiktok && ($tiktok->price ?? 0) > 0 ? (($tiktok->price * 0.80 - $lp - $ship) / $tiktok->price) : 0,
                 'tiktok_roi' => $tiktok && $lp > 0 && ($tiktok->price ?? 0) > 0 ? (($tiktok->price * 0.80 - $lp - $ship) / $lp) : 0,
@@ -1184,6 +1193,7 @@ class PricingMasterViewsController extends Controller
                 'aliexpress_price' => $aliexpress ? ($aliexpress->price ?? 0) : 0,
                 'aliexpress_l30' => $aliexpress ? ($aliexpress->aliexpress_l30 ?? 0) : 0,
                 'aliexpress_l60' => $aliexpress ? ($aliexpress->aliexpress_l60 ?? 0) : 0,
+                'aliexpress_views' => $viewsPullData ? ($viewsPullData->aliexpress !== null ? (int)$viewsPullData->aliexpress : 'N/A') : 'N/A',
                 'aliexpress_sgpft' => $aliexpress && ($aliexpress->price ?? 0) > 0 ? (($aliexpress->price * 0.89 - $lp - $ship) / $aliexpress->price) * 100 : 0,
                 'aliexpress_pft' => $aliexpress && ($aliexpress->price ?? 0) > 0 ? (($aliexpress->price * 0.89 - $lp - $ship) / $aliexpress->price) : 0,
                 'aliexpress_roi' => $aliexpress && $lp > 0 && ($aliexpress->price ?? 0) > 0 ? (($aliexpress->price * 0.89 - $lp - $ship) / $lp) : 0,
@@ -1274,7 +1284,7 @@ class PricingMasterViewsController extends Controller
                 'wayfair_price' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->price ?? 0) : 0,
                 'wayfair_l30' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->l30 ?? 0) : 0,
                 'wayfair_l60' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->l60 ?? 0) : 0,
-                'wayfair_views' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->views ?? 0) : 0,
+                'wayfair_views' => $viewsPullData ? ($viewsPullData->wayfair !== null ? (int)$viewsPullData->wayfair : 'N/A') : (isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->views ?? 0) : 'N/A'),
                 'wayfair_pft' => isset($wayfairSheetLookup[$sku]) && ($wayfairSheetLookup[$sku]->price ?? 0) > 0 ? ((($wayfairSheetLookup[$sku]->price * 0.97) - $lp) / $wayfairSheetLookup[$sku]->price) : 0,
                 'wayfair_roi' => isset($wayfairSheetLookup[$sku]) && $lp > 0 && ($wayfairSheetLookup[$sku]->price ?? 0) > 0 ? ((($wayfairSheetLookup[$sku]->price * 0.97) - $lp) / $lp) : 0,
                 'wayfair_buyer_link' => isset($wayfairListingData[$sku]) ? $this->getListingStatusLink($wayfairListingData[$sku], 'buyer_link') : null,
@@ -1364,7 +1374,7 @@ class PricingMasterViewsController extends Controller
                 'wayfair_price' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->price ?? 0) : 0,
                 'wayfair_l30' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->l30 ?? 0) : 0,
                 'wayfair_l60' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->l60 ?? 0) : 0,
-                'wayfair_views' => isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->views ?? 0) : 0,
+                'wayfair_views' => $viewsPullData ? ($viewsPullData->wayfair !== null ? (int)$viewsPullData->wayfair : 'N/A') : (isset($wayfairSheetLookup[$sku]) ? ($wayfairSheetLookup[$sku]->views ?? 0) : 'N/A'),
                 'wayfair_pft' => isset($wayfairSheetLookup[$sku]) && ($wayfairSheetLookup[$sku]->price ?? 0) > 0 ? ((($wayfairSheetLookup[$sku]->price * 0.97) - $lp) / $wayfairSheetLookup[$sku]->price) : 0,
                 'wayfair_roi' => isset($wayfairSheetLookup[$sku]) && $lp > 0 && ($wayfairSheetLookup[$sku]->price ?? 0) > 0 ? ((($wayfairSheetLookup[$sku]->price * 0.97) - $lp) / $lp) : 0,
                 'wayfair_buyer_link' => isset($wayfairListingData[$sku]) ? $this->getListingStatusLink($wayfairListingData[$sku], 'buyer_link') : null,

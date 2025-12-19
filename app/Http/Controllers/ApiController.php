@@ -1648,4 +1648,110 @@ class ApiController extends Controller
             'data'    => $total_l30_sales,
         ]);
     }
+
+    /**
+     * Fetch data from Views Pull Data Google Apps Script and store in database
+     */
+    public function fetchAndStoreViewsPullData()
+    {
+        // URL of the Google Apps Script web app
+        $url = 'https://script.google.com/macros/s/AKfycbzarZCz6PvkgWbqmsFvk7FJ-2a_YVppVr2npAwF8QzAD4NuPlzs46WYeut9k1OK4wYfpA/exec';
+
+        try {
+            // Make a GET request to the Google Apps Script URL
+            $response = Http::timeout(seconds: 180)->get($url);
+
+            // Check if the request was successful
+            if ($response->successful()) {
+                // Decode the JSON response
+                $data = $response->json();
+
+                if (!is_array($data) || empty($data)) {
+                    return response()->json([
+                        'message' => 'No data received from Google Sheet',
+                        'status' => 200
+                    ]);
+                }
+
+                $inserted = 0;
+                $updated = 0;
+
+                foreach ($data as $row) {
+                    $sku = $row['SKU'] ?? null;
+                    if (!$sku) continue;
+
+                    $record = \App\Models\ViewsPullData::updateOrCreate(
+                        ['sku' => $sku],
+                        [
+                            'parent' => $row['Parent'] ?? null,
+                            'temu' => intval($row['TEMU'] ?? 0),
+                            'wayfair' => intval($row['WAYFAIR'] ?? 0),
+                            'tiktok' => intval($row['Tiktok'] ?? 0),
+                            'walmart' => intval($row['Walmart'] ?? 0),
+                            'aliexpress' => intval($row['Aliexpress'] ?? 0),
+                        ]
+                    );
+
+                    if ($record->wasRecentlyCreated) {
+                        $inserted++;
+                    } else {
+                        $updated++;
+                    }
+                }
+
+                Log::info('Views Pull Data synced successfully', [
+                    'inserted' => $inserted,
+                    'updated' => $updated,
+                    'total' => count($data)
+                ]);
+
+                return response()->json([
+                    'message' => 'Views Pull Data synced successfully',
+                    'data' => [
+                        'inserted' => $inserted,
+                        'updated' => $updated,
+                        'total' => count($data)
+                    ],
+                    'status' => 200
+                ]);
+            } else {
+                Log::error('Failed to fetch Views Pull Data from Google Sheet. Response:', ['body' => $response->body()]);
+
+                return response()->json([
+                    'message' => 'Failed to fetch data from Google Sheet',
+                    'status' => $response->status()
+                ], $response->status());
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception while fetching Views Pull Data:', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'message' => 'An error occurred while fetching data',
+                'error' => $e->getMessage(),
+                'status' => 500
+            ], 500);
+        }
+    }
+
+    /**
+     * Get Views Pull Data (read only)
+     */
+    public function getViewsPullData()
+    {
+        try {
+            $data = \App\Models\ViewsPullData::all();
+            
+            return response()->json([
+                'message' => 'Views Pull Data fetched successfully',
+                'data' => $data,
+                'status' => 200
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'An error occurred while fetching data',
+                'error' => $e->getMessage(),
+                'status' => 500
+            ], 500);
+        }
+    }
 }
