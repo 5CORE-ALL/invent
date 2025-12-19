@@ -96,7 +96,7 @@
                             </select>
                             <select id="pft-filter" class="form-select form-select-sm me-2"
                                 style="width: auto; display: inline-block;">
-                                <option value="all">All Gpft</option>
+                                <option value="all">All Pft%</option>
                                 <option value="0-10">0-10%</option>
                                 <option value="11-14">11-14%</option>
                                 <option value="15-20">15-20%</option>
@@ -850,7 +850,7 @@
                         },
 
                         {
-                            title: "Gpft",
+                            title: "Pft%",
                             field: "Gpft",
                             hozAlign: "center",
                             formatter: function(cell) {
@@ -870,6 +870,26 @@
                             field: "ROI%",
                             hozAlign: "center",
                             visible: false,
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            }
+                        },
+
+                        {
+                            title: "GPFT%",
+                            field: "GPFT%",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            }
+                        },
+
+                        {
+                            title: "GROI%",
+                            field: "GROI%",
+                            hozAlign: "center",
+                            visible: true,
                             formatter: function(cell) {
                                 return cell.getValue();
                             }
