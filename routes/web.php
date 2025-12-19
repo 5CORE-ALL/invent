@@ -820,6 +820,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getColumnVisibility']);
     Route::post('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'saveColumnVisibility']);
     
+    // TikTok Shop Sales Routes
+    Route::get('/tiktok/daily-sales', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'index'])->name('tiktok.sales');
+    Route::get('/tiktok/daily-sales-data', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getData'])->name('tiktok.daily.sales.data');
+    Route::get('/tiktok/summary', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getSummary'])->name('tiktok.summary');
+    Route::get('/tiktok/status', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'status'])->name('tiktok.status');
+    Route::get('/tiktok/authorize', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'authorize'])->name('tiktok.authorize');
+    Route::get('/tiktok/callback', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'callback'])->name('tiktok.callback');
+    Route::post('/tiktok/sync', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'syncOrders'])->name('tiktok.sync');
+    
     Route::get('/amazonfba/view-data', [OverallAmazonFbaController::class, 'getViewAmazonFbaData'])->name('amazonfba.viewData');
     Route::get('/fbainv/view-data', [AmazonFbaInvController::class, 'getViewAmazonfbaInvData'])->name('fbainv.viewData');
     Route::get('/product-master-data', [ProductMasterController::class, 'product_master_data']);

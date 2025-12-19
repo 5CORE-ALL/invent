@@ -12,6 +12,7 @@ use App\Models\MercariDailyData;
 use App\Models\AliexpressDailyData;
 use App\Models\ShopifyB2CDailyData;
 use App\Models\ShopifyB2BDailyData;
+use App\Models\TikTokDailyData;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\ChannelMaster;
@@ -42,6 +43,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'AliExpress' => fn() => $this->calculateAliexpressMetrics($date),
             'Shopify B2C' => fn() => $this->calculateShopifyB2CMetrics($date),
             'Shopify B2B' => fn() => $this->calculateShopifyB2BMetrics($date),
+            'TikTok' => fn() => $this->calculateTikTokMetrics($date),
         ];
 
         foreach ($channels as $channel => $calculator) {
@@ -1318,6 +1320,111 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => $roiPercentage,
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
+        ];
+    }
+
+    private function calculateTikTokMetrics($date)
+    {
+        // Get TikTok daily data (L30)
+        $data = TikTokDailyData::where('period', 'l30')
+            ->whereNotIn('order_status', ['CANCELLED', 'REFUNDED', 'CANCELED'])
+            ->get();
+
+        if ($data->isEmpty()) {
+            return null;
+        }
+
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalCommission = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        // TikTok uses 85% margin (15% platform fees approximately)
+        $margin = 0.85;
+
+        foreach ($data as $row) {
+            if (!$row->order_id || $row->order_id === '') continue;
+
+            $totalOrders++;
+            $quantity = (int) ($row->quantity ?? 1);
+            $unitPrice = (float) ($row->unit_price ?? 0);
+            $totalAmount = (float) ($row->total_amount ?? 0);
+            $commission = (float) ($row->platform_commission ?? 0);
+            
+            $totalQuantity += $quantity;
+            $totalRevenue += $totalAmount;
+            $totalCommission += $commission;
+
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            // Get LP and Ship from ProductMaster
+            $sku = strtoupper($row->sku ?? '');
+            $lp = 0;
+            $ship = 0;
+
+            if ($sku && isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                
+                // Get LP
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                
+                // Get Ship
+                if (isset($values['ship'])) {
+                    $ship = floatval($values['ship']);
+                } elseif (isset($pm->ship)) {
+                    $ship = floatval($pm->ship);
+                }
+            }
+
+            // COGS = LP * quantity
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            // PFT Each = (unit_price * 0.85) - lp - ship
+            $pftEach = ($unitPrice * $margin) - $lp - $ship;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalRevenue,
+            'total_commission' => $totalCommission,
         ];
     }
 }

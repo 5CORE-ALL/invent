@@ -58,3 +58,4 @@ class MercariDailyData extends Model
 
 
 
+
