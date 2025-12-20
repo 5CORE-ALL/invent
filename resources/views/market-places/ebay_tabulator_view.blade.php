@@ -2507,9 +2507,13 @@
                         nr_req: value
                     },
                     success: function(response) {
-                        console.log('NR/REQ saved successfully for', sku, 'value:', value);
-                        const message = value === 'REQ' ? 'REQ updated' : (value === 'NR' ? 'NR updated' : 'Status cleared');
-                        showToast('success', message);
+                        if (response.status === 'success') {
+                            console.log('NR/REQ saved successfully for', sku, 'value:', value);
+                            const message = value === 'REQ' ? 'REQ updated' : (value === 'NR' ? 'NR updated' : 'Status cleared');
+                            showToast('success', message);
+                        } else {
+                            showToast('error', response.message || 'Failed to save status');
+                        }
                     },
                     error: function(xhr) {
                         console.error('Failed to save NR/REQ for', sku, 'Error:', xhr.responseText);

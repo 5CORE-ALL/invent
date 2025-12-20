@@ -820,20 +820,20 @@
                                 </small><br>
                                 Growth
                             </th>
-                            <th class="text-center align-middle">
+                            {{-- <th class="text-center align-middle">
                                 <small id="missingTotalBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
                                     0
                                 </small><br>
                                 Missing
-                            </th>
-                            <th class="text-center align-middle">
+                            </th> --}}
+                            {{-- <th class="text-center align-middle">
                                 <small id="mappingTotalBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
                                     0
                                 </small><br>
                                 Mapping
-                            </th>
+                            </th> --}}
                             {{-- Growth column hidden --}}
                             {{-- <th class="text-center align-middle">
                                 <small id="growthPercentageBadge" class="badge bg-dark text-white mb-1"
@@ -1219,8 +1219,8 @@
             const groiBadge = document.getElementById('groiPercentageBadge');
             const nPftBadge = document.getElementById('nPftPercentageBadge');
             const achievedTotalBadge = document.getElementById('achievedTotalBadge');
-            const missingTotalBadge = document.getElementById('missingTotalBadge');
-            const mappingTotalBadge = document.getElementById('mappingTotalBadge');
+            const missingTotalBadge = document.getElementById('missingListingBadge');
+            const mappingTotalBadge = document.getElementById('stockMappingBadge');
 
             if (l60Badge) l60Badge.textContent = Math.round(l60SalesTotal).toLocaleString('en-US');
             if (l30Badge) l30Badge.textContent = Math.round(l30SalesTotal).toLocaleString('en-US');

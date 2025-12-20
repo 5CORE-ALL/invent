@@ -825,7 +825,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiktok/daily-sales-data', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getData'])->name('tiktok.daily.sales.data');
     Route::get('/tiktok/summary', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getSummary'])->name('tiktok.summary');
     Route::get('/tiktok/status', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'status'])->name('tiktok.status');
-    Route::get('/tiktok/authorize', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'authorize'])->name('tiktok.authorize');
+    Route::get('/tiktok/authorize', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'startAuthorization'])->name('tiktok.authorize');
     Route::get('/tiktok/callback', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'callback'])->name('tiktok.callback');
     Route::post('/tiktok/sync', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'syncOrders'])->name('tiktok.sync');
     
