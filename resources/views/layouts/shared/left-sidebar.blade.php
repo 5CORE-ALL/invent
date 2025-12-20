@@ -1912,6 +1912,12 @@
                                         <div class="collapse" id="amazonFbaBudget">
                                             <ul class="side-nav-fourth-level">
                                                 <li>
+                                                    <a href="{{ route('amazon.fba.utilized.kw') }}">Utilized KW</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.fba.utilized.pt') }}">Utilized PT</a>
+                                                </li>
+                                                <li>
                                                     <a href=" {{ route('amazon.fba.over.kw.ads') }} ">Over Util. BGT
                                                         KW</a>
                                                 </li>
