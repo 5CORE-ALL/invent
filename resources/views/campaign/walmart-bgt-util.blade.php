@@ -503,7 +503,24 @@
                             // 7 UB = (L7 ad spend/(ald bgt*7))*100
                             var ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
 
-                            return ub7.toFixed(2) + "%";
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            td.style.backgroundColor = '';
+                            
+                            var value = ub7.toFixed(2) + "%";
+                            
+                            if (ub7 >= 70 && ub7 <= 90) {
+                                td.classList.add('green-bg');
+                                return value;
+                            } else if (ub7 > 90) {
+                                // Pink badge - background on text
+                                return '<span style="background-color: #ff01d0; color: white; padding: 4px 8px; border-radius: 4px; display: inline-block;">' + value + '</span>';
+                            } else if (ub7 < 70) {
+                                td.classList.add('red-bg');
+                                return value;
+                            }
+                            
+                            return value;
                         },
                         visible: true,
                     },
@@ -520,7 +537,24 @@
                             // 1 UB = (L1 ad spend/(ald bgt))*100
                             var ub1 = aldBgt > 0 ? (spend_l1 / aldBgt) * 100 : 0;
 
-                            return ub1.toFixed(2) + "%";
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            td.style.backgroundColor = '';
+                            
+                            var value = ub1.toFixed(2) + "%";
+                            
+                            if (ub1 >= 70 && ub1 <= 90) {
+                                td.classList.add('green-bg');
+                                return value;
+                            } else if (ub1 > 90) {
+                                // Pink badge - background on text
+                                return '<span style="background-color: #ff01d0; color: white; padding: 4px 8px; border-radius: 4px; display: inline-block;">' + value + '</span>';
+                            } else if (ub1 < 70) {
+                                td.classList.add('red-bg');
+                                return value;
+                            }
+                            
+                            return value;
                         },
                         visible: true,
                     },
@@ -550,17 +584,37 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var cpc_l1 = parseFloat(row.cpc_l1) || 0;
                             var cpc_l7 = parseFloat(row.cpc_l7) || 0;
+                            var spend_l7 = parseFloat(row.spend_l7) || 0;
+                            var acos = parseFloat(row.acos_l30) || 0;
+                            var aldBgt = calculateAldBgt(acos);
+                            
+                            // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
+                            var ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+                            
                             var sbid;
-                            if(cpc_l1 > cpc_l7) {
-                                sbid = (cpc_l1 * 0.9).toFixed(2);
-                            }else{
-                                sbid = (cpc_l7 * 0.9).toFixed(2);
+                            
+                            // If 7UB is pink (> 90%): SBID = L7cpc * 0.90 (minimum 0.31)
+                            if (ub7 > 90) {
+                                sbid = cpc_l7 * 0.90;
+                                sbid = Math.max(sbid, 0.31); // Minimum value is 0.31
                             }
-                            return sbid;
+                            // If 7UB is between 30-70%: SBID = L7cpc + 0.5
+                            else if (ub7 >= 30 && ub7 <= 70) {
+                                sbid = cpc_l7 + 0.5;
+                            }
+                            // If 7UB is below 30%: SBID = L7cpc + 0.10
+                            else if (ub7 < 30) {
+                                sbid = cpc_l7 + 0.10;
+                            }
+                            // For 70-90% range (green), use same logic as 30-70%
+                            else {
+                                sbid = cpc_l7 + 0.5;
+                            }
+                            
+                            return sbid.toFixed(2);
                         },
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "APR BID",
