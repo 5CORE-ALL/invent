@@ -7,6 +7,7 @@ use App\Models\AmazonDataView;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSbCampaignReport;
 use App\Models\ProductMaster;
+use App\Models\ShopifySku;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -40,6 +41,12 @@ class StoreAmazonUtilizationCounts extends Command
 
         // Get NRA values to filter out NRA campaigns (same as in getAmzUnderUtilizedBgtKw)
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        
+        // Get INV values from ShopifySku for KW and PT campaigns
+        $shopifyData = [];
+        if ($campaignType === 'KW' || $campaignType === 'PT') {
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        }
 
         // Handle HL campaigns differently (use AmazonSbCampaignReport)
         if ($campaignType === 'HL') {
@@ -99,15 +106,8 @@ class StoreAmazonUtilizationCounts extends Command
             $amazonSpCampaignReportsL1 = $amazonSpCampaignReportsL1->get();
         }
 
-        // Counts for 7UB only condition
-        $overUtilizedCount7ub = 0;
-        $underUtilizedCount7ub = 0;
-        $correctlyUtilizedCount7ub = 0;
-        
-        // Counts for 7UB + 1UB condition
-        $overUtilizedCount7ub1ub = 0;
-        $underUtilizedCount7ub1ub = 0;
-        $correctlyUtilizedCount7ub1ub = 0;
+        // Store all processed campaigns with their data (similar to controller's campaignMap)
+        $campaignMap = [];
         
         // For PT campaigns, we need to track unique SKUs (same as getAmzUnderUtilizedBgtPt)
         $processedSkus = [];
@@ -132,10 +132,8 @@ class StoreAmazonUtilizationCounts extends Command
                 }
             }
             
-            // For KW over-utilized: Don't filter by NRA (getAmzUtilizedBgtKw doesn't filter by NRA)
-            // For PT under-utilized: Filter by NRA (getAmzUnderUtilizedBgtPt filters by NRA !== 'NRA')
-            // For HL: Filter by NRA (similar to PT)
-            if ($campaignType !== 'KW' && $nra === 'NRA') {
+            // Filter by NRA for all campaign types (KW, PT, HL)
+            if ($nra === 'NRA') {
                 continue;
             }
 
@@ -159,8 +157,9 @@ class StoreAmazonUtilizationCounts extends Command
                     continue;
                 }
 
+                $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
                 $campaignName = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
-                if ($campaignName === '') {
+                if (empty($campaignId) || empty($campaignName)) {
                     continue;
                 }
 
@@ -203,8 +202,14 @@ class StoreAmazonUtilizationCounts extends Command
                     continue;
                 }
 
-                // Get campaignName for later use
+                // Get campaignId and campaignName for later use
+                $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
                 $campaignName = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+                
+                // Skip if no campaign ID or name
+                if (empty($campaignId) || empty($campaignName)) {
+                    continue;
+                }
                 
                 // For KW: Don't filter by campaignName (getAmzUtilizedBgtKw doesn't filter by campaignName)
                 // For PT: Filter by campaignName !== '' (getAmzUnderUtilizedBgtPt filters by campaignName !== '')
@@ -217,15 +222,63 @@ class StoreAmazonUtilizationCounts extends Command
                 $l1_spend = $matchedCampaignL1->spend ?? 0;
             }
 
-            // Calculate UB7: (L7 Spend / (Budget * 7)) * 100
-            $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
-            $ub1 = $budget > 0 ? ($l1_spend / ($budget * 1)) * 100 : 0;
+            // Get INV for this SKU (for KW and PT)
+            $shopify = ($campaignType === 'KW' || $campaignType === 'PT') ? ($shopifyData[$pm->sku] ?? null) : null;
+            $inv = ($campaignType === 'KW' || $campaignType === 'PT') ? ($shopify ? ($shopify->inv ?? 0) : 0) : 0;
+            
+            // Store campaign data in map (similar to controller) - only once per campaign_id
+            if (!isset($campaignMap[$campaignId])) {
+                $campaignMap[$campaignId] = [
+                    'campaign_id' => $campaignId,
+                    'campaignName' => $campaignName,
+                    'budget' => $budget,
+                    'l7_spend' => $l7_spend,
+                    'l1_spend' => $l1_spend,
+                    'inv' => $inv
+                ];
+            } else {
+                // Update spend values if we have better data
+                if ($l7_spend > 0) {
+                    $campaignMap[$campaignId]['l7_spend'] = $l7_spend;
+                }
+                if ($l1_spend > 0) {
+                    $campaignMap[$campaignId]['l1_spend'] = $l1_spend;
+                }
+                // Update INV if current SKU has INV > 0 (prefer INV > 0 over INV = 0)
+                if (($campaignType === 'KW' || $campaignType === 'PT') && floatval($inv) > 0) {
+                    $campaignMap[$campaignId]['inv'] = $inv;
+                }
+            }
             
             // For PT campaigns, mark SKU as processed (unique filter)
             if ($campaignType === 'PT') {
                 $processedSkus[] = $sku;
             }
+        }
 
+        // Now count unique campaigns from campaignMap
+        $overUtilizedCount7ub = 0;
+        $underUtilizedCount7ub = 0;
+        $correctlyUtilizedCount7ub = 0;
+        
+        $overUtilizedCount7ub1ub = 0;
+        $underUtilizedCount7ub1ub = 0;
+        $correctlyUtilizedCount7ub1ub = 0;
+        
+        foreach ($campaignMap as $campaignId => $campaignData) {
+            // For KW and PT: Skip campaigns with INV = 0
+            if (($campaignType === 'KW' || $campaignType === 'PT') && floatval($campaignData['inv']) <= 0) {
+                continue;
+            }
+            
+            $budget = $campaignData['budget'] ?? 0;
+            $l7_spend = $campaignData['l7_spend'] ?? 0;
+            $l1_spend = $campaignData['l1_spend'] ?? 0;
+            
+            // Calculate UB7 and UB1
+            $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+            $ub1 = $budget > 0 ? ($l1_spend / ($budget * 1)) * 100 : 0;
+            
             // Categorize based on 7UB only condition
             if ($ub7 > 90) {
                 $overUtilizedCount7ub++;
@@ -247,6 +300,9 @@ class StoreAmazonUtilizationCounts extends Command
 
         // Store in amazon_data_view table with date as SKU
         $today = now()->format('Y-m-d');
+        $tomorrow = now()->copy()->addDay()->format('Y-m-d');
+        
+        // Data for today (with actual counts)
         $data = [
             // 7UB only condition
             'over_utilized_7ub' => $overUtilizedCount7ub,
@@ -259,21 +315,48 @@ class StoreAmazonUtilizationCounts extends Command
             'date' => $today
         ];
 
+        // Blank data for tomorrow (all counts as 0)
+        $blankData = [
+            // 7UB only condition
+            'over_utilized_7ub' => 0,
+            'under_utilized_7ub' => 0,
+            'correctly_utilized_7ub' => 0,
+            // 7UB + 1UB condition
+            'over_utilized_7ub_1ub' => 0,
+            'under_utilized_7ub_1ub' => 0,
+            'correctly_utilized_7ub_1ub' => 0,
+            'date' => $tomorrow
+        ];
+
         // Use date as SKU identifier for this data with campaign type
-        $skuKey = 'AMAZON_UTILIZATION_' . $campaignType . '_' . $today;
+        $skuKeyToday = 'AMAZON_UTILIZATION_' . $campaignType . '_' . $today;
+        $skuKeyTomorrow = 'AMAZON_UTILIZATION_' . $campaignType . '_' . $tomorrow;
 
-        // Check if record exists for today
-        $existing = AmazonDataView::where('sku', $skuKey)->first();
+        // Insert/Update today's data
+        $existingToday = AmazonDataView::where('sku', $skuKeyToday)->first();
 
-        if ($existing) {
-            $existing->update(['value' => $data]);
+        if ($existingToday) {
+            $existingToday->update(['value' => $data]);
             $this->info("Updated {$campaignType} utilization counts for {$today}");
         } else {
             AmazonDataView::create([
-                'sku' => $skuKey,
+                'sku' => $skuKeyToday,
                 'value' => $data
             ]);
             $this->info("Created {$campaignType} utilization counts for {$today}");
+        }
+
+        // Insert/Update tomorrow's blank data (only if it doesn't exist)
+        $existingTomorrow = AmazonDataView::where('sku', $skuKeyTomorrow)->first();
+
+        if (!$existingTomorrow) {
+            AmazonDataView::create([
+                'sku' => $skuKeyTomorrow,
+                'value' => $blankData
+            ]);
+            $this->info("Created blank {$campaignType} utilization counts for {$tomorrow}");
+        } else {
+            $this->info("Tomorrow's data already exists for {$tomorrow}, skipping blank data creation");
         }
 
         $this->info("{$campaignType} - 7UB Condition:");
