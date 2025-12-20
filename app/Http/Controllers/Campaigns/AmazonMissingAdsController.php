@@ -47,27 +47,50 @@ class AmazonMissingAdsController extends Controller
         $nrListingValues = AmazonListingStatus::whereIn('sku', $skus)->pluck('value', 'sku');
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
-        $amazonKwCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
-            })
-            ->where('campaignName', 'NOT LIKE', '%PT')
-            ->where('campaignName', 'NOT LIKE', '%PT.')
-            ->where('campaignName', 'NOT LIKE', '%FBA')
-            ->where('campaignName', 'NOT LIKE', '%FBA.')
+        // Optimize: Get all active campaigns first, then filter in memory
+        // This avoids building massive OR queries with LIKE conditions
+        $allCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
-        $amazonPtCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+        // Create uppercase SKU array for efficient matching
+        $skuUpperArray = array_map('strtoupper', $skus);
+
+        // Filter campaigns in memory - more efficient approach
+        $amazonKwCampaigns = $allCampaigns->filter(function ($campaign) use ($skuUpperArray) {
+            $campaignName = strtoupper($campaign->campaignName);
+            // Exclude PT and FBA campaigns
+            if (str_contains($campaignName, ' PT') || str_contains($campaignName, ' PT.') ||
+                str_contains($campaignName, 'FBA') || str_contains($campaignName, 'FBA.')) {
+                return false;
+            }
+            // Check if campaign name contains any SKU (optimized: break on first match)
+            foreach ($skuUpperArray as $skuUpper) {
+                if (str_contains($campaignName, $skuUpper)) {
+                    return true;
                 }
-            })
-            ->where('campaignName', 'NOT LIKE', '%FBA')
-            ->where('campaignName', 'NOT LIKE', '%FBA.')
-            ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->get();
+            }
+            return false;
+        });
+
+        $amazonPtCampaigns = $allCampaigns->filter(function ($campaign) use ($skuUpperArray) {
+            $campaignName = strtoupper($campaign->campaignName);
+            // Must contain FBA and PT
+            $hasFba = str_contains($campaignName, 'FBA') || str_contains($campaignName, 'FBA.');
+            $hasPt = str_contains($campaignName, ' PT') || str_contains($campaignName, ' PT.');
+            
+            if (!$hasFba || !$hasPt) {
+                return false;
+            }
+            
+            // Check if campaign name contains any SKU (optimized: break on first match)
+            foreach ($skuUpperArray as $skuUpper) {
+                if (str_contains($campaignName, $skuUpper)) {
+                    return true;
+                }
+            }
+            return false;
+        });
 
         $result = [];
 
