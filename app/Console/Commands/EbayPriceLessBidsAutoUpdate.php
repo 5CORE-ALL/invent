@@ -288,7 +288,7 @@ class EbayPriceLessBidsAutoUpdate extends Command
                     $row['sbid'] = max(0.20, min($row['sbid'], 0.20));  // Exactly 0.20
                 }
                 elseif($row['price'] > 20 && $row['price'] <= 30){
-                    $row['sbid'] = max(0.30, min($row['sbid'], 0.30));  // Exactly 0.30
+                    $row['sbid'] = max(0.40, min($row['sbid'], 0.40));  // Exactly 0.40
                 }
                 
                 // Only show data under price 30, exclude PARENT SKUs, and only show items with campaigns
