@@ -75,11 +75,12 @@ class AmazonMissingAdsController extends Controller
 
         $amazonPtCampaigns = $allCampaigns->filter(function ($campaign) use ($skuUpperArray) {
             $campaignName = strtoupper($campaign->campaignName);
-            // Must contain FBA and PT
-            $hasFba = str_contains($campaignName, 'FBA') || str_contains($campaignName, 'FBA.');
+            // Must contain PT but NOT FBA (regular PT campaigns, not FBA PT)
             $hasPt = str_contains($campaignName, ' PT') || str_contains($campaignName, ' PT.');
+            $hasFba = str_contains($campaignName, 'FBA') || str_contains($campaignName, 'FBA.');
             
-            if (!$hasFba || !$hasPt) {
+            // Exclude FBA PT campaigns, only include regular PT campaigns
+            if (!$hasPt || $hasFba) {
                 return false;
             }
             
@@ -105,19 +106,19 @@ class AmazonMissingAdsController extends Controller
                 $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
                 
-                // Check if campaign name matches the SKU (exact match or contains the SKU)
-                return $campaignName === $cleanSku || 
-                       str_contains($campaignName, $cleanSku);
+                // Exact match only - campaign name must exactly equal SKU (excluding PT campaigns)
+                return $campaignName === $cleanSku;
             });
 
             $matchedPtCampaign = $amazonPtCampaigns->first(function ($item) use ($sku) {
                 $cleanName = strtoupper(trim($item->campaignName));
                 $cleanSku = strtoupper(trim($sku));
 
-                return (
-                    str_contains($cleanName, $cleanSku) && 
-                    (str_ends_with($cleanName, ' PT') || str_ends_with($cleanName, ' PT.'))
-                );
+                // Exact match: SKU + ' PT' or SKU + ' PT.'
+                $expected1 = $cleanSku . ' PT';
+                $expected2 = $cleanSku . ' PT.';
+                
+                return ($cleanName === $expected1 || $cleanName === $expected2);
             });
 
             $row = [
@@ -242,20 +243,23 @@ class AmazonMissingAdsController extends Controller
             $monthlySales = $fbaMonthlySales->get($sellerSkuUpper);
 
             // Match campaigns using seller_sku (with FBA already in it)
+            // For KW: exact match with seller SKU (excluding PT)
             $matchedKwCampaign = $amazonKwCampaigns->first(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
                 
-                return (
-                    str_contains($cleanName, $sellerSkuUpper)
-                    && !str_ends_with($cleanName, ' PT')
-                    && !str_ends_with($cleanName, ' PT.')
-                );
+                // Exact match: campaign name must exactly equal seller SKU
+                return $cleanName === $sellerSkuUpper;
             });
 
+            // For PT: exact match with seller SKU + ' PT' or seller SKU + ' PT.'
             $matchedPtCampaign = $amazonPtCampaigns->first(function ($item) use ($sellerSkuUpper) {
-                $cleanName = strtoupper(trim($item->campaignName));
-
-                return str_contains($cleanName, $sellerSkuUpper);
+                $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sellerSkuUpper, '.')));
+                
+                // Exact match: SKU + ' PT' (normalized - trailing dot removed from both)
+                $expected = $cleanSku . ' PT';
+                
+                return $cleanName === $expected;
             });
 
             $row = [
