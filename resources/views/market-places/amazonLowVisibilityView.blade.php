@@ -4,6 +4,8 @@
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* ========== TABLE STRUCTURE ========== */
         .table-container {
@@ -11,31 +13,111 @@
             overflow-y: visible;
             position: relative;
             max-height: 600px;
+            border-radius: 18px;
+            box-shadow: 0 6px 24px rgba(37, 99, 235, 0.13);
+            border: 1px solid #e5e7eb;
+            background: #fff;
         }
 
         .custom-resizable-table {
             width: 100%;
             border-collapse: collapse;
             margin: 0;
+            border-radius: 18px;
+            box-shadow: 0 6px 24px rgba(37, 99, 235, 0.13);
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
         }
 
         .custom-resizable-table th,
         .custom-resizable-table td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
+            padding: 14px 10px;
+            text-align: center;
+            border-bottom: 1px solid #262626;
+            border-right: 1px solid #262626;
             position: relative;
             white-space: nowrap;
             overflow: visible !important;
+            transition: background 0.18s, color 0.18s;
         }
 
         .custom-resizable-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
+            background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
+            border-bottom: 1px solid #403f3f;
+            box-shadow: 0 4px 16px rgba(37, 99, 235, 0.10);
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 1.08rem;
+            letter-spacing: 0.02em;
             user-select: none;
             position: sticky;
             top: 0;
             z-index: 10;
+            padding: 16px 10px;
+        }
+
+        .custom-resizable-table th:hover {
+            background: #D8F3F3;
+            color: #2563eb;
+        }
+
+        .custom-resizable-table tbody tr {
+            background-color: #fff !important;
+            transition: background 0.18s;
+        }
+
+        .custom-resizable-table tbody tr:nth-child(even) {
+            background-color: #f8fafc !important;
+        }
+
+        .custom-resizable-table tbody tr:hover {
+            background-color: #dbeafe !important;
+        }
+
+        .custom-resizable-table td {
+            color: #22223b;
+            font-size: 1rem;
+            vertical-align: middle;
+        }
+
+        .custom-resizable-table td:focus {
+            outline: 1px solid #262626;
+            background: #e0eaff;
+        }
+
+        /* Left-align text columns headers (Parent, SKU, Reason, Action Required, Action Taken) */
+        .custom-resizable-table th[data-field="parent"],
+        .custom-resizable-table th[data-field="sku"],
+        .custom-resizable-table th[data-field="reason"],
+        .custom-resizable-table th[data-field="action_required"],
+        .custom-resizable-table th[data-field="action_taken"] {
+            text-align: left !important;
+        }
+
+        /* Left-align text columns - use class-based approach for better compatibility */
+        /* Parent column (index 2 when R&A hidden, index 3 when R&A visible) */
+        .custom-resizable-table tbody tr td:nth-child(2),
+        /* SKU column (index 3 when R&A hidden, index 4 when R&A visible) */
+        .custom-resizable-table tbody tr td:nth-child(3),
+        /* Reason column (index 12 when R&A hidden, index 13 when R&A visible) */
+        .custom-resizable-table tbody tr td:nth-child(12),
+        .custom-resizable-table tbody tr td:nth-child(13),
+        /* Action Required column (index 13 when R&A hidden, index 14 when R&A visible) */
+        .custom-resizable-table tbody tr td:nth-child(14),
+        /* Action Taken column (index 14 when R&A hidden, index 15 when R&A visible) */
+        .custom-resizable-table tbody tr td:nth-child(15) {
+            text-align: left !important;
+        }
+
+        /* Additional selector for when R&A is visible (covers both cases) */
+        .custom-resizable-table tbody tr td.skuColumn,
+        .custom-resizable-table tbody tr td .sku-text {
+            text-align: left !important;
+        }
+
+        .custom-resizable-table th:last-child,
+        .custom-resizable-table td:last-child {
+            border-right: none;
         }
 
         /* ========== RESIZABLE COLUMNS ========== */
@@ -134,9 +216,13 @@
         .table-controls {
             position: sticky;
             bottom: 0;
-            background: white;
+            background: #f4f7fa;
             padding: 10px 0;
-            border-top: 1px solid #ddd;
+            border-top: 1px solid #262626;
+        }
+
+        .table-controls:hover {
+            background: #e0eaff;
         }
 
         /* ========== SORTING ========== */
@@ -145,7 +231,8 @@
         }
 
         .sortable:hover {
-            background-color: #f1f1f1;
+            background: #D8F3F3 !important;
+            color: #2563eb;
         }
 
         .sort-arrow {
@@ -155,7 +242,8 @@
 
         /* ========== PARENT ROWS ========== */
         .parent-row {
-            background-color: rgba(69, 233, 255, 0.1) !important;
+            background-color: #bde0ff !important;
+            font-weight: bold !important;
         }
 
         /* ========== SKU TOOLTIPS ========== */
@@ -1278,125 +1366,8 @@
                         </div>
                     </div>
 
-                    <div class="table-container">
-                        <table class="custom-resizable-table" id="amazonLowVisibility-table">
-                            <thead>
-                                <tr>
-                                    <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th>
-                                    <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center sortable-header">
-                                                Parent <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm parent-search"
-                                                    placeholder="Search parent..." id="parentSearch">
-                                                <div class="dropdown-search-results" id="parentSearchResults"></div>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center sortable">
-                                            <div class="d-flex align-items-center">
-                                                Sku <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm sku-search"
-                                                    placeholder="Search SKU..." id="skuSearch">
-                                                <div class="dropdown-search-results" id="skuSearchResults"></div>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="r&a" class="hide-column"
-                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                R&A <span class="sort-arrow">↓</span>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="inv" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                INV <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="inv-total">0</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="ov_l30" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                OV L30 <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="ovl30-total">0</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="ov_dil" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                OV DIL <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="ovdil-total">0%</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="al_30" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                AL 30 <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="al30-total">0</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="a_dil" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                A DIL <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="lDil-total">0%</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="nr" style="vertical-align: middle; white-space: nowrap;">
-                                        NRL
-                                    </th>
-                                    <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                VIEWS <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="views-total">0</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="reason" style="vertical-align: middle; white-space: nowrap;">Reason
-                                    </th>
-                                    <th data-field="action_required" style="vertical-align: middle; white-space: nowrap;">
-                                        Action Required</th>
-                                    <th data-field="action_taken" style="vertical-align: middle; white-space: nowrap;">
-                                        Action Taken</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Data will be populated by JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Pagination controls -->
-                    <div class="pagination-controls mt-2">
-                        <div class="form-group">
-                            <span id="visible-rows" class="badge badge-light" style="color: #dc3545;">Showing 1-25 of
-                                150</span>
-                        </div>
-                        <button id="first-page" class="btn btn-sm btn-outline-secondary mr-1">First</button>
-                        <button id="prev-page" class="btn btn-sm btn-outline-secondary mr-1">Previous</button>
-                        <span id="page-info" class="mx-2">Page 1 of 6</span>
-                        <button id="next-page" class="btn btn-sm btn-outline-secondary ml-1">Next</button>
-                        <button id="last-page" class="btn btn-sm btn-outline-secondary ml-1">Last</button>
+                    <div id="amazonLowVisibility-table-wrapper" style="height: calc(100vh - 300px);">
+                        <div id="amazonLowVisibility-table"></div>
                     </div>
 
                     <div id="data-loader" class="card-loader-overlay" style="display: none;">
@@ -1448,6 +1419,7 @@
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <!--for popup modal script-->
     <script>
         flatpickr("#duration", {
@@ -1563,6 +1535,7 @@
             let isEditMode = false;
             let currentEditingElement = null;
             let isNavigationActive = false; // Add this line
+            let table = null; // Tabulator table instance
 
             // Parent Navigation System
             let currentParentIndex = -1; // -1 means showing all products
@@ -1842,8 +1815,13 @@
                 isNavigationActive = true;
                 currentParentIndex = 0;
 
-                // Show R&A column
-                $('th[data-field="r&a"], td:nth-child(4)').removeClass('hide-column');
+                // Show R&A column in Tabulator
+                if (table) {
+                    const raColumn = table.getColumn("R&A");
+                    if (raColumn) {
+                        raColumn.show();
+                    }
+                }
 
                 showCurrentParent();
 
@@ -1860,8 +1838,13 @@
                 isNavigationActive = false;
                 currentParentIndex = -1;
 
-                // Hide R&A column
-                $('th[data-field="r&a"], td:nth-child(4)').addClass('hide-column');
+                // Hide R&A column in Tabulator
+                if (table) {
+                    const raColumn = table.getColumn("R&A");
+                    if (raColumn) {
+                        raColumn.hide();
+                    }
+                }
 
                 // Update button visibility and reset color
                 $('#play-pause').hide();
@@ -1870,9 +1853,10 @@
                     .addClass('btn-light');
 
                 // Show all products
-                filteredData = [...tableData];
-                currentPage = 1;
-                renderTable();
+                if (table) {
+                    table.clearFilter();
+                    table.redraw();
+                }
                 calculateTotals();
             }
 
@@ -1899,8 +1883,10 @@
                 filteredData = tableData.filter(item => item.Parent === uniqueParents[currentParentIndex]);
 
                 // Update UI
-                currentPage = 1;
-                renderTable();
+                if (table) {
+                    table.setFilter([{field: "Parent", type: "=", value: uniqueParents[currentParentIndex]}]);
+                    table.redraw();
+                }
                 calculateTotals();
                 updateButtonStates();
                 checkParentRAStatus(); // Add this line
@@ -1979,23 +1965,387 @@
             // Initialize everything
             function initTable() {
                 loadData().then(() => {
-                    // Hide R&A column initially
-                    $('th[data-field="r&a"], td:nth-child(4)').addClass('hide-column');
-                    renderTable();
-                    initResizableColumns();
-                    initSorting();
-                    initPagination();
-                    initSearch();
-                    initColumnToggle();
+                    initTabulatorTable();
                     initFilters();
                     calculateTotals();
                     initEnhancedDropdowns();
                     initManualDropdowns();
                     initModalTriggers();
                     initPlaybackControls();
-                    initRAEditHandlers(); // Add this line
                     initNREditHandlers();
                     updateLowViewDiv();
+                });
+            }
+
+            // Initialize Tabulator table
+            function initTabulatorTable() {
+                const getDilColor = (value) => {
+                    const percent = parseFloat(value) * 100;
+                    if (percent < 16.66) return 'red';
+                    if (percent >= 16.66 && percent < 25) return 'yellow';
+                    if (percent >= 25 && percent < 50) return 'green';
+                    return 'pink';
+                };
+
+                table = new Tabulator("#amazonLowVisibility-table", {
+                    data: tableData,
+                    layout: "fitDataStretch",
+                    pagination: true,
+                    paginationSize: 100,
+                    paginationCounter: "rows",
+                    initialSort: [{
+                        column: "L30",
+                        dir: "desc"
+                    }],
+                    rowFormatter: function(row) {
+                        const data = row.getData();
+                        if (data.is_parent) {
+                            row.getElement().style.backgroundColor = "#bde0ff";
+                            row.getElement().style.fontWeight = "bold";
+                            row.getElement().classList.add("parent-row");
+                        }
+                        if (data.NR === 'NR') {
+                            row.getElement().classList.add("nr-hide");
+                        }
+                    },
+                    columns: [
+                        {
+                            title: "Image",
+                            field: "image_path",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const imagePath = cell.getValue();
+                                if (imagePath) {
+                                    return `<img src="${imagePath}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;" />`;
+                                }
+                                return '';
+                            },
+                            width: 80
+                        },
+                        {
+                            title: "Parent",
+                            field: "Parent",
+                            headerFilter: "input",
+                            headerFilterPlaceholder: "Search Parent...",
+                            hozAlign: "left",
+                            width: 150,
+                            frozen: true
+                        },
+                        {
+                            title: "SKU",
+                            field: "(Child) sku",
+                            headerFilter: "input",
+                            headerFilterPlaceholder: "Search SKU...",
+                            hozAlign: "left",
+                            width: 200,
+                            frozen: true,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const sku = cell.getValue();
+                                const imageUrl = rowData.raw_data?.image_path || '';
+                                const buyerLink = rowData.raw_data?.['AMZ LINK BL'];
+                                const sellerLink = rowData.raw_data?.['AMZ LINK SL'];
+
+                                function isValidUrl(url) {
+                                    try {
+                                        return Boolean(url && new URL(url));
+                                    } catch (e) {
+                                        return false;
+                                    }
+                                }
+
+                                if (rowData.is_parent) {
+                                    return `<strong>${sku}</strong>`;
+                                }
+
+                                if (buyerLink || sellerLink || imageUrl) {
+                                    return `
+                                        <div class="sku-tooltip-container" style="position:relative;display:inline-block;">
+                                            <span class="sku-text">${sku}</span>
+                                            <div class="sku-tooltip" style="display:none;">
+                                                ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
+                                                <div class="sku-link">
+                                                    ${buyerLink !== undefined ? (isValidUrl(buyerLink) ? `<a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a>` : 'link invalid') : ''}
+                                                </div>
+                                                <div class="sku-link">
+                                                    ${sellerLink !== undefined ? (isValidUrl(sellerLink) ? `<a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a>` : 'link invalid') : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+                                return sku;
+                            }
+                        },
+                        {
+                            title: "R&A",
+                            field: "R&A",
+                            hozAlign: "center",
+                            width: 80,
+                            visible: false,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const raValue = rowData['R&A'];
+                                if (raValue !== undefined && raValue !== null && raValue !== '') {
+                                    const checked = raValue === true || raValue === 'true' || raValue === '1';
+                                    return `
+                                        <div class="ra-edit-container d-flex align-items-center justify-content-center">
+                                            <input type="checkbox" class="ra-checkbox" ${checked ? 'checked' : ''} disabled data-original-value="${raValue}">
+                                            <i class="fas fa-pen edit-icon ml-2 text-primary" style="cursor:pointer;" title="Edit R&A"></i>
+                                        </div>
+                                    `;
+                                }
+                                return '&nbsp;';
+                            }
+                        },
+                        {
+                            title: "INV",
+                            field: "INV",
+                            hozAlign: "center",
+                            width: 80,
+                            sorter: "number",
+                            bottomCalc: function(values) {
+                                const total = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+                                $('#inv-total').text(total.toLocaleString());
+                                return total.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "OV L30",
+                            field: "L30",
+                            hozAlign: "center",
+                            width: 80,
+                            sorter: "number",
+                            bottomCalc: function(values) {
+                                const total = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+                                $('#ovl30-total').text(total.toLocaleString());
+                                return total.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "OV DIL",
+                            field: "ov_dil",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const ovDil = parseFloat(cell.getValue()) || 0;
+                                const color = getDilColor(ovDil);
+                                const rawData = rowData.raw_data || {};
+                                return `
+                                    <span class="dil-percent-value ${color}">${Math.round(ovDil * 100)}%</span>
+                                    <span class="text-info tooltip-icon wmpnm-view-trigger" 
+                                        data-bs-toggle="tooltip" 
+                                        data-bs-placement="left" 
+                                        title="WMPNM View"
+                                        data-item='${JSON.stringify(rawData)}'
+                                        style="cursor:pointer; margin-left:5px;">W</span>
+                                `;
+                            },
+                            bottomCalc: function(values, data) {
+                                const invTotal = data.reduce((sum, row) => sum + (parseFloat(row.INV) || 0), 0);
+                                const l30Total = data.reduce((sum, row) => sum + (parseFloat(row.L30) || 0), 0);
+                                const dilTotal = invTotal > 0 ? (l30Total / invTotal) * 100 : 0;
+                                $('#ovdil-total').text(Math.round(dilTotal) + '%');
+                                return Math.round(dilTotal) + '%';
+                            }
+                        },
+                        {
+                            title: "AL 30",
+                            field: "A L30",
+                            hozAlign: "center",
+                            width: 80,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const aL30 = cell.getValue();
+                                const l60 = rowData.units_ordered_l60 || 0;
+                                return `
+                                    <div class="sku-tooltip-container">
+                                        <span class="sku-text">${aL30}</span>
+                                        <div class="sku-tooltip">
+                                            <div class="sku-link"><strong>L60:</strong> ${l60}</div>
+                                            <div class="sku-link"><strong>L7:</strong></div>
+                                        </div>
+                                    </div>
+                                `;
+                            },
+                            bottomCalc: function(values) {
+                                const total = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+                                $('#al30-total').text(total.toLocaleString());
+                                return total.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "REQ",
+                            field: "NR",
+                            hozAlign: "center",
+                            width: 100,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const currentNR = cell.getValue() === 'REQ' || cell.getValue() === 'NR' ? cell.getValue() : 'REQ';
+                                const bgColor = currentNR === 'NR' ? '#dc3545' : '#28a745';
+                                const textColor = '#ffffff';
+                                return `
+                                    <select class="form-select form-select-sm nr-select" style="min-width: 100px; background-color: ${bgColor}; color: ${textColor};" data-sku="${rowData['(Child) sku']}">
+                                        <option value="NR" ${currentNR === 'NR' ? 'selected' : ''}>NR</option>
+                                        <option value="REQ" ${currentNR === 'REQ' ? 'selected' : ''}>REQ</option>
+                                    </select>
+                                `;
+                            }
+                        },
+                        {
+                            title: "VIEWS",
+                            field: "Sess30",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const sess30 = cell.getValue();
+                                const rawData = rowData.raw_data || {};
+                                return `
+                                    <span>${Math.round(sess30)}</span>
+                                    <span class="text-info tooltip-icon ad-view-trigger" 
+                                        data-bs-toggle="tooltip" 
+                                        data-bs-placement="left" 
+                                        title="visibility View"
+                                        data-item='${JSON.stringify(rawData)}'
+                                        style="cursor:pointer; margin-left:5px;">V</span>
+                                `;
+                            },
+                            bottomCalc: function(values, data) {
+                                const total = data.reduce((sum, row) => {
+                                    if (row.NR !== 'NR') {
+                                        return sum + (parseFloat(row.Sess30) || 0);
+                                    }
+                                    return sum;
+                                }, 0);
+                                $('#views-total').text(total.toLocaleString());
+                                return total.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "Reason",
+                            field: "A_Z_Reason",
+                            hozAlign: "left",
+                            width: 200,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const reason = cell.getValue() || '';
+                                const slNo = rowData['SL No.'];
+                                return `
+                                    <span class="truncated-text" title="${reason.replace(/"/g, '&quot;')}">${reason.length > 20 ? reason.substring(0, 20) + '...' : reason}</span>
+                                    <i class="fas fa-plus reason-action-plus" style="cursor:pointer; color:#007bff; margin-left:8px;" 
+                                        data-slno="${slNo}" data-type="reason"></i>
+                                `;
+                            }
+                        },
+                        {
+                            title: "Action Required",
+                            field: "A_Z_ActionRequired",
+                            hozAlign: "left",
+                            width: 200,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const actionRequired = cell.getValue() || '';
+                                const slNo = rowData['SL No.'];
+                                return `
+                                    <span class="truncated-text" title="${actionRequired.replace(/"/g, '&quot;')}">${actionRequired.length > 20 ? actionRequired.substring(0, 20) + '...' : actionRequired}</span>
+                                    <i class="fas fa-plus reason-action-plus" style="cursor:pointer; color:#007bff; margin-left:8px;" 
+                                        data-slno="${slNo}" data-type="action_required"></i>
+                                `;
+                            }
+                        },
+                        {
+                            title: "Action Taken",
+                            field: "A_Z_ActionTaken",
+                            hozAlign: "left",
+                            width: 200,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const actionTaken = cell.getValue() || '';
+                                const slNo = rowData['SL No.'];
+                                return `
+                                    <span class="truncated-text" title="${actionTaken.replace(/"/g, '&quot;')}">${actionTaken.length > 20 ? actionTaken.substring(0, 20) + '...' : actionTaken}</span>
+                                    <i class="fas fa-plus reason-action-plus" style="cursor:pointer; color:#007bff; margin-left:8px;" 
+                                        data-slno="${slNo}" data-type="action_taken"></i>
+                                `;
+                            }
+                        }
+                    ]
+                });
+
+                // Setup event handlers after table is created
+                table.on("dataLoaded", function() {
+                    calculateTotals();
+                    initTooltips();
+                    setupTabulatorEventHandlers();
+                });
+
+                table.on("dataProcessed", function() {
+                    calculateTotals();
+                });
+
+                // Setup search - Tabulator uses OR logic by default for array filters
+                $('#search-input').on('keyup', function() {
+                    const searchTerm = $(this).val();
+                    if (searchTerm) {
+                        table.setFilter(function(data) {
+                            const searchLower = searchTerm.toLowerCase();
+                            return (
+                                (data.Parent && String(data.Parent).toLowerCase().includes(searchLower)) ||
+                                (data['(Child) sku'] && String(data['(Child) sku']).toLowerCase().includes(searchLower)) ||
+                                (data.A_Z_Reason && String(data.A_Z_Reason).toLowerCase().includes(searchLower)) ||
+                                (data.A_Z_ActionRequired && String(data.A_Z_ActionRequired).toLowerCase().includes(searchLower)) ||
+                                (data.A_Z_ActionTaken && String(data.A_Z_ActionTaken).toLowerCase().includes(searchLower))
+                            );
+                        });
+                    } else {
+                        table.clearFilter();
+                    }
+                });
+            }
+
+            function setupTabulatorEventHandlers() {
+                // Handle SKU tooltip events
+                setTimeout(() => {
+                    $('.sku-tooltip-container').on('mouseenter', function() {
+                        $(this).find('.sku-tooltip').stop(true, true).fadeIn(120);
+                    }).on('mouseleave', function() {
+                        const $tooltip = $(this).find('.sku-tooltip');
+                        setTimeout(() => {
+                            $tooltip.fadeOut(120);
+                        }, 250);
+                    });
+                }, 100);
+
+                // Handle R&A edit handlers
+                $(document).off('click', '.edit-icon').on('click', '.edit-icon', function(e) {
+                    e.stopPropagation();
+                    const $icon = $(this);
+                    const $checkbox = $icon.siblings('.ra-checkbox');
+                    
+                    if ($icon.hasClass('fa-pen')) {
+                        $checkbox.prop('disabled', false).data('original-value', $checkbox.is(':checked'));
+                        $icon.removeClass('fa-pen text-primary').addClass('fa-save text-success').attr('title', 'Save Changes');
+                    } else {
+                        const rowElement = $icon.closest('.tabulator-row');
+                        const rowData = table.getRowFromElement(rowElement[0])?.getData();
+                        if (rowData) {
+                            const slNo = rowData['SL No.'];
+                            const updatedValue = $checkbox.is(':checked') ? "true" : "false";
+                            
+                            $icon.html('<i class="fas fa-spinner fa-spin"></i>');
+                            
+                            saveChanges(null, "R&A", slNo, false, updatedValue, true, rowElement);
+                            
+                            $checkbox.prop('disabled', true);
+                            $icon.removeClass('fa-save text-success').addClass('fa-pen text-primary');
+                        }
+                    }
                 });
             }
 
@@ -2095,6 +2445,7 @@
                                     'SL No.': item['SL No.'] || index + 1,
                                     Parent: item.Parent || item.parent || item.parent_asin ||
                                         item.Parent_ASIN || '(No Parent)',
+                                    image_path: item.image_path || '',
                                     '(Child) sku': item['(Child) sku'] || '',
                                     'R&A': item['R&A'] !== undefined ? item['R&A'] : '',
                                     INV: inv,
@@ -2141,259 +2492,7 @@
                 });
             }
 
-            // Render table with current data
-            function renderTable() {
-                const $tbody = $('#amazonLowVisibility-table tbody');
-                const $tableContainer = $('.table-container');
-                const prevScrollTop = $tableContainer.scrollTop();
-
-                $tbody.empty();
-
-                if (isLoading) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">Loading data...</td></tr>');
-                    return;
-                }
-
-                if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">No matching records found</td></tr>');
-                    return;
-                }
-
-                // Get current column widths from header
-                const $headers = $('#amazonLowVisibility-table thead th');
-                const reasonCellWidth = $headers.eq(10).outerWidth() || 120;
-                const actionRequiredCellWidth = $headers.eq(11).outerWidth() || 120;
-                const actionTakenCellWidth = $headers.eq(12).outerWidth() || 120;
-
-                filteredData.forEach(item => {
-                    const $row = $('<tr>');
-                    if (item.is_parent) {
-                        $row.addClass('parent-row');
-                    }
-
-                    if(item.NR === 'NR'){
-                        $row.addClass('nr-hide');
-                    }
-                    // Helper functions for color coding
-                    const getDilColor = (value) => {
-                        const percent = parseFloat(value) * 100;
-                        if (percent < 16.66) return 'red';
-                        if (percent >= 16.66 && percent < 25) return 'yellow';
-                        if (percent >= 25 && percent < 50) return 'green';
-                        return 'pink'; // 50 and above
-                    };
-
-                    $row.append($('<td>').text(item['SL No.']));
-                    $row.append($('<td>').text(item.Parent));
-
-                    // SKU with hover content for links
-                    const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
-                    if (item.is_parent) {
-                        $skuCell.html(`<strong>${item['(Child) sku']}</strong>`);
-                    } else {
-                        const imageUrl = item.raw_data.image_path || '';
-                        const buyerLink = item.raw_data['AMZ LINK BL'];
-                        const sellerLink = item.raw_data['AMZ LINK SL'];
-
-                        function isValidUrl(url) {
-                            try {
-                                return Boolean(url && new URL(url));
-                            } catch (e) {
-                                return false;
-                            }
-                        }
-
-                        if (buyerLink || sellerLink || imageUrl) {
-                            $skuCell.html(`
-                                <div class="sku-tooltip-container" style="position:relative;display:inline-block;">
-                                    <span class="sku-text">${item['(Child) sku']}</span>
-                                    <div class="sku-tooltip" style="display:none;">
-                                        ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
-                                        <div class="sku-link">
-                                            ${buyerLink !== undefined
-                                                ? (isValidUrl(buyerLink)
-                                                    ? `<a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a>`
-                                                    : 'link invalid')
-                                                : ''}
-                                        </div>
-                                        <div class="sku-link">
-                                            ${sellerLink !== undefined
-                                                ? (isValidUrl(sellerLink)
-                                                    ? `<a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a>`
-                                                    : 'link invalid')
-                                                : ''}
-                                        </div>
-                                    </div>
-                                </div>
-                            `);
-
-                            // Tooltip show/hide with delay
-                            setTimeout(() => {
-                                const $container = $skuCell.find('.sku-tooltip-container');
-                                let hideTimeout = null;
-
-                                $container.on('mouseenter', function() {
-                                    clearTimeout(hideTimeout);
-                                    $(this).find('.sku-tooltip').stop(true, true).fadeIn(
-                                        120);
-                                }).on('mouseleave', function() {
-                                    const $tooltip = $(this).find('.sku-tooltip');
-                                    hideTimeout = setTimeout(() => {
-                                        $tooltip.fadeOut(120);
-                                    }, 250); // 250ms delay before hiding
-                                });
-
-                                // If mouse enters tooltip itself, cancel hide
-                                $container.find('.sku-tooltip').on('mouseenter', function() {
-                                    clearTimeout(hideTimeout);
-                                }).on('mouseleave', function() {
-                                    const $tooltip = $(this);
-                                    hideTimeout = setTimeout(() => {
-                                        $tooltip.fadeOut(120);
-                                    }, 250);
-                                });
-                            }, 0);
-
-                        } else {
-                            $skuCell.text(item['(Child) sku']);
-                        }
-                    }
-                    $row.append($skuCell);
-
-                    // Only create the checkbox cell if navigation is active
-                    if (isNavigationActive) {
-                        const $raCell = $('<td>').addClass('ra-cell');
-
-                        if (item['R&A'] !== undefined && item['R&A'] !== null && item['R&A'] !== '') {
-                            const $container = $('<div>').addClass(
-                                'ra-edit-container d-flex align-items-center');
-
-                            // Checkbox with proper boolean value
-                            const $checkbox = $('<input>', {
-                                type: 'checkbox',
-                                checked: item['R&A'] === true || item['R&A'] === 'true' || item[
-                                    'R&A'] === '1',
-                                class: 'ra-checkbox',
-                                disabled: true
-                            }).data('original-value', item['R&A']); // Store original value
-
-                            // Edit/Save icon
-                            const $editIcon = $('<i>').addClass('fas fa-pen edit-icon ml-2 text-primary')
-                                .css('cursor', 'pointer')
-                                .attr('title', 'Edit R&A');
-
-                            $container.append($checkbox, $editIcon);
-                            $raCell.append($container);
-                        } else {
-                            $raCell.html('&nbsp;');
-                        }
-
-                        $row.append($raCell);
-                    }
-
-                    $row.append($('<td>').text(item.INV));
-                    $row.append($('<td>').text(item.L30));
-
-                    // OV DIL with color coding and WMPNM tooltip
-                    $row.append($('<td>').html(
-                        `<span class="dil-percent-value ${getDilColor(item.ov_dil)}">${Math.round(item.ov_dil * 100)}%</span>
-                            <span class="text-info tooltip-icon wmpnm-view-trigger" 
-                            data-bs-toggle="tooltip" 
-                                data-bs-placement="left" 
-                                title="WMPNM View"
-                                data-item='${JSON.stringify(item.raw_data)}'>W</span>`
-                    ));
-
-                    $row.append($('<td>').html(`
-                        <div class="sku-tooltip-container">
-                            <span class="sku-text">${item['A L30']}</span>
-                            <div class="sku-tooltip">
-                                <div class="sku-link"><strong>L60:</strong> ${item['units_ordered_l60']}</div>
-                                <div class="sku-link"><strong>L7:</strong></div>
-                            </div>
-                        </div>
-                    `));
-
-                    // A DIL with color coding
-                    $row.append($('<td>').html(
-                        `<span class="dil-percent-value ${getDilColor(item['A Dil%'])}">${(item['A Dil%'] * 100).toFixed(2)}%</span>`
-                    ));
-
-                    if (item.is_parent) {
-                        $row.append($('<td>')); // Empty cell for parent
-                    } else {
-                        const currentNR = item.NR === 'REQ' || item.NR === 'NR' ? item.NR : 'REQ'; // default to REQ
-                        const $select = $(`
-                            <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                                <option value="NR" ${currentNR === 'NR' ? 'selected' : ''}>NR</option>
-                                <option value="REQ" ${currentNR === 'REQ' ? 'selected' : ''}>REQ</option>
-                            </select>
-                        `);
-
-                        // Set background color based on value
-                        if (currentNR === 'NR') {
-                            $select.css('background-color', '#dc3545');
-                            $select.css('color', '#ffffff');
-                        } else if (currentNR === 'REQ') {
-                            $select.css('background-color', '#28a745');
-                            $select.css('color', '#ffffff');
-                        }
-                        $select.data('sku', item['(Child) sku']);
-                        $row.append($('<td>').append($select));
-                    }
-
-                    // Sess30 with tooltip icon (no color coding)
-                    $row.append($('<td>').html(
-                        `<span>${Math.round(item.Sess30)}</span>
-                            <span class="text-info tooltip-icon ad-view-trigger" 
-                                data-bs-toggle="tooltip" 
-                                data-bs-placement="left" 
-                                title="visibility View"
-                                data-item='${JSON.stringify(item.raw_data)}'>V</span>`
-                    ));
-
-                    // Truncate function for dynamic column width
-                    function truncateWithTooltip(text, cellWidth) {
-                        if (!text) return '';
-                        let minLetters = 10;
-                        let letters = Math.max(minLetters, Math.floor(cellWidth / 12));
-                        const truncated = text.length > letters ? text.substring(0, letters) + '...' : text;
-                        return `<span class="truncated-text" title="${text.replace(/"/g, '&quot;')}">${truncated}</span>`;
-                    }
-
-                    // Reason column with plus icon and tooltip
-                    $row.append($('<td>').html(`
-                        ${truncateWithTooltip(item.A_Z_Reason, reasonCellWidth)}
-                        <i class="fas fa-plus reason-action-plus" style="cursor:pointer; color:#007bff; margin-left:8px;" 
-                        data-slno="${item['SL No.']}" data-type="reason"></i>
-                    `));
-
-                    // Action Required column
-                    $row.append($('<td>').html(`
-                        ${truncateWithTooltip(item.A_Z_ActionRequired, actionRequiredCellWidth)}
-                        <i class="fas fa-plus reason-action-plus" style="cursor:pointer; color:#007bff; margin-left:8px;" 
-                        data-slno="${item['SL No.']}" data-type="action_required"></i>
-                    `));
-
-                    // Action Taken column
-                    $row.append($('<td>').html(`
-                        ${truncateWithTooltip(item.A_Z_ActionTaken, actionTakenCellWidth)}
-                        <i class="fas fa-plus reason-action-plus" style="cursor:pointer; color:#007bff; margin-left:8px;" 
-                        data-slno="${item['SL No.']}" data-type="action_taken"></i>
-                    `));
-
-                    $tbody.append($row);
-                });
-
-                updatePaginationInfo();
-                $('#visible-rows').text(`Showing all ${filteredData.length} rows`);
-                initTooltips();
-
-                // Restore scroll position
-                setTimeout(() => {
-                    $tableContainer.scrollTop(prevScrollTop);
-                }, 0);
-            }
+            // renderTable() function removed - now using Tabulator which handles rendering automatically
 
             function initRAEditHandlers() {
                 $(document).on('click', '.edit-icon', function(e) {
@@ -2448,18 +2547,19 @@
                 $(document).on('change', '.nr-select', function () {
                     const $select = $(this);
                     const sku = $(this).data('sku');
-                    const nrValue = $(this).val();
+                    const nrValue = $(this).val(); // 'NR' or 'REQ'
                     if (nrValue === 'NR') {
                         $select.css('background-color', '#dc3545').css('color', '#ffffff');
                     } else {
                         $select.css('background-color', '#28a745').css('color', '#ffffff');
                     }
+                    // Use the same endpoint as listingAmazon for syncing
                     $.ajax({
-                        url: '/amazon/save-nr', 
+                        url: '/listing_amazon/save-status', 
                         type: 'POST',
                         data: {
                             sku: sku,
-                            nr: JSON.stringify({ NR: nrValue }),
+                            nr_req: nrValue, // Send 'NR' or 'REQ' - backend will map NR->NRL
                             _token: $('meta[name="csrf-token"]').attr('content') // CSRF protection
                         },
                         success: function (res) {
@@ -2476,9 +2576,14 @@
                                     item.NR = nrValue;
                                 }
                             });
-                            // ✅ Recalculate & re-render
+                            // ✅ Update Tabulator data and recalculate
+                            if (table) {
+                                const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
+                                if (row) {
+                                    row.update({NR: nrValue});
+                                }
+                            }
                             calculateTotals();
-                            renderTable();
                         },
                         error: function (err) {
                             console.error('Error saving NR:', err);
@@ -3578,9 +3683,9 @@
                         showNotification('success', `${title} Updated Successfully`);
 
                         // If this was an R&A update from the table, ensure UI is consistent
-                        if (rowElement) {
+                        if (rowElement && table) {
                             checkParentRAStatus();
-                            renderTable();
+                            table.redraw();
                         }
                     },
                     error: function(xhr, status, error) {
@@ -3628,7 +3733,7 @@
                             if (checkbox.length) {
                                 checkbox.prop('checked', originalValue);
                             }
-                            renderTable();
+                            if (table) table.redraw();
                         } else {
                             if (isCheckbox) {
                                 contentElement.find('.form-check-input')
@@ -3823,21 +3928,16 @@
                         return String(valA).localeCompare(String(valB)) * currentSort.direction;
                     });
 
-                    filteredData = freshData;
-                    currentPage = 1;
-                    renderTable();
+                    // Tabulator handles sorting automatically, no need to manually sort
+                    if (table) {
+                        table.setSort(currentSort.field, currentSort.direction === 1 ? 'asc' : 'desc');
+                    }
                 });
             }
 
-            // Initialize pagination
+            // Initialize pagination - Tabulator handles this automatically
             function initPagination() {
-                // Remove rows-per-page related code
-
-                // Keep these but modify to work with all rows
-                $('#first-page').on('click', function() {
-                    currentPage = 1;
-                    renderTable();
-                });
+                // Tabulator handles pagination, no custom code needed
 
                 // Similar modifications for other pagination buttons...
                 // But since we're showing all rows, you might want to disable pagination completely
@@ -3853,32 +3953,16 @@
                 $('#first-page, #prev-page, #next-page, #last-page').prop('disabled', true);
             }
 
-            // Initialize search functionality
+            // Initialize search functionality - Tabulator handles search in initTabulatorTable(), this function kept for compatibility
             function initSearch() {
-                $('#search-input').on('keyup', function() {
-                    const searchTerm = $(this).val().toLowerCase();
-
-                    if (searchTerm) {
-                        filteredData = tableData.filter(item => {
-                            return Object.values(item).some(val => {
-                                if (typeof val === 'boolean' || val === null) return false;
-                                return val.toString().toLowerCase().includes(searchTerm);
-                            });
-                        });
-                    } else {
-                        filteredData = [...tableData];
-                    }
-
-                    currentPage = 1;
-                    renderTable();
-                    calculateTotals();
-                });
+                // Search is handled in initTabulatorTable() via $('#search-input').on('keyup')
+                // No additional code needed here
             }
 
-            // Initialize column toggle functionality
+            // Initialize column toggle functionality for Tabulator
             function initColumnToggle() {
-                const $table = $('#amazonLowVisibility-table');
-                const $headers = $table.find('th[data-field]');
+                if (!table) return;
+
                 const $menu = $('#columnToggleMenu');
                 const $dropdownBtn = $('#hideColumnsBtn');
 
@@ -3887,11 +3971,15 @@
 
                 $menu.empty();
 
-                $headers.each(function() {
-                    const $th = $(this);
-                    const field = $th.data('field');
-                    const title = $th.text().trim().replace(' ↓', '');
+                // Get columns from Tabulator
+                const columns = table.getColumns();
+                columns.forEach(function(column) {
+                    const field = column.getField();
+                    const title = column.getDefinition().title || field;
                     const isChecked = amazonZeroViewVisibility.hasOwnProperty(field) ? amazonZeroViewVisibility[field] : true;
+
+                    // Set initial visibility
+                    column.hide(!isChecked);
 
                     const $item = $(`
                         <div class="column-toggle-item">
@@ -3902,12 +3990,6 @@
                     `);
 
                     $menu.append($item);
-
-                    // Apply saved visibility on load
-                    const colIndex = $headers.filter(`[data-field="${field}"]`).index();
-                    $table.find('tr').each(function() {
-                        $(this).find('td, th').eq(colIndex).toggle(isChecked);
-                    });
                 });
 
                 $dropdownBtn.on('click', function(e) {
@@ -3929,10 +4011,15 @@
                     amazonZeroViewVisibility[field] = isVisible;
                     localStorage.setItem('amazonZeroViewVisibility', JSON.stringify(amazonZeroViewVisibility));
 
-                    const colIndex = $headers.filter(`[data-field="${field}"]`).index();
-                    $table.find('tr').each(function() {
-                        $(this).find('td, th').eq(colIndex).toggle(isVisible);
-                    });
+                    // Toggle column visibility in Tabulator
+                    const column = table.getColumn(field);
+                    if (column) {
+                        if (isVisible) {
+                            column.show();
+                        } else {
+                            column.hide();
+                        }
+                    }
                 });
 
                 $('#showAllColumns').on('click', function() {
@@ -3940,8 +4027,8 @@
                     $menu.removeClass('show');
 
                     // Reset all to visible in localStorage
-                    $headers.each(function() {
-                        const field = $(this).data('field');
+                    columns.forEach(function(column) {
+                        const field = column.getField();
                         amazonZeroViewVisibility[field] = true;
                     });
                     localStorage.setItem('amazonZeroViewVisibility', JSON.stringify(amazonZeroViewVisibility));
@@ -3987,46 +4074,48 @@
 
 
             function applyColumnFilters() {
-                // Default: show all rows
-                filteredData = [...tableData];
+                if (!table) return;
 
-                // Apply row type filter first
+                const filters = [];
+
+                // Apply row type filter
                 const rowTypeFilter = $('#row-data-type').val();
                 if (rowTypeFilter === 'parent') {
-                    filteredData = filteredData.filter(item => item.is_parent);
+                    filters.push({field: "is_parent", type: "=", value: true});
                 } else if (rowTypeFilter === 'sku') {
-                    filteredData = filteredData.filter(item => !item.is_parent);
+                    filters.push({field: "is_parent", type: "=", value: false});
                 }
 
                 // Apply INV filter
                 const invFilter = $('#inv-filter').val();
                 if (invFilter && invFilter !== 'all') {
-                    filteredData = filteredData.filter(item => {
-                        const inv = Number(item.INV) || 0;
-                        if (invFilter === '0') return inv === 0;
-                        if (invFilter === '1-100+') return inv >= 1;
-                        return true;
-                    });
+                    if (invFilter === '0') {
+                        filters.push({field: "INV", type: "=", value: 0});
+                    } else if (invFilter === '1-100+') {
+                        filters.push({field: "INV", type: ">", value: 0});
+                    }
                 }
 
-                // Apply other filters
+                // Apply color-based filters
                 Object.entries(state.filters).forEach(([column, filterValue]) => {
                     if (filterValue === 'all') return;
 
-                    filteredData = filteredData.filter(item => {
-                        if (column === 'entryType') {
-                            if (filterValue === 'parent') return item.is_parent;
-                            if (filterValue === 'child') return !item.is_parent;
-                            return true;
-                        }
-
-                        const color = getColorForColumn(column, item);
-                        return color === filterValue;
-                    });
+                    if (column === 'ov_dil' || column === 'A Dil%') {
+                        // Custom filter function for color-based filtering
+                        table.setFilter(function(data) {
+                            const color = getColorForColumn(column, data);
+                            return color === filterValue;
+                        });
+                    }
                 });
 
-                currentPage = 1;
-                renderTable();
+                // Apply all filters
+                if (filters.length > 0) {
+                    table.setFilter(filters);
+                } else {
+                    table.clearFilter();
+                }
+
                 calculateTotals();
             }
 
@@ -4094,7 +4183,15 @@
             // Calculate and display totals
             function calculateTotals() {
                 try {
-                    if (isLoading || filteredData.length === 0) {
+                    if (!table) {
+                        resetMetricsToZero();
+                        return;
+                    }
+
+                    // Get filtered data from Tabulator
+                    const activeData = table.getData("active");
+                    
+                    if (isLoading || activeData.length === 0) {
                         resetMetricsToZero();
                         return;
                     }
@@ -4116,7 +4213,7 @@
                         totalCogsSum: 0
                     };
 
-                    filteredData.forEach(item => {
+                    activeData.forEach(item => {
                         metrics.invTotal += parseFloat(item.INV) || 0;
                         metrics.ovL30Total += parseFloat(item.L30) || 0;
                         metrics.el30Total += parseFloat(item['A L30']) || 0;
@@ -4258,18 +4355,18 @@
                     $results.show();
                 }
 
-                // Function to filter the table by column value
+                // Function to filter the table by column value using Tabulator
                 function filterByColumn(column, value) {
+                    if (!table) return;
+                    
                     if (value === '') {
-                        filteredData = [...tableData];
+                        table.clearFilter();
                     } else {
-                        filteredData = tableData.filter(item =>
-                            String(item[column] || '').toLowerCase() === value.toLowerCase()
-                        );
+                        // Use exact match filter
+                        table.setFilter(function(data) {
+                            return String(data[column] || '').toLowerCase() === value.toLowerCase();
+                        });
                     }
-
-                    currentPage = 1;
-                    renderTable();
                     calculateTotals();
                 }
 
@@ -4477,9 +4574,16 @@
                 }
                 // else 'all' - no filtering needed
 
-                // Reset to first page and render
-                currentPage = 1;
-                renderTable();
+                // Apply filter using Tabulator
+                if (table) {
+                    if (filterType === 'parent') {
+                        table.setFilter([{field: "is_parent", type: "=", value: true}]);
+                    } else if (filterType === 'sku') {
+                        table.setFilter([{field: "is_parent", type: "=", value: false}]);
+                    } else {
+                        table.clearFilter();
+                    }
+                }
                 calculateTotals();
             }
 
@@ -4633,7 +4737,7 @@
                         },
                         success: function(response) {
                             showNotification('success', 'Reason/Action updated successfully!');
-                            renderTable();
+                            if (table) table.redraw();
                             $('#reasonActionModal').modal('hide');
                         },
                         error: function(xhr) {
@@ -4641,7 +4745,7 @@
                         }
                     });
                 } else {
-                    renderTable();
+                    if (table) table.redraw();
                     $('#reasonActionModal').modal('hide');
                 }
             });

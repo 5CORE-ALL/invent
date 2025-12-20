@@ -98,7 +98,10 @@ class AmazonLowVisibilityController extends Controller
             $row['A_Z_Reason'] = $value['A_Z_Reason'] ?? '';
             $row['A_Z_ActionRequired'] = $value['A_Z_ActionRequired'] ?? '';
             $row['A_Z_ActionTaken'] = $value['A_Z_ActionTaken'] ?? '';
-            $row['NRL'] = $value['NR'] ?? '';
+            // Read from NRL field (synced with listingAmazon)
+            $nrlValue = $value['NRL'] ?? '';
+            // Map for display: 'NRL' -> 'NR', 'REQ' -> 'REQ', others -> ''
+            $row['NRL'] = ($nrlValue === 'NRL') ? 'NR' : (($nrlValue === 'REQ') ? 'REQ' : '');
             $row['FBA'] = $value['FBA'] ?? '';
 
             // Add AmazonDatasheet fields if available
@@ -274,7 +277,10 @@ class AmazonLowVisibilityController extends Controller
             $row['A_Z_Reason'] = $value['A_Z_Reason'] ?? '';
             $row['A_Z_ActionRequired'] = $value['A_Z_ActionRequired'] ?? '';
             $row['A_Z_ActionTaken'] = $value['A_Z_ActionTaken'] ?? '';
-            $row['NRL'] = $value['NR'] ?? '';
+            // Read from NRL field (synced with listingAmazon)
+            $nrlValue = $value['NRL'] ?? '';
+            // Map for display: 'NRL' -> 'NR', 'REQ' -> 'REQ', others -> ''
+            $row['NRL'] = ($nrlValue === 'NRL') ? 'NR' : (($nrlValue === 'REQ') ? 'REQ' : '');
 
             // Merge AmazonDatasheet data if exists
             if ($amazonSheet) {
@@ -537,7 +543,10 @@ class AmazonLowVisibilityController extends Controller
             $row['A_Z_Reason'] = $value['A_Z_Reason'] ?? '';
             $row['A_Z_ActionRequired'] = $value['A_Z_ActionRequired'] ?? '';
             $row['A_Z_ActionTaken'] = $value['A_Z_ActionTaken'] ?? '';
-            $row['NRL'] = $value['NR'] ?? '';
+            // Read from NRL field (synced with listingAmazon)
+            $nrlValue = $value['NRL'] ?? '';
+            // Map for display: 'NRL' -> 'NR', 'REQ' -> 'REQ', others -> ''
+            $row['NRL'] = ($nrlValue === 'NRL') ? 'NR' : (($nrlValue === 'REQ') ? 'REQ' : '');
 
             if ($amazonSheet) {
                 $row['A_L30'] = $row['A_L30'] ?? $amazonSheet->units_ordered_l30;

@@ -1888,13 +1888,26 @@ class OverallAmazonController extends Controller
             ? $amazonDataView->value
             : (json_decode($amazonDataView->value ?? '{}', true));
 
-        // Handle NR - only NRL or REQ values allowed
+        // Handle NR - accept NRL, REQ, or JSON format with NR/REQ (for backward compatibility)
         if ($nr !== null) {
-            // Only accept 'NRL' or 'REQ' values
-            if ($nr === 'NRL' || $nr === 'REQ') {
-                $existing['NRL'] = $nr;
+            $nrValue = $nr;
+            
+            // Handle JSON format from frontend: {"NR":"NR"} or {"NR":"REQ"}
+            if (is_string($nr) && (strpos($nr, '{') === 0 || strpos($nr, '[') === 0)) {
+                $decoded = json_decode($nr, true);
+                if (is_array($decoded) && isset($decoded['NR'])) {
+                    $nrValue = $decoded['NR']; // Extract 'NR' or 'REQ' from JSON
+                }
+            }
+            
+            // Map values: 'NR' -> 'NRL', 'REQ' -> 'REQ', 'NRL' -> 'NRL'
+            if ($nrValue === 'NR' || $nrValue === 'NRL') {
+                $existing['NRL'] = 'NRL';
                 $existing['NRA'] = ''; // Clear NRA
-            } elseif ($nr === '') {
+            } elseif ($nrValue === 'REQ') {
+                $existing['NRL'] = 'REQ';
+                $existing['NRA'] = ''; // Clear NRA
+            } elseif ($nrValue === '') {
                 // Clear both when empty
                 $existing['NRL'] = '';
                 $existing['NRA'] = '';
