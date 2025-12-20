@@ -43,6 +43,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Models\AliExpressSheetData;
+use App\Models\AliexpressListingStatus;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\AmazonOrder;
@@ -53,38 +54,61 @@ use App\Models\ApiCentralWalmartMetric;
 use App\Models\BestbuyUsaProduct;
 use App\Models\BusinessFiveCoreSheetdata;
 use App\Models\ChannelMaster;
+use App\Models\DobaListingStatus;
 use App\Models\DobaMetric;
 use App\Models\DobaSheetdata;
 use App\Models\Ebay2Metric;
+use App\Models\EbayTwoListingStatus;
 use App\Models\Ebay3Metric;
+use App\Models\EbayThreeListingStatus;
 use App\Models\EbayGeneralReport;
 use App\Models\EbayMetric;
 use App\Models\EbayOrder;
 use App\Models\EbayOrderItem;
 use App\Models\EbayPriorityReport;
 use App\Models\FaireProductSheet;
+use App\Models\FaireListingStatus;
 use App\Models\FbMarketplaceSheetdata;
+use App\Models\FBMarketplaceListingStatus;
 use App\Models\FbShopSheetdata;
+use App\Models\FBShopListingStatus;
+use App\Models\Business5CoreListingStatus;
 use App\Models\InstagramShopSheetdata;
+use App\Models\InstagramShopListingStatus;
 use App\Models\MacyProduct;
+use App\Models\MacysListingStatus;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\MarketplacePercentage;
 use App\Models\MercariWoShipSheetdata;
 use App\Models\MercariWShipSheetdata;
+use App\Models\MercariWShipListingStatus;
+use App\Models\MercariWoShipListingStatus;
 use App\Models\PLSProduct;
+use App\Models\PlsListingStatus;
 use App\Models\ProductMaster;
+use App\Models\ProductStockMapping;
 use App\Models\ReverbProduct;
+use App\Models\ReverbListingStatus;
 use App\Models\SheinSheetData;
 use App\Models\SheinDailyData;
+use App\Models\SheinListingStatus;
 use App\Models\ShopifySku;
 use App\Models\TemuDailyData;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
+use App\Models\TiendamiaListingStatus;
 use App\Models\TiktokSheet;
+use App\Models\TiktokShopListingStatus;
 use App\Models\TopDawgSheetdata;
 use App\Models\WaifairProductSheet;
+use App\Models\WayfairListingStatus;
+use App\Models\WalmartListingStatus;
 use App\Models\WalmartMetrics;
+use App\Models\AmazonListingStatus;
+use App\Models\EbayListingStatus;
+use App\Models\TemuListingStatus;
+use App\Models\BestbuyUSAListingStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
@@ -92,6 +116,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Spatie\FlareClient\Api;
 
 class ChannelMasterController extends Controller
@@ -126,9 +151,19 @@ class ChannelMasterController extends Controller
     public function getViewChannelData(Request $request)
     {
         // Fetch both channel and sheet_link from ChannelMaster
+        $columns = ['channel', 'sheet_link', 'channel_percentage'];
+        
+        // Check if 'base' and 'target' columns exist before adding them
+        if (Schema::hasColumn('channel_master', 'base')) {
+            $columns[] = 'base';
+        }
+        if (Schema::hasColumn('channel_master', 'target')) {
+            $columns[] = 'target';
+        }
+        
         $channels = ChannelMaster::where('status', 'Active')
             ->orderBy('id', 'asc')
-            ->get(['channel', 'sheet_link', 'channel_percentage', 'base', 'target']);
+            ->get($columns);
 
         if ($channels->isEmpty()) {
             return response()->json(['status' => 404, 'message' => 'No active channel found']);
@@ -371,6 +406,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Amazon')->first();
 
+        // Calculate Missing Listing count (SKUs with INV > 0 that are not listed on Amazon, excluding NRL)
+        $missingListingCount = $this->getAmazonMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['amazon'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Amazon',
             'L-60 Sales' => intval($l60Sales),
@@ -391,6 +433,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -398,6 +442,111 @@ class ChannelMasterController extends Controller
             'message' => 'Amazon channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Calculate Missing Listing count for Amazon
+     * This counts SKUs with INV > 0 that are not listed on Amazon and are not marked as NRL
+     */
+    private function getAmazonMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+        $amazonListed = \App\Models\ProductStockMapping::pluck('inventory_amazon_product', 'sku');
+
+        $pendingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $inv = $shopifyData[$sku]->inv ?? 0;
+            $isParent = stripos($sku, 'PARENT') !== false;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $mappingValue = $amazonListed[$sku] ?? null;
+            $listed = null;
+            if ($mappingValue !== null) {
+                $normalized = strtolower(trim($mappingValue));
+                $listed = $normalized !== '' && $normalized !== 'not listed' ? 'Listed' : 'Not Listed';
+            } else {
+                $listedValue = $status['Listed'] ?? $status['listed'] ?? null;
+                if (is_bool($listedValue)) {
+                    $listed = $listedValue ? 'Listed' : 'Not Listed';
+                } else {
+                    $listed = $listedValue;
+                }
+            }
+
+            // Read NRL field from amazon_data_view - "REQ" means RL, "NRL" means NRL
+            $nrlValue = $status['NRL'] ?? 'REQ';
+            $nrReq = ($nrlValue === 'NRL') ? 'NR' : 'REQ';
+
+            // Count as pending (missing) if nr_req is not NR AND listed is not Listed
+            if ($nrReq !== 'NR' && $listed !== 'Listed') {
+                $pendingCount++;
+            }
+        }
+
+        return $pendingCount;
+    }
+
+    /**
+     * Calculate Missing Listing count for eBay
+     * This counts SKUs with INV > 0 that are not listed on eBay and are not marked as NRL
+     */
+    private function getEbayMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = \App\Models\EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $pendingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $inv = $shopifyData[$sku]->inv ?? 0;
+            $isParent = stripos($sku, 'PARENT') !== false;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            // NR/REQ logic - read from NRL field
+            $nrlValue = $status['NRL'] ?? null;
+            $nrReq = 'REQ'; // Default
+            if ($nrlValue === 'NRL') {
+                $nrReq = 'NRL';
+            }
+
+            // Read listed field
+            $listedValue = $status['Listed'] ?? $status['listed'] ?? null;
+            $listed = null;
+            if (is_bool($listedValue)) {
+                $listed = $listedValue ? 'Listed' : 'Pending';
+            } else if (is_string($listedValue)) {
+                $listed = $listedValue;
+            }
+
+            // Count as pending (missing) if nr_req is not NRL AND listed is not Listed
+            if ($nrReq !== 'NRL' && $listed !== 'Listed') {
+                $pendingCount++;
+            }
+        }
+
+        return $pendingCount;
     }
 
 
@@ -454,6 +603,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'eBay')->first();
 
+        // Calculate Missing Listing count for eBay
+        $missingListingCount = $this->getEbayMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['ebay1'] ?? 0;
+
         $result[] = [
             'Channel '   => 'eBay',
             'L-60 Sales' => intval($l60Sales),
@@ -474,6 +630,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -580,6 +738,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'EbayTwo')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getEbayTwoMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['ebay2'] ?? 0;
+
         $result[] = [
             'Channel '   => 'EbayTwo',
             'L-60 Sales' => intval($l60Sales),
@@ -596,6 +761,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -603,6 +770,48 @@ class ChannelMasterController extends Controller
             'message' => 'eBay2 channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get eBay Two Missing Listing count
+     * Missing Listing = SKUs with INV > 0, not PARENT, not Listed, and not NR
+     */
+    private function getEbayTwoMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = EbayTwoListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            // eBay Two uses nr_req (REQ/NR)
+            $nrReq = isset($status['nr_req']) ? $status['nr_req'] : 'REQ';
+            $listed = isset($status['listed']) ? $status['listed'] : null;
+
+            // Missing Listing: Not Listed AND not marked as NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
 
@@ -698,6 +907,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'EbayThree')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getEbayThreeMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['ebay3'] ?? 0;
+
         $result[] = [
             'Channel '   => 'EbayThree',
             'L-60 Sales' => intval($l60Sales),
@@ -714,6 +930,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -721,6 +939,48 @@ class ChannelMasterController extends Controller
             'message' => 'eBay three channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get eBay Three Missing Listing count
+     * Missing Listing = SKUs with INV > 0, not PARENT, not Listed, and not NR
+     */
+    private function getEbayThreeMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = EbayThreeListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            // eBay Three uses nr_req (REQ/NR)
+            $nrReq = isset($status['nr_req']) ? $status['nr_req'] : 'REQ';
+            $listed = isset($status['listed']) ? $status['listed'] : null;
+
+            // Missing Listing: Not Listed AND not marked as NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getMacysChannelData(Request $request)
@@ -818,6 +1078,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Macys')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getMacysMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['macy'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Macys',
             'L-60 Sales' => intval($l60Sales),
@@ -835,6 +1102,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -842,6 +1111,39 @@ class ChannelMasterController extends Controller
             'message' => 'Macys channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    private function getMacysMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = MacysListingStatus::whereIn('sku', $skus)->orderBy('updated_at', 'desc')->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
+            if (is_string($status)) $status = json_decode($status, true);
+
+            // Macy's uses rl_nrl instead of nr_req
+            $rlNrl = isset($status['rl_nrl']) ? $status['rl_nrl'] : 'RL';
+            $listed = isset($status['listed']) ? $status['listed'] : null;
+
+            // Count as missing listing if not Listed and not NRL
+            if ($listed !== 'Listed' && $rlNrl !== 'NRL') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
 
@@ -940,6 +1242,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Reverb')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getReverbMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['reverb'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Reverb',
             'L-60 Sales' => intval($l60Sales),
@@ -957,6 +1266,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -964,6 +1275,48 @@ class ChannelMasterController extends Controller
             'message' => 'Reverb channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get Reverb Missing Listing count
+     * Missing Listing = SKUs with INV > 0, not PARENT, not Listed, and not NRL
+     */
+    private function getReverbMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = ReverbListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            // Reverb uses rl_nrl (RL/NRL)
+            $rlNrl = isset($status['rl_nrl']) ? $status['rl_nrl'] : 'RL';
+            $listed = isset($status['listed']) ? $status['listed'] : null;
+
+            // Missing Listing: Not Listed AND not marked as NRL
+            if ($listed !== 'Listed' && $rlNrl !== 'NRL') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getDobaChannelData(Request $request)
@@ -1061,6 +1414,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Doba')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getDobaMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['doba'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Doba',
             'L-60 Sales' => intval($l60Sales),
@@ -1078,6 +1438,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1087,6 +1449,37 @@ class ChannelMasterController extends Controller
         ]);
     }
 
+    private function getDobaMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = DobaListingStatus::whereIn('sku', $skus)->orderBy('updated_at', 'desc')->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
+            if (is_string($status)) $status = json_decode($status, true);
+
+            $nrReq = isset($status['nr_req']) ? $status['nr_req'] : 'REQ';
+            $listed = isset($status['listed']) ? $status['listed'] : null;
+
+            // Count as missing listing if not Listed and not NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
+    }
 
     public function getTemuChannelData(Request $request)
     {
@@ -1116,6 +1509,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Temu')->first();
 
+        // Calculate Missing Listing count for Temu
+        $missingListingCount = $this->getTemuMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['temu'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Temu',
             'L-60 Sales' => intval($l60Sales),
@@ -1132,6 +1532,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1139,6 +1541,44 @@ class ChannelMasterController extends Controller
             'message' => 'Temu channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Calculate Missing Listing count for Temu
+     * This counts SKUs with INV > 0 that are not listed and are not marked as NR
+     */
+    private function getTemuMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = \App\Models\TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $pendingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $inv = $shopifyData[$sku]->inv ?? 0;
+            $isParent = stripos($sku, 'PARENT') !== false;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            // Count as pending (missing) if nr_req is not NR AND listed is not Listed
+            if ($nrReq !== 'NR' && $listed !== 'Listed') {
+                $pendingCount++;
+            }
+        }
+
+        return $pendingCount;
     }
 
 
@@ -1237,6 +1677,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Walmart')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getWalmartMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['walmart'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Walmart',
             'L-60 Sales' => intval($l60Sales),
@@ -1254,6 +1701,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
         
         return response()->json([
@@ -1261,6 +1710,39 @@ class ChannelMasterController extends Controller
             'message' => 'Walmart channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    private function getWalmartMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = WalmartListingStatus::whereIn('sku', $skus)->orderBy('updated_at', 'desc')->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
+            if (is_string($status)) $status = json_decode($status, true);
+
+            // Walmart uses rl_nrl instead of nr_req
+            $rlNrl = isset($status['rl_nrl']) ? $status['rl_nrl'] : 'RL';
+            $listed = isset($status['listed']) ? $status['listed'] : null;
+
+            // Count as missing listing if not Listed and not NRL
+            if ($listed !== 'Listed' && $rlNrl !== 'NRL') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getTiendamiaChannelData(Request $request)
@@ -1359,6 +1841,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Tiendamia')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getTiendamiaMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['tiendamia'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Tiendamia',
             'L-60 Sales' => intval($l60Sales),
@@ -1376,6 +1865,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1383,6 +1874,44 @@ class ChannelMasterController extends Controller
             'message' => 'Tiendamia channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get Missing Listing count for Tiendamia
+     * Missing Listing = SKUs where INV > 0, not PARENT, not Listed, and not NR
+     */
+    private function getTiendamiaMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = TiendamiaListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = $shopifyData[$sku]->inv ?? 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            // Count as missing if not Listed and not NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
 
@@ -1482,6 +2011,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'BestBuy USA')->first();
 
+        // Calculate Missing Listing count for BestBuy USA
+        $missingListingCount = $this->getBestbuyUsaMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['bestbuy'] ?? 0;
+
         $result[] = [
             'Channel '   => 'BestBuy USA',
             'L-60 Sales' => intval($l60Sales),
@@ -1499,6 +2035,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1506,6 +2044,47 @@ class ChannelMasterController extends Controller
             'message' => 'Bestbuy USA channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Calculate Missing Listing count for BestBuy USA
+     * This counts SKUs with INV > 0 that are not listed and are not marked as NR
+     */
+    private function getBestbuyUsaMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = \App\Models\BestbuyUSAListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->keyBy('sku');
+
+        $pendingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $inv = $shopifyData[$sku]->inv ?? 0;
+            $isParent = stripos($sku, 'PARENT') !== false;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            // Count as pending (missing) if nr_req is not NR AND listed is not Listed
+            if ($nrReq !== 'NR' && $listed !== 'Listed') {
+                $pendingCount++;
+            }
+        }
+
+        return $pendingCount;
     }
 
     public function getPlsChannelData(Request $request)
@@ -1604,6 +2183,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'PLS')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getPlsMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['pls'] ?? 0;
+
         $result[] = [
             'Channel '   => 'PLS',
             'L-60 Sales' => intval($l60Sales),
@@ -1621,6 +2207,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1628,6 +2216,44 @@ class ChannelMasterController extends Controller
             'message' => 'PLS channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get Missing Listing count for PLS
+     * Missing Listing = SKUs where INV > 0, not PARENT, not Listed, and not NR
+     */
+    private function getPlsMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = PlsListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = $shopifyData[$sku]->inv ?? 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            // Count as missing if not Listed and not NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
 
@@ -1727,6 +2353,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Wayfair')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getWayfairMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['wayfair'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Wayfair',
             'L-60 Sales' => intval($l60Sales),
@@ -1744,6 +2377,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1751,6 +2386,39 @@ class ChannelMasterController extends Controller
             'message' => 'wayfair channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    private function getWayfairMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = WayfairListingStatus::whereIn('sku', $skus)->orderBy('updated_at', 'desc')->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
+            if (is_string($status)) $status = json_decode($status, true);
+
+            // Wayfair uses rl_nrl instead of nr_req
+            $rlNrl = isset($status['rl_nrl']) ? $status['rl_nrl'] : 'RL';
+            $listed = isset($status['listed']) ? $status['listed'] : null;
+
+            // Count as missing listing if not Listed and not NRL
+            if ($listed !== 'Listed' && $rlNrl !== 'NRL') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getFaireChannelData(Request $request)
@@ -1849,6 +2517,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Faire')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getFaireMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['faire'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Faire',
             'L-60 Sales' => intval($l60Sales),
@@ -1866,6 +2541,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1906,6 +2583,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shein')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getSheinMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['shein'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Shein',
             'L-60 Sales' => intval($l60Sales),
@@ -1923,6 +2607,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1930,6 +2616,48 @@ class ChannelMasterController extends Controller
             'message' => 'Shein channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get Shein Missing Listing count
+     * Missing Listing = SKUs with INV > 0, not PARENT, not Listed, and not NR
+     */
+    private function getSheinMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = SheinListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            // Shein uses nr_req (REQ/NR)
+            $nrReq = isset($status['nr_req']) ? $status['nr_req'] : 'REQ';
+            $listed = isset($status['listed']) ? $status['listed'] : null;
+
+            // Missing Listing: Not Listed AND not marked as NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getTiktokChannelData(Request $request)
@@ -2028,6 +2756,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Tiktok Shop')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getTiktokShopMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['tiktok'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Tiktok Shop',
             'L-60 Sales' => intval($l60Sales),
@@ -2045,6 +2780,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2052,6 +2789,38 @@ class ChannelMasterController extends Controller
             'message' => 'Tiktok channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    private function getTiktokShopMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = TiktokShopListingStatus::whereIn('sku', $skus)->orderBy('updated_at', 'desc')->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
+            if (is_string($status)) $status = json_decode($status, true);
+
+            $nrReq = isset($status['nr_req']) ? $status['nr_req'] : 'REQ';
+            $listed = isset($status['listed']) ? $status['listed'] : null;
+
+            // Count as missing listing if not Listed and not NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getInstagramChannelData(Request $request)
@@ -2150,6 +2919,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Instagram Shop')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getInstagramShopMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['instagram'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Instagram Shop',
             'L-60 Sales' => intval($l60Sales),
@@ -2167,6 +2943,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2174,6 +2952,44 @@ class ChannelMasterController extends Controller
             'message' => 'wayfair channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get Missing Listing count for Instagram Shop
+     * Missing Listing = SKUs where INV > 0, not PARENT, not Listed, and not NR
+     */
+    private function getInstagramShopMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = InstagramShopListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = $shopifyData[$sku]->inv ?? 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            // Count as missing if not Listed and not NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getAliexpressChannelData(Request $request)
@@ -2208,6 +3024,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Aliexpress')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getAliexpressMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['aliexpress'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Aliexpress',
             'L-60 Sales' => intval($l60Sales),
@@ -2225,6 +3048,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2232,6 +3057,48 @@ class ChannelMasterController extends Controller
             'message' => 'Aliexpress channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get AliExpress Missing Listing count
+     * Missing Listing = SKUs with INV > 0, not PARENT, not Listed, and not NRL
+     */
+    private function getAliexpressMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = AliexpressListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            // AliExpress uses rl_nrl (RL/NRL)
+            $rlNrl = isset($status['rl_nrl']) ? $status['rl_nrl'] : 'RL';
+            $listed = isset($status['listed']) ? $status['listed'] : null;
+
+            // Missing Listing: Not Listed AND not marked as NRL
+            if ($listed !== 'Listed' && $rlNrl !== 'NRL') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getMercariWShipChannelData(Request $request)
@@ -2266,6 +3133,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Mercari w ship')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getMercariWShipMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['mercari_w_ship'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Mercari w ship',
             'L-60 Sales' => intval($l60Sales),
@@ -2283,6 +3157,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2290,6 +3166,44 @@ class ChannelMasterController extends Controller
             'message' => 'Mercari w ship channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get Missing Listing count for Mercari w Ship
+     * Missing Listing = SKUs where INV > 0, not PARENT, not Listed, and not NR
+     */
+    private function getMercariWShipMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = MercariWShipListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = $shopifyData[$sku]->inv ?? 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            // Count as missing if not Listed and not NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getMercariWoShipChannelData(Request $request)
@@ -2324,6 +3238,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Mercari wo ship')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getMercariWoShipMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['mercari_wo_ship'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Mercari wo ship',
             'L-60 Sales' => intval($l60Sales),
@@ -2341,6 +3262,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2348,6 +3271,44 @@ class ChannelMasterController extends Controller
             'message' => 'Mercari wo ship channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get Missing Listing count for Mercari w/o Ship
+     * Missing Listing = SKUs where INV > 0, not PARENT, not Listed, and not NR
+     */
+    private function getMercariWoShipMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = MercariWoShipListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = $shopifyData[$sku]->inv ?? 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            // Count as missing if not Listed and not NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getFbMarketplaceChannelData(Request $request)
@@ -2446,6 +3407,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'FB Marketplace')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getFBMarketplaceMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['fb_marketplace'] ?? 0;
+
         $result[] = [
             'Channel '   => 'FB Marketplace',
             'L-60 Sales' => intval($l60Sales),
@@ -2463,6 +3431,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2470,6 +3440,44 @@ class ChannelMasterController extends Controller
             'message' => 'wayfair channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Get Missing Listing count for FB Marketplace
+     * Missing Listing = SKUs where INV > 0, not PARENT, not Listed, and not NR
+     */
+    private function getFBMarketplaceMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = FBMarketplaceListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $missingListingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = $shopifyData[$sku]->inv ?? 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            // Count as missing if not Listed and not NR
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingListingCount++;
+            }
+        }
+
+        return $missingListingCount;
     }
 
     public function getFbShopChannelData(Request $request)
@@ -2568,6 +3576,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'FB Shop')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getFBShopMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['fb_shop'] ?? 0;
+
         $result[] = [
             'Channel '   => 'FB Shop',
             'L-60 Sales' => intval($l60Sales),
@@ -2585,6 +3600,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2690,6 +3707,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Business 5Core')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = $this->getBusiness5CoreMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['business5core'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Business 5Core',
             'L-60 Sales' => intval($l60Sales),
@@ -2707,6 +3731,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2812,6 +3838,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'TopDawg')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = 0; // TopDawg doesn't have listing status tracking
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['topdawg'] ?? 0;
+
         $result[] = [
             'Channel '   => 'TopDawg',
             'L-60 Sales' => intval($l60Sales),
@@ -2829,6 +3862,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2869,6 +3904,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shopify B2C')->first();
 
+        // Calculate Missing Listing count for Shopify B2C
+        $missingListingCount = $this->getShopifyB2CMissingListingCount();
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['shopify_b2c'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Shopify B2C',
             'L-60 Sales' => intval($l60Sales),
@@ -2886,6 +3928,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2893,6 +3937,50 @@ class ChannelMasterController extends Controller
             'message' => 'Shopify B2C channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Calculate Missing Listing count for Shopify B2C
+     * This counts SKUs with INV > 0 that are not listed and are not marked as NRL
+     */
+    private function getShopifyB2CMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = \App\Models\ShopifyB2CListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $pendingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $inv = $shopifyData[$sku]->inv ?? 0;
+            $isParent = stripos($sku, 'PARENT') !== false;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            // RL/NRL logic - support both new 'rl_nrl' and old 'nr_req'
+            $rlNrl = $status['rl_nrl'] ?? null;
+            if (empty($rlNrl) && isset($status['nr_req'])) {
+                $rlNrl = ($status['nr_req'] === 'REQ') ? 'RL' : 'NRL';
+            }
+            if (empty($rlNrl)) $rlNrl = 'RL'; // default
+
+            $listed = $status['listed'] ?? null;
+
+            // Count as pending (missing) if rl_nrl is not NRL AND listed is not Listed
+            if ($rlNrl !== 'NRL' && $listed !== 'Listed') {
+                $pendingCount++;
+            }
+        }
+
+        return $pendingCount;
     }
 
     public function getShopifyB2BChannelData(Request $request)
@@ -2926,6 +4014,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shopify B2B')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = 0; // Shopify B2B doesn't have listing status tracking
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['shopify_b2b'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Shopify B2B',
             'L-60 Sales' => intval($l60Sales),
@@ -2943,6 +4038,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -3638,6 +4735,215 @@ class ChannelMasterController extends Controller
             Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->getFallbackMetrics();
         }
+    }
+
+    /**
+     * Get Faire Missing Listing count
+     */
+    private function getFaireMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = FaireListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $missingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = $shopifyData[$sku]->inv ?? 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingCount++;
+            }
+        }
+
+        return $missingCount;
+    }
+
+    /**
+     * Get FB Shop Missing Listing count
+     */
+    private function getFBShopMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = FBShopListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $missingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = $shopifyData[$sku]->inv ?? 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingCount++;
+            }
+        }
+
+        return $missingCount;
+    }
+
+    /**
+     * Get Business 5Core Missing Listing count
+     */
+    private function getBusiness5CoreMissingListingCount()
+    {
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->toArray();
+
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $statusData = Business5CoreListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        $missingCount = 0;
+
+        foreach ($productMasters as $item) {
+            $sku = trim($item->sku);
+            $isParent = stripos($sku, 'PARENT') !== false;
+            $inv = $shopifyData[$sku]->inv ?? 0;
+
+            if ($isParent || floatval($inv) <= 0) continue;
+
+            $status = $statusData[$sku]->value ?? null;
+            if (is_string($status)) {
+                $status = json_decode($status, true);
+            }
+
+            $nrReq = $status['nr_req'] ?? 'REQ';
+            $listed = $status['listed'] ?? null;
+
+            if ($listed !== 'Listed' && $nrReq !== 'NR') {
+                $missingCount++;
+            }
+        }
+
+        return $missingCount;
+    }
+
+    /**
+     * Get Stock Mapping not matching stats for all channels
+     * Returns array with channel key => not matching count
+     */
+    private function getStockMappingStats()
+    {
+        static $cachedStats = null;
+        
+        if ($cachedStats !== null) {
+            return $cachedStats;
+        }
+
+        $data = collect();
+        ProductStockMapping::chunk(500, function ($items) use (&$data) {
+            foreach ($items as $item) {
+                if (!$data->has($item->sku)) {
+                    $item->inventory_pls = null;
+                    $item->inventory_business5core = null;
+                    $data->put($item->sku, $item);
+                }
+            }
+        });
+
+        $skus = $data->pluck('sku')->filter()->unique()->toArray();
+
+        $marketplaceModels = [
+            'amazon' => AmazonListingStatus::class,
+            'walmart' => WalmartListingStatus::class,
+            'reverb' => ReverbListingStatus::class,
+            'shein' => SheinListingStatus::class,
+            'doba' => DobaListingStatus::class,
+            'temu' => TemuListingStatus::class,
+            'macy' => MacysListingStatus::class,
+            'ebay1' => EbayListingStatus::class,
+            'ebay2' => EbayTwoListingStatus::class,
+            'ebay3' => EbayThreeListingStatus::class,
+            'bestbuy' => BestbuyUSAListingStatus::class,
+            'tiendamia' => TiendamiaListingStatus::class,
+            'pls' => PlsListingStatus::class,
+            'business5core' => Business5CoreListingStatus::class,
+        ];
+
+        foreach ($marketplaceModels as $key => $model) {
+            $inventoryField = 'inventory_' . $key;
+            $model::whereIn('sku', $skus)->chunk(500, function ($allListings) use (&$data, $inventoryField) {
+                foreach ($allListings as $listing) {
+                    $sku = $listing->sku ?? '';
+                    $sku = str_replace("\u{00A0}", ' ', $sku);
+                    $sku = trim(preg_replace('/\s+/', ' ', $sku));
+                    if (isset($data[$sku])) {
+                        $inventory = \Illuminate\Support\Arr::get($listing->value ?? [], 'inventory', null);
+                        if ($inventory === 'Not Listed' || $inventory === 'NRL') {
+                            $data[$sku]->$inventoryField = $inventory;
+                        } elseif (is_numeric($inventory)) {
+                            $data[$sku]->$inventoryField = (int)$inventory;
+                        }
+                    }
+                }
+            });
+        }
+
+        foreach ($data as $item) {
+            if (!isset($item->inventory_pls) || $item->inventory_pls === null) {
+                $item->inventory_pls = $item->inventory_shopify ?? 0;
+            }
+            if (!isset($item->inventory_business5core) || $item->inventory_business5core === null) {
+                $item->inventory_business5core = $item->inventory_shopify ?? 0;
+            }
+        }
+
+        $platforms = ['amazon', 'walmart', 'reverb', 'shein', 'doba', 'temu', 'macy', 'ebay1', 'ebay2', 'ebay3', 'bestbuy', 'tiendamia', 'pls', 'business5core'];
+
+        $info = [];
+        foreach ($platforms as $platform) {
+            $info[$platform] = 0;
+        }
+
+        foreach ($data as $item) {
+            $shopifyInventoryRaw = $item->inventory_shopify ?? 0;
+            $shopifyInventory = is_numeric($shopifyInventoryRaw) ? (int)$shopifyInventoryRaw : 0;
+            if ($shopifyInventory < 0) $shopifyInventory = 0;
+
+            foreach ($platforms as $platform) {
+                $fieldName = 'inventory_' . $platform;
+                $platformInventoryRaw = $item->$fieldName ?? null;
+                $platformInventory = is_numeric($platformInventoryRaw) ? (int)$platformInventoryRaw : 0;
+
+                if (in_array($platformInventoryRaw, ['Not Listed', 'NRL'], true)) continue;
+                if ($platformInventory === 0 && $shopifyInventory === 0) continue;
+
+                $difference = abs($platformInventory - $shopifyInventory);
+                if ($difference > 3) {
+                    $info[$platform]++;
+                }
+            }
+        }
+
+        $cachedStats = $info;
+        return $cachedStats;
     }
 
     /**

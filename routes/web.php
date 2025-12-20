@@ -820,6 +820,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getColumnVisibility']);
     Route::post('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'saveColumnVisibility']);
     
+    // TikTok Shop Sales Routes
+    Route::get('/tiktok/daily-sales', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'index'])->name('tiktok.sales');
+    Route::get('/tiktok/daily-sales-data', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getData'])->name('tiktok.daily.sales.data');
+    Route::get('/tiktok/summary', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getSummary'])->name('tiktok.summary');
+    Route::get('/tiktok/status', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'status'])->name('tiktok.status');
+    Route::get('/tiktok/authorize', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'authorize'])->name('tiktok.authorize');
+    Route::get('/tiktok/callback', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'callback'])->name('tiktok.callback');
+    Route::post('/tiktok/sync', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'syncOrders'])->name('tiktok.sync');
+    
     Route::get('/amazonfba/view-data', [OverallAmazonFbaController::class, 'getViewAmazonFbaData'])->name('amazonfba.viewData');
     Route::get('/fbainv/view-data', [AmazonFbaInvController::class, 'getViewAmazonfbaInvData'])->name('fbainv.viewData');
     Route::get('/product-master-data', [ProductMasterController::class, 'product_master_data']);
@@ -1235,6 +1244,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/id-master-data-view', [CategoryController::class, 'getIdMasterData'])->name('id.master.data');
     Route::get('/dim-wt-master', [CategoryController::class, 'dimWtMaster'])->name('dim.wt.master');
     Route::get('/dim-wt-master-data-view', [CategoryController::class, 'getDimWtMasterData'])->name('dim.wt.master.data');
+    Route::get('/dim-wt-master/skus', [CategoryController::class, 'getSkusForDimWtDropdown'])->name('dim.wt.master.skus');
+    Route::post('/dim-wt-master/store', [CategoryController::class, 'storeDimWtMaster'])->name('dim.wt.master.store');
+    Route::post('/dim-wt-master/update', [CategoryController::class, 'updateDimWtMaster'])->name('dim.wt.master.update');
     Route::post('/dim-wt-master/import', [CategoryController::class, 'importDimWtMaster'])->name('dim.wt.master.import');
     Route::post('/dim-wt-master/push-data', [CategoryController::class, 'pushDimWtDataToPlatforms'])->name('dim.wt.master.push');
     Route::get('/shipping-master', [CategoryController::class, 'shippingMaster'])->name('shipping.master');
@@ -2579,6 +2591,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::controller(WalmartUtilisationController::class)->group(function () {
+        Route::get('/walmart/utilized/bgt', 'bgtUtilisedView')->name('walmart.utilized.bgt');
         Route::get('/walmart/utilized/kw', 'index')->name('walmart.utilized.kw');
         Route::get('/walmart/over/utilized', 'overUtilisedView')->name('walmart.over.utilized');
         Route::get('/walmart/under/utilized', 'underUtilisedView')->name('walmart.under.utilized');

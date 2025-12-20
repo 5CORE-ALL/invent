@@ -584,7 +584,12 @@
 
                             <div class="mb-3">
                                 <label for="type" class="form-label">Type</label>
-                                <input type="text" class="form-control" id="type">
+                                <select class="form-control" id="type">
+                                    <option value="">Select Type</option>
+                                    <option value="B2B">B2B</option>
+                                    <option value="B2C">B2C</option>
+                                    <option value="Dropship">Dropship</option>
+                                </select>
                             </div>
 
                             <!-- <hr> -->
@@ -662,12 +667,12 @@
 
                 <div class="mb-3">
                     <label for="editType" class="form-label">Type</label>
-                    <input type="text" class="form-control" id="editType" name="type" required>
-                </div>
-
-                <div class="mb-3">
-                    <label for="editpercentage" class="form-label">Channel Percentage</label>
-                    <input type="text" class="form-control" id="editpercentage" name="type" required>
+                    <select class="form-control" id="editType" name="type" required>
+                        <option value="">Select Type</option>
+                        <option value="B2B">B2B</option>
+                        <option value="B2C">B2C</option>
+                        <option value="Dropship">Dropship</option>
+                    </select>
                 </div>
 
                 <div class="mb-3">
@@ -822,12 +827,27 @@
                                 </small><br>
                                 Shortfall
                             </th>
-                            <th class="text-center align-middle">
+                            {{-- Growth column hidden --}}
+                            {{-- <th class="text-center align-middle">
                                 <small id="growthPercentageBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
                                     0%
                                 </small><br>
                                 Growth
+                            </th> --}}
+                            <th class="text-center align-middle">
+                                <small id="missingListingBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0
+                                </small><br>
+                                Missing Listing
+                            </th>
+                            <th class="text-center align-middle">
+                                <small id="stockMappingBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0
+                                </small><br>
+                                Stock Mapping
                             </th>
                             <th>Health Data</th>
                             {{-- <th>0 Sold SKU Count</th>
@@ -1200,9 +1220,9 @@
             if (baseTotalBadge) baseTotalBadge.textContent = Math.round(baseTotalSum).toLocaleString('en-US');
             if (targetTotalBadge) targetTotalBadge.textContent = Math.round(targetTotalSum).toLocaleString('en-US');
             
-            // Calculate and update shortfall badge
+            // Calculate and update shortfall badge (based on Base, not Target)
             const shortfallBadge = document.getElementById('shortfallBadge');
-            let overallShortfall = targetTotalSum !== 0 ? ((l30SalesTotal - targetTotalSum) / targetTotalSum) * 100 : 0;
+            let overallShortfall = baseTotalSum !== 0 ? ((l30SalesTotal - baseTotalSum) / baseTotalSum) * 100 : 0;
             if (shortfallBadge) shortfallBadge.textContent = Math.round(overallShortfall) + '%';
 
             // Calculate G profit and G roi using totalPft, totalL30Sales, totalCogs
@@ -1828,12 +1848,12 @@
                         data: null, 
                         render: function (v, type, row) {
                             const l30Sales = toNum(row['L30 Sales']);
-                            const target = toNum(row['Target']);
-                            if (target === 0) {
+                            const base = toNum(row['Base']);
+                            if (base === 0) {
                                 if (type === 'sort' || type === 'type') return 0;
                                 return '-';
                             }
-                            const shortfall = ((l30Sales - target) / target) * 100;
+                            const shortfall = ((l30Sales - base) / base) * 100;
                             if (type === 'sort' || type === 'type') return shortfall;
                             let bg = '', color = 'white';
                             if (shortfall < 0) { bg = '#ff0000'; } // Red: negative (below target)
@@ -1843,18 +1863,47 @@
                             return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(shortfall)}%</span>`;
                         }
                     },
+                    // Growth column hidden
+                    // {
+                    //     data: 'Growth',
+                    //     render: function (v) {
+                    //         const n = pctFix(v);
+                    //         if (!Number.isFinite(n)) return '-';
+                    //         let bg = '', color = 'black';
+                    //         if (n < 0)              { bg = '#ff0000'; color = 'white'; }
+                    //         else if (n < 10)        { bg = '#ffff00'; }
+                    //         else if (n < 20)        { bg = '#00ffff'; }
+                    //         else if (n < 50)        { bg = '#00ff00'; }
+                    //         else                    { bg = '#ff00ff'; color = 'white'; }
+                    //         return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
+                    //     }
+                    // },
+                    // Missing Listing column
                     {
-                        data: 'Growth',
-                        render: function (v) {
-                            const n = pctFix(v);
-                            if (!Number.isFinite(n)) return '-';
-                            let bg = '', color = 'black';
-                            if (n < 0)              { bg = '#ff0000'; color = 'white'; }
-                            else if (n < 10)        { bg = '#ffff00'; }
-                            else if (n < 20)        { bg = '#00ffff'; }
-                            else if (n < 50)        { bg = '#00ff00'; }
-                            else                    { bg = '#ff00ff'; color = 'white'; }
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
+                        data: 'Missing Listing',
+                        render: function (v, type) {
+                            const n = toNum(v);
+                            if (type === 'sort' || type === 'type') return n;
+                            let bg = '', color = 'white';
+                            if (n === 0) { bg = '#00ff00'; color = 'black'; } // Green: no missing
+                            else if (n <= 20) { bg = '#ffff00'; color = 'black'; } // Yellow: 1-20
+                            else if (n <= 50) { bg = '#ffa500'; } // Orange: 21-50
+                            else { bg = '#ff0000'; } // Red: above 50
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n}</span>`;
+                        }
+                    },
+                    // Stock Mapping column
+                    {
+                        data: 'Stock Mapping',
+                        render: function (v, type) {
+                            const n = toNum(v);
+                            if (type === 'sort' || type === 'type') return n;
+                            let bg = '', color = 'white';
+                            if (n === 0) { bg = '#00ff00'; color = 'black'; } // Green: no issues
+                            else if (n <= 20) { bg = '#ffff00'; color = 'black'; } // Yellow: 1-20
+                            else if (n <= 50) { bg = '#ffa500'; } // Orange: 21-50
+                            else { bg = '#ff0000'; } // Red: above 50
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n}</span>`;
                         }
                     },
                     {
@@ -1956,6 +2005,8 @@
                                     'cogs': cogs,
                                     'Base': toNum(pick(item, ['base', 'Base'], 0), 0),
                                     'Target': toNum(pick(item, ['target', 'Target'], 0), 0),
+                                    'Missing Listing': toNum(pick(item, ['Missing Listing', 'missing_listing', 'missingListing'], 0), 0),
+                                    'Stock Mapping': toNum(pick(item, ['Stock Mapping', 'stock_mapping', 'stockMapping'], 0), 0),
                                 };
                             });
                         },
@@ -2626,7 +2677,6 @@
                             const channel = rowData["Channel "]?.trim() || rowData["Channel"] || '';
                             const sheetUrl = rowData["sheet_link"] || rowData["URL LINK"] || rowData["url"] || '';
                             const type = rowData["type"]?.trim() || rowData["type"] || '';
-                            const percentage = rowData["Channel Percentage"];
                             const base = rowData["Base"] || 0;
                             const target = rowData["Target"] || 0;
 
@@ -2635,7 +2685,6 @@
                             $('#editChannelName').val(channel);
                             $('#editChannelUrl').val(sheetUrl);
                             $('#editType').val(type);
-                            $('#editpercentage').val(percentage);
                             $('#editBase').val(base);
                             $('#editTarget').val(target);
                             $('#originalChannel').val(channel);
@@ -2653,8 +2702,7 @@
                             // const id = $('#editChannelId').val().trim();
                             const channel = $('#editChannelName').val().trim();
                             const sheetUrl = $('#editChannelUrl').val().trim();
-                            const type = $('#editType').val().trim();
-                            const percentage = $('#editpercentage').val().trim();
+                            const type = $('#editType').val();
                             const base = $('#editBase').val().trim();
                             const target = $('#editTarget').val().trim();
                             const originalChannel = $('#originalChannel').val().trim();
@@ -2672,7 +2720,6 @@
                                     channel: channel,
                                     sheet_url: sheetUrl,
                                     type: type,
-                                    channel_percentage: percentage,
                                     base: base,
                                     target: target,
                                     original_channel: originalChannel,

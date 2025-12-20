@@ -2671,6 +2671,9 @@
                                         <a href="{{ url('walmart-tabulator-view') }}">Walmart Pricing - CVR</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('walmart.utilized.bgt') }}">Walmart BGT Util.</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('walmart.utilized.kw') }}">Walmart Kw Ads Report</a>
                                     </li>
                                     <li>

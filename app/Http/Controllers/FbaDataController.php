@@ -732,12 +732,12 @@ class FbaDataController extends Controller
          // --- Calculate all profit & ROI metrics (same as analytics) ---
          
          // PFT and ROI calculations matching analytics exactly (using same LP and FBA_SHIP sources)
-         $pft = ($PRICE > 0) ? (($PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $PRICE : 0;
-         $roi = ($LP_FOR_PFT > 0) ? (($PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
+         $pft = ($PRICE > 0) ? (($PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $PRICE : 0;
+         $roi = ($LP_FOR_PFT > 0) ? (($PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
          
          // SPFT and SROI calculations matching analytics exactly (using same LP and FBA_SHIP sources)
-         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $S_PRICE : 0;
-         $sroi = ($LP_FOR_PFT > 0) ? (($S_PRICE * 0.7) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
+         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $S_PRICE : 0;
+         $sroi = ($LP_FOR_PFT > 0) ? (($S_PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
 
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
@@ -816,7 +816,7 @@ class FbaDataController extends Controller
             'FBA_CVR' => $this->colorService->getCvrHtml($cvr),
             'Listed' => $manual ? ($manual->data['listed'] ?? false) : false,
             'Live' => $manual ? ($manual->data['live'] ?? false) : false,
-            'Pft%' => $this->colorService->getValueHtml($pftPercentage),
+            'Gpft' => $this->colorService->getValueHtml($pftPercentage),
             'ROI%' => $this->colorService->getRoiHtmlForView($roiPercentage),
             'GPFT%' => $this->colorService->getValueHtml($gpftPercentage),
             'SGPFT%' => $this->colorService->getValueHtml($sgpftPercentage),
@@ -921,34 +921,42 @@ class FbaDataController extends Controller
                     'fields' => $missingFields
                 ];
             })(),
-            'MSL' => max(
-                ($monthlySales ? ($monthlySales->jan ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->feb ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->mar ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->apr ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->may ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->jun ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->jul ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->aug ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->sep ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->oct ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->nov ?? 0) : 0),
-                ($monthlySales ? ($monthlySales->dec ?? 0) : 0)
-            ),
-            'Sugg_Send' => max(
-                ($monthlySales ? floatval($monthlySales->jan ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->feb ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->mar ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->apr ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->may ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->jun ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->jul ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->aug ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->sep ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->oct ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->nov ?? 0) : 0),
-                ($monthlySales ? floatval($monthlySales->dec ?? 0) : 0)
-            ) - floatval($fba->quantity_available ?? 0) - floatval($manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0),
+            'MSL' => (function() use ($monthlySales) {
+                $msl = max(
+                    ($monthlySales ? ($monthlySales->jan ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->feb ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->mar ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->apr ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->may ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->jun ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->jul ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->aug ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->sep ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->oct ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->nov ?? 0) : 0),
+                    ($monthlySales ? ($monthlySales->dec ?? 0) : 0)
+                );
+                return $msl == 0 ? 1 : $msl;
+            })(),
+            'Sugg_Send' => (function() use ($monthlySales, $fba, $manual) {
+                $msl = max(
+                    ($monthlySales ? floatval($monthlySales->jan ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->feb ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->mar ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->apr ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->may ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->jun ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->jul ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->aug ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->sep ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->oct ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->nov ?? 0) : 0),
+                    ($monthlySales ? floatval($monthlySales->dec ?? 0) : 0)
+                );
+                // If MSL is 0, use 1 as default
+                if ($msl == 0) $msl = 1;
+                return $msl - floatval($fba->quantity_available ?? 0) - floatval($manual ? ($manual->data['total_quantity_sent'] ?? 0) : 0);
+            })(),
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
             'Zero_Stock' => $manual ? ($manual->data['zero_stock'] ?? false) : false,
@@ -1099,7 +1107,7 @@ class FbaDataController extends Controller
             'Dec' => $children->sum('Dec'),
             'is_parent' => true,
             'NRL_FBA' => '',
-            'Pft%' => '',
+            'Gpft' => '',
             'ROI%' => '',
             'GPFT%' => '',
             'S_Price' => '',
