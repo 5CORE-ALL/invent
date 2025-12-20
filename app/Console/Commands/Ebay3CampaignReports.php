@@ -63,9 +63,9 @@ class Ebay3CampaignReports extends Command
         // Always fetch summary ranges for backward compatibility with table data
         $summaryRanges = [
             'L60' => [Carbon::today()->subDays(60), Carbon::today()->subDays(31)->endOfDay()],
-            'L30' => [Carbon::today()->subDays(30), Carbon::today()->subDay()->endOfDay()],
-            'L15' => [Carbon::today()->subDays(15), Carbon::today()->subDay()->endOfDay()],
-            'L7' => [Carbon::today()->subDays(7), Carbon::today()->subDay()->endOfDay()],
+            'L30' => [Carbon::today()->subDays(29), Carbon::today()->subDay()->endOfDay()],
+            'L15' => [Carbon::today()->subDays(14), Carbon::today()->subDay()->endOfDay()],
+            'L7' => [Carbon::today()->subDays(6), Carbon::today()->subDay()->endOfDay()],
             'L1' => [Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay()]
         ];
 
@@ -81,9 +81,13 @@ class Ebay3CampaignReports extends Command
     {
         $this->info("Processing ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
 
+            // Use UTC timezone for eBay API compatibility
+            $dateFrom = $from->copy()->startOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+            $dateTo = $to->copy()->endOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+
             $body = ["reportType" => "ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT",
-                "dateFrom" => $from,
-                "dateTo" => $to,
+                "dateFrom" => $dateFrom,
+                "dateTo" => $dateTo,
                 "marketplaceId" => "EBAY_US",
                 "reportFormat" => "TSV_GZIP",
                 "fundingModels" => ["COST_PER_CLICK"],
@@ -193,9 +197,13 @@ class Ebay3CampaignReports extends Command
     {
         $this->info("Processing CAMPAIGN_PERFORMANCE_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
 
+        // Use UTC timezone for eBay API compatibility
+        $dateFrom = $from->copy()->startOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+        $dateTo = $to->copy()->endOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+
         $body = ["reportType" => "CAMPAIGN_PERFORMANCE_REPORT",
-            "dateFrom" => $from,
-            "dateTo" => $to,
+            "dateFrom" => $dateFrom,
+            "dateTo" => $dateTo,
             "marketplaceId" => "EBAY_US",
             "reportFormat" => "TSV_GZIP",
             "fundingModels" => ["COST_PER_SALE"],

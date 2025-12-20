@@ -649,7 +649,7 @@ class EbayKwAdsController extends Controller
                     $row['sbid'] = max(0.20, min($row['sbid'], 0.20));
                 }
                 elseif($row['price'] > 20 && $row['price'] <= 30){
-                    $row['sbid'] = max(0.30, min($row['sbid'], 0.30));
+                    $row['sbid'] = max(0.40, min($row['sbid'], 0.40));
                 }
             }
             

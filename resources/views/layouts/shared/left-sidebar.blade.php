@@ -1839,6 +1839,15 @@
                                         <div class="collapse" id="amazonBudget">
                                             <ul class="side-nav-fourth-level">
                                                 <li>
+                                                    <a href="{{ route('amazon.utilized.kw') }}">Amazon KW Utilized's</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.utilized.pt') }}">Amazon PT Utilized's</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.utilized.hl') }}">Amazon HL Utilized's</a>
+                                                </li>
+                                                <li>
                                                     <a href=" {{ route('amazon-sp.amz-utilized-bgt-kw') }} "> >
                                                         UTILIZED BGT KW</a>
                                                 </li>
@@ -1902,6 +1911,12 @@
                                         </a>
                                         <div class="collapse" id="amazonFbaBudget">
                                             <ul class="side-nav-fourth-level">
+                                                <li>
+                                                    <a href="{{ route('amazon.fba.utilized.kw') }}">Utilized KW</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.fba.utilized.pt') }}">Utilized PT</a>
+                                                </li>
                                                 <li>
                                                     <a href=" {{ route('amazon.fba.over.kw.ads') }} ">Over Util. BGT
                                                         KW</a>

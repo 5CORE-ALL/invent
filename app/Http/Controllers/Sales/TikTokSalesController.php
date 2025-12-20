@@ -137,7 +137,7 @@ class TikTokSalesController extends Controller
     /**
      * Start OAuth flow
      */
-    public function authorize()
+    public function startAuthorization()
     {
         $authUrl = $this->tikTokService->getAuthorizationUrl();
         return redirect($authUrl);

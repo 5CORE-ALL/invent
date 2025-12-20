@@ -41,6 +41,16 @@ class SyncWalmartAdSheetData extends Command
                 //     continue;
                 // }
 
+                // Use attributed_sales from Google Sheet (Total Attributed Sales column)
+                // Try different possible field name formats
+                $sales = $this->num(
+                    $row['attributed_sales'] ?? 
+                    $row['total_attributed_sales'] ?? 
+                    $row['Attributed Sales'] ?? 
+                    $row['Total Attributed Sales'] ??
+                    null
+                );
+
                 WalmartCampaignReport::updateOrCreate(
                     [
                         'campaign_id'  => $campaignId,
@@ -50,6 +60,7 @@ class SyncWalmartAdSheetData extends Command
                         'campaignName'  => $row['campaign_name'] ?? null,
                         'budget'        => $this->num($row['daily_budget'] ?? null),
                         'spend'         => $this->num($row['ad_spend'] ?? null),
+                        'sales'         => $sales,
                         'cpc'           => $this->num($row['average_cpc'] ?? null),
                         'impressions'   => $this->num($row['impressions'] ?? null),
                         'clicks'        => $this->num($row['clicks'] ?? null),

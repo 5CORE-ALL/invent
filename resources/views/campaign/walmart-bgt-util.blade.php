@@ -133,6 +133,42 @@
         'page_title' => 'Walmart BGT Util.',
         'sub_title' => 'Walmart BGT Util.',
     ])
+    
+    <!-- Stats Section -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <div class="row text-center">
+                        <!-- Total Spend -->
+                        <div class="col-md-4 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Total Spend</div>
+                                <div class="h3 mb-0 fw-bold text-success" id="total-spend">$0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Total Sales -->
+                        <div class="col-md-4 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Total Sales</div>
+                                <div class="h3 mb-0 fw-bold text-info" id="total-sales">$0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Avg ACOS -->
+                        <div class="col-md-4">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Avg ACOS</div>
+                                <div class="h3 mb-0 fw-bold text-danger" id="avg-acos">0.00%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
@@ -241,6 +277,30 @@
                 if (percent >= 25 && percent < 50) return 'green';
                 return 'pink';
             };
+
+            // Variable to store avg_acos for use in column formatters
+            var avgAcosValue = 0;
+
+            // Helper function to calculate ALD BGT from ACOS
+            function calculateAldBgt(acos) {
+                if (avgAcosValue > 0) {
+                    const halfAvgAcos = avgAcosValue / 2;
+                    
+                    // If ACOS > AVG ACOS then ALD BGT = 1
+                    if (acos > avgAcosValue) {
+                        return 1;
+                    } 
+                    // If AVG ACOS > ACOS > HALF OF AVG ACOS then ALD BGT = 3
+                    else if (acos > halfAvgAcos && acos <= avgAcosValue) {
+                        return 3;
+                    } 
+                    // If ACOS <= HALF OF AVG ACOS then ALD BGT = 5
+                    else if (acos <= halfAvgAcos) {
+                        return 5;
+                    }
+                }
+                return 0;
+            }
 
             var table = new Tabulator("#budget-under-table", {
                 index: "Sku",
@@ -353,15 +413,26 @@
                     },
                     {
                         title: "ACOS L30",
-                        field: "acos_L30",
+                        field: "acos_l30",
                         hozAlign: "right",
                         formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
                             return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0) + "%"}</span>
+                                <span>${value.toFixed(2) + "%"}</span>
                             `;
-                            
                         },
-                        visible: false,
+                        visible: true,
+                    },
+                    {
+                        title: "ALD BGT",
+                        field: "acos_l30",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const acos = parseFloat(cell.getValue() || 0);
+                            const aldBgt = calculateAldBgt(acos);
+                            return `<span class="fw-bold">${aldBgt}</span>`;
+                        },
+                        visible: true,
                     },
                     {
                         title: "Clicks L30",
@@ -420,6 +491,74 @@
                         }
                     },
                     {
+                        title: "7 UB",
+                        field: "spend_l7",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var spend_l7 = parseFloat(row.spend_l7) || 0;
+                            var acos = parseFloat(row.acos_l30) || 0;
+                            var aldBgt = calculateAldBgt(acos);
+                            
+                            // 7 UB = (L7 ad spend/(ald bgt*7))*100
+                            var ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            td.style.backgroundColor = '';
+                            
+                            var value = ub7.toFixed(2) + "%";
+                            
+                            if (ub7 >= 70 && ub7 <= 90) {
+                                td.classList.add('green-bg');
+                                return value;
+                            } else if (ub7 > 90) {
+                                // Pink badge - background on text
+                                return '<span style="background-color: #ff01d0; color: white; padding: 4px 8px; border-radius: 4px; display: inline-block;">' + value + '</span>';
+                            } else if (ub7 < 70) {
+                                td.classList.add('red-bg');
+                                return value;
+                            }
+                            
+                            return value;
+                        },
+                        visible: true,
+                    },
+                    {
+                        title: "1 UB",
+                        field: "spend_l1",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var spend_l1 = parseFloat(row.spend_l1) || 0;
+                            var acos = parseFloat(row.acos_l30) || 0;
+                            var aldBgt = calculateAldBgt(acos);
+                            
+                            // 1 UB = (L1 ad spend/(ald bgt))*100
+                            var ub1 = aldBgt > 0 ? (spend_l1 / aldBgt) * 100 : 0;
+
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            td.style.backgroundColor = '';
+                            
+                            var value = ub1.toFixed(2) + "%";
+                            
+                            if (ub1 >= 70 && ub1 <= 90) {
+                                td.classList.add('green-bg');
+                                return value;
+                            } else if (ub1 > 90) {
+                                // Pink badge - background on text
+                                return '<span style="background-color: #ff01d0; color: white; padding: 4px 8px; border-radius: 4px; display: inline-block;">' + value + '</span>';
+                            } else if (ub1 < 70) {
+                                td.classList.add('red-bg');
+                                return value;
+                            }
+                            
+                            return value;
+                        },
+                        visible: true,
+                    },
+                    {
                         title: "L7 CPC",
                         field: "cpc_l7",
                         hozAlign: "center",
@@ -445,17 +584,37 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var cpc_l1 = parseFloat(row.cpc_l1) || 0;
                             var cpc_l7 = parseFloat(row.cpc_l7) || 0;
+                            var spend_l7 = parseFloat(row.spend_l7) || 0;
+                            var acos = parseFloat(row.acos_l30) || 0;
+                            var aldBgt = calculateAldBgt(acos);
+                            
+                            // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
+                            var ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+                            
                             var sbid;
-                            if(cpc_l1 > cpc_l7) {
-                                sbid = (cpc_l1 * 0.9).toFixed(2);
-                            }else{
-                                sbid = (cpc_l7 * 0.9).toFixed(2);
+                            
+                            // If 7UB is pink (> 90%): SBID = L7cpc * 0.90 (minimum 0.31)
+                            if (ub7 > 90) {
+                                sbid = cpc_l7 * 0.90;
+                                sbid = Math.max(sbid, 0.31); // Minimum value is 0.31
                             }
-                            return sbid;
+                            // If 7UB is between 30-70%: SBID = L7cpc + 0.5
+                            else if (ub7 >= 30 && ub7 <= 70) {
+                                sbid = cpc_l7 + 0.5;
+                            }
+                            // If 7UB is below 30%: SBID = L7cpc + 0.10
+                            else if (ub7 < 30) {
+                                sbid = cpc_l7 + 0.10;
+                            }
+                            // For 70-90% range (green), use same logic as 30-70%
+                            else {
+                                sbid = cpc_l7 + 0.5;
+                            }
+                            
+                            return sbid.toFixed(2);
                         },
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "APR BID",
@@ -492,20 +651,33 @@
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
-                            const value = cell.getValue();
+                            const value = (cell.getValue() || '').toString().toUpperCase();
+                            const isLive = value === 'LIVE' || value === 'ENABLED' || value === 'ACTIVE' || value === 'RUNNING';
                             return `
                                 <select class="form-select form-select-sm editable-select" 
                                         data-sku="${sku}" 
                                         data-field="status"
                                         style="width: 110px;">
-                                    <option value="PAUSED" ${value === 'PAUSED' ? 'selected' : ''}>PAUSED</option>
-                                    <option value="LIVE" ${value === 'LIVE' ? 'selected' : ''}>LIVE</option>
+                                    <option value="PAUSED" ${!isLive ? 'selected' : ''}>PAUSED</option>
+                                    <option value="LIVE" ${isLive ? 'selected' : ''}>LIVE</option>
                                 </select>
                             `;
                         }
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
+                    // Update totals from API response
+                    if (response.total_spend !== undefined) {
+                        document.getElementById("total-spend").innerText = "$" + parseFloat(response.total_spend).toFixed(2);
+                    }
+                    if (response.total_sales !== undefined) {
+                        document.getElementById("total-sales").innerText = "$" + parseFloat(response.total_sales).toFixed(2);
+                    }
+                    if (response.avg_acos !== undefined) {
+                        avgAcosValue = parseFloat(response.avg_acos);
+                        document.getElementById("avg-acos").innerText = avgAcosValue.toFixed(2) + "%";
+                    }
+                    
                     return response.data;
                 }
             });

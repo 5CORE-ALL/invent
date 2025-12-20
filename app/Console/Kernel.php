@@ -17,6 +17,13 @@ use App\Console\Commands\SyncMercariWoShipSheet;
 use App\Console\Commands\SyncMercariWShipSheet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Console\Commands\FetchMiraklDailyData;
+use App\Console\Commands\FetchEbay3DailyData;
+use App\Console\Commands\FetchReverbDailyData;
+use App\Console\Commands\FetchWalmartDailyData;
+use App\Console\Commands\FetchWayfairDailyData;
+use App\Console\Commands\FetchShopifyB2BMetrics;
+use App\Console\Commands\FetchShopifyB2CMetrics;
 
 class Kernel extends ConsoleKernel
 {
@@ -61,6 +68,13 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\SyncFbaShipmentStatus::class,
         \App\Console\Commands\StoreAmazonUtilizationCounts::class,
         \App\Console\Commands\StoreEbayUtilizationCounts::class,
+        FetchMiraklDailyData::class,
+        FetchEbay3DailyData::class,
+        FetchReverbDailyData::class,
+        FetchWalmartDailyData::class,
+        FetchWayfairDailyData::class,
+        FetchShopifyB2BMetrics::class,
+        FetchShopifyB2CMetrics::class,
 
     ];
 
@@ -82,30 +96,6 @@ class Kernel extends ConsoleKernel
             }
         })->everyFiveMinutes()->name('clear-laravel-log');
 
-        // Update marketplace daily metrics every 5 minutes
-        $schedule->command('app:update-marketplace-daily-metrics')
-            ->everyFiveMinutes()
-            ->timezone('America/Los_Angeles')
-            ->name('update-marketplace-daily-metrics')
-            ->withoutOverlapping();
-
-        // Update Amazon order periods (L30/L60) daily at 12:10 AM
-        $schedule->command('app:fetch-amazon-orders --update-periods')
-            ->dailyAt('00:10')
-            ->timezone('America/Los_Angeles')
-            ->name('update-amazon-order-periods');
-
-        // Fetch new Amazon orders daily at 12:15 AM
-        $schedule->command('app:fetch-amazon-orders --new-only --limit=300')
-            ->dailyAt('00:15')
-            ->timezone('America/Los_Angeles')
-            ->name('fetch-new-amazon-orders');
-
-        // Fetch missing order items daily at 12:30 AM
-        $schedule->command('app:fetch-amazon-orders --fetch-missing-items')
-            ->dailyAt('00:30')
-            ->timezone('America/Los_Angeles')
-            ->name('fetch-missing-amazon-order-items');
 
         // All commands running every 5 minutes
         $schedule->command('shopify:save-daily-inventory')
@@ -161,13 +151,6 @@ class Kernel extends ConsoleKernel
 
         // Collect FBA metrics for historical tracking
 
-
-        $schedule->command('app:fetch-amazon-orders')
-            ->dailyAt('00:00')
-            ->timezone('UTC');
-
-        $schedule->command('app:fetch-ebay-orders')->dailyAt('00:00')
-            ->timezone('UTC');
 
 
 
@@ -245,14 +228,14 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:fetch-temu-metrics')
             ->dailyAt('03:00')
             ->timezone('America/Los_Angeles');
-        
+
         // Fetch Temu Ads Data - L30 period
         $schedule->command('temu:fetch-ads-data --period=L30')
             ->dailyAt('04:00')
             ->timezone('America/Los_Angeles')
             ->name('temu-ads-data-sync-l30')
             ->withoutOverlapping();
-        
+
         // Fetch Temu Ads Data - L60 period
         $schedule->command('temu:fetch-ads-data --period=L60')
             ->dailyAt('05:00')
@@ -448,16 +431,115 @@ class Kernel extends ConsoleKernel
             ->name('sync-meta-all-ads-from-google-sheets')
             ->withoutOverlapping();
 
-        // test scheduler for task manager report
-        //               $schedule->call(function () {
-        //     \Illuminate\Support\Facades\Log::info('Test Scheduler Executed at ' . now());
+        $schedule->command('app:update-marketplace-daily-metrics')
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('update-marketplace-daily-metrics')
+            ->withoutOverlapping();
 
-        //     // Optional: visible for testing
-        //     file_put_contents(storage_path('logs/test_scheduler_output.txt'), now() . " - Test scheduler executed\n", FILE_APPEND);
-        // })
-        // ->everyMinute()
-        // ->name('test-scheduler')
-        // ->withoutOverlapping();
+
+        /*
+    |--------------------------------------------------------------------------
+    | AMAZON JOBS (IST)
+    |--------------------------------------------------------------------------
+    */
+
+        // Update Amazon order periods (L30 / L60) – 12:10 AM IST
+        $schedule->command('app:fetch-amazon-orders --update-periods')
+            ->dailyAt('00:10')
+            ->timezone('Asia/Kolkata')
+            ->name('update-amazon-order-periods');
+
+        // Fetch new Amazon orders – 12:15 AM IST
+        $schedule->command('app:fetch-amazon-orders --new-only --limit=300')
+            ->dailyAt('00:15')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-new-amazon-orders');
+
+        // Fetch missing Amazon order items – 12:30 AM IST
+        $schedule->command('app:fetch-amazon-orders --fetch-missing-items')
+            ->dailyAt('00:30')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-missing-amazon-order-items');
+
+        // Full Amazon sync – 12:00 AM IST
+        $schedule->command('app:fetch-amazon-orders')
+            ->dailyAt('00:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-amazon-orders');
+
+
+        /*
+    |--------------------------------------------------------------------------
+    | EBAY JOBS (IST)
+    |--------------------------------------------------------------------------
+    */
+
+        // eBay legacy
+        $schedule->command('app:fetch-ebay-orders')
+            ->dailyAt('00:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-ebay-orders');
+
+        // eBay v2
+        $schedule->command('app:fetch-ebay2-orders')
+            ->dailyAt('23:40')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-ebay2-orders');
+
+        // eBay v3 (Last 60 Days)
+        $schedule->command('ebay3:daily --days=60')
+            ->dailyAt('01:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-daily');
+
+
+        /*
+    |--------------------------------------------------------------------------
+    | OTHER MARKETPLACES (IST)
+    |--------------------------------------------------------------------------
+    */
+
+        // Reverb
+        $schedule->command('reverb:daily --days=60')
+            ->dailyAt('01:10')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-daily');
+
+        // Walmart
+        $schedule->command('walmart:daily --days=60')
+            ->dailyAt('01:20')
+            ->timezone('Asia/Kolkata')
+            ->name('walmart-daily');
+
+        // Wayfair
+        $schedule->command('wayfair:daily --days=60')
+            ->dailyAt('01:30')
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-daily');
+
+        // Mirakl
+        $schedule->command('mirakl:daily --days=60')
+            ->dailyAt('01:40')
+            ->timezone('Asia/Kolkata')
+            ->name('mirakl-daily');
+
+
+        /*
+    |--------------------------------------------------------------------------
+    | SHOPIFY B2B METRICS (IST)
+    |--------------------------------------------------------------------------
+    */
+
+        $schedule->command('app:fetch-shopify-b2b-metrics --days=60')
+            ->dailyAt('02:00')
+            ->timezone('Asia/Kolkata')
+            ->name('shopify-b2b-metrics');
+
+        $schedule->command('app:fetch-shopify-b2c-metrics --days=60')
+            ->dailyAt('02:10')
+            ->timezone('Asia/Kolkata')
+            ->name('shopify-b2c-metrics');
     }
 
     /**

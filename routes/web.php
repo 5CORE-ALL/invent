@@ -827,7 +827,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiktok/daily-sales-data', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getData'])->name('tiktok.daily.sales.data');
     Route::get('/tiktok/summary', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getSummary'])->name('tiktok.summary');
     Route::get('/tiktok/status', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'status'])->name('tiktok.status');
-    Route::get('/tiktok/authorize', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'authorize'])->name('tiktok.authorize');
+    Route::get('/tiktok/authorize', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'startAuthorization'])->name('tiktok.authorize');
     Route::get('/tiktok/callback', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'callback'])->name('tiktok.callback');
     Route::post('/tiktok/sync', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'syncOrders'])->name('tiktok.sync');
     
@@ -2211,6 +2211,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-sp/get-utilization-counts', 'getAmazonUtilizationCounts');
         Route::post('/update-amazon-sp-bid-price', 'updateAmazonSpBidPrice');
         Route::put('/update-keywords-bid-price', 'updateCampaignKeywordsBid');
+        
+        // Consolidated Amazon Utilized pages (KW, PT, HL)
+        Route::get('/amazon/utilized/kw', 'amazonUtilizedView')->name('amazon.utilized.kw');
+        Route::get('/amazon/utilized/kw/ads/data', 'getAmazonUtilizedKwAdsData');
+        Route::get('/amazon/utilized/pt', 'amazonUtilizedPtView')->name('amazon.utilized.pt');
+        Route::get('/amazon/utilized/pt/ads/data', 'getAmazonUtilizedPtAdsData');
+        Route::get('/amazon/get-utilization-counts', 'getAmazonUtilizationCounts');
+        Route::get('/amazon/get-utilization-chart-data', 'getAmazonUtilizationChartData');
 
         Route::get('/amazon-sp/amz-utilized-bgt-pt', 'amzUtilizedBgtPt')->name('amazon-sp.amz-utilized-bgt-pt');
         Route::get('/amazon-sp/get-amz-utilized-bgt-pt', 'getAmzUtilizedBgtPt');
@@ -2223,6 +2231,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-sb/get-amz-utilized-bgt-hl', 'getAmzUtilizedBgtHl');
         Route::post('/update-amazon-sb-bid-price', 'updateAmazonSbBidPrice');
         Route::put('/amazon-sb/update-keywords-bid-price', 'updateCampaignKeywordsBid');
+        
+        // Consolidated Amazon HL Utilized page
+        Route::get('/amazon/utilized/hl', 'amazonUtilizedHlView')->name('amazon.utilized.hl');
+        Route::get('/amazon/utilized/hl/ads/data', 'getAmazonUtilizedHlAdsData');
 
         Route::get('/amazon-sb/amz-under-utilized-bgt-hl', 'amzUnderUtilizedBgtHl')->name('amazon-sb.amz-under-utilized-bgt-hl');
         Route::get('/amazon-sb/get-amz-under-utilized-bgt-hl', 'getAmzUnderUtilizedBgtHl');
@@ -2392,6 +2404,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::controller(AmazonFbaAdsController::class)->group(function () {
+        // Consolidated FBA KW Utilized page
+        Route::get('/amazon/fba/utilized/kw', 'amazonFbaUtilizedKwView')->name('amazon.fba.utilized.kw');
+        Route::get('/amazon/fba/utilized/kw/ads/data', 'getAmazonFbaUtilizedKwAdsData');
+        
+        // Consolidated FBA PT Utilized page
+        Route::get('/amazon/fba/utilized/pt', 'amazonFbaUtilizedPtView')->name('amazon.fba.utilized.pt');
+        Route::get('/amazon/fba/utilized/pt/ads/data', 'getAmazonFbaUtilizedPtAdsData');
+        
+        Route::get('/amazon/fba/get-utilization-counts', 'getAmazonFbaUtilizationCounts');
+        Route::get('/amazon/fba/get-utilization-chart-data', 'getAmazonFbaUtilizationChartData');
+        
+        // Old routes (kept for backward compatibility)
         Route::get('/amazon/fba/over/kw/ads', 'amzFbaUtilizedBgtKw')->name('amazon.fba.over.kw.ads');
         Route::get('/amazon/fba/over/pt/ads', 'amzFbaUtilizedBgtPt')->name('amazon.fba.over.pt.ads');
         Route::get('/amazon/fba/under/kw/ads', 'amzFbaUnderUtilizedBgtKw')->name('amazon.fba.under.kw.ads');

@@ -296,7 +296,7 @@ class Ebay3OverUtilzBidsAutoUpdate extends Command
             }
 
             // Calculate SBID: l1_cpc * 0.95 (as per view logic)
-            $row['sbid'] = floor($l1_cpc * 0.95 * 100) / 100;
+            $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
 
             // Apply filter conditions:
             // Condition 1: ACOS > TOTAL_ACOS AND UB7 > 33%

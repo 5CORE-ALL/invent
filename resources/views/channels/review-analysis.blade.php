@@ -587,9 +587,16 @@
                                 return '<span class="metric-value"></span>';
                             }
                             
-                            // Convert to percentage (multiply by 100) and format
-                            const percentageValue = (num * 100).toFixed(0); // Rounds to whole number
-                            return `<span class="metric-value">${percentageValue}%</span>`;
+                            // Convert to percentage (multiply by 100)
+                            const n = num * 100;
+                            if (type === 'sort' || type === 'type') return n; // numeric for sorting
+                            let bg = '', color = 'black';
+                            if (n >= 0 && n <= 10) { bg = '#ff0000'; color = 'white'; } // Red: 0 to 10
+                            else if (n > 10 && n <= 18) { bg = '#ffff00'; color = 'black'; } // Yellow: 10.01 to 18
+                            else if (n > 18 && n <= 25) { bg = '#00008b'; color = 'white'; } // Dark Blue: 18.01 to 25
+                            else if (n > 25 && n <= 40) { bg = '#ffffff'; color = 'green'; } // White bg, green text: 25.01 to 40
+                            else { bg = '#ffc0cb'; color = 'black'; } // Pink bg, black text: above 40
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n.toFixed(1)}%</span>`;
                         }
                     },
                     {

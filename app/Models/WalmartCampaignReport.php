@@ -20,6 +20,7 @@ class WalmartCampaignReport extends Model
         'campaignName',
         'budget',
         'spend',
+        'sales',
         'cpc',
         'impression',
         'clicks',
