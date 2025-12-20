@@ -86,6 +86,7 @@ use App\Models\MercariWoShipListingStatus;
 use App\Models\PLSProduct;
 use App\Models\PlsListingStatus;
 use App\Models\ProductMaster;
+use App\Models\ProductStockMapping;
 use App\Models\ReverbProduct;
 use App\Models\ReverbListingStatus;
 use App\Models\SheinSheetData;
@@ -104,6 +105,10 @@ use App\Models\WaifairProductSheet;
 use App\Models\WayfairListingStatus;
 use App\Models\WalmartListingStatus;
 use App\Models\WalmartMetrics;
+use App\Models\AmazonListingStatus;
+use App\Models\EbayListingStatus;
+use App\Models\TemuListingStatus;
+use App\Models\BestbuyUSAListingStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
@@ -404,6 +409,10 @@ class ChannelMasterController extends Controller
         // Calculate Missing Listing count (SKUs with INV > 0 that are not listed on Amazon, excluding NRL)
         $missingListingCount = $this->getAmazonMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['amazon'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Amazon',
             'L-60 Sales' => intval($l60Sales),
@@ -425,6 +434,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -596,6 +606,10 @@ class ChannelMasterController extends Controller
         // Calculate Missing Listing count for eBay
         $missingListingCount = $this->getEbayMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['ebay1'] ?? 0;
+
         $result[] = [
             'Channel '   => 'eBay',
             'L-60 Sales' => intval($l60Sales),
@@ -617,6 +631,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -726,6 +741,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getEbayTwoMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['ebay2'] ?? 0;
+
         $result[] = [
             'Channel '   => 'EbayTwo',
             'L-60 Sales' => intval($l60Sales),
@@ -743,6 +762,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -890,6 +910,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getEbayThreeMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['ebay3'] ?? 0;
+
         $result[] = [
             'Channel '   => 'EbayThree',
             'L-60 Sales' => intval($l60Sales),
@@ -907,6 +931,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1056,6 +1081,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getMacysMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['macy'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Macys',
             'L-60 Sales' => intval($l60Sales),
@@ -1074,6 +1103,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1215,6 +1245,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getReverbMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['reverb'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Reverb',
             'L-60 Sales' => intval($l60Sales),
@@ -1233,6 +1267,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1382,6 +1417,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getDobaMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['doba'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Doba',
             'L-60 Sales' => intval($l60Sales),
@@ -1400,6 +1439,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1472,6 +1512,10 @@ class ChannelMasterController extends Controller
         // Calculate Missing Listing count for Temu
         $missingListingCount = $this->getTemuMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['temu'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Temu',
             'L-60 Sales' => intval($l60Sales),
@@ -1489,6 +1533,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1635,6 +1680,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getWalmartMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['walmart'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Walmart',
             'L-60 Sales' => intval($l60Sales),
@@ -1653,6 +1702,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
         
         return response()->json([
@@ -1794,6 +1844,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getTiendamiaMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['tiendamia'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Tiendamia',
             'L-60 Sales' => intval($l60Sales),
@@ -1812,6 +1866,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -1959,6 +2014,10 @@ class ChannelMasterController extends Controller
         // Calculate Missing Listing count for BestBuy USA
         $missingListingCount = $this->getBestbuyUsaMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['bestbuy'] ?? 0;
+
         $result[] = [
             'Channel '   => 'BestBuy USA',
             'L-60 Sales' => intval($l60Sales),
@@ -1977,6 +2036,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2126,6 +2186,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getPlsMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['pls'] ?? 0;
+
         $result[] = [
             'Channel '   => 'PLS',
             'L-60 Sales' => intval($l60Sales),
@@ -2144,6 +2208,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2291,6 +2356,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getWayfairMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['wayfair'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Wayfair',
             'L-60 Sales' => intval($l60Sales),
@@ -2309,6 +2378,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2450,6 +2520,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getFaireMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['faire'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Faire',
             'L-60 Sales' => intval($l60Sales),
@@ -2468,6 +2542,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2511,6 +2586,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getSheinMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['shein'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Shein',
             'L-60 Sales' => intval($l60Sales),
@@ -2529,6 +2608,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2679,6 +2759,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getTiktokShopMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['tiktok'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Tiktok Shop',
             'L-60 Sales' => intval($l60Sales),
@@ -2697,6 +2781,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2837,6 +2922,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getInstagramShopMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['instagram'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Instagram Shop',
             'L-60 Sales' => intval($l60Sales),
@@ -2855,6 +2944,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -2937,6 +3027,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getAliexpressMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['aliexpress'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Aliexpress',
             'L-60 Sales' => intval($l60Sales),
@@ -2955,6 +3049,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -3041,6 +3136,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getMercariWShipMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['mercari_w_ship'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Mercari w ship',
             'L-60 Sales' => intval($l60Sales),
@@ -3059,6 +3158,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -3141,6 +3241,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getMercariWoShipMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['mercari_wo_ship'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Mercari wo ship',
             'L-60 Sales' => intval($l60Sales),
@@ -3159,6 +3263,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -3305,6 +3410,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getFBMarketplaceMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['fb_marketplace'] ?? 0;
+
         $result[] = [
             'Channel '   => 'FB Marketplace',
             'L-60 Sales' => intval($l60Sales),
@@ -3323,6 +3432,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -3469,6 +3579,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getFBShopMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['fb_shop'] ?? 0;
+
         $result[] = [
             'Channel '   => 'FB Shop',
             'L-60 Sales' => intval($l60Sales),
@@ -3487,6 +3601,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -3595,6 +3710,10 @@ class ChannelMasterController extends Controller
         // Get Missing Listing count
         $missingListingCount = $this->getBusiness5CoreMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['business5core'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Business 5Core',
             'L-60 Sales' => intval($l60Sales),
@@ -3613,6 +3732,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -3718,6 +3838,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'TopDawg')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = 0; // TopDawg doesn't have listing status tracking
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['topdawg'] ?? 0;
+
         $result[] = [
             'Channel '   => 'TopDawg',
             'L-60 Sales' => intval($l60Sales),
@@ -3735,6 +3862,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -3778,6 +3907,10 @@ class ChannelMasterController extends Controller
         // Calculate Missing Listing count for Shopify B2C
         $missingListingCount = $this->getShopifyB2CMissingListingCount();
 
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['shopify_b2c'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Shopify B2C',
             'L-60 Sales' => intval($l60Sales),
@@ -3796,6 +3929,7 @@ class ChannelMasterController extends Controller
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -3880,6 +4014,13 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shopify B2B')->first();
 
+        // Get Missing Listing count
+        $missingListingCount = 0; // Shopify B2B doesn't have listing status tracking
+
+        // Get Stock Mapping not matching count
+        $stockMappingStats = $this->getStockMappingStats();
+        $stockMappingCount = $stockMappingStats['shopify_b2b'] ?? 0;
+
         $result[] = [
             'Channel '   => 'Shopify B2B',
             'L-60 Sales' => intval($l60Sales),
@@ -3897,6 +4038,8 @@ class ChannelMasterController extends Controller
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
+            'Missing Listing' => $missingListingCount,
+            'Stock Mapping' => $stockMappingCount,
         ];
 
         return response()->json([
@@ -4700,6 +4843,107 @@ class ChannelMasterController extends Controller
         }
 
         return $missingCount;
+    }
+
+    /**
+     * Get Stock Mapping not matching stats for all channels
+     * Returns array with channel key => not matching count
+     */
+    private function getStockMappingStats()
+    {
+        static $cachedStats = null;
+        
+        if ($cachedStats !== null) {
+            return $cachedStats;
+        }
+
+        $data = collect();
+        ProductStockMapping::chunk(500, function ($items) use (&$data) {
+            foreach ($items as $item) {
+                if (!$data->has($item->sku)) {
+                    $item->inventory_pls = null;
+                    $item->inventory_business5core = null;
+                    $data->put($item->sku, $item);
+                }
+            }
+        });
+
+        $skus = $data->pluck('sku')->filter()->unique()->toArray();
+
+        $marketplaceModels = [
+            'amazon' => AmazonListingStatus::class,
+            'walmart' => WalmartListingStatus::class,
+            'reverb' => ReverbListingStatus::class,
+            'shein' => SheinListingStatus::class,
+            'doba' => DobaListingStatus::class,
+            'temu' => TemuListingStatus::class,
+            'macy' => MacysListingStatus::class,
+            'ebay1' => EbayListingStatus::class,
+            'ebay2' => EbayTwoListingStatus::class,
+            'ebay3' => EbayThreeListingStatus::class,
+            'bestbuy' => BestbuyUSAListingStatus::class,
+            'tiendamia' => TiendamiaListingStatus::class,
+            'pls' => PlsListingStatus::class,
+            'business5core' => Business5CoreListingStatus::class,
+        ];
+
+        foreach ($marketplaceModels as $key => $model) {
+            $inventoryField = 'inventory_' . $key;
+            $model::whereIn('sku', $skus)->chunk(500, function ($allListings) use (&$data, $inventoryField) {
+                foreach ($allListings as $listing) {
+                    $sku = $listing->sku ?? '';
+                    $sku = str_replace("\u{00A0}", ' ', $sku);
+                    $sku = trim(preg_replace('/\s+/', ' ', $sku));
+                    if (isset($data[$sku])) {
+                        $inventory = \Illuminate\Support\Arr::get($listing->value ?? [], 'inventory', null);
+                        if ($inventory === 'Not Listed' || $inventory === 'NRL') {
+                            $data[$sku]->$inventoryField = $inventory;
+                        } elseif (is_numeric($inventory)) {
+                            $data[$sku]->$inventoryField = (int)$inventory;
+                        }
+                    }
+                }
+            });
+        }
+
+        foreach ($data as $item) {
+            if (!isset($item->inventory_pls) || $item->inventory_pls === null) {
+                $item->inventory_pls = $item->inventory_shopify ?? 0;
+            }
+            if (!isset($item->inventory_business5core) || $item->inventory_business5core === null) {
+                $item->inventory_business5core = $item->inventory_shopify ?? 0;
+            }
+        }
+
+        $platforms = ['amazon', 'walmart', 'reverb', 'shein', 'doba', 'temu', 'macy', 'ebay1', 'ebay2', 'ebay3', 'bestbuy', 'tiendamia', 'pls', 'business5core'];
+
+        $info = [];
+        foreach ($platforms as $platform) {
+            $info[$platform] = 0;
+        }
+
+        foreach ($data as $item) {
+            $shopifyInventoryRaw = $item->inventory_shopify ?? 0;
+            $shopifyInventory = is_numeric($shopifyInventoryRaw) ? (int)$shopifyInventoryRaw : 0;
+            if ($shopifyInventory < 0) $shopifyInventory = 0;
+
+            foreach ($platforms as $platform) {
+                $fieldName = 'inventory_' . $platform;
+                $platformInventoryRaw = $item->$fieldName ?? null;
+                $platformInventory = is_numeric($platformInventoryRaw) ? (int)$platformInventoryRaw : 0;
+
+                if (in_array($platformInventoryRaw, ['Not Listed', 'NRL'], true)) continue;
+                if ($platformInventory === 0 && $shopifyInventory === 0) continue;
+
+                $difference = abs($platformInventory - $shopifyInventory);
+                if ($difference > 3) {
+                    $info[$platform]++;
+                }
+            }
+        }
+
+        $cachedStats = $info;
+        return $cachedStats;
     }
 
     /**
