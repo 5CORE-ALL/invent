@@ -353,15 +353,15 @@
                     },
                     {
                         title: "ACOS L30",
-                        field: "acos_L30",
+                        field: "acos_l30",
                         hozAlign: "right",
                         formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
                             return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0) + "%"}</span>
+                                <span>${value.toFixed(2) + "%"}</span>
                             `;
-                            
                         },
-                        visible: false,
+                        visible: true,
                     },
                     {
                         title: "Clicks L30",
@@ -492,14 +492,15 @@
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
-                            const value = cell.getValue();
+                            const value = (cell.getValue() || '').toString().toUpperCase();
+                            const isLive = value === 'LIVE' || value === 'ENABLED' || value === 'ACTIVE' || value === 'RUNNING';
                             return `
                                 <select class="form-select form-select-sm editable-select" 
                                         data-sku="${sku}" 
                                         data-field="status"
                                         style="width: 110px;">
-                                    <option value="PAUSED" ${value === 'PAUSED' ? 'selected' : ''}>PAUSED</option>
-                                    <option value="LIVE" ${value === 'LIVE' ? 'selected' : ''}>LIVE</option>
+                                    <option value="PAUSED" ${!isLive ? 'selected' : ''}>PAUSED</option>
+                                    <option value="LIVE" ${isLive ? 'selected' : ''}>LIVE</option>
                                 </select>
                             `;
                         }

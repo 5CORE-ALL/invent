@@ -53,11 +53,17 @@ class WalmartUtilisationController extends Controller
 
         $nrValues = WalmartDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
-        $walmartCampaignReportsAll = WalmartCampaignReport::whereIn('campaignName', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->campaignName));
-
-        $walmartCampaignReportsL30 = WalmartCampaignReport::where('report_range', 'L30')->whereIn('campaignName', $skus)->get();
-        $walmartCampaignReportsL7  = WalmartCampaignReport::where('report_range', 'L7')->whereIn('campaignName', $skus)->get();
-        $walmartCampaignReportsL1  = WalmartCampaignReport::where('report_range', 'L1')->whereIn('campaignName', $skus)->get();
+        // Get campaign data - prioritize L30 for status, fallback to L1, then L7
+        $walmartCampaignReportsL30 = WalmartCampaignReport::where('report_range', 'L30')->whereIn('campaignName', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->campaignName));
+        $walmartCampaignReportsL1  = WalmartCampaignReport::where('report_range', 'L1')->whereIn('campaignName', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->campaignName));
+        $walmartCampaignReportsL7  = WalmartCampaignReport::where('report_range', 'L7')->whereIn('campaignName', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->campaignName));
+        
+        // Get any campaign for budget/name (prefer L30, fallback to L1, then L7)
+        $walmartCampaignReportsAll = WalmartCampaignReport::whereIn('campaignName', $skus)
+            ->orderByRaw("CASE WHEN report_range = 'L30' THEN 1 WHEN report_range = 'L1' THEN 2 WHEN report_range = 'L7' THEN 3 ELSE 4 END")
+            ->get()
+            ->unique('campaignName')
+            ->keyBy(fn($item) => $normalizeSku($item->campaignName));
 
         $result = [];
 
@@ -68,7 +74,7 @@ class WalmartUtilisationController extends Controller
             $amazonSheet = $walmartProductSheet[$sku] ?? null;
             $shopify = $shopifyData[$sku] ?? null;
 
-            // Campaign name & budget without report_range
+            // Campaign name & budget - get from any report range
             $matchedCampaign = $walmartCampaignReportsAll[$sku] ?? null;
 
             if (!$matchedCampaign) {
@@ -76,9 +82,9 @@ class WalmartUtilisationController extends Controller
             }
 
             // Metrics by report_range
-            $matchedCampaignL30 = $walmartCampaignReportsL30->first(fn($item) => $normalizeSku($item->campaignName) === $sku);
-            $matchedCampaignL7  = $walmartCampaignReportsL7->first(fn($item) => $normalizeSku($item->campaignName) === $sku);
-            $matchedCampaignL1  = $walmartCampaignReportsL1->first(fn($item) => $normalizeSku($item->campaignName) === $sku);
+            $matchedCampaignL30 = $walmartCampaignReportsL30[$sku] ?? null;
+            $matchedCampaignL7  = $walmartCampaignReportsL7[$sku] ?? null;
+            $matchedCampaignL1  = $walmartCampaignReportsL1[$sku] ?? null;
 
             $row = [];
             $row['parent'] = $parent;
@@ -90,14 +96,43 @@ class WalmartUtilisationController extends Controller
             // Campaign info (all SKUs)
             $row['campaignName'] = $matchedCampaign->campaignName ?? '';
             $row['campaignBudgetAmount'] = $matchedCampaign->budget ?? '';
-            $row['campaignStatus'] = $matchedCampaign->status ?? '';
+            
+            // Get status from L30 first, then L1, then L7, then any
+            $status = null;
+            if ($matchedCampaignL30 && $matchedCampaignL30->status) {
+                $status = $matchedCampaignL30->status;
+            } elseif ($matchedCampaignL1 && $matchedCampaignL1->status) {
+                $status = $matchedCampaignL1->status;
+            } elseif ($matchedCampaignL7 && $matchedCampaignL7->status) {
+                $status = $matchedCampaignL7->status;
+            } elseif ($matchedCampaign->status) {
+                $status = $matchedCampaign->status;
+            }
+            
+            // Normalize status: "Live", "live", "enabled" -> "LIVE", everything else -> "PAUSED"
+            $statusUpper = strtoupper(trim($status ?? ''));
+            if (in_array($statusUpper, ['LIVE', 'ENABLED', 'ACTIVE', 'RUNNING'])) {
+                $row['campaignStatus'] = 'LIVE';
+            } else {
+                $row['campaignStatus'] = 'PAUSED';
+            }
 
             // Metrics
-            $row['clicks_l30'] = $matchedCampaignL30->clicks ?? 0;
-            $row['spend_l7']   = $matchedCampaignL7->spend ?? 0;
-            $row['spend_l1']   = $matchedCampaignL1->spend ?? 0;
-            $row['cpc_l7']     = $matchedCampaignL7->cpc ?? 0;
-            $row['cpc_l1']     = $matchedCampaignL1->cpc ?? 0;
+            $row['clicks_l30'] = $matchedCampaignL30 ? ($matchedCampaignL30->clicks ?? 0) : 0;
+            $row['spend_l7']   = $matchedCampaignL7 ? ($matchedCampaignL7->spend ?? 0) : 0;
+            $row['spend_l1']   = $matchedCampaignL1 ? ($matchedCampaignL1->spend ?? 0) : 0;
+            $row['cpc_l7']     = $matchedCampaignL7 ? ($matchedCampaignL7->cpc ?? 0) : 0;
+            $row['cpc_l1']     = $matchedCampaignL1 ? ($matchedCampaignL1->cpc ?? 0) : 0;
+            
+            // ACOS calculation: (spend/sales) * 100
+            // Use L30 data for ACOS
+            $spendL30 = $matchedCampaignL30 ? (float)($matchedCampaignL30->spend ?? 0) : 0;
+            $salesL30 = $matchedCampaignL30 ? (float)($matchedCampaignL30->sales ?? 0) : 0;
+            if ($salesL30 > 0) {
+                $row['acos_l30'] = round(($spendL30 / $salesL30) * 100, 2);
+            } else {
+                $row['acos_l30'] = $spendL30 > 0 ? 100 : 0;
+            }
 
             // NR
             $row['NRA']  = '';
