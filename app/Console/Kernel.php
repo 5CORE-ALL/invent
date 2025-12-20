@@ -161,15 +161,12 @@ class Kernel extends ConsoleKernel
 
         // Collect FBA metrics for historical tracking
 
-
         $schedule->command('app:fetch-amazon-orders')
             ->dailyAt('00:00')
             ->timezone('UTC');
 
         $schedule->command('app:fetch-ebay-orders')->dailyAt('00:00')
             ->timezone('UTC');
-
-
 
         // Collect eBay metrics for historical tracking
         $schedule->command('ebay:collect-metrics')
@@ -228,7 +225,6 @@ class Kernel extends ConsoleKernel
         // Sync Walmart sheet command
         $schedule->command('sync:walmart-sheet')->twiceDaily(1, 13);
         $schedule->command('sync:temu-sheet-data')->twiceDaily(1, 13);
-
 
 
         // Sync Shopify sheet command

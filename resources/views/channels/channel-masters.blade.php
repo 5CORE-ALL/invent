@@ -807,25 +807,32 @@
                             </th>
                             {{-- <th>Red Margin</th> --}}
                             <th class="text-center align-middle">
-                                <small id="baseTotalBadge" class="badge bg-dark text-white mb-1"
+                                <small id="achievedTotalBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
                                     0
                                 </small><br>
-                                Base
-                            </th>
-                            <th class="text-center align-middle">
-                                <small id="targetTotalBadge" class="badge bg-dark text-white mb-1"
-                                    style="font-size: 13px;">
-                                    0
-                                </small><br>
-                                Target
+                                Achieved
                             </th>
                             <th class="text-center align-middle">
                                 <small id="shortfallBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
-                                    0%
+                                    0
                                 </small><br>
-                                Shortfall
+                                Growth
+                            </th>
+                            <th class="text-center align-middle">
+                                <small id="missingTotalBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0
+                                </small><br>
+                                Missing
+                            </th>
+                            <th class="text-center align-middle">
+                                <small id="mappingTotalBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0
+                                </small><br>
+                                Mapping
                             </th>
                             {{-- Growth column hidden --}}
                             {{-- <th class="text-center align-middle">
@@ -853,7 +860,6 @@
                             {{-- <th>0 Sold SKU Count</th>
                             <th>Sold Sku Count</th>
                             <th>Brand Registry</th> --}}
-                            <th>Ac Health</th>
                             <th class="text-white">Action</th>
                         </tr>
                     </thead>
@@ -1146,8 +1152,9 @@
             let l30SalesTotal = 0;
             let l60OrdersTotal = 0;
             let l30OrdersTotal = 0;
-            let baseTotalSum = 0;
-            let targetTotalSum = 0;
+            let achievedTotalSum = 0;
+            let totalMissing = 0;
+            let totalMapping = 0;
             let growthValues = [];
             let gprofitValues = [];
             let groiValues = [];
@@ -1174,16 +1181,18 @@
                     const growth = parseNumber(row['Growth'] || 0);
                     const gprofit = parseNumber(row['Gprofit%'] || row['Growth%'] || 0);
                     const groi = parseNumber(row['G Roi%'] || row['G.Rents'] || 0);
-                    const baseVal = parseNumber(row['Base'] || 0);
-                    const targetVal = parseNumber(row['Target'] || 0);
+                    const achievedVal = parseNumber(row['Achieved'] || 0);
+                    const missingVal = parseNumber(row['Missing Listing'] || 0);
+                    const mappingVal = parseNumber(row['Stock Mapping'] || 0);
 
                     // Add to totals
                     l60SalesTotal += l60Sales;
                     l30SalesTotal += l30Sales;
                     l60OrdersTotal += l60Orders;
                     l30OrdersTotal += l30Orders;
-                    baseTotalSum += baseVal;
-                    targetTotalSum += targetVal;
+                    achievedTotalSum += achievedVal;
+                    totalMissing += missingVal;
+                    totalMapping += mappingVal;
 
                     // Collect for averages
                     if (!isNaN(growth)) growthValues.push(growth);
@@ -1209,21 +1218,23 @@
             const gprofitBadge = document.getElementById('gprofitPercentage');
             const groiBadge = document.getElementById('groiPercentageBadge');
             const nPftBadge = document.getElementById('nPftPercentageBadge');
-            const baseTotalBadge = document.getElementById('baseTotalBadge');
-            const targetTotalBadge = document.getElementById('targetTotalBadge');
+            const achievedTotalBadge = document.getElementById('achievedTotalBadge');
+            const missingTotalBadge = document.getElementById('missingTotalBadge');
+            const mappingTotalBadge = document.getElementById('mappingTotalBadge');
 
             if (l60Badge) l60Badge.textContent = Math.round(l60SalesTotal).toLocaleString('en-US');
             if (l30Badge) l30Badge.textContent = Math.round(l30SalesTotal).toLocaleString('en-US');
             if (l60OrdersBadge) l60OrdersBadge.textContent = Math.round(l60OrdersTotal).toLocaleString('en-US');
             if (l30OrdersBadge) l30OrdersBadge.textContent = Math.round(l30OrdersTotal).toLocaleString('en-US');
             if (growthBadge) growthBadge.textContent = growthTotal.toFixed(0) + '%';
-            if (baseTotalBadge) baseTotalBadge.textContent = Math.round(baseTotalSum).toLocaleString('en-US');
-            if (targetTotalBadge) targetTotalBadge.textContent = Math.round(targetTotalSum).toLocaleString('en-US');
+            if (achievedTotalBadge) achievedTotalBadge.textContent = Math.round(achievedTotalSum).toLocaleString('en-US');
+            if (missingTotalBadge) missingTotalBadge.textContent = Math.round(totalMissing).toLocaleString('en-US');
+            if (mappingTotalBadge) mappingTotalBadge.textContent = Math.round(totalMapping).toLocaleString('en-US');
             
-            // Calculate and update shortfall badge (based on Base, not Target)
+            // Calculate and update growth badge (L30 Sales - Achieved)
             const shortfallBadge = document.getElementById('shortfallBadge');
-            let overallShortfall = baseTotalSum !== 0 ? ((l30SalesTotal - baseTotalSum) / baseTotalSum) * 100 : 0;
-            if (shortfallBadge) shortfallBadge.textContent = Math.round(overallShortfall) + '%';
+            let overallGrowth = l30SalesTotal - achievedTotalSum;
+            if (shortfallBadge) shortfallBadge.textContent = Math.round(overallGrowth).toLocaleString('en-US');
 
             // Calculate G profit and G roi using totalPft, totalL30Sales, totalCogs
             let totalPft = 0;
@@ -1741,12 +1752,12 @@
                         render: function (v, type) {
                             const n = pctFix(v);
                             if (type === 'sort' || type === 'type') return n; // numeric for sorting
-                            let bg = '', color = 'white';
-                            if (n < 10) { bg = '#ff0000'; } // Red: below 10
-                            else if (n >= 10 && n <= 15) { bg = '#ffff00'; color = 'black'; } // Yellow: 10 to 15
-                            else if (n > 15 && n <= 25) { bg = '#007bff'; } // Blue: 15.01 to 25
-                            else if (n > 25 && n <= 40) { bg = '#00ff00'; color = 'black'; } // Green: 25 to 40
-                            else { bg = '#8000ff'; } // Purple: above 40
+                            let bg = '', color = 'black';
+                            if (n >= 0 && n <= 10) { bg = '#ff0000'; color = 'white'; } // Red: 0 to 10
+                            else if (n > 10 && n <= 18) { bg = '#ffff00'; color = 'black'; } // Yellow: 10.01 to 18
+                            else if (n > 18 && n <= 25) { bg = '#00008b'; color = 'white'; } // Dark Blue: 18.01 to 25
+                            else if (n > 25 && n <= 40) { bg = '#ffffff'; color = 'green'; } // White bg, green text: 25.01 to 40
+                            else { bg = '#ffc0cb'; color = 'black'; } // Pink bg, black text: above 40
                             return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n.toFixed(1)}%</span>`;
                         }
                     },
@@ -1767,7 +1778,11 @@
                         data: 'Ads%',
                         render: function (v) {
                             const n = pctFix(v);
-                            return `<span style="background:#20c997;color:white;padding:2px 6px;border-radius:4px;">${n.toFixed(1)}%</span>`;
+                            let bg = '', color = 'white';
+                            if (n < 5) { bg = '#ff69b4'; } // Pink: below 5%
+                            else if (n >= 5 && n <= 10) { bg = '#00ff00'; } // Green: 5-10%
+                            else { bg = '#ff0000'; } // Red: above 10%
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n.toFixed(1)}%</span>`;
                         }
                     },
                     {
@@ -1789,12 +1804,12 @@
                             if (type === 'sort' || type === 'type') return nPft;
                             
                             let bg = '', color = 'white';
-                            if (nPft < 10) { bg = '#ff0000'; } // Red: below 10
-                            else if (nPft >= 10 && nPft <= 15) { bg = '#ffff00'; color = 'black'; } // Yellow: 10 to 15
-                            else if (nPft > 15 && nPft <= 25) { bg = '#007bff'; } // Blue: 15.01 to 25
-                            else if (nPft > 25 && nPft <= 40) { bg = '#00ff00'; color = 'black'; } // Green: 25 to 40
-                            else { bg = '#8000ff'; } // Purple: above 40
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(nPft)}%</span>`;
+                            if (nPft >= 0 && nPft <= 10) { bg = '#ff0000'; color = 'white'; } // Red: 0 to 10
+                            else if (nPft > 10 && nPft <= 18) { bg = '#ffff00'; color = 'black'; } // Yellow: 10.01 to 18
+                            else if (nPft > 18 && nPft <= 25) { bg = '#00008b'; color = 'white'; } // Dark Blue: 18.01 to 25
+                            else if (nPft > 25 && nPft <= 40) { bg = '#ffffff'; color = 'green'; } // White bg, green text: 25.01 to 40
+                            else { bg = '#ffc0cb'; color = 'black'; } // Pink bg, black text: above 40
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${nPft.toFixed(1)}%</span>`;
                         }
                     },
                     {
@@ -1829,15 +1844,7 @@
                         }
                     },
                     { 
-                        data: 'Base', 
-                        render: function (v, type) {
-                            const n = toNum(v);
-                            if (type === 'sort' || type === 'type') return n;
-                            return `<span class="metric-value">${n.toLocaleString('en-US')}</span>`;
-                        }
-                    },
-                    { 
-                        data: 'Target', 
+                        data: 'Achieved', 
                         render: function (v, type) {
                             const n = toNum(v);
                             if (type === 'sort' || type === 'type') return n;
@@ -1848,19 +1855,14 @@
                         data: null, 
                         render: function (v, type, row) {
                             const l30Sales = toNum(row['L30 Sales']);
-                            const base = toNum(row['Base']);
-                            if (base === 0) {
-                                if (type === 'sort' || type === 'type') return 0;
-                                return '-';
-                            }
-                            const shortfall = ((l30Sales - base) / base) * 100;
-                            if (type === 'sort' || type === 'type') return shortfall;
+                            const achieved = toNum(row['Achieved']);
+                            const growth = l30Sales - achieved;
+                            if (type === 'sort' || type === 'type') return growth;
                             let bg = '', color = 'white';
-                            if (shortfall < 0) { bg = '#ff0000'; } // Red: negative (below target)
-                            else if (shortfall >= 0 && shortfall < 10) { bg = '#ffff00'; color = 'black'; } // Yellow: 0 to 10
-                            else if (shortfall >= 10 && shortfall < 25) { bg = '#00ff00'; color = 'black'; } // Green: 10 to 25
-                            else { bg = '#8000ff'; } // Purple: above 25
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(shortfall)}%</span>`;
+                            if (growth < 0) { bg = '#ff0000'; } // Red: negative
+                            else if (growth === 0) { bg = '#ffff00'; color = 'black'; } // Yellow: zero
+                            else { bg = '#00ff00'; color = 'black'; } // Green: positive
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(growth).toLocaleString('en-US')}</span>`;
                         }
                     },
                     // Growth column hidden
@@ -1910,12 +1912,6 @@
                         data: null,
                         render: function (v, t, row) {
                             return `<i class="fas fa-eye view-health-data" style="color: #007bff; cursor: pointer; font-size: 16px;" title="View Health Data" data-channel="${row['Channel']}"></i>`;
-                        }
-                    },
-                    {
-                        data: 'Ac Health',
-                        render: function (data) {
-                            return data ? `<a href="${data}" target="_blank"><i class="bi bi-box-arrow-up-right"></i></a>` : '';
                         }
                     },
                     {
@@ -2000,11 +1996,9 @@
                                     'Sold Sku Count': toNum(pick(item, ['sold_sku', 'sold_sku_count'], 0), 0),
                                     'Brand Registry': toNum(pick(item, ['brand_registry', 'brandregistry'], 0), 0),
                                     'Update': toNum(pick(item, ['update_flag', 'update','Update'], 0), 0),
-                                    'Ac Health': pick(item, ['account_health', 'ac_health', 'accounthealth'], ''),
                                     'Channel Percentage': pctFix(pick(item, ['channel_percentage'], 0), 0),
                                     'cogs': cogs,
-                                    'Base': toNum(pick(item, ['base', 'Base'], 0), 0),
-                                    'Target': toNum(pick(item, ['target', 'Target'], 0), 0),
+                                    'Achieved': toNum(pick(item, ['base', 'Base'], 0), 0),
                                     'Missing Listing': toNum(pick(item, ['Missing Listing', 'missing_listing', 'missingListing'], 0), 0),
                                     'Stock Mapping': toNum(pick(item, ['Stock Mapping', 'stock_mapping', 'stockMapping'], 0), 0),
                                 };
