@@ -842,6 +842,13 @@
                                 </small><br>
                                 Missing Listing
                             </th>
+                            <th class="text-center align-middle">
+                                <small id="stockMappingBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    0
+                                </small><br>
+                                Stock Mapping
+                            </th>
                             <th>Health Data</th>
                             {{-- <th>0 Sold SKU Count</th>
                             <th>Sold Sku Count</th>
@@ -1885,6 +1892,20 @@
                             return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n}</span>`;
                         }
                     },
+                    // Stock Mapping column
+                    {
+                        data: 'Stock Mapping',
+                        render: function (v, type) {
+                            const n = toNum(v);
+                            if (type === 'sort' || type === 'type') return n;
+                            let bg = '', color = 'white';
+                            if (n === 0) { bg = '#00ff00'; color = 'black'; } // Green: no issues
+                            else if (n <= 20) { bg = '#ffff00'; color = 'black'; } // Yellow: 1-20
+                            else if (n <= 50) { bg = '#ffa500'; } // Orange: 21-50
+                            else { bg = '#ff0000'; } // Red: above 50
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n}</span>`;
+                        }
+                    },
                     {
                         data: null,
                         render: function (v, t, row) {
@@ -1985,6 +2006,7 @@
                                     'Base': toNum(pick(item, ['base', 'Base'], 0), 0),
                                     'Target': toNum(pick(item, ['target', 'Target'], 0), 0),
                                     'Missing Listing': toNum(pick(item, ['Missing Listing', 'missing_listing', 'missingListing'], 0), 0),
+                                    'Stock Mapping': toNum(pick(item, ['Stock Mapping', 'stock_mapping', 'stockMapping'], 0), 0),
                                 };
                             });
                         },
