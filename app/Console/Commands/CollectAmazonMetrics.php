@@ -83,6 +83,7 @@ class CollectAmazonMetrics extends Command
                 $price = floatval($amazonSheet->price ?? 0);
                 $views = intval($amazonSheet->sessions_l30 ?? 0);
                 $aL30 = intval($amazonSheet->units_ordered_l30 ?? 0);
+                $organicViews = intval($amazonSheet->organic_views ?? 0);
                 
                 // Calculate CVR: (A_L30 / sessions_l30) * 100
                 $cvr = 0;
@@ -109,7 +110,7 @@ class CollectAmazonMetrics extends Command
                 $totalRevenue = $price * $aL30;
                 $adPercent = $totalRevenue > 0 ? ($adSpendL30 / $totalRevenue) * 100 : 0;
                 
-                // Store in JSON format table
+                // Store in JSON format table - including organic_views for graph data
                 $dailyData = [
                     'price' => round($price, 2),
                     'views' => $views,
@@ -117,6 +118,7 @@ class CollectAmazonMetrics extends Command
                     'ad_percent' => round($adPercent, 2),
                     'a_l30' => $aL30,
                     'ad_spend_l30' => round($adSpendL30, 2),
+                    'organic_views' => $organicViews, // Store organic views for daily graph
                 ];
                 
                 AmazonSkuDailyData::updateOrCreate(
