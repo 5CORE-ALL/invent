@@ -191,22 +191,16 @@
                                 <div class="d-flex gap-2 justify-content-end align-items-center flex-wrap">
                                     <!-- Count Cards -->
                                     <div class="d-flex gap-2">
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="over" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); cursor: pointer; min-width: 100px; transition: transform 0.2s;">
+                                        <div class="card shadow-sm border-0 utilization-card" data-type="7ub" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); cursor: pointer; min-width: 120px; transition: transform 0.2s;">
                                             <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">Over</h6>
-                                                <h5 class="mb-0 fw-bold" id="over-utilized-count" style="font-size: 1.2rem;">0</h5>
+                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">7UB</h6>
+                                                <h5 class="mb-0 fw-bold" id="seven-ub-count" style="font-size: 1.2rem;">0</h5>
                                             </div>
                                         </div>
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="under" style="background: linear-gradient(135deg, #ff2727 0%, #ff6b6b 100%); cursor: pointer; min-width: 100px; transition: transform 0.2s;">
+                                        <div class="card shadow-sm border-0 utilization-card" data-type="7ub-1ub" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); cursor: pointer; min-width: 120px; transition: transform 0.2s;">
                                             <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">Under</h6>
-                                                <h5 class="mb-0 fw-bold" id="under-utilized-count" style="font-size: 1.2rem;">0</h5>
-                                            </div>
-                                        </div>
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="correctly" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); cursor: pointer; min-width: 100px; transition: transform 0.2s;">
-                                            <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">Correctly</h6>
-                                                <h5 class="mb-0 fw-bold" id="correctly-utilized-count" style="font-size: 1.2rem;">0</h5>
+                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">7UB + 1UB</h6>
+                                                <h5 class="mb-0 fw-bold" id="seven-ub-one-ub-count" style="font-size: 1.2rem;">0</h5>
                                             </div>
                                         </div>
                                     </div>
@@ -319,6 +313,8 @@
             };
 
             // Function to update button counts - shows all counts by default
+            // Counts are based on filtered data (respects INV, NRA, status, search filters)
+            // but shows all utilization types (not filtered by utilization type button)
             let countUpdateTimeout = null;
             function updateButtonCounts() {
                 if (typeof table === 'undefined' || !table) {
@@ -330,7 +326,7 @@
                     clearTimeout(countUpdateTimeout);
                 }
                 countUpdateTimeout = setTimeout(function() {
-                    // Get all data (not filtered) for accurate counts
+                    // Get all data and apply filters (except utilization type filter)
                     const allData = table.getData('all');
                     
                     // Count for each type (mutually exclusive like controller)
@@ -339,27 +335,51 @@
                     let correctlyCount = 0;
 
                     allData.forEach(function(row) {
-                        let acos = parseFloat(row.acos || 0);
+                        // Apply all filters except utilization type filter
+                        // Global search filter
+                        let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                        if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal))) {
+                            return;
+                        }
+                        
+                        // Status filter
+                        let statusVal = $("#status-filter").val();
+                        if (statusVal && row.campaignStatus !== statusVal) {
+                            return;
+                        }
+                        
+                        // Inventory filter (HL: no default filter, show all by default)
+                        let invFilterVal = $("#inv-filter").val();
+                        let inv = parseFloat(row.INV || 0);
+                        
+                        if (!invFilterVal || invFilterVal === '') {
+                            // Default: show all (no filtering)
+                        } else if (invFilterVal === "ALL") {
+                            // ALL option shows everything
+                        } else if (invFilterVal === "INV_0") {
+                            // Show only INV = 0
+                            if (inv !== 0) return;
+                        } else if (invFilterVal === "OTHERS") {
+                            // Show only INV > 0
+                            if (inv <= 0) return;
+                        }
+                        
+                        // NRA filter
+                        let nraFilterVal = $("#nra-filter").val();
+                        if (nraFilterVal) {
+                            let rowVal = row.NRA || "";
+                            if (rowVal !== nraFilterVal) return;
+                        }
+                        
+                        // Now calculate utilization and count
                         let budget = parseFloat(row.campaignBudgetAmount) || 0;
                         let l7_spend = parseFloat(row.l7_spend || 0);
                         let l1_spend = parseFloat(row.l1_spend || 0);
-                        let inv = parseFloat(row.INV || 0);
 
                         let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                         let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
-                        let rowAcos = parseFloat(acos) || 0;
-                        if (isNaN(rowAcos) || rowAcos === 0) {
-                            rowAcos = 100;
-                        }
-
-                        // Check DIL color
-                        let l30 = parseFloat(row.L30 || 0);
-                        let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
-                        let dilColor = getDilColor(dilDecimal);
-                        let isPink = (dilColor === "pink");
-
-                        // Mutually exclusive categorization (same as controller for eBay3)
+                        // Mutually exclusive categorization (same as controller)
                         let categorized = false;
 
                         // Over-utilized check (priority 1): ub7 > 90 && ub1 > 90
@@ -464,6 +484,15 @@
                         visible: false
                     },
                     {
+                        title: "FBA INV",
+                        field: "FBA_INV",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<div class="text-center">${value || 0}</div>`;
+                        }
+                    },
+                    {
                         title: "OV L30",
                         field: "L30",
                         visible: false
@@ -485,20 +514,110 @@
                         visible: false
                     },
                     {
+                        title: "AL 30",
+                        field: "A_L30",
+                        visible: false
+                    },
+                    {
+                        title: "A DIL %",
+                        field: "A DIL %",
+                        formatter: function(cell) {
+                            const data = cell.getData();
+                            const al30 = parseFloat(data.A_L30);
+                            const inv = parseFloat(data.INV);
+                            if (!isNaN(al30) && !isNaN(inv) && inv !== 0) {
+                                const dilDecimal = (al30 / inv);
+                                const color = getDilColor(dilDecimal);
+                                return `<div class="text-center"><span class="dil-percent-value ${color}">${Math.round(dilDecimal * 100)}%</span></div>`;
+                            }
+                            return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "NRL",
+                        field: "NRL",
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData().sku;
+                            const value = cell.getValue();
+
+                            let bgColor = "";
+                            if (value === "NRL") {
+                                bgColor = "background-color:#dc3545;color:#fff;"; // red
+                            } else if (value === "RL") {
+                                bgColor = "background-color:#28a745;color:#fff;"; // green
+                            }
+
+                            return `
+                                <select class="form-select form-select-sm editable-select" 
+                                        data-sku="${sku}" 
+                                        data-field="NRL"
+                                        style="width: 90px; ${bgColor}">
+                                    <option value="RL" ${value === 'RL' ? 'selected' : ''}>RL</option>
+                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>NRL</option>
+                                </select>
+                            `;
+                        },
+                        visible: false,
+                        hozAlign: "center"
+                    },
+                    {
                         title: "NRA",
                         field: "NRA",
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
-                            const value = cell.getValue() || '';
+                            const value = cell.getValue()?.trim();
+
+                            let bgColor = "";
+                            if (value === "NRA") {
+                                bgColor = "background-color:#dc3545;color:#fff;"; // red
+                            } else if (value === "RA") {
+                                bgColor = "background-color:#28a745;color:#fff;"; // green
+                            } else if (value === "LATER") {
+                                bgColor = "background-color:#ffc107;color:#000;"; // yellow
+                            }
+
                             return `
                                 <select class="form-select form-select-sm editable-select" 
                                         data-sku="${sku}" 
                                         data-field="NRA"
-                                        style="width: 90px;">
+                                        style="width: 100px; ${bgColor}">
                                     <option value="RA" ${value === 'RA' ? 'selected' : ''}>RA</option>
                                     <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>NRA</option>
                                     <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
+                                </select>
+                            `;
+                        },
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "FBA",
+                        field: "FBA",
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData().sku;
+                            const value = cell.getValue();
+
+                            let bgColor = "";
+                            if (value === "FBA") {
+                                bgColor = "background-color:#007bff;color:#fff;"; // blue
+                            } else if (value === "FBM") {
+                                bgColor = "background-color:#6f42c1;color:#fff;"; // purple
+                            } else if (value === "BOTH") {
+                                bgColor = "background-color:#90ee90;color:#000;"; // light green
+                            }
+
+                            return `
+                                <select class="form-select form-select-sm editable-select" 
+                                        data-sku="${sku}" 
+                                        data-field="FBA"
+                                        style="width: 90px; ${bgColor}">
+                                    <option value="FBA" ${value === 'FBA' ? 'selected' : ''}>FBA</option>
+                                    <option value="FBM" ${value === 'FBM' ? 'selected' : ''}>FBM</option>
+                                    <option value="BOTH" ${value === 'BOTH' ? 'selected' : ''}>BOTH</option>
                                 </select>
                             `;
                         },
@@ -783,32 +902,21 @@
                     return false;
                 }
 
-                // Inventory filter - match individual pages exactly
+                // Inventory filter (HL: no default filter, show all by default)
                 let invFilterVal = $("#inv-filter").val();
-                if (currentUtilizationType === 'over') {
-                    // Over-utilized: Show all campaigns by default (no filter)
-                    if (invFilterVal === "OTHERS") {
-                        if (parseFloat(data.INV) === 0) return false;
-                    }
-                    // ALL option shows everything, so no filtering needed
-                } else if (currentUtilizationType === 'under') {
-                    // Under-utilized: Show all campaigns when no filter or ALL is selected
-                    if (invFilterVal && invFilterVal !== 'ALL') {
-                        if (invFilterVal === "INV_0") {
-                            if (parseFloat(data.INV) !== 0) return false;
-                        } else if (invFilterVal === "OTHERS") {
-                            if (parseFloat(data.INV) === 0) return false;
-                        }
-                    }
-                } else if (currentUtilizationType === 'correctly') {
-                    // Correctly-utilized: Default to INV > 0 (exclude INV = 0 when no filter)
-                    if (!invFilterVal) {
-                        if (parseFloat(data.INV) === 0) return false;
-                    } else if (invFilterVal === "INV_0") {
-                        if (parseFloat(data.INV) !== 0) return false;
-                    } else if (invFilterVal === "OTHERS") {
-                        if (parseFloat(data.INV) === 0) return false;
-                    }
+                let inv = parseFloat(data.INV || 0);
+                
+                // By default (no filter selected), show all campaigns
+                if (!invFilterVal || invFilterVal === '') {
+                    // No filtering - show all
+                } else if (invFilterVal === "ALL") {
+                    // ALL option shows everything
+                } else if (invFilterVal === "INV_0") {
+                    // Show only INV = 0
+                    if (inv !== 0) return false;
+                } else if (invFilterVal === "OTHERS") {
+                    // Show only INV > 0 (exclude INV = 0 and negative)
+                    if (inv <= 0) return false;
                 }
 
                 // NRA filter
@@ -897,7 +1005,7 @@
 
             document.addEventListener("click", function(e) {
                 if (e.target.classList.contains("toggle-cols-btn")) {
-                    let colsToToggle = ["INV", "L30", "DIL %", "NR"];
+                    let colsToToggle = ["INV", "L30", "DIL %", "NR", "A_L30", "ADIL %", "NRL", "NRA", "FBA"];
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);
                         if (col) {
@@ -1046,9 +1154,13 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 200) {
-                        document.getElementById('over-utilized-count').textContent = data.over_utilized || 0;
-                        document.getElementById('under-utilized-count').textContent = data.under_utilized || 0;
-                        document.getElementById('correctly-utilized-count').textContent = data.correctly_utilized || 0;
+                        // 7UB count: sum of all utilization types based on 7UB only
+                        const count7ub = (data.over_utilized_7ub || 0) + (data.under_utilized_7ub || 0) + (data.correctly_utilized_7ub || 0);
+                        // 7UB + 1UB count: sum of all utilization types based on both 7UB and 1UB
+                        const count7ub1ub = (data.over_utilized_7ub_1ub || 0) + (data.under_utilized_7ub_1ub || 0) + (data.correctly_utilized_7ub_1ub || 0);
+                        
+                        document.getElementById('seven-ub-count').textContent = count7ub || 0;
+                        document.getElementById('seven-ub-one-ub-count').textContent = count7ub1ub || 0;
                     }
                 })
                 .catch(err => console.error('Error loading counts:', err));
@@ -1059,62 +1171,92 @@
             const modal = new bootstrap.Modal(document.getElementById('utilizationChartModal'));
             
             const titles = {
-                'over': 'Over Utilized Trend (Last 30 Days)',
-                'under': 'Under Utilized Trend (Last 30 Days)',
-                'correctly': 'Correctly Utilized Trend (Last 30 Days)'
+                '7ub': '7UB Utilization Trend (Last 30 Days)',
+                '7ub-1ub': '7UB + 1UB Utilization Trend (Last 30 Days)'
             };
             chartTitle.textContent = titles[type] || 'Utilization Trend';
 
             modal.show();
 
-            fetch('/amazon/get-utilization-chart-data?type=HL')
+            fetch('/amazon/get-utilization-chart-data?type=HL&condition=' + type)
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 200 && data.data && data.data.length > 0) {
                         const chartData = data.data;
                         const dates = chartData.map(d => d.date);
                         
-                        let dataset = [];
-                        let label = '';
-                        let color = '';
-                        let bgColor = '';
-
-                        if (type === 'over') {
-                            dataset = chartData.map(d => d.over_utilized);
-                            label = 'Over Utilized';
-                            color = '#ff01d0';
-                            bgColor = 'rgba(255, 1, 208, 0.1)';
-                        } else if (type === 'under') {
-                            dataset = chartData.map(d => d.under_utilized);
-                            label = 'Under Utilized';
-                            color = '#ff2727';
-                            bgColor = 'rgba(255, 39, 39, 0.1)';
-                        } else if (type === 'correctly') {
-                            dataset = chartData.map(d => d.correctly_utilized);
-                            label = 'Correctly Utilized';
-                            color = '#28a745';
-                            bgColor = 'rgba(40, 167, 69, 0.1)';
-                        }
-
                         const ctx = document.getElementById('utilizationChart').getContext('2d');
                         
                         if (utilizationChartInstance) {
                             utilizationChartInstance.destroy();
                         }
 
+                        // Show all 3 lines (over, under, correctly) based on condition type
+                        const datasets = [];
+                        
+                        if (type === '7ub') {
+                            datasets.push({
+                                label: 'Over Utilized',
+                                data: chartData.map(d => d.over_utilized_7ub || 0),
+                                borderColor: '#ff01d0',
+                                backgroundColor: 'rgba(255, 1, 208, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                            datasets.push({
+                                label: 'Under Utilized',
+                                data: chartData.map(d => d.under_utilized_7ub || 0),
+                                borderColor: '#ff2727',
+                                backgroundColor: 'rgba(255, 39, 39, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                            datasets.push({
+                                label: 'Correctly Utilized',
+                                data: chartData.map(d => d.correctly_utilized_7ub || 0),
+                                borderColor: '#28a745',
+                                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                        } else if (type === '7ub-1ub') {
+                            datasets.push({
+                                label: 'Over Utilized',
+                                data: chartData.map(d => d.over_utilized_7ub_1ub || 0),
+                                borderColor: '#ff01d0',
+                                backgroundColor: 'rgba(255, 1, 208, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                            datasets.push({
+                                label: 'Under Utilized',
+                                data: chartData.map(d => d.under_utilized_7ub_1ub || 0),
+                                borderColor: '#ff2727',
+                                backgroundColor: 'rgba(255, 39, 39, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                            datasets.push({
+                                label: 'Correctly Utilized',
+                                data: chartData.map(d => d.correctly_utilized_7ub_1ub || 0),
+                                borderColor: '#28a745',
+                                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                        }
+
                         utilizationChartInstance = new Chart(ctx, {
                             type: 'line',
                             data: {
                                 labels: dates,
-                                datasets: [{
-                                    label: label,
-                                    data: dataset,
-                                    borderColor: color,
-                                    backgroundColor: bgColor,
-                                    tension: 0.4,
-                                    fill: true,
-                                    borderWidth: 2
-                                }]
+                                datasets: datasets
                             },
                             options: {
                                 responsive: true,
@@ -1154,3 +1296,4 @@
         }
     </script>
 @endsection
+
