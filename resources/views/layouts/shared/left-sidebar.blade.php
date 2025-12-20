@@ -2098,6 +2098,9 @@
                                         <a href="{{ route('ebay.running.ads') }}">Ebay Running Ads</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('ebay.utilized') }}">Ebay Utilized's</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('ebay-over-uti') }}">Ebay OVER UTIL.</a>
                                     </li>
                                     <li>
@@ -2540,7 +2543,7 @@
                                     <li>
                                         <a data-bs-toggle="collapse" href="#ebay3AcosSubmenu"
                                             aria-expanded="false" aria-controls="ebay3AcosSubmenu">
-                                            <span>ACOS Control</span>
+                                            <span>Ebay 3 ACOS Control</span>
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="ebay3AcosSubmenu">
@@ -2573,31 +2576,34 @@
                                         </div>
                                     </li>
                                     <li>
-                                        <a href="{{ route('ebay3.pink.dil.ads') }}">Pink Dil Ads</a>
+                                        <a href="{{ route('ebay3.pink.dil.ads') }}">Ebay 3 Pink Dil Ads</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('ebay3.over.utilized') }}">OVER UTIL.</a>
+                                        <a href="{{ route('ebay3.utilized') }}">Ebay 3 Utilized's</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('ebay3.under.utilized') }}">UNDER UTIL.</a>
+                                        <a href="{{ route('ebay3.over.utilized') }}">Ebay 3 OVER UTIL.</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('ebay3.correctly.utilized') }}">CORRECTLY UTIL.</a>
+                                        <a href="{{ route('ebay3.under.utilized') }}">Ebay 3 UNDER UTIL.</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('ebay3.pmt.ads') }}">PMT Ads</a>
+                                        <a href="{{ route('ebay3.correctly.utilized') }}">Ebay 3 CORRECTLY UTIL.</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('ebay3.keywords.ads') }}">Keywords Ads</a>
+                                        <a href="{{ route('ebay3.pmt.ads') }}">Ebay 3 PMT Ads</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('ebay3.keywords.ads.less-than-thirty') }}">Ads < $30</a>
+                                        <a href="{{ route('ebay3.keywords.ads') }}">Ebay 3 Keywords Ads</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('ebay3.running.ads') }}">Running Ads</a>
+                                        <a href="{{ route('ebay3.keywords.ads.less-than-thirty') }}">Ebay 3 Ads < $30</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('ebay3.missing.ads') }}">Missing Ads</a>
+                                        <a href="{{ route('ebay3.running.ads') }}">Ebay 3 Running Ads</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('ebay3.missing.ads') }}">Ebay 3 Missing Ads</a>
                                     </li>
                                 </ul>
                             </div>

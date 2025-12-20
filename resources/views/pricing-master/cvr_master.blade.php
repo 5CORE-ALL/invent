@@ -5,6 +5,11 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* Hide sorting icons */
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+
         #image-hover-preview {
             transition: opacity 0.2s ease;
         }
@@ -101,9 +106,9 @@
 
 
         .tabulator .tabulator-header {
-            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
+            background: linear-gradient(135deg, #e8f0fe 0%, #d4e4fc 100%) !important;
             border-bottom: 2px solid #1a56b7;
-            color: #ffffff;
+            color: #000000;
             font-weight: bold;
             text-transform: uppercase;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
@@ -111,16 +116,16 @@
 
         .tabulator .tabulator-header .tabulator-col {
             background-color: transparent;
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            border-right: 1px solid rgba(0, 0, 0, 0.1);
             padding: 15px 18px;
             vertical-align: middle;
-            color: #ffffff;
+            color: #000000;
             transition: all 0.2s ease;
         }
 
         .tabulator .tabulator-header .tabulator-col-content {
             font-weight: 600;
-            color: #ffffff;
+            color: #000000;
             padding: 8px;
             white-space: nowrap;
             overflow: hidden;
@@ -129,7 +134,7 @@
         }
 
         .tabulator .tabulator-header .tabulator-col-title {
-            color: #ffffff;
+            color: #000000;
             font-size: 13px;
             font-weight: 600;
             text-transform: uppercase;
@@ -300,6 +305,47 @@
             border-radius: 8px 8px 0 0;
             padding: 1rem;
             border: none;
+        }
+
+        /* Filter Dropdown Styles */
+        .dropdown .dropdown-toggle {
+            min-width: 160px;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .dropdown .dropdown-toggle::after {
+            margin-left: 8px;
+        }
+
+        .dropdown-menu {
+            min-width: 200px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+            border: none;
+            padding: 8px 0;
+        }
+
+        .dropdown-item {
+            padding: 8px 16px;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+     
+
+        .dropdown-item.active i {
+            color: white !important;
+        }
+
+        .dropdown-item i {
+            width: 20px;
+        }
+
+        .text-purple {
+            color: #6f42c1 !important;
         }
 
         .market-summary {
@@ -523,9 +569,9 @@
 
                       <div class="d-flex align-items-center flex-wrap gap-2">
                         <div class="dropdown">
-                            <button class="btn btn-primary dropdown-toggle d-flex align-items-center gap-1"
+                            <button class="btn btn-primary dropdown-toggle d-flex align-items-center gap-1 text-black"
                                 type="button" id="hide-column-dropdown" data-bs-toggle="dropdown">
-                                <i class="bi bi-grid-3x3-gap-fill"></i>
+                                <i class="bi bi-grid-3x3-gap-fill text-black"></i>
                                 Manage Columns
                             </button>
                             <ul class="dropdown-menu p-3 shadow-lg border rounded-3" id="column-dropdown-menu"
@@ -535,70 +581,75 @@
                             </ul>
                         </div>
 
-                         <div class="btn-group" id="inv-filter" role="group" aria-label="Inventory Filter">
-                        <input type="radio" class="btn-check" name="invFilter" id="filterAll" value="all" checked>
-                        <label class="btn btn-outline-secondary" for="filterAll">All</label>
-                        <input type="radio" class="btn-check" name="invFilter" id="filterZero" value="zero">
-                        <label class="btn btn-outline-danger" for="filterZero">0</label>
-                        <input type="radio" class="btn-check" name="invFilter" id="filterOther" value="other">
-                        <label class="btn btn-outline-success" for="filterOther">Other</label>
-                    </div>
+                        <!-- Inventory Filter Dropdown -->
+                        <div class="dropdown me-2">
+                            <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="invFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-boxes me-1"></i> Inventory: All
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="invFilterDropdown">
+                                <li><a class="dropdown-item active" href="#" data-filter="invFilter" data-value="all">All</a></li>
+                                <li><a class="dropdown-item text-danger" href="#" data-filter="invFilter" data-value="zero">Zero (0)</a></li>
+                                <li><a class="dropdown-item text-success" href="#" data-filter="invFilter" data-value="other" selected>Other</a></li>
+                            </ul>
+                        </div>
 
-                    <div class="btn-group" id="dil-filter" role="group" aria-label="Dilution Filter">
-                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterAll" value="all">
-                        <label class="btn btn-outline-primary" for="dilFilterAll">All Dil</label>
-                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterVeryLow" value="verylow">
-                        <label class="btn btn-outline-danger" for="dilFilterVeryLow">Very Low Dil (≤ 10%)</label>
-                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterLow" value="low">
-                        <label class="btn btn-outline-warning" for="dilFilterLow">Low Dil (11-15%)</label>
-                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterMedium" value="medium">
-                        <label class="btn btn-outline-info" for="dilFilterMedium">Medium Dil (16-20%)</label>
-                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterHigh" value="high">
-                        <label class="btn btn-outline-success" for="dilFilterHigh">High Dil (21-40%)</label>
-                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterVeryHigh" value="veryhigh">
-                        <label class="btn btn-outline-secondary" for="dilFilterVeryHigh">Very High Dil (> 40%)</label>
-                        <input type="radio" class="btn-check" name="dilFilter" id="dilFilterClear" value="clear" checked>
-                        <label class="btn btn-outline-secondary" for="dilFilterClear">Clear</label>
-                    </div>
+                        <!-- Dilution Filter Dropdown -->
+                        <div class="dropdown me-2">
+                            <button class="btn btn-outline-primary dropdown-toggle" type="button" id="dilFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-percentage me-1"></i> Dilution: All
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
+                                <li><a class="dropdown-item active" href="#" data-filter="dilFilter" data-value="all">All Dilution</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="#" data-filter="dilFilter" data-value="verylow"><i class="fas fa-arrow-down me-1"></i> Very Low (≤ 10%)</a></li>
+                                <li><a class="dropdown-item text-warning" href="#" data-filter="dilFilter" data-value="low"><i class="fas fa-minus me-1"></i> Low (11-15%)</a></li>
+                                <li><a class="dropdown-item text-info" href="#" data-filter="dilFilter" data-value="medium"><i class="fas fa-equals me-1"></i> Medium (16-20%)</a></li>
+                                <li><a class="dropdown-item text-success" href="#" data-filter="dilFilter" data-value="high"><i class="fas fa-arrow-up me-1"></i> High (21-40%)</a></li>
+                                <li><a class="dropdown-item text-secondary" href="#" data-filter="dilFilter" data-value="veryhigh"><i class="fas fa-arrow-up me-1"></i> Very High (> 40%)</a></li>
+                            </ul>
+                        </div>
 
-                    <div class="btn-group" id="cvr-filter" role="group" aria-label="CVR Filter">
-                        <input type="radio" class="btn-check" name="cvrFilter" id="cvrFilterAll" value="all">
-                        <label class="btn btn-outline-primary" for="cvrFilterAll">All CVR</label>
-                        <input type="radio" class="btn-check" name="cvrFilter" id="cvrFilterHigh" value="high">
-                        <label class="btn btn-outline-success" for="cvrFilterHigh">High CVR (&gt; 5%)</label>
-                        <input type="radio" class="btn-check" name="cvrFilter" id="cvrFilterMedium" value="medium">
-                        <label class="btn btn-outline-info" for="cvrFilterMedium">Medium CVR (3-5%)</label>
-                        <input type="radio" class="btn-check" name="cvrFilter" id="cvrFilterLow" value="low">
-                        <label class="btn btn-outline-warning" for="cvrFilterLow">Low CVR (&lt; 3%)</label>
-                        <input type="radio" class="btn-check" name="cvrFilter" id="cvrFilterClear" value="clear" checked>
-                        <label class="btn btn-outline-secondary" for="cvrFilterClear">Clear</label>
-                    </div>
+                        <!-- CVR Filter Dropdown -->
+                        <div class="dropdown me-2">
+                            <button class="btn btn-outline-info dropdown-toggle" type="button" id="cvrFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-chart-line me-1"></i> CVR: All
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="cvrFilterDropdown">
+                                <li><a class="dropdown-item active" href="#" data-filter="cvrFilter" data-value="all">All CVR</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-success" href="#" data-filter="cvrFilter" data-value="high"><i class="fas fa-arrow-up me-1"></i> High (> 5%)</a></li>
+                                <li><a class="dropdown-item text-info" href="#" data-filter="cvrFilter" data-value="medium"><i class="fas fa-equals me-1"></i> Medium (3-5%)</a></li>
+                                <li><a class="dropdown-item text-warning" href="#" data-filter="cvrFilter" data-value="low"><i class="fas fa-arrow-down me-1"></i> Low (< 3%)</a></li>
+                            </ul>
+                        </div>
 
-                    <div class="btn-group" id="margin-filter" role="group" aria-label="Margin Filter">
-                        <input type="radio" class="btn-check" name="marginFilter" id="marginFilterAll" value="all">
-                        <label class="btn btn-outline-primary" for="marginFilterAll">All Margin</label>
-                        <input type="radio" class="btn-check" name="marginFilter" id="marginFilterVeryLow" value="verylow">
-                        <label class="btn btn-outline-danger" for="marginFilterVeryLow">Very Low Margin (&lt; 11%)</label>
-                        <input type="radio" class="btn-check" name="marginFilter" id="marginFilterLow" value="low">
-                        <label class="btn btn-outline-warning" for="marginFilterLow">Low Margin (11-15%)</label>
-                        <input type="radio" class="btn-check" name="marginFilter" id="marginFilterMedium" value="medium">
-                        <label class="btn btn-outline-info" for="marginFilterMedium">Medium Margin (15-20%)</label>
-                        <input type="radio" class="btn-check" name="marginFilter" id="marginFilterHigh" value="high">
-                        <label class="btn btn-outline-success" for="marginFilterHigh">High Margin (20-50%)</label>
-                        <input type="radio" class="btn-check" name="marginFilter" id="marginFilterVeryHigh" value="veryhigh">
-                        <label class="btn btn-outline-secondary" for="marginFilterVeryHigh">Very High Margin (&gt; 50%)</label>
-                        <input type="radio" class="btn-check" name="marginFilter" id="marginFilterClear" value="clear" checked>
-                        <label class="btn btn-outline-secondary" for="marginFilterClear">Clear</label>
-                    </div>
+                        <!-- Margin Filter Dropdown -->
+                        <div class="dropdown me-2">
+                            <button class="btn btn-outline-success dropdown-toggle" type="button" id="marginFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-dollar-sign me-1"></i> Margin: All
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="marginFilterDropdown">
+                                <li><a class="dropdown-item active" href="#" data-filter="marginFilter" data-value="all">All Margin</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="#" data-filter="marginFilter" data-value="verylow"><i class="fas fa-arrow-down me-1"></i> Very Low (< 11%)</a></li>
+                                <li><a class="dropdown-item text-warning" href="#" data-filter="marginFilter" data-value="low"><i class="fas fa-minus me-1"></i> Low (11-15%)</a></li>
+                                <li><a class="dropdown-item text-info" href="#" data-filter="marginFilter" data-value="medium"><i class="fas fa-equals me-1"></i> Medium (15-20%)</a></li>
+                                <li><a class="dropdown-item text-success" href="#" data-filter="marginFilter" data-value="high"><i class="fas fa-arrow-up me-1"></i> High (20-50%)</a></li>
+                                <li><a class="dropdown-item text-purple" href="#" data-filter="marginFilter" data-value="veryhigh"><i class="fas fa-star me-1"></i> Very High (> 50%)</a></li>
+                            </ul>
+                        </div>
 
-                    <div class="btn-group" id="view-filter" role="group" aria-label="View Filter">
-                        <input type="radio" class="btn-check" name="viewFilter" id="parentFilter" value="parent" checked>
-                        <label class="btn btn-primary" for="parentFilter">Parent </label>
-                        <input type="radio" class="btn-check" name="viewFilter" id="skuFilter" value="sku">
-                        <label class="btn btn-primary" for="skuFilter">SKU </label>
-                        <input type="radio" class="btn-check" name="viewFilter" id="bothFilter" value="both">
-                        <label class="btn btn-primary" for="bothFilter">Both </label>
-                    </div>
+                        <!-- View Filter Dropdown -->
+                        <div class="dropdown me-2">
+                            <button class="btn btn-primary dropdown-toggle" type="button" id="viewFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-eye me-1"></i> View: Parent
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="viewFilterDropdown">
+                                <li><a class="dropdown-item active" href="#" data-filter="viewFilter" data-value="parent"><i class="fas fa-folder me-1"></i> Parent</a></li>
+                                <li><a class="dropdown-item" href="#" data-filter="viewFilter" data-value="sku"><i class="fas fa-barcode me-1"></i> SKU</a></li>
+                                <li><a class="dropdown-item" href="#" data-filter="viewFilter" data-value="both"><i class="fas fa-layer-group me-1"></i> Both</a></li>
+                            </ul>
+                        </div>
                     </div>
 
                     </div>
@@ -658,8 +709,7 @@
                                             <span class="badge text-dark fs-4  me-2">Total Views : <span id="total_views">0</span></span>
                                             <span class="badge text-dark fs-4  me-2">Avg CVR : <span id="avgCvr">0%</span></span>
                                             <span class="badge text-dark fs-4  me-2">Total L30 : <span id="total_l30_count"></span></span>
-                                            <span class="badge text-dark fs-4  me-2">Total L60 : <span id="total_l60_count"></span></span>
-                                              <span class="badge text-dark fs-4  me-2">Total L30 Views Data  : <span id="total_l30_count_data"></span></span>
+                                            <span class="badge text-dark fs-4  me-2" style="display: none;">Total L60 : <span id="total_l60_count"></span></span>
                                             
                                         </div>
                                     </div>
@@ -1065,124 +1115,77 @@
         setCombinedFilters();
         }
 
-        // Filter by Inventory radio buttons
-        
-        document.querySelectorAll("input[name='invFilter']").forEach(input => {
-            input.addEventListener("change", function() {
-                let value = this.value;
-
-                if (value === "all") {
+        // Dropdown Filter Handler - Universal function for all dropdown filters
+        document.addEventListener('click', function(e) {
+            const dropdownItem = e.target.closest('.dropdown-item[data-filter]');
+            if (!dropdownItem) return;
+            
+            e.preventDefault();
+            
+            const filterType = dropdownItem.dataset.filter;
+            const value = dropdownItem.dataset.value;
+            const dropdown = dropdownItem.closest('.dropdown');
+            const dropdownBtn = dropdown.querySelector('.dropdown-toggle');
+            
+            // Remove active class from siblings and add to clicked item
+            dropdown.querySelectorAll('.dropdown-item').forEach(item => item.classList.remove('active'));
+            dropdownItem.classList.add('active');
+            
+            // Get the display text (remove icon HTML)
+            let displayText = dropdownItem.textContent.trim();
+            
+            // Update button text based on filter type
+            if (filterType === 'invFilter') {
+                if (value === 'all') {
                     currentInvFilter = null;
-                    setCombinedFilters();
-                } else if (value === "zero") {
-                    currentInvFilter = "zero";
-                    setCombinedFilters();
-                } else if (value === "other") {
-                    currentInvFilter = "other";
-                    setCombinedFilters();
+                    displayText = 'All';
+                } else {
+                    currentInvFilter = value;
                 }
-            });
-        });
-
-
-
-
-        // Filter by CVR radio buttons for cvr 
-        document.querySelectorAll("input[name='cvrFilter']").forEach(input => {
-            input.addEventListener("change", function() {
-                let value = this.value;
-
-                if (value === "clear" || value === "all") {
+                dropdownBtn.innerHTML = `<i class="fas fa-boxes me-1"></i> Inventory: ${displayText}`;
+            } 
+            else if (filterType === 'dilFilter') {
+                if (value === 'all' || value === 'clear') {
+                    currentDilFilter = null;
+                    displayText = 'All';
+                } else {
+                    currentDilFilter = value;
+                }
+                dropdownBtn.innerHTML = `<i class="fas fa-percentage me-1"></i> Dilution: ${displayText}`;
+            }
+            else if (filterType === 'cvrFilter') {
+                if (value === 'all' || value === 'clear') {
                     currentCvrFilter = null;
-                    setCombinedFilters();
-                } else if (value === "high") {
-                    currentCvrFilter = "high";
-                    setCombinedFilters();
-                } else if (value === "medium") {
-                    currentCvrFilter = "medium";
-                    setCombinedFilters();
-                } else if (value === "low") {
-                    currentCvrFilter = "low";
-                    setCombinedFilters();
+                    displayText = 'All';
+                } else {
+                    currentCvrFilter = value;
                 }
-            });
-        });
-
-        // Filter by View radio buttons for sku parent and both 
-        document.querySelectorAll("input[name='viewFilter']").forEach(input => {
-            input.addEventListener("change", function() {
-                let value = this.value;
-
-                if (value === "parent") {
-                    currentViewFilter = "parent";
-                    setCombinedFilters();
-                } else if (value === "sku") {
-                    currentViewFilter = "sku";
-                    setCombinedFilters();
-                } else if (value === "both") {
+                dropdownBtn.innerHTML = `<i class="fas fa-chart-line me-1"></i> CVR: ${displayText}`;
+            }
+            else if (filterType === 'marginFilter') {
+                if (value === 'all' || value === 'clear') {
+                    currentMarginFilter = null;
+                    displayText = 'All';
+                } else {
+                    currentMarginFilter = value;
+                }
+                dropdownBtn.innerHTML = `<i class="fas fa-dollar-sign me-1"></i> Margin: ${displayText}`;
+            }
+            else if (filterType === 'viewFilter') {
+                if (value === 'both') {
                     currentViewFilter = null;
-                    setCombinedFilters();
+                    displayText = 'Both';
+                } else {
+                    currentViewFilter = value;
                 }
-            });
+                dropdownBtn.innerHTML = `<i class="fas fa-eye me-1"></i> View: ${displayText}`;
+            }
+            
+            setCombinedFilters();
         });
-        
         
         // Set default view filter to "parent" on page load
         currentViewFilter = "parent";
-
-        // Filter by Dilution radio buttons for dil
-        document.querySelectorAll("input[name='dilFilter']").forEach(input => {
-            input.addEventListener("change", function() {
-                let value = this.value;
-
-                if (value === "clear" || value === "all") {
-                    currentDilFilter = null;
-                    setCombinedFilters();
-                } else if (value === "verylow") {
-                    currentDilFilter = "verylow";
-                    setCombinedFilters();
-                } else if (value === "low") {
-                    currentDilFilter = "low";
-                    setCombinedFilters();
-                } else if (value === "medium") {
-                    currentDilFilter = "medium";
-                    setCombinedFilters();
-                } else if (value === "high") {
-                    currentDilFilter = "high";
-                    setCombinedFilters();
-                } else if (value === "veryhigh") {
-                    currentDilFilter = "veryhigh";
-                    setCombinedFilters();
-                }
-            });
-        });
-        
-        // Filter by Margin radio buttons for margin
-        document.querySelectorAll("input[name='marginFilter']").forEach(input => {
-            input.addEventListener("change", function() {
-                let value = this.value;
-
-                if (value === "clear" || value === "all") {
-                    currentMarginFilter = null;
-                    setCombinedFilters();
-                } else if (value === "verylow") {
-                    currentMarginFilter = "verylow";
-                    setCombinedFilters();
-                } else if (value === "low") {
-                    currentMarginFilter = "low";
-                    setCombinedFilters();
-                } else if (value === "medium") {
-                    currentMarginFilter = "medium";
-                    setCombinedFilters();
-                } else if (value === "high") {
-                    currentMarginFilter = "high";
-                    setCombinedFilters();
-                } else if (value === "veryhigh") {
-                    currentMarginFilter = "veryhigh";
-                    setCombinedFilters();
-                }
-            });
-        });
         
 
 
@@ -1194,6 +1197,9 @@
             height: "700px",
             pagination: true,
             paginationSize: 50,
+            initialSort: [
+                {column: "avgCvr", dir: "asc"}
+            ],
 
             rowFormatter: function(row) {
                 const data = row.getData();
@@ -1330,7 +1336,58 @@
                             return element;
                             
                         },
+                    },
+
+            {
+                title: "Avg CVR",
+                field: "avgCvr",
+                hozAlign: "center",
+                headerSort: true,
+                sorter: function(a, b) {
+                    const valA = parseFloat(a) || 0;
+                    const valB = parseFloat(b) || 0;
+                    return valA - valB;
+                },
+                formatterParams: {
+                    decimal: 2,
+                },
+                formatter: function(cell) {
+                    let value = cell.getValue() || 0;
+                    if (typeof value === "string" && value.includes("%")) {
+                        value = value.replace("%", "");
                     }
+                    value = parseFloat(value);
+                    if (isNaN(value)) value = 0;
+                    const element = document.createElement("span");
+                    element.textContent = value.toFixed(1) + "%";
+                    if (value >= 0 && value <= 3) {
+                        element.style.color = "red";
+                    } else if (value > 3 && value <= 6) {
+                        element.style.backgroundColor = "yellow";
+                        element.style.color = "black";
+                        element.style.padding = "2px 4px";
+                        element.style.borderRadius = "4px";
+                    } else if (value > 6 && value <= 9) {
+                        element.style.color = "blue";
+                    } else if (value > 9 && value <= 13) {
+                        element.style.color = "green";
+                    } else if (value > 41) {
+                        element.style.color = "purple";
+                    }
+                    return element;
+                }
+            },
+
+            {
+                title: "Total Views",
+                field: "total_views",
+                hozAlign: "center",
+                headerSort: false,
+                formatter: function(cell) {
+                    const value = cell.getValue() || 0;
+                    return `<span class="text-danger">${Math.round(value)} </span>`;
+                }
+            },
 
                  ,
                   {
@@ -1477,7 +1534,7 @@
                
 
                 {
-                     title: "AVG PFT%<br><span id='avgPftHeader' style='font-size:12px; color:#fff; '></span>",
+                     title: "AVG PFT%<br><span id='avgPftHeader' style='font-size:12px; color:#000; '></span>",
                     field: "avgPftPercent",
                     hozAlign: "right",
                     headerSort: true,
@@ -1660,7 +1717,7 @@
                 },
 
                 {
-                        title: "AVG ROI%<br><span id='avgRoiHeader' style='font-size:12px; color:#fff; '></span>",
+                        title: "AVG ROI%<br><span id='avgRoiHeader' style='font-size:12px; color:#000; '></span>",
                         field: "avgRoi",
                         hozAlign: "right",
                         headerSort: true,
@@ -1759,70 +1816,6 @@
                         visible: true
                     }
                     ,
-
-            {
-                title: "Avg CVR",
-                field: "avgCvr",
-                hozAlign: "center",
-              
-                formatterParams: {
-                    decimal: 2,
-                
-            
-                },
-                formatter: function(cell) {
-                    let value = cell.getValue() || 0;
-                    // Remove % if present and parse as float
-                    if (typeof value === "string" && value.includes("%")) {
-                        value = value.replace("%", "");
-                    }
-                    value = parseFloat(value);
-                    if (isNaN(value)) value = 0;
-                    const element = document.createElement("span");
-                    // Show value with 2 decimals
-                    element.textContent = value.toFixed(1) + "%";
-                    if (value >= 0 && value <= 3) {
-                        element.style.color = "red"; // red text
-                    } else if (value > 3 && value <= 6) {
-                        element.style.backgroundColor = "yellow"; // yellow background
-                        element.style.color = "black";
-                        element.style.padding = "2px 4px";
-                        element.style.borderRadius = "4px";
-                    } else if (value > 6 && value <= 9) {
-                        element.style.color = "blue"; // blue text
-                    } else if (value > 9 && value <= 13) {
-                        element.style.color = "green"; // green text
-                    } else if (value > 41) {
-                        element.style.color = "purple"; // purple text (41 and above)
-                    }
-                    return element;
-                }
-            },
-            
-
-        {
-                    title: "Total Views",
-                    field: "total_views",
-                    hozAlign: "center",
-                    headerSort: false,
-                    formatter: function(cell) {
-                        const value = cell.getValue() || 0;
-                        return `<span class="text-danger">${Math.round(value)} </span>`;
-                    }
-                    
-                },
-
-                 {
-                    title: "Total Req Views",
-                    field: "total_req_view",
-                    hozAlign: "center",
-                    headerSort: false,
-                    formatter: function(cell) {
-                        const value = cell.getValue() || 0;
-                        return `<span class="text-dark">${Math.round(value)} </span>`;
-                    }
-                    
-                },
 
                 
 
@@ -2149,8 +2142,14 @@
         }
     });
     
-    // Make sure "Parent" view filter is checked by default
-    document.getElementById('parentFilter').checked = true;
+    // Make sure "Parent" view filter is set as active by default
+    const viewDropdown = document.getElementById('viewFilterDropdown');
+    if (viewDropdown) {
+        const parentItem = document.querySelector('.dropdown-item[data-filter="viewFilter"][data-value="parent"]');
+        if (parentItem) {
+            parentItem.classList.add('active');
+        }
+    }
 });
 
 // Expand/Collapse parent on click
@@ -2261,6 +2260,9 @@ document.addEventListener("click", function(e) {
             table.setFilter(function(data) {
                 // Parent filter
                 if (currentParentFilter && data.Parent !== currentParentFilter) return false;
+
+                // Hide parents with 0 inventory
+                if (data.is_parent && (parseFloat(data.INV) || 0) === 0) return false;
 
                 // Inv filter
                 if (currentInvFilter === "zero" && data.inv != 0) return false;
@@ -2808,7 +2810,6 @@ document.addEventListener("click", function(e) {
             document.getElementById('avgCvr').textContent = data.avgCvr ? `${data.avgCvr}` : "0";   
             document.getElementById('total_l30_count').textContent = data.total_l30_count ? `${data.total_l30_count}` : "0";   
             document.getElementById('total_l60_count').textContent = data.total_l60_count ? `${data.total_l60_count}` : "0";   
-            document.getElementById('total_l30_count_data').textContent = data.total_l30_count_data ? `${data.total_l30_count_data}` : "0";   
             const imgEl = document.getElementById('ovl30Img');
 
             if (imgEl) {

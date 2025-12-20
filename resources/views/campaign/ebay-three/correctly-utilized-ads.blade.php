@@ -520,7 +520,7 @@
                     let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
-                    if (!(ub7 >= 70 && ub7 <= 90)) return false;
+                    if (!(ub7 >= 70 && ub7 <= 90) && !(ub1 >= 70 && ub1 <= 90)) return false;
 
                     // Global search filter
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";

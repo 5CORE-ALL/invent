@@ -2407,12 +2407,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-over-uti', 'ebayOverUtilisation')->name('ebay-over-uti');
         Route::get('/ebay/under/utilized', 'ebayUnderUtilized')->name('ebay-under-utilize');
         Route::get('/ebay/correctly/utlized', 'ebayCorrectlyUtilized')->name('ebay-correctly-utilize');
+        Route::get('/ebay/utilized', 'ebayUtilizedView')->name('ebay.utilized');
         Route::get('/ebay/make-new/campaign/kw', 'ebayMakeCampaignKw')->name('ebay-make-new-campaign-kw');
         Route::get('/ebay/make-new/campaign/kw/data', 'getEbayMakeNewCampaignKw');
 
         Route::get('/ebay-over-uti/data', 'getEbayOverUtiData')->name('ebay-over-uti-data');
         Route::get('/ebay-over-uti/filter', 'filterOverUtilizedAds')->name('ebay-over-uti.filter');
         Route::get('/ebay-over-uti/campaign-chart', 'getCampaignChartData')->name('ebay-over-uti.campaign-chart');
+        Route::get('/ebay/utilized/ads/data', 'getEbayUtilizedAdsData');
+        Route::get('/ebay/get-utilization-counts', 'getEbayUtilizationCounts');
+        Route::get('/ebay/get-utilization-chart-data', 'getEbayUtilizationChartData');
         Route::post('/update-ebay-nr-data', 'updateNrData');
         Route::put('/update-ebay-keywords-bid-price', 'updateKeywordsBidDynamic');
     });
@@ -2532,9 +2536,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-3/over-utilized', 'ebay3OverUtilizedAdsView')->name('ebay3.over.utilized');
         Route::get('/ebay-3/under-utilized', 'ebay3UnderUtilizedAdsView')->name('ebay3.under.utilized');
         Route::get('/ebay-3/correctly-utilized', 'ebay3CorrectlyUtilizedAdsView')->name('ebay3.correctly.utilized');
+        Route::get('/ebay-3/utilized', 'ebay3UtilizedView')->name('ebay3.utilized');
+        Route::get('/ebay-3/get-utilization-counts', 'getEbay3UtilizationCounts');
+        Route::get('/ebay-3/get-utilization-chart-data', 'getEbay3UtilizationChartData');
         Route::get('/ebay-3/utilized/ads/data', 'getEbay3UtilizedAdsData');
         Route::get('/ebay-3/over-utilized/filter', 'filterOverUtilizedAds')->name('ebay3.over.utilized.filter');
         Route::get('/ebay-3/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay3.over.utilized.campaign-chart');
+        Route::put('/update-ebay3-keywords-bid-price', 'updateKeywordsBidDynamic');
         Route::post('/update-ebay3-nr-data', 'updateEbay3NrData');
     });
 

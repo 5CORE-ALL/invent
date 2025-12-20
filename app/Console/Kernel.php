@@ -60,6 +60,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\SyncMetaAllAds::class,
         \App\Console\Commands\SyncFbaShipmentStatus::class,
         \App\Console\Commands\StoreAmazonUtilizationCounts::class,
+        \App\Console\Commands\StoreEbayUtilizationCounts::class,
 
     ];
 
@@ -378,6 +379,11 @@ class Kernel extends ConsoleKernel
 
         // Store Amazon Utilization Counts - Daily
         $schedule->command('amazon:store-utilization-counts')
+            ->dailyAt('00:10')
+            ->timezone('Asia/Kolkata');
+
+        // Store eBay Utilization Counts - Daily
+        $schedule->command('ebay:store-utilization-counts')
             ->dailyAt('00:10')
             ->timezone('Asia/Kolkata');
 
