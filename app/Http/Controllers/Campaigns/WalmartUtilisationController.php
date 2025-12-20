@@ -15,6 +15,10 @@ class WalmartUtilisationController extends Controller
         return view('campaign.walmart-utilized-kw-ads');
     }
 
+    public function bgtUtilisedView(){
+        return view('campaign.walmart-bgt-util');
+    }
+
     public function overUtilisedView(){
         return view('campaign.walmart-over-utili');
     }
