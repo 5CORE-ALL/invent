@@ -207,16 +207,16 @@ class Ebay3KeywordAdsController extends Controller
             
             foreach ($periods as $period) {
                 $periodMatches = $campaignReports->where('report_range', $period);
-                
+
                 $impressions = $periodMatches->sum('cpc_impressions');
                 $clicks      = $periodMatches->sum('cpc_clicks');
                 $adFees      = $periodMatches->sum(fn($item) => (float) str_replace('USD ', '', $item->cpc_ad_fees_payout_currency ?? 0));
                 $sales       = $periodMatches->sum(fn($item) => (float) str_replace('USD ', '', $item->cpc_sale_amount_payout_currency ?? 0));
                 $unitsSold   = $periodMatches->sum('unitsSold');
-                
+
                 $cpc  = $clicks > 0 ? ($adFees / $clicks) : 0;
                 $acos = $sales > 0 ? ($adFees / $sales) * 100 : ($adFees > 0 ? 100 : 0);
-                
+
                 $row["impressions_" . strtolower($period)] = $impressions;
                 $row["clicks_" . strtolower($period)]      = $clicks;
                 $row["ad_sales_" . strtolower($period)]    = $sales;
@@ -225,7 +225,7 @@ class Ebay3KeywordAdsController extends Controller
                 $row["acos_" . strtolower($period)]        = $acos;
                 $row["cpc_" . strtolower($period)]         = $cpc;
             }
-            
+
             $result[] = (object) $row;
         }
 

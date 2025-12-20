@@ -50,28 +50,26 @@ class AmazonFbaAcosController extends Controller
 
         $nrValues = FbaManualData::whereIn('sku', $sellerSkus)->pluck('data', 'sku');
 
-        $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+        // Get all FBA KW campaigns (excluding PT) - without SKU filter to show unmatched campaigns too
+        $allCampaignsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($sellerSkus) {
-                foreach ($sellerSkus as $sku) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
-                }
-            })
+            ->where('campaignName', 'LIKE', '%FBA%')
             ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
+            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
-        $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+        $allCampaignsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
-            ->where(function ($q) use ($sellerSkus) {
-                foreach ($sellerSkus as $sku) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
-                }
-            })
+            ->where('campaignName', 'LIKE', '%FBA%')
             ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
+            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
         $result = [];
+        $matchedCampaignIds = []; // Track which campaigns are matched with SKUs
+        $addedCampaignIds = []; // Track which campaign_ids have already been added to result
 
+        // First, process campaigns that match with FBA SKUs
         foreach ($fbaData as $fba) {
             $sellerSku = $fba->seller_sku;
             $sellerSkuUpper = strtoupper(trim($sellerSku));
@@ -83,9 +81,9 @@ class AmazonFbaAcosController extends Controller
             $shopify = $shopifyData[$baseSkuUpper] ?? null;
             $monthlySales = $fbaMonthlySales->get($sellerSkuUpper);
 
-            $matchedCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($sellerSkuUpper) {
+            // Match campaigns that contain the seller SKU (with FBA)
+            $matchedCampaignsL30 = $allCampaignsL30->filter(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
-
                 return (
                     str_contains($cleanName, $sellerSkuUpper)
                     && !str_ends_with($cleanName, ' PT')
@@ -93,9 +91,8 @@ class AmazonFbaAcosController extends Controller
                 );
             });
 
-            $matchedCampaignsL7 = $amazonSpCampaignReportsL7->filter(function ($item) use ($sellerSkuUpper) {
+            $matchedCampaignsL7 = $allCampaignsL7->filter(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
-
                 return (
                     str_contains($cleanName, $sellerSkuUpper)
                     && !str_ends_with($cleanName, ' PT')
@@ -105,6 +102,18 @@ class AmazonFbaAcosController extends Controller
 
             $matchedCampaignL30 = $matchedCampaignsL30->first();
             $matchedCampaignL7 = $matchedCampaignsL7->first();
+            
+            // Skip if no campaign matched
+            if (!$matchedCampaignL30 && !$matchedCampaignL7) {
+                continue;
+            }
+            
+            // Get campaign_id and check for duplicates
+            $campaignId = $matchedCampaignL30->campaign_id ?? ($matchedCampaignL7->campaign_id ?? '');
+            if (empty($campaignId) || in_array($campaignId, $addedCampaignIds)) {
+                continue; // Skip duplicate campaign_id or empty campaign_id
+            }
+            
             $allCampaignNames = $matchedCampaignsL30->pluck('campaignName')->unique()->implode(' , ');
 
             $row = [];
@@ -114,10 +123,10 @@ class AmazonFbaAcosController extends Controller
             $row['A_L30']    = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
             $row['L30']    = $shopify->quantity ?? 0;
             $row['fba']    = null;
-            $row['campaign_id'] = $matchedCampaignL30->campaign_id ??  '';
-            $row['campaignName'] = $allCampaignNames;
-            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? '';
-            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? '';
+            $row['campaign_id'] = $campaignId;
+            $row['campaignName'] = $allCampaignNames ?: ($matchedCampaignL30->campaignName ?? ($matchedCampaignL7->campaignName ?? ''));
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaignL7->campaignStatus ?? '');
+            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaignL7->campaignBudgetAmount ?? 0);
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             
             $sales = $matchedCampaignL30->sales30d ?? 0;
@@ -150,10 +159,113 @@ class AmazonFbaAcosController extends Controller
                 }
             }
 
-            if ($row['NRA'] !== 'NRA' && $row['campaignName'] !== '') {
-                $result[] = (object) $row;
+            if ($row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && !empty($row['campaign_id'])) {
+                // Only add if this campaign_id hasn't been added yet (prevent duplicates)
+                if (!in_array($row['campaign_id'], $addedCampaignIds)) {
+                    $result[] = (object) $row;
+                    $addedCampaignIds[] = $row['campaign_id'];
+                    $matchedCampaignIds[] = $row['campaign_id'];
+                }
+            }
+        }
+
+        // Now add campaigns that don't match with any FBA SKU
+        // Merge L7 and L30, prioritizing L7 if duplicate campaign_id exists
+        $allUniqueCampaigns = collect();
+        $processedIds = [];
+        
+        // First add L7 campaigns
+        foreach ($allCampaignsL7->unique('campaign_id') as $campaign) {
+            $campaignId = $campaign->campaign_id ?? '';
+            if (!empty($campaignId) && !in_array($campaignId, $processedIds)) {
+                $allUniqueCampaigns->push($campaign);
+                $processedIds[] = $campaignId;
+            }
+        }
+        
+        // Then add L30 campaigns that are not in L7
+        foreach ($allCampaignsL30->unique('campaign_id') as $campaign) {
+            $campaignId = $campaign->campaign_id ?? '';
+            if (!empty($campaignId) && !in_array($campaignId, $processedIds)) {
+                $allUniqueCampaigns->push($campaign);
+                $processedIds[] = $campaignId;
+            }
+        }
+        
+        $matchedCampaignIds = array_unique($matchedCampaignIds);
+
+        foreach ($allUniqueCampaigns as $campaign) {
+            $campaignId = $campaign->campaign_id ?? '';
+            
+            // Skip if already matched with a SKU or already added
+            if (empty($campaignId) || in_array($campaignId, $matchedCampaignIds) || in_array($campaignId, $addedCampaignIds)) {
+                continue;
             }
 
+            $campaignName = strtoupper(trim($campaign->campaignName ?? ''));
+            if (empty($campaignName)) {
+                continue;
+            }
+
+            // Check if this campaign name matches any FBA seller SKU
+            $matchedSku = null;
+            foreach ($sellerSkus as $sellerSku) {
+                $sellerSkuUpper = strtoupper(trim($sellerSku));
+                $cleanCampaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                if (str_contains($cleanCampaignName, $sellerSkuUpper) && 
+                    !str_ends_with($cleanCampaignName, ' PT') && 
+                    !str_ends_with($cleanCampaignName, ' PT.')) {
+                    $matchedSku = $sellerSku;
+                    break;
+                }
+            }
+
+            // If no SKU match found, add as unmatched campaign
+            if (!$matchedSku) {
+                $matchedCampaignL30 = $allCampaignsL30->first(function ($item) use ($campaignId) {
+                    return ($item->campaign_id ?? '') === $campaignId;
+                });
+
+                $matchedCampaignL7 = $allCampaignsL7->first(function ($item) use ($campaignId) {
+                    return ($item->campaign_id ?? '') === $campaignId;
+                });
+
+                $row = [];
+                $row['parent'] = '';
+                $row['sku'] = '';
+                $row['INV'] = 0;
+                $row['A_L30'] = 0;
+                $row['L30'] = 0;
+                $row['fba'] = null;
+                $row['campaign_id'] = $campaignId;
+                $row['campaignName'] = $campaign->campaignName ?? '';
+                $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaignL7->campaignStatus ?? '');
+                $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaignL7->campaignBudgetAmount ?? 0);
+                $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
+                
+                $sales = $matchedCampaignL30->sales30d ?? 0;
+                $spend = $matchedCampaignL30->spend ?? 0;
+
+                if ($sales > 0) {
+                    $row['acos_L30'] = round(($spend / $sales) * 100, 2);
+                } elseif ($spend > 0) {
+                    $row['acos_L30'] = 100;
+                } else {
+                    $row['acos_L30'] = 0;
+                }
+
+                $row['clicks_L30'] = $matchedCampaignL30->clicks ?? 0;
+                $row['NRL'] = '';
+                $row['NRA'] = '';
+                $row['FBA'] = '';
+                $row['TPFT'] = null;
+
+                // Add unmatched campaign (no NRA filter for unmatched campaigns)
+                if ($row['campaignName'] !== '' && !in_array($row['campaign_id'], $addedCampaignIds)) {
+                    $result[] = (object) $row;
+                    $addedCampaignIds[] = $row['campaign_id'];
+                }
+            }
         }
 
         return response()->json([
@@ -198,34 +310,30 @@ class AmazonFbaAcosController extends Controller
 
         $nrValues = FbaManualData::whereIn('sku', $sellerSkus)->pluck('data', 'sku');
 
-        $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+        // Get all FBA PT campaigns - without SKU filter to show unmatched campaigns too
+        $allCampaignsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($sellerSkus) {
-                foreach ($sellerSkus as $sku) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
-                }
-            })
             ->where(function ($q) {
                 $q->where('campaignName', 'LIKE', '%FBA PT%')
                 ->orWhere('campaignName', 'LIKE', '%FBA PT.%');
             })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
-        $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+        $allCampaignsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
-            ->where(function ($q) use ($sellerSkus) {
-                foreach ($sellerSkus as $sku) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
-                }
-            })
             ->where(function ($q) {
                 $q->where('campaignName', 'LIKE', '%FBA PT%')
                 ->orWhere('campaignName', 'LIKE', '%FBA PT.%');
             })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
         $result = [];
+        $matchedCampaignIds = []; // Track which campaigns are matched with SKUs
+        $addedCampaignIds = []; // Track which campaign_ids have already been added to result
 
+        // First, process campaigns that match with FBA SKUs
         foreach ($fbaData as $fba) {
             $sellerSku = $fba->seller_sku;
             $sellerSkuUpper = strtoupper(trim($sellerSku));
@@ -237,20 +345,31 @@ class AmazonFbaAcosController extends Controller
             $shopify = $shopifyData[$baseSkuUpper] ?? null;
             $monthlySales = $fbaMonthlySales->get($sellerSkuUpper);
 
-            $matchedCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($sellerSkuUpper) {
+            // Match campaigns that contain the seller SKU (with FBA)
+            $matchedCampaignsL30 = $allCampaignsL30->filter(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
-
                 return str_contains($cleanName, $sellerSkuUpper);
             });
 
-            $matchedCampaignsL7 = $amazonSpCampaignReportsL7->filter(function ($item) use ($sellerSkuUpper) {
+            $matchedCampaignsL7 = $allCampaignsL7->filter(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
-
                 return str_contains($cleanName, $sellerSkuUpper);
             });
 
             $matchedCampaignL30 = $matchedCampaignsL30->first();
             $matchedCampaignL7 = $matchedCampaignsL7->first();
+            
+            // Skip if no campaign matched
+            if (!$matchedCampaignL30 && !$matchedCampaignL7) {
+                continue;
+            }
+            
+            // Get campaign_id and check for duplicates
+            $campaignId = $matchedCampaignL30->campaign_id ?? ($matchedCampaignL7->campaign_id ?? '');
+            if (empty($campaignId) || in_array($campaignId, $addedCampaignIds)) {
+                continue; // Skip duplicate campaign_id or empty campaign_id
+            }
+            
             $allCampaignNames = $matchedCampaignsL30->pluck('campaignName')->unique()->implode(', ');
 
             $row = [];
@@ -260,10 +379,10 @@ class AmazonFbaAcosController extends Controller
             $row['A_L30']    = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
             $row['L30']    = $shopify->quantity ?? 0;
             $row['fba']    = null;
-            $row['campaign_id'] = $matchedCampaignL30->campaign_id ??  '';
-            $row['campaignName'] = $allCampaignNames;
-            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? '';
-            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? '';
+            $row['campaign_id'] = $campaignId;
+            $row['campaignName'] = $allCampaignNames ?: ($matchedCampaignL30->campaignName ?? ($matchedCampaignL7->campaignName ?? ''));
+            $row['campaignStatus'] = $matchedCampaignL30->campaignStatus ?? ($matchedCampaignL7->campaignStatus ?? '');
+            $row['campaignBudgetAmount'] = $matchedCampaignL30->campaignBudgetAmount ?? ($matchedCampaignL7->campaignBudgetAmount ?? 0);
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             
             $sales = $matchedCampaignL30->sales30d ?? 0;
@@ -296,8 +415,89 @@ class AmazonFbaAcosController extends Controller
                 }
             }
 
-            if ($row['NRA'] !== 'NRA' && $row['campaignName'] !== '') {
-                $result[] = (object) $row;
+            if ($row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && !empty($row['campaign_id'])) {
+                // Only add if this campaign_id hasn't been added yet (prevent duplicates)
+                if (!in_array($row['campaign_id'], $addedCampaignIds)) {
+                    $result[] = (object) $row;
+                    $addedCampaignIds[] = $row['campaign_id'];
+                    $matchedCampaignIds[] = $row['campaign_id'];
+                }
+            }
+        }
+
+        // Now add campaigns that don't match with any FBA SKU
+        $allUniqueCampaigns = $allCampaignsL7->unique('campaign_id')->merge($allCampaignsL30->unique('campaign_id'));
+        $matchedCampaignIds = array_unique($matchedCampaignIds);
+
+        foreach ($allUniqueCampaigns as $campaign) {
+            $campaignId = $campaign->campaign_id ?? '';
+            
+            // Skip if already matched with a SKU or already added
+            if (empty($campaignId) || in_array($campaignId, $matchedCampaignIds) || in_array($campaignId, $addedCampaignIds)) {
+                continue;
+            }
+
+            $campaignName = strtoupper(trim($campaign->campaignName ?? ''));
+            if (empty($campaignName)) {
+                continue;
+            }
+
+            // Check if this campaign name matches any FBA seller SKU
+            $matchedSku = null;
+            foreach ($sellerSkus as $sellerSku) {
+                $sellerSkuUpper = strtoupper(trim($sellerSku));
+                $cleanCampaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                if (str_contains($cleanCampaignName, $sellerSkuUpper)) {
+                    $matchedSku = $sellerSku;
+                    break;
+                }
+            }
+
+            // If no SKU match found, add as unmatched campaign
+            if (!$matchedSku) {
+                $matchedCampaignL30 = $allCampaignsL30->first(function ($item) use ($campaignId) {
+                    return ($item->campaign_id ?? '') === $campaignId;
+                });
+
+                $matchedCampaignL7 = $allCampaignsL7->first(function ($item) use ($campaignId) {
+                    return ($item->campaign_id ?? '') === $campaignId;
+                });
+
+                $row = [];
+                $row['parent'] = '';
+                $row['sku'] = '';
+                $row['INV'] = 0;
+                $row['A_L30'] = 0;
+                $row['L30'] = 0;
+                $row['fba'] = null;
+                $row['campaign_id'] = $campaignId;
+                $row['campaignName'] = $campaign->campaignName ?? '';
+                $row['campaignStatus'] = $campaign->campaignStatus ?? '';
+                $row['campaignBudgetAmount'] = $campaign->campaignBudgetAmount ?? 0;
+                $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
+                
+                $sales = $matchedCampaignL30->sales30d ?? 0;
+                $spend = $matchedCampaignL30->spend ?? 0;
+
+                if ($sales > 0) {
+                    $row['acos_L30'] = round(($spend / $sales) * 100, 2);
+                } elseif ($spend > 0) {
+                    $row['acos_L30'] = 100;
+                } else {
+                    $row['acos_L30'] = 0;
+                }
+
+                $row['clicks_L30'] = $matchedCampaignL30->clicks ?? 0;
+                $row['NRL'] = '';
+                $row['NRA'] = '';
+                $row['FBA'] = '';
+                $row['TPFT'] = null;
+
+                // Add unmatched campaign (no NRA filter for unmatched campaigns)
+                if ($row['campaignName'] !== '' && !in_array($row['campaign_id'], $addedCampaignIds)) {
+                    $result[] = (object) $row;
+                    $addedCampaignIds[] = $row['campaign_id'];
+                }
             }
         }
 
