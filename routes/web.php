@@ -2579,6 +2579,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::controller(WalmartUtilisationController::class)->group(function () {
+        Route::get('/walmart/utilized/bgt', 'bgtUtilisedView')->name('walmart.utilized.bgt');
         Route::get('/walmart/utilized/kw', 'index')->name('walmart.utilized.kw');
         Route::get('/walmart/over/utilized', 'overUtilisedView')->name('walmart.over.utilized');
         Route::get('/walmart/under/utilized', 'underUtilisedView')->name('walmart.under.utilized');
