@@ -2402,6 +2402,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::controller(AmazonFbaAdsController::class)->group(function () {
+        // Consolidated FBA KW Utilized page
+        Route::get('/amazon/fba/utilized/kw', 'amazonFbaUtilizedKwView')->name('amazon.fba.utilized.kw');
+        Route::get('/amazon/fba/utilized/kw/ads/data', 'getAmazonFbaUtilizedKwAdsData');
+        
+        // Consolidated FBA PT Utilized page
+        Route::get('/amazon/fba/utilized/pt', 'amazonFbaUtilizedPtView')->name('amazon.fba.utilized.pt');
+        Route::get('/amazon/fba/utilized/pt/ads/data', 'getAmazonFbaUtilizedPtAdsData');
+        
+        Route::get('/amazon/fba/get-utilization-counts', 'getAmazonFbaUtilizationCounts');
+        Route::get('/amazon/fba/get-utilization-chart-data', 'getAmazonFbaUtilizationChartData');
+        
+        // Old routes (kept for backward compatibility)
         Route::get('/amazon/fba/over/kw/ads', 'amzFbaUtilizedBgtKw')->name('amazon.fba.over.kw.ads');
         Route::get('/amazon/fba/over/pt/ads', 'amzFbaUtilizedBgtPt')->name('amazon.fba.over.pt.ads');
         Route::get('/amazon/fba/under/kw/ads', 'amzFbaUnderUtilizedBgtKw')->name('amazon.fba.under.kw.ads');
