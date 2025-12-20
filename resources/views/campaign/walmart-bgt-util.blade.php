@@ -278,6 +278,9 @@
                 return 'pink';
             };
 
+            // Variable to store avg_acos for use in column formatters
+            var avgAcosValue = 0;
+
             var table = new Tabulator("#budget-under-table", {
                 index: "Sku",
                 ajaxURL: "/walmart/utilized/kw/data",
@@ -396,6 +399,35 @@
                             return `
                                 <span>${value.toFixed(2) + "%"}</span>
                             `;
+                        },
+                        visible: true,
+                    },
+                    {
+                        title: "ALD BGT",
+                        field: "acos_l30",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const acos = parseFloat(cell.getValue() || 0);
+                            let aldBgt = 0;
+                            
+                            if (avgAcosValue > 0) {
+                                const halfAvgAcos = avgAcosValue / 2;
+                                
+                                // If ACOS > AVG ACOS then ALD BGT = 1
+                                if (acos > avgAcosValue) {
+                                    aldBgt = 1;
+                                } 
+                                // If AVG ACOS > ACOS > HALF OF AVG ACOS then ALD BGT = 3
+                                else if (acos > halfAvgAcos && acos <= avgAcosValue) {
+                                    aldBgt = 3;
+                                } 
+                                // If ACOS <= HALF OF AVG ACOS then ALD BGT = 5
+                                else if (acos <= halfAvgAcos) {
+                                    aldBgt = 5;
+                                }
+                            }
+                            
+                            return `<span class="fw-bold">${aldBgt}</span>`;
                         },
                         visible: true,
                     },
@@ -551,7 +583,8 @@
                         document.getElementById("total-sales").innerText = "$" + parseFloat(response.total_sales).toFixed(2);
                     }
                     if (response.avg_acos !== undefined) {
-                        document.getElementById("avg-acos").innerText = parseFloat(response.avg_acos).toFixed(2) + "%";
+                        avgAcosValue = parseFloat(response.avg_acos);
+                        document.getElementById("avg-acos").innerText = avgAcosValue.toFixed(2) + "%";
                     }
                     
                     return response.data;
