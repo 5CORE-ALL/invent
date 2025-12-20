@@ -133,6 +133,42 @@
         'page_title' => 'Walmart BGT Util.',
         'sub_title' => 'Walmart BGT Util.',
     ])
+    
+    <!-- Stats Section -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <div class="row text-center">
+                        <!-- Total Spend -->
+                        <div class="col-md-4 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Total Spend</div>
+                                <div class="h3 mb-0 fw-bold text-success" id="total-spend">$0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Total Sales -->
+                        <div class="col-md-4 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Total Sales</div>
+                                <div class="h3 mb-0 fw-bold text-info" id="total-sales">$0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Avg ACOS -->
+                        <div class="col-md-4">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Avg ACOS</div>
+                                <div class="h3 mb-0 fw-bold text-danger" id="avg-acos">0.00%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
@@ -241,6 +277,30 @@
                 if (percent >= 25 && percent < 50) return 'green';
                 return 'pink';
             };
+
+            // Variable to store avg_acos for use in column formatters
+            var avgAcosValue = 0;
+
+            // Helper function to calculate ALD BGT from ACOS
+            function calculateAldBgt(acos) {
+                if (avgAcosValue > 0) {
+                    const halfAvgAcos = avgAcosValue / 2;
+                    
+                    // If ACOS > AVG ACOS then ALD BGT = 1
+                    if (acos > avgAcosValue) {
+                        return 1;
+                    } 
+                    // If AVG ACOS > ACOS > HALF OF AVG ACOS then ALD BGT = 3
+                    else if (acos > halfAvgAcos && acos <= avgAcosValue) {
+                        return 3;
+                    } 
+                    // If ACOS <= HALF OF AVG ACOS then ALD BGT = 5
+                    else if (acos <= halfAvgAcos) {
+                        return 5;
+                    }
+                }
+                return 0;
+            }
 
             var table = new Tabulator("#budget-under-table", {
                 index: "Sku",
@@ -364,6 +424,17 @@
                         visible: true,
                     },
                     {
+                        title: "ALD BGT",
+                        field: "acos_l30",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const acos = parseFloat(cell.getValue() || 0);
+                            const aldBgt = calculateAldBgt(acos);
+                            return `<span class="fw-bold">${aldBgt}</span>`;
+                        },
+                        visible: true,
+                    },
+                    {
                         title: "Clicks L30",
                         field: "clicks_l30",
                         hozAlign: "right",
@@ -418,6 +489,40 @@
 
                             return ub1.toFixed(0) + "%";
                         }
+                    },
+                    {
+                        title: "7 UB",
+                        field: "spend_l7",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var spend_l7 = parseFloat(row.spend_l7) || 0;
+                            var acos = parseFloat(row.acos_l30) || 0;
+                            var aldBgt = calculateAldBgt(acos);
+                            
+                            // 7 UB = (L7 ad spend/(ald bgt*7))*100
+                            var ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+
+                            return ub7.toFixed(2) + "%";
+                        },
+                        visible: true,
+                    },
+                    {
+                        title: "1 UB",
+                        field: "spend_l1",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var spend_l1 = parseFloat(row.spend_l1) || 0;
+                            var acos = parseFloat(row.acos_l30) || 0;
+                            var aldBgt = calculateAldBgt(acos);
+                            
+                            // 1 UB = (L1 ad spend/(ald bgt))*100
+                            var ub1 = aldBgt > 0 ? (spend_l1 / aldBgt) * 100 : 0;
+
+                            return ub1.toFixed(2) + "%";
+                        },
+                        visible: true,
                     },
                     {
                         title: "L7 CPC",
@@ -507,6 +612,18 @@
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
+                    // Update totals from API response
+                    if (response.total_spend !== undefined) {
+                        document.getElementById("total-spend").innerText = "$" + parseFloat(response.total_spend).toFixed(2);
+                    }
+                    if (response.total_sales !== undefined) {
+                        document.getElementById("total-sales").innerText = "$" + parseFloat(response.total_sales).toFixed(2);
+                    }
+                    if (response.avg_acos !== undefined) {
+                        avgAcosValue = parseFloat(response.avg_acos);
+                        document.getElementById("avg-acos").innerText = avgAcosValue.toFixed(2) + "%";
+                    }
+                    
                     return response.data;
                 }
             });
