@@ -657,9 +657,14 @@ class AmazonSpBudgetController extends Controller
         if ($record) {
             $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
             return response()->json([
-                'over_utilized' => ($campaignType === 'KW') ? $overCountFromTable : ($value['over_utilized'] ?? 0), // Use table count for KW
-                'under_utilized' => ($campaignType === 'PT') ? $underCountFromTable : ($value['under_utilized'] ?? 0), // Use table count for PT
-                'correctly_utilized' => $value['correctly_utilized'] ?? 0,
+                // 7UB only condition
+                'over_utilized_7ub' => $value['over_utilized_7ub'] ?? 0,
+                'under_utilized_7ub' => $value['under_utilized_7ub'] ?? 0,
+                'correctly_utilized_7ub' => $value['correctly_utilized_7ub'] ?? 0,
+                // 7UB + 1UB condition
+                'over_utilized_7ub_1ub' => $value['over_utilized_7ub_1ub'] ?? 0,
+                'under_utilized_7ub_1ub' => $value['under_utilized_7ub_1ub'] ?? 0,
+                'correctly_utilized_7ub_1ub' => $value['correctly_utilized_7ub_1ub'] ?? 0,
                 'status' => 200,
             ]);
         }
@@ -733,9 +738,15 @@ class AmazonSpBudgetController extends Controller
             $amazonSpCampaignReportsL1 = $amazonSpCampaignReportsL1->get();
         }
 
-        $overUtilizedCount = 0;
-        $underUtilizedCount = 0;
-        $correctlyUtilizedCount = 0;
+        // Counts for 7UB only condition
+        $overUtilizedCount7ub = 0;
+        $underUtilizedCount7ub = 0;
+        $correctlyUtilizedCount7ub = 0;
+        
+        // Counts for 7UB + 1UB condition
+        $overUtilizedCount7ub1ub = 0;
+        $underUtilizedCount7ub1ub = 0;
+        $correctlyUtilizedCount7ub1ub = 0;
         
         // For PT campaigns, we need to track unique SKUs (same as getAmzUnderUtilizedBgtPt)
         $processedSkus = [];
@@ -848,39 +859,47 @@ class AmazonSpBudgetController extends Controller
                 $processedSkus[] = $sku;
             }
 
-            // Categorize based on utilization
-            if ($ub7 > 90 && $ub1 > 90) {
-                $overUtilizedCount++;
+            // Categorize based on 7UB only condition
+            if ($ub7 > 90) {
+                $overUtilizedCount7ub++;
             } elseif ($ub7 < 70) {
-                $underUtilizedCount++;
+                $underUtilizedCount7ub++;
             } elseif ($ub7 >= 70 && $ub7 <= 90) {
-                $correctlyUtilizedCount++;
+                $correctlyUtilizedCount7ub++;
             }
-        }
-
-        // If this is an "under-utilized" page, return total campaigns count to match table
-        if ($pageType === 'under') {
-            $totalCount = $overUtilizedCount + $underUtilizedCount + $correctlyUtilizedCount;
-            return response()->json([
-                'over_utilized' => $overUtilizedCount,
-                'under_utilized' => $totalCount, // Return total campaigns to match table
-                'correctly_utilized' => $correctlyUtilizedCount,
-                'status' => 200,
-            ]);
+            
+            // Categorize based on 7UB + 1UB condition
+            if ($ub7 > 90 && $ub1 > 90) {
+                $overUtilizedCount7ub1ub++;
+            } elseif ($ub7 < 70 && $ub1 < 70) {
+                $underUtilizedCount7ub1ub++;
+            } elseif ($ub7 >= 70 && $ub7 <= 90 && $ub1 >= 70 && $ub1 <= 90) {
+                $correctlyUtilizedCount7ub1ub++;
+            }
         }
         
         return response()->json([
-            'over_utilized' => $overUtilizedCount,
-            'under_utilized' => $underUtilizedCount,
-            'correctly_utilized' => $correctlyUtilizedCount,
+            // 7UB only condition
+            'over_utilized_7ub' => $overUtilizedCount7ub,
+            'under_utilized_7ub' => $underUtilizedCount7ub,
+            'correctly_utilized_7ub' => $correctlyUtilizedCount7ub,
+            // 7UB + 1UB condition
+            'over_utilized_7ub_1ub' => $overUtilizedCount7ub1ub,
+            'under_utilized_7ub_1ub' => $underUtilizedCount7ub1ub,
+            'correctly_utilized_7ub_1ub' => $correctlyUtilizedCount7ub1ub,
             'status' => 200,
         ]);
         } catch (\Exception $e) {
             FacadesLog::error('Error in getAmazonUtilizationCounts: ' . $e->getMessage());
             return response()->json([
-                'over_utilized' => 0,
-                'under_utilized' => 0,
-                'correctly_utilized' => 0,
+                // 7UB only condition
+                'over_utilized_7ub' => 0,
+                'under_utilized_7ub' => 0,
+                'correctly_utilized_7ub' => 0,
+                // 7UB + 1UB condition
+                'over_utilized_7ub_1ub' => 0,
+                'under_utilized_7ub_1ub' => 0,
+                'correctly_utilized_7ub_1ub' => 0,
                 'status' => 500,
                 'error' => $e->getMessage()
             ], 500);
@@ -1059,19 +1078,30 @@ class AmazonSpBudgetController extends Controller
                 ->get();
         }
         
-        $data = $data->map(function ($item) use ($campaignType) {
+        $condition = $request->get('condition', '7ub'); // Default to 7ub, can be '7ub-1ub'
+        
+        $data = $data->map(function ($item) use ($campaignType, $condition) {
                 $value = is_array($item->value) ? $item->value : json_decode($item->value, true);
                 
                 // Handle both old format (AMAZON_UTILIZATION_YYYY-MM-DD) and new format (AMAZON_UTILIZATION_TYPE_YYYY-MM-DD)
                 $date = str_replace('AMAZON_UTILIZATION_' . $campaignType . '_', '', $item->sku);
                 $date = str_replace('AMAZON_UTILIZATION_', '', $date);
                 
-                return [
-                    'date' => $date,
-                    'over_utilized' => $value['over_utilized'] ?? 0,
-                    'under_utilized' => $value['under_utilized'] ?? 0,
-                    'correctly_utilized' => $value['correctly_utilized'] ?? 0,
-                ];
+                if ($condition === '7ub') {
+                    return [
+                        'date' => $date,
+                        'over_utilized_7ub' => $value['over_utilized_7ub'] ?? 0,
+                        'under_utilized_7ub' => $value['under_utilized_7ub'] ?? 0,
+                        'correctly_utilized_7ub' => $value['correctly_utilized_7ub'] ?? 0,
+                    ];
+                } else {
+                    return [
+                        'date' => $date,
+                        'over_utilized_7ub_1ub' => $value['over_utilized_7ub_1ub'] ?? 0,
+                        'under_utilized_7ub_1ub' => $value['under_utilized_7ub_1ub'] ?? 0,
+                        'correctly_utilized_7ub_1ub' => $value['correctly_utilized_7ub_1ub'] ?? 0,
+                    ];
+                }
             })
             ->reverse()
             ->values();

@@ -191,22 +191,16 @@
                                 <div class="d-flex gap-2 justify-content-end align-items-center flex-wrap">
                                     <!-- Count Cards -->
                                     <div class="d-flex gap-2">
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="over" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); cursor: pointer; min-width: 100px; transition: transform 0.2s;">
+                                        <div class="card shadow-sm border-0 utilization-card" data-type="7ub" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); cursor: pointer; min-width: 120px; transition: transform 0.2s;">
                                             <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">Over</h6>
-                                                <h5 class="mb-0 fw-bold" id="over-utilized-count" style="font-size: 1.2rem;">0</h5>
+                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">7UB</h6>
+                                                <h5 class="mb-0 fw-bold" id="7ub-count" style="font-size: 1.2rem;">0</h5>
                                             </div>
                                         </div>
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="under" style="background: linear-gradient(135deg, #ff2727 0%, #ff6b6b 100%); cursor: pointer; min-width: 100px; transition: transform 0.2s;">
+                                        <div class="card shadow-sm border-0 utilization-card" data-type="7ub-1ub" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); cursor: pointer; min-width: 120px; transition: transform 0.2s;">
                                             <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">Under</h6>
-                                                <h5 class="mb-0 fw-bold" id="under-utilized-count" style="font-size: 1.2rem;">0</h5>
-                                            </div>
-                                        </div>
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="correctly" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); cursor: pointer; min-width: 100px; transition: transform 0.2s;">
-                                            <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">Correctly</h6>
-                                                <h5 class="mb-0 fw-bold" id="correctly-utilized-count" style="font-size: 1.2rem;">0</h5>
+                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">7UB + 1UB</h6>
+                                                <h5 class="mb-0 fw-bold" id="7ub-1ub-count" style="font-size: 1.2rem;">0</h5>
                                             </div>
                                         </div>
                                     </div>
@@ -232,7 +226,7 @@
                             <div class="col-md-2">
                                 <select id="status-filter" class="form-select form-select-md">
                                     <option value="">All Status</option>
-                                    <option value="RUNNING">Running</option>
+                                    <option value="ENABLED">Enabled</option>
                                     <option value="PAUSED">Paused</option>
                                     <option value="ENDED">Ended</option>
                                 </select>
@@ -318,7 +312,7 @@
                 return 'pink';
             };
 
-            // Function to update button counts - shows all counts by default
+            // Function to update button counts - respects inventory filter
             let countUpdateTimeout = null;
             function updateButtonCounts() {
                 if (typeof table === 'undefined' || !table) {
@@ -333,6 +327,9 @@
                     // Get all data (not filtered) for accurate counts
                     const allData = table.getData('all');
                     
+                    // Get current inventory filter value
+                    let invFilterVal = $("#inv-filter").val();
+                    
                     // Count for each type (mutually exclusive like controller)
                     let overCount = 0;
                     let underCount = 0;
@@ -344,6 +341,26 @@
                         let l7_spend = parseFloat(row.l7_spend || 0);
                         let l1_spend = parseFloat(row.l1_spend || 0);
                         let inv = parseFloat(row.INV || 0);
+
+                        // Apply inventory filter logic to counts
+                        if (!invFilterVal || invFilterVal === '') {
+                            // Default: Skip INV = 0 campaigns
+                            if (inv === 0) {
+                                return;
+                            }
+                        } else if (invFilterVal === "ALL") {
+                            // ALL: Include all campaigns (no filtering)
+                        } else if (invFilterVal === "INV_0") {
+                            // INV_0: Only count INV = 0 campaigns
+                            if (inv !== 0) {
+                                return;
+                            }
+                        } else if (invFilterVal === "OTHERS") {
+                            // OTHERS: Only count INV > 0 campaigns
+                            if (inv === 0) {
+                                return;
+                            }
+                        }
 
                         let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                         let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
@@ -783,32 +800,19 @@
                     return false;
                 }
 
-                // Inventory filter - match individual pages exactly
+                // Inventory filter - Default to INV > 0 for all types
                 let invFilterVal = $("#inv-filter").val();
-                if (currentUtilizationType === 'over') {
-                    // Over-utilized: Show all campaigns by default (no filter)
-                    if (invFilterVal === "OTHERS") {
-                        if (parseFloat(data.INV) === 0) return false;
-                    }
+                // By default (no filter selected), show only INV > 0
+                if (!invFilterVal || invFilterVal === '') {
+                    if (parseFloat(data.INV) === 0) return false;
+                } else if (invFilterVal === "ALL") {
                     // ALL option shows everything, so no filtering needed
-                } else if (currentUtilizationType === 'under') {
-                    // Under-utilized: Show all campaigns when no filter or ALL is selected
-                    if (invFilterVal && invFilterVal !== 'ALL') {
-                        if (invFilterVal === "INV_0") {
-                            if (parseFloat(data.INV) !== 0) return false;
-                        } else if (invFilterVal === "OTHERS") {
-                            if (parseFloat(data.INV) === 0) return false;
-                        }
-                    }
-                } else if (currentUtilizationType === 'correctly') {
-                    // Correctly-utilized: Default to INV > 0 (exclude INV = 0 when no filter)
-                    if (!invFilterVal) {
-                        if (parseFloat(data.INV) === 0) return false;
-                    } else if (invFilterVal === "INV_0") {
-                        if (parseFloat(data.INV) !== 0) return false;
-                    } else if (invFilterVal === "OTHERS") {
-                        if (parseFloat(data.INV) === 0) return false;
-                    }
+                } else if (invFilterVal === "INV_0") {
+                    // Show only INV = 0
+                    if (parseFloat(data.INV) !== 0) return false;
+                } else if (invFilterVal === "OTHERS") {
+                    // Show only INV > 0
+                    if (parseFloat(data.INV) === 0) return false;
                 }
 
                 // NRA filter
@@ -853,6 +857,10 @@
 
                 $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
                     table.setFilter(combinedFilter);
+                    // Update counts when filter changes
+                    setTimeout(function() {
+                        updateButtonCounts();
+                    }, 200);
                 });
 
                 // Initial update of all button counts after data loads
@@ -1046,9 +1054,13 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 200) {
-                        document.getElementById('over-utilized-count').textContent = data.over_utilized || 0;
-                        document.getElementById('under-utilized-count').textContent = data.under_utilized || 0;
-                        document.getElementById('correctly-utilized-count').textContent = data.correctly_utilized || 0;
+                        // 7UB count: sum of all utilization types based on 7UB only
+                        const count7ub = (data.over_utilized_7ub || 0) + (data.under_utilized_7ub || 0) + (data.correctly_utilized_7ub || 0);
+                        // 7UB + 1UB count: sum of all utilization types based on both 7UB and 1UB
+                        const count7ub1ub = (data.over_utilized_7ub_1ub || 0) + (data.under_utilized_7ub_1ub || 0) + (data.correctly_utilized_7ub_1ub || 0);
+                        
+                        document.getElementById('7ub-count').textContent = count7ub || 0;
+                        document.getElementById('7ub-1ub-count').textContent = count7ub1ub || 0;
                     }
                 })
                 .catch(err => console.error('Error loading counts:', err));
@@ -1059,62 +1071,92 @@
             const modal = new bootstrap.Modal(document.getElementById('utilizationChartModal'));
             
             const titles = {
-                'over': 'Over Utilized Trend (Last 30 Days)',
-                'under': 'Under Utilized Trend (Last 30 Days)',
-                'correctly': 'Correctly Utilized Trend (Last 30 Days)'
+                '7ub': '7UB Utilization Trend (Last 30 Days)',
+                '7ub-1ub': '7UB + 1UB Utilization Trend (Last 30 Days)'
             };
             chartTitle.textContent = titles[type] || 'Utilization Trend';
 
             modal.show();
 
-            fetch('/amazon/get-utilization-chart-data?type=KW')
+            fetch('/amazon/get-utilization-chart-data?type=KW&condition=' + type)
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 200 && data.data && data.data.length > 0) {
                         const chartData = data.data;
                         const dates = chartData.map(d => d.date);
                         
-                        let dataset = [];
-                        let label = '';
-                        let color = '';
-                        let bgColor = '';
-
-                        if (type === 'over') {
-                            dataset = chartData.map(d => d.over_utilized);
-                            label = 'Over Utilized';
-                            color = '#ff01d0';
-                            bgColor = 'rgba(255, 1, 208, 0.1)';
-                        } else if (type === 'under') {
-                            dataset = chartData.map(d => d.under_utilized);
-                            label = 'Under Utilized';
-                            color = '#ff2727';
-                            bgColor = 'rgba(255, 39, 39, 0.1)';
-                        } else if (type === 'correctly') {
-                            dataset = chartData.map(d => d.correctly_utilized);
-                            label = 'Correctly Utilized';
-                            color = '#28a745';
-                            bgColor = 'rgba(40, 167, 69, 0.1)';
-                        }
-
                         const ctx = document.getElementById('utilizationChart').getContext('2d');
                         
                         if (utilizationChartInstance) {
                             utilizationChartInstance.destroy();
                         }
 
+                        // Show all 3 lines (over, under, correctly) based on condition type
+                        const datasets = [];
+                        
+                        if (type === '7ub') {
+                            datasets.push({
+                                label: 'Over Utilized',
+                                data: chartData.map(d => d.over_utilized_7ub || 0),
+                                borderColor: '#ff01d0',
+                                backgroundColor: 'rgba(255, 1, 208, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                            datasets.push({
+                                label: 'Under Utilized',
+                                data: chartData.map(d => d.under_utilized_7ub || 0),
+                                borderColor: '#ff2727',
+                                backgroundColor: 'rgba(255, 39, 39, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                            datasets.push({
+                                label: 'Correctly Utilized',
+                                data: chartData.map(d => d.correctly_utilized_7ub || 0),
+                                borderColor: '#28a745',
+                                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                        } else if (type === '7ub-1ub') {
+                            datasets.push({
+                                label: 'Over Utilized',
+                                data: chartData.map(d => d.over_utilized_7ub_1ub || 0),
+                                borderColor: '#ff01d0',
+                                backgroundColor: 'rgba(255, 1, 208, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                            datasets.push({
+                                label: 'Under Utilized',
+                                data: chartData.map(d => d.under_utilized_7ub_1ub || 0),
+                                borderColor: '#ff2727',
+                                backgroundColor: 'rgba(255, 39, 39, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                            datasets.push({
+                                label: 'Correctly Utilized',
+                                data: chartData.map(d => d.correctly_utilized_7ub_1ub || 0),
+                                borderColor: '#28a745',
+                                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                borderWidth: 2
+                            });
+                        }
+
                         utilizationChartInstance = new Chart(ctx, {
                             type: 'line',
                             data: {
                                 labels: dates,
-                                datasets: [{
-                                    label: label,
-                                    data: dataset,
-                                    borderColor: color,
-                                    backgroundColor: bgColor,
-                                    tension: 0.4,
-                                    fill: true,
-                                    borderWidth: 2
-                                }]
+                                datasets: datasets
                             },
                             options: {
                                 responsive: true,

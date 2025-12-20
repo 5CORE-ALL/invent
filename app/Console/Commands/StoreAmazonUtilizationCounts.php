@@ -99,9 +99,15 @@ class StoreAmazonUtilizationCounts extends Command
             $amazonSpCampaignReportsL1 = $amazonSpCampaignReportsL1->get();
         }
 
-        $overUtilizedCount = 0;
-        $underUtilizedCount = 0;
-        $correctlyUtilizedCount = 0;
+        // Counts for 7UB only condition
+        $overUtilizedCount7ub = 0;
+        $underUtilizedCount7ub = 0;
+        $correctlyUtilizedCount7ub = 0;
+        
+        // Counts for 7UB + 1UB condition
+        $overUtilizedCount7ub1ub = 0;
+        $underUtilizedCount7ub1ub = 0;
+        $correctlyUtilizedCount7ub1ub = 0;
         
         // For PT campaigns, we need to track unique SKUs (same as getAmzUnderUtilizedBgtPt)
         $processedSkus = [];
@@ -220,45 +226,36 @@ class StoreAmazonUtilizationCounts extends Command
                 $processedSkus[] = $sku;
             }
 
-            // For KW over-utilized: Only filter by ub7 > 90 && ub1 > 90 (no NRA or campaignName filter)
-            // For KW under-utilized: Filter by NRA !== 'NRA' && campaignName !== '' && ub7 < 70 (same as getAmzUnderUtilizedBgtKw line 467)
-            // For PT under-utilized: Filter by NRA !== 'NRA' && campaignName !== '' && ub7 < 70
-            // For HL: Similar to PT
-            if ($campaignType === 'KW') {
-                // KW over-utilized: Only check utilization (getAmzUtilizedBgtKw doesn't filter by NRA or campaignName)
-                if ($ub7 > 90 && $ub1 > 90) {
-                    $overUtilizedCount++;
-                } elseif ($ub7 < 70) {
-                    // KW under-utilized: Apply NRA and campaignName filters (same as getAmzUnderUtilizedBgtKw line 467)
-                    if ($nra !== 'NRA' && $campaignName !== '') {
-                        $underUtilizedCount++;
-                    }
-                } elseif ($ub7 >= 70 && $ub7 <= 90) {
-                    // KW correctly-utilized: Apply NRA and campaignName filters (same as getAmzUnderUtilizedBgtKw)
-                    if ($nra !== 'NRA' && $campaignName !== '') {
-                        $correctlyUtilizedCount++;
-                    }
-                }
-            } else {
-                // PT and HL: Apply NRA and campaignName filters (same as getAmzUnderUtilizedBgtPt)
-                if ($nra !== 'NRA' && $campaignName !== '') {
-                    if ($ub7 > 90 && $ub1 > 90) {
-                        $overUtilizedCount++;
-                    } elseif ($ub7 < 70) {
-                        $underUtilizedCount++;
-                    } elseif ($ub7 >= 70 && $ub7 <= 90) {
-                        $correctlyUtilizedCount++;
-                    }
-                }
+            // Categorize based on 7UB only condition
+            if ($ub7 > 90) {
+                $overUtilizedCount7ub++;
+            } elseif ($ub7 < 70) {
+                $underUtilizedCount7ub++;
+            } elseif ($ub7 >= 70 && $ub7 <= 90) {
+                $correctlyUtilizedCount7ub++;
+            }
+            
+            // Categorize based on 7UB + 1UB condition
+            if ($ub7 > 90 && $ub1 > 90) {
+                $overUtilizedCount7ub1ub++;
+            } elseif ($ub7 < 70 && $ub1 < 70) {
+                $underUtilizedCount7ub1ub++;
+            } elseif ($ub7 >= 70 && $ub7 <= 90 && $ub1 >= 70 && $ub1 <= 90) {
+                $correctlyUtilizedCount7ub1ub++;
             }
         }
 
         // Store in amazon_data_view table with date as SKU
         $today = now()->format('Y-m-d');
         $data = [
-            'over_utilized' => $overUtilizedCount,
-            'under_utilized' => $underUtilizedCount,
-            'correctly_utilized' => $correctlyUtilizedCount,
+            // 7UB only condition
+            'over_utilized_7ub' => $overUtilizedCount7ub,
+            'under_utilized_7ub' => $underUtilizedCount7ub,
+            'correctly_utilized_7ub' => $correctlyUtilizedCount7ub,
+            // 7UB + 1UB condition
+            'over_utilized_7ub_1ub' => $overUtilizedCount7ub1ub,
+            'under_utilized_7ub_1ub' => $underUtilizedCount7ub1ub,
+            'correctly_utilized_7ub_1ub' => $correctlyUtilizedCount7ub1ub,
             'date' => $today
         ];
 
@@ -279,8 +276,13 @@ class StoreAmazonUtilizationCounts extends Command
             $this->info("Created {$campaignType} utilization counts for {$today}");
         }
 
-        $this->info("{$campaignType} - Over-utilized: {$overUtilizedCount}");
-        $this->info("{$campaignType} - Under-utilized: {$underUtilizedCount}");
-        $this->info("{$campaignType} - Correctly-utilized: {$correctlyUtilizedCount}");
+        $this->info("{$campaignType} - 7UB Condition:");
+        $this->info("  Over-utilized: {$overUtilizedCount7ub}");
+        $this->info("  Under-utilized: {$underUtilizedCount7ub}");
+        $this->info("  Correctly-utilized: {$correctlyUtilizedCount7ub}");
+        $this->info("{$campaignType} - 7UB + 1UB Condition:");
+        $this->info("  Over-utilized: {$overUtilizedCount7ub1ub}");
+        $this->info("  Under-utilized: {$underUtilizedCount7ub1ub}");
+        $this->info("  Correctly-utilized: {$correctlyUtilizedCount7ub1ub}");
     }
 }
