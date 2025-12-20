@@ -124,8 +124,8 @@ class ListingEbayController extends Controller
 
         // Handle nr_req - save as NRL field in ebay_data_view
         if ($request->has('nr_req')) {
-            // Map: 'NRL' -> 'NRL', 'REQ' -> 'REQ'
-            $existing['NRL'] = ($validated['nr_req'] === 'NRL') ? 'NRL' : 'REQ';
+            // Map: 'NR' -> 'NRL', 'REQ' -> 'REQ'
+            $existing['NRL'] = ($validated['nr_req'] === 'NR') ? 'NRL' : 'REQ';
         }
 
         // Handle listed field - save as Listed (capitalized) to match the JSON structure
