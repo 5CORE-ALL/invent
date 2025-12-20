@@ -310,9 +310,17 @@ class ProductMasterController extends Controller
             // Validate numeric fields only if they are provided (optional validation)
             $numericFields = ['label_qty', 'cp', 'wt_act', 'wt_decl', 'w', 'l', 'h'];
             $invalidNumeric = [];
+            
             foreach ($numericFields as $field) {
                 if (isset($values[$field]) && $values[$field] !== '' && $values[$field] !== null) {
-                    if (!is_numeric($values[$field]) || floatval($values[$field]) < 0) {
+                    // Normalize value for validation: trim whitespace and remove commas if it's a string
+                    $valueToCheck = $values[$field];
+                    if (is_string($valueToCheck)) {
+                        $valueToCheck = trim(str_replace(',', '', $valueToCheck));
+                    }
+                    
+                    // Check if value is numeric and non-negative (>= 0)
+                    if (!is_numeric($valueToCheck) || floatval($valueToCheck) < 0) {
                         $invalidNumeric[] = $field;
                     }
                 }
@@ -324,6 +332,13 @@ class ProductMasterController extends Controller
                     'message' => 'The following fields must be valid positive numbers: ' . implode(', ', $invalidNumeric),
                     'errors' => $invalidNumeric
                 ], 422);
+            }
+            
+            // Normalize numeric fields for storage (remove commas, trim whitespace)
+            foreach ($numericFields as $field) {
+                if (isset($values[$field]) && $values[$field] !== '' && $values[$field] !== null && is_string($values[$field])) {
+                    $values[$field] = trim(str_replace(',', '', $values[$field]));
+                }
             }
         }
 
