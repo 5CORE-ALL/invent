@@ -92,12 +92,18 @@ class SyncLinkedProducts extends Command
         
         while ($attempt < $maxRetries) {
             try {
-                $request = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)
-                    ->timeout(60); // Increased timeout
+                // Use X-Shopify-Access-Token header (standard Shopify API authentication)
+                $request = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $this->shopifyPassword,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])->timeout(60);
                 
                 if ($method === 'GET') {
+                    // GET requests: data as query parameters
                     $response = $request->get($endpoint, $data);
                 } else {
+                    // POST requests: data as JSON body
                     $response = $request->post($endpoint, $data);
                 }
                 
@@ -183,13 +189,33 @@ class SyncLinkedProducts extends Command
             $this->info("Processing Group {$groupId}");
 
             $packData = [];
-            $totalPieces = 0;
+            $totalPieces = 0; // Count pieces from ALL SKUs (1pcs + larger pack sizes)
+            $totalPiecesFromOnePcs = 0; // ONLY count pieces from 1pcs SKUs for the "has stock" check
             $totalL30 = 0;
+            $hasOnePcsWithStock = false; // Check if any 1pcs SKU has stock > 0
 
             foreach ($products as $product) {
                 $sku = $normalizeSku($product->sku);
-                $availableQty = $this->getShopifyAvailableQty($sku, $normalizeSku);
-                $l30 = isset($shopifyData[$sku]) ? (int)$shopifyData[$sku]->quantity : 0;
+                $shopifySkuRecord = $shopifyData[$sku] ?? null;
+                
+                // Use database stock field directly (already synced from Shopify)
+                // Try 'inv' first, then 'available_to_sell' as fallback
+                if ($shopifySkuRecord) {
+                    // Try inv field first
+                    if (isset($shopifySkuRecord->inv) && $shopifySkuRecord->inv !== null && $shopifySkuRecord->inv > 0) {
+                        $availableQty = (int)$shopifySkuRecord->inv;
+                    } elseif (isset($shopifySkuRecord->available_to_sell) && $shopifySkuRecord->available_to_sell !== null) {
+                        $availableQty = (int)$shopifySkuRecord->available_to_sell;
+                    } else {
+                        $availableQty = 0;
+                    }
+                    
+                    $l30 = (int)$shopifySkuRecord->quantity;
+                } else {
+                    $availableQty = 0;
+                    $l30 = 0;
+                    $this->warn("  SKU {$sku}: Not found in shopify_skus table");
+                }
 
                 // detect pack size
                 if (preg_match('/(\d+)\s*P(?:c|cs)/i', $product->sku, $matches)) {
@@ -202,17 +228,39 @@ class SyncLinkedProducts extends Command
                 $product->calc_l30 = $l30;
                 $product->dil = $availableQty > 0 ? round(($l30 / $availableQty) * 100, 2) : 0;
 
+                // Calculate pieces from this SKU (packs × pack size)
                 $piecesFromThisSku = $availableQty * $packSize;
-                $this->info("SKU {$sku}: PackSize={$packSize}, Qty={$availableQty}, Pieces={$piecesFromThisSku}");
-
+                
                 $packData[$sku] = [
                     'product'  => $product,
                     'packSize' => $packSize,
                     'l30'      => $l30,
                 ];
 
+                // Check if this is a 1pcs SKU with stock > 0 (required condition)
+                if ($packSize === 1 && $availableQty > 0) {
+                    $hasOnePcsWithStock = true;
+                }
+
+                // Count pieces from ALL SKUs for total pool
                 $totalPieces += $piecesFromThisSku;
+                
+                // Count pieces from ONLY 1pcs SKUs for the "greater than" check
+                if ($packSize === 1) {
+                    $totalPiecesFromOnePcs += $piecesFromThisSku;
+                    $this->info("1pcs SKU {$sku}: Qty={$availableQty} packs, Pieces={$piecesFromThisSku} (contributing to pool)");
+                } else {
+                    $this->info("{$packSize}pcs SKU {$sku}: Qty={$availableQty} packs, Pieces={$piecesFromThisSku} (contributing to pool)");
+                }
+
                 $totalL30 += $l30;
+            }
+
+            // CRITICAL: Only split if at least one 1pcs SKU has stock > 0
+            // If all 1pcs SKUs have 0 stock, skip this group entirely (don't touch anything)
+            if (!$hasOnePcsWithStock) {
+                $this->warn("Group {$groupId} skipped: No 1pcs SKUs with stock > 0. All SKUs remain unchanged.");
+                continue;
             }
 
             if ($totalPieces == 0) {
@@ -220,14 +268,33 @@ class SyncLinkedProducts extends Command
                 continue;
             }
 
-            $numSkus = count($packData);
-            $this->info("=== TOTAL: {$totalPieces} pieces from {$numSkus} SKUs ===");
+            // Check if any larger pack size SKU has MORE stock (in PACKS, not pieces) than total from 1pcs SKUs (in pieces)
+            // For 2pcs/3pcs/4pcs SKUs, compare pack count with 1pcs piece count
+            $skipDueToLargerStock = false;
+            $largerSkuDetails = [];
+            foreach ($packData as $sku => $data) {
+                if ($data['packSize'] > 1) {
+                    $availableQty = $data['product']->calc_available_qty; // This is pack count for larger pack sizes
+                    // Compare pack count of larger SKU with piece count from 1pcs SKUs
+                    if ($availableQty > $totalPiecesFromOnePcs) {
+                        $skipDueToLargerStock = true;
+                        $largerSkuDetails[] = "{$sku} ({$data['packSize']}pcs): {$availableQty} packs > {$totalPiecesFromOnePcs} pieces from 1pcs";
+                    }
+                }
+            }
 
-            
-            // Distribute EQUALLY across all SKUs in the group
-           
-            $allocations = [];
-            $assignedPieces = 0;
+            if ($skipDueToLargerStock) {
+                $this->warn("Group {$groupId} skipped: Some larger pack size SKUs have MORE stock (packs) than 1pcs SKUs (pieces):");
+                foreach ($largerSkuDetails as $detail) {
+                    $this->warn("  - {$detail}");
+                }
+                $this->warn("All SKUs remain unchanged.");
+                continue;
+            }
+
+            $numSkus = count($packData);
+            $this->info("=== TOTAL: {$totalPieces} pieces from ALL SKUs ===");
+            $this->info("Distributing equally among all {$numSkus} SKUs");
 
             // Calculate equal distribution in pieces
             $piecesPerSku = intdiv($totalPieces, $numSkus);
@@ -235,46 +302,54 @@ class SyncLinkedProducts extends Command
 
             $this->info("Distributing equally: {$piecesPerSku} pieces per SKU (leftover: {$leftoverPieces})");
 
+            // First pass: allocate base pieces to each SKU (converting to packs)
+            $allocations = [];
+            $piecesAllocatedPerSku = [];
             foreach ($packData as $sku => $data) {
-                // Convert pieces to packs for this SKU
+                // Allocate base pieces per SKU
                 $packs = intdiv($piecesPerSku, $data['packSize']);
                 $allocations[$sku] = $packs;
                 $piecesAllocated = $packs * $data['packSize'];
-                $assignedPieces += $piecesAllocated;
+                $piecesAllocatedPerSku[$sku] = $piecesAllocated;
                 $this->line("  {$sku}: {$piecesPerSku} pieces ÷ {$data['packSize']} = {$packs} packs ({$piecesAllocated} pieces)");
             }
 
-            // Distribute ALL leftover pieces to smallest pack size SKU
-            $totalLeftover = $totalPieces - $assignedPieces;
-            $this->line("Total assigned: {$assignedPieces} pieces, Leftover: {$totalLeftover} pieces");
+            // Calculate total leftover after first pass
+            $totalAssigned = array_sum($piecesAllocatedPerSku);
+            $totalLeftover = $totalPieces - $totalAssigned;
+            $this->line("Total assigned: {$totalAssigned} pieces, Leftover: {$totalLeftover} pieces");
             
+            // Distribute leftover pieces more intelligently to balance the distribution
             if ($totalLeftover > 0) {
-                // Find the SKU with smallest pack size
-                $smallestSku = null;
-                $smallestPackSize = PHP_INT_MAX;
-                foreach ($packData as $sku => $data) {
-                    if ($data['packSize'] < $smallestPackSize) {
-                        $smallestPackSize = $data['packSize'];
-                        $smallestSku = $sku;
+                // Sort SKUs by pack size (smallest first) to prioritize them for leftover pieces
+                $sortedSkus = collect($packData)->sortBy('packSize')->keys()->toArray();
+                
+                $remainingLeftover = $totalLeftover;
+                $this->line("Distributing {$remainingLeftover} leftover pieces to balance allocation...");
+                
+                foreach ($sortedSkus as $sku) {
+                    if ($remainingLeftover <= 0) break;
+                    
+                    $data = $packData[$sku];
+                    $packSize = $data['packSize'];
+                    
+                    // Try to add one pack if it helps balance
+                    if ($remainingLeftover >= $packSize) {
+                        $allocations[$sku] += 1;
+                        $piecesAllocatedPerSku[$sku] += $packSize;
+                        $remainingLeftover -= $packSize;
+                        $this->line("  Added 1 pack to {$sku} ({$packSize} pieces), remaining leftover: {$remainingLeftover}");
                     }
                 }
-
-                $this->line("Assigning ALL {$totalLeftover} leftover pieces to smallest pack SKU: {$smallestSku} (pack size: {$smallestPackSize})");
-
-                // Add as many full packs as possible
-                $extraPacks = intdiv($totalLeftover, $smallestPackSize);
-                if ($extraPacks > 0) {
-                    $allocations[$smallestSku] += $extraPacks;
-                    $assignedPieces += $extraPacks * $smallestPackSize;
-                    $this->line("  Added {$extraPacks} full packs ({$extraPacks} × {$smallestPackSize} = " . ($extraPacks * $smallestPackSize) . " pieces)");
-                }
-
-                // If there are STILL pieces left (can't make a full pack), add one more pack
-                $finalLeftover = $totalPieces - $assignedPieces;
-                if ($finalLeftover > 0) {
+                
+                // If there's still leftover (can't make full packs), add to smallest pack size
+                if ($remainingLeftover > 0) {
+                    $smallestSku = $sortedSkus[0];
+                    $smallestPackSize = $packData[$smallestSku]['packSize'];
                     $allocations[$smallestSku] += 1;
-                    $assignedPieces += $smallestPackSize;
-                    $this->line("  Added 1 more pack to accommodate remaining {$finalLeftover} pieces (waste: " . ($smallestPackSize - $finalLeftover) . " pieces)");
+                    $piecesAllocatedPerSku[$smallestSku] += $smallestPackSize;
+                    $waste = $smallestPackSize - $remainingLeftover;
+                    $this->line("  Added 1 more pack to smallest SKU {$smallestSku} to accommodate remaining {$remainingLeftover} pieces (waste: {$waste} pieces)");
                 }
             }
             
@@ -303,7 +378,9 @@ class SyncLinkedProducts extends Command
 
                 // Update Shopify FIRST
                 $this->line("Updating Shopify for SKU: {$sku}...");
-                $shopifyResult = $this->updateShopifyQty($sku, $newQty, $normalizeSku);
+                $shopifySkuRecord = $shopifyData[$sku] ?? null;
+                $variantId = $shopifySkuRecord->variant_id ?? null;
+                $shopifyResult = $this->updateShopifyQty($sku, $newQty, $normalizeSku, $variantId);
 
                 // Only save to database if Shopify succeeded
                 if ($shopifyResult['success']) {
@@ -408,82 +485,105 @@ class SyncLinkedProducts extends Command
         return collect($invLevelResponse->json('inventory_levels') ?? [])->sum('available');
     }
 
-    private function updateShopifyQty($sku, $newQty, $normalizeSku)
+    private function updateShopifyQty($sku, $newQty, $normalizeSku, $variantId = null)
     {
         $inventoryItemId = null;
-        $pageInfo = null;
-        
-        // Normalize the search SKU once
-        $normalizedSearchSku = $normalizeSku($sku);
-        $this->line("Searching for SKU: '{$normalizedSearchSku}'");
-        
-        $searchedPages = 0;
-        $totalVariantsChecked = 0;
+        $apiDisabled = false;
 
-        do {
-            $queryParams = ['limit' => 250];
-            if ($pageInfo) $queryParams['page_info'] = $pageInfo;
-
-            $response = $this->makeShopifyRequest(
-                'GET',
-                "https://{$this->shopifyDomain}/admin/api/2025-01/products.json",
-                $queryParams
-            );
-
-            if (!$response->successful()) {
-                Log::warning("Shopify API failed when updating SKU {$sku}: " . $response->status());
-                return [
-                    'success' => false, 
-                    'error' => 'Shopify API error', 
-                    'details' => "HTTP {$response->status()} - Failed to fetch products"
+        // Use GraphQL API to get inventory_item_id from variant_id (REST API is disabled)
+        if ($variantId) {
+            try {
+                $graphqlQuery = [
+                    'query' => '
+                        query getVariant($id: ID!) {
+                            productVariant(id: $id) {
+                                id
+                                inventoryItem {
+                                    id
+                                }
+                            }
+                        }
+                    ',
+                    'variables' => [
+                        'id' => 'gid://shopify/ProductVariant/' . $variantId
+                    ]
                 ];
-            }
 
-            $products = $response->json('products') ?? [];
-            $searchedPages++;
-            
-            foreach ($products as $product) {
-                foreach ($product['variants'] ?? [] as $variant) {
-                    $totalVariantsChecked++;
-                    $originalVariantSku = $variant['sku'] ?? '';
-                    $variantSku = $normalizeSku($originalVariantSku);
+                $graphqlResponse = $this->makeShopifyRequest(
+                    'POST',
+                    "https://{$this->shopifyDomain}/admin/api/2025-01/graphql.json",
+                    $graphqlQuery
+                );
+
+                if ($graphqlResponse->successful()) {
+                    $graphqlData = $graphqlResponse->json();
+                    if (isset($graphqlData['data']['productVariant']['inventoryItem']['id'])) {
+                        // Extract numeric ID from GraphQL ID format: "gid://shopify/InventoryItem/123456"
+                        $inventoryItemGid = $graphqlData['data']['productVariant']['inventoryItem']['id'];
+                        $inventoryItemId = str_replace('gid://shopify/InventoryItem/', '', $inventoryItemGid);
+                        $this->line("  Found inventory_item_id via GraphQL for SKU: {$sku} (ID: {$inventoryItemId})");
+                    } else {
+                        $errors = $graphqlData['errors'] ?? [];
+                        $this->warn("  GraphQL query returned no inventory_item_id for SKU {$sku}");
+                        if (!empty($errors)) {
+                            $this->warn("    GraphQL errors: " . json_encode($errors));
+                        }
+                    }
+                } else {
+                    $errorBody = $graphqlResponse->body();
+                    $statusCode = $graphqlResponse->status();
                     
-                    // Log SKUs that are close matches
-                    if (stripos($variantSku, 'MS RBL 3T') !== false) {
-                        $this->line("  Found similar: '{$originalVariantSku}' -> normalized: '{$variantSku}'");
+                    // Check if API access is disabled
+                    if ($statusCode === 403 && strpos($errorBody, 'API Access has been disabled') !== false) {
+                        $apiDisabled = true;
+                        $this->error("  ⚠ Shopify API Access is DISABLED for this store");
+                        $this->error("    This is a Shopify configuration issue, not a code issue.");
+                        $this->error("    To fix:");
+                        $this->error("    1. Go to Shopify Admin > Settings > Apps and sales channels");
+                        $this->error("    2. Find your API app/access token");
+                        $this->error("    3. Re-enable API access");
+                        $this->error("    OR contact Shopify support to re-enable API access for your store.");
+                    } else {
+                        $this->error("  Failed GraphQL query for variant_id {$variantId} (SKU: {$sku})");
+                        $this->error("    Status: {$statusCode}");
+                        $this->error("    Response: " . substr($errorBody, 0, 200));
                     }
                     
-                    if ($variantSku === $normalizedSearchSku) {
-                        $this->info("✓ Found exact match: '{$originalVariantSku}' (normalized: '{$variantSku}')");
-                        $inventoryItemId = $variant['inventory_item_id'];
-                        break 2;
-                    }
+                    Log::error("Shopify GraphQL API error for SKU {$sku}", [
+                        'status' => $statusCode,
+                        'response' => $errorBody,
+                        'variant_id' => $variantId
+                    ]);
                 }
+            } catch (\Exception $e) {
+                $this->warn("  Exception in GraphQL query for variant_id {$variantId} (SKU: {$sku}): " . $e->getMessage());
             }
-            
-            if ($searchedPages % 5 === 0) {
-                $this->line("  Searched {$searchedPages} pages, {$totalVariantsChecked} variants so far...");
-            }
-
-            if ($inventoryItemId) break;
-
-            $linkHeader = $response->header('Link');
-            $pageInfo = null;
-            if ($linkHeader && preg_match('/<[^>]+page_info=([^&>]+)[^>]*>; rel="next"/', $linkHeader, $matches)) {
-                $pageInfo = $matches[1];
-            } else {
-                $pageInfo = null;
-            }
-        } while ($pageInfo);
+        }
 
         if (!$inventoryItemId) {
-            $this->warn("✗ SKU '{$normalizedSearchSku}' not found after searching {$searchedPages} pages and {$totalVariantsChecked} variants");
-            Log::warning("Inventory item ID not found when updating SKU: {$sku}");
-            return [
-                'success' => false, 
-                'error' => 'SKU not found in Shopify', 
-                'details' => "The SKU '{$normalizedSearchSku}' does not exist in Shopify after searching {$searchedPages} pages. Check Shopify admin for exact SKU spelling."
-            ];
+            if (!$variantId) {
+                $this->error("✗ SKU '{$sku}' missing variant_id in database");
+                Log::warning("variant_id not found in shopify_skus table for SKU: {$sku}");
+                return [
+                    'success' => false, 
+                    'error' => 'variant_id missing', 
+                    'details' => "SKU '{$sku}' does not have variant_id in shopify_skus table. Please sync Shopify data to populate variant_id."
+                ];
+            } else {
+                $this->error("✗ Failed to get inventory_item_id for SKU '{$sku}' using variant_id {$variantId}");
+                Log::warning("Failed to get inventory_item_id for SKU: {$sku} with variant_id: {$variantId}");
+                
+                $errorDetails = "Could not retrieve inventory_item_id from Shopify GraphQL API.";
+                if ($apiDisabled) {
+                    $errorDetails = "Shopify API Access is DISABLED. Please enable API access in Shopify Admin > Settings > Apps and sales channels > API access.";
+                }
+                
+                return [
+                    'success' => false, 
+                    'error' => 'Failed to get inventory_item_id', 
+                    'details' => $errorDetails
+                ];
+            }
         }
 
         $invLevelResponse = $this->makeShopifyRequest(

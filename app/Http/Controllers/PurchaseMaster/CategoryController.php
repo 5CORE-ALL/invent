@@ -417,6 +417,247 @@ class CategoryController extends Controller
         ]);
     }
 
+    public function getSkusForDimWtDropdown(Request $request)
+    {
+        try {
+            // Fetch distinct SKUs from ProductMaster, excluding PARENT rows
+            $skus = ProductMaster::where('sku', 'NOT LIKE', 'PARENT %')
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->select('sku', 'parent')
+                ->orderBy('sku', 'asc')
+                ->get()
+                ->unique('sku')
+                ->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => $skus
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching SKUs for Dim Wt: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching SKUs: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function storeDimWtMaster(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'wt_act' => 'nullable|numeric',
+                'wt_decl' => 'nullable|numeric',
+                'l' => 'nullable|numeric',
+                'w' => 'nullable|numeric',
+                'h' => 'nullable|numeric',
+                'ctn_l' => 'nullable|numeric',
+                'ctn_w' => 'nullable|numeric',
+                'ctn_h' => 'nullable|numeric',
+                'ctn_cbm' => 'nullable|numeric',
+                'ctn_qty' => 'nullable|numeric',
+                'ctn_cbm_each' => 'nullable|numeric',
+                'cbm_e' => 'nullable|numeric',
+                'ctn_gwt' => 'nullable|numeric',
+            ]);
+
+            // Get the product by SKU to retrieve parent
+            $existingProduct = ProductMaster::where('sku', $validated['sku'])
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->first();
+
+            $parent = null;
+            if ($existingProduct) {
+                $parent = $existingProduct->parent;
+            }
+
+            // Prepare Values array with dim-wt fields
+            $values = [];
+            
+            if (isset($validated['wt_act']) && $validated['wt_act'] !== null) {
+                $values['wt_act'] = $validated['wt_act'];
+            }
+            if (isset($validated['wt_decl']) && $validated['wt_decl'] !== null) {
+                $values['wt_decl'] = $validated['wt_decl'];
+            }
+            if (isset($validated['l']) && $validated['l'] !== null) {
+                $values['l'] = $validated['l'];
+            }
+            if (isset($validated['w']) && $validated['w'] !== null) {
+                $values['w'] = $validated['w'];
+            }
+            if (isset($validated['h']) && $validated['h'] !== null) {
+                $values['h'] = $validated['h'];
+            }
+            if (isset($validated['ctn_l']) && $validated['ctn_l'] !== null) {
+                $values['ctn_l'] = $validated['ctn_l'];
+            }
+            if (isset($validated['ctn_w']) && $validated['ctn_w'] !== null) {
+                $values['ctn_w'] = $validated['ctn_w'];
+            }
+            if (isset($validated['ctn_h']) && $validated['ctn_h'] !== null) {
+                $values['ctn_h'] = $validated['ctn_h'];
+            }
+            if (isset($validated['ctn_cbm']) && $validated['ctn_cbm'] !== null) {
+                $values['ctn_cbm'] = $validated['ctn_cbm'];
+            }
+            if (isset($validated['ctn_qty']) && $validated['ctn_qty'] !== null) {
+                $values['ctn_qty'] = $validated['ctn_qty'];
+            }
+            if (isset($validated['ctn_cbm_each']) && $validated['ctn_cbm_each'] !== null) {
+                $values['ctn_cbm_each'] = $validated['ctn_cbm_each'];
+            }
+            if (isset($validated['cbm_e']) && $validated['cbm_e'] !== null) {
+                $values['cbm_e'] = $validated['cbm_e'];
+            }
+            if (isset($validated['ctn_gwt']) && $validated['ctn_gwt'] !== null) {
+                $values['ctn_gwt'] = $validated['ctn_gwt'];
+            }
+
+            // Update existing product or create new one
+            if ($existingProduct) {
+                // Merge with existing Values
+                $existingValues = is_array($existingProduct->Values) ? $existingProduct->Values : 
+                                 (is_string($existingProduct->Values) ? json_decode($existingProduct->Values, true) : []);
+                
+                if (!is_array($existingValues)) {
+                    $existingValues = [];
+                }
+                
+                $mergedValues = array_merge($existingValues, $values);
+                $existingProduct->Values = $mergedValues;
+                $existingProduct->save();
+                $product = $existingProduct;
+            } else {
+                // Create new product (shouldn't happen if SKU dropdown is working correctly)
+                $product = ProductMaster::create([
+                    'sku' => $validated['sku'],
+                    'parent' => $parent,
+                    'Values' => !empty($values) ? $values : null,
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Dim & Wt Master stored successfully',
+                'data' => $product
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: ' . $e->getMessage(),
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error storing Dim & Wt Master: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error saving data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function updateDimWtMaster(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'product_id' => 'required|integer',
+                'sku' => 'required|string',
+                'parent' => 'nullable|string',
+                'wt_act' => 'nullable|numeric',
+                'wt_decl' => 'nullable|numeric',
+                'l' => 'nullable|numeric',
+                'w' => 'nullable|numeric',
+                'h' => 'nullable|numeric',
+                'ctn_l' => 'nullable|numeric',
+                'ctn_w' => 'nullable|numeric',
+                'ctn_h' => 'nullable|numeric',
+                'ctn_cbm' => 'nullable|numeric',
+                'ctn_qty' => 'nullable|numeric',
+                'ctn_cbm_each' => 'nullable|numeric',
+                'cbm_e' => 'nullable|numeric',
+                'ctn_gwt' => 'nullable|numeric',
+            ]);
+
+            // Find the product
+            $product = ProductMaster::find($validated['product_id']);
+            
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found.'
+                ], 404);
+            }
+
+            // Get existing Values or create new array
+            $values = is_array($product->Values) ? $product->Values : 
+                     (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            // Update the specific fields in Values
+            if (isset($validated['wt_act'])) {
+                $values['wt_act'] = $validated['wt_act'];
+            }
+            if (isset($validated['wt_decl'])) {
+                $values['wt_decl'] = $validated['wt_decl'];
+            }
+            if (isset($validated['l'])) {
+                $values['l'] = $validated['l'];
+            }
+            if (isset($validated['w'])) {
+                $values['w'] = $validated['w'];
+            }
+            if (isset($validated['h'])) {
+                $values['h'] = $validated['h'];
+            }
+            if (isset($validated['ctn_l'])) {
+                $values['ctn_l'] = $validated['ctn_l'];
+            }
+            if (isset($validated['ctn_w'])) {
+                $values['ctn_w'] = $validated['ctn_w'];
+            }
+            if (isset($validated['ctn_h'])) {
+                $values['ctn_h'] = $validated['ctn_h'];
+            }
+            if (isset($validated['ctn_cbm'])) {
+                $values['ctn_cbm'] = $validated['ctn_cbm'];
+            }
+            if (isset($validated['ctn_qty'])) {
+                $values['ctn_qty'] = $validated['ctn_qty'];
+            }
+            if (isset($validated['ctn_cbm_each'])) {
+                $values['ctn_cbm_each'] = $validated['ctn_cbm_each'];
+            }
+            if (isset($validated['cbm_e'])) {
+                $values['cbm_e'] = $validated['cbm_e'];
+            }
+            if (isset($validated['ctn_gwt'])) {
+                $values['ctn_gwt'] = $validated['ctn_gwt'];
+            }
+
+            // Save the updated Values
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Dim & Wt Master updated successfully',
+                'data' => $product
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error updating Dim & Wt Master: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function shippingMaster()
     {
         return view('shipping-master');
@@ -3579,156 +3820,154 @@ class CategoryController extends Controller
 
     public function importDimWtMaster(Request $request)
     {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
         try {
-            $request->validate([
-                'file' => 'required|mimes:xlsx,xls|max:10240', // 10MB max
-            ]);
-
-            $file = $request->file('file');
-            $filePath = $file->getRealPath();
-
-            // Read Excel file using PhpSpreadsheet or simple file reading
-            // For simplicity, we'll use a basic approach with PhpSpreadsheet if available
-            // Otherwise, we can use a simpler method
+            $file = $request->file('excel_file');
             
-            $data = [];
-            $extension = $file->getClientOriginalExtension();
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
             
-            if ($extension === 'xlsx' || $extension === 'xls') {
-                // Use PhpSpreadsheet to read Excel file
-                $spreadsheet = IOFactory::load($filePath);
-                $worksheet = $spreadsheet->getActiveSheet();
-                $rows = $worksheet->toArray();
-                
-                // Get header row to find column indices
-                $headers = array_map('strtolower', array_map('trim', $rows[0] ?? []));
-                
-                // Find column indices
-                $skuIndex = array_search('sku', $headers);
-                $wtActIndex = array_search('wt act', $headers) !== false ? array_search('wt act', $headers) : array_search('wt_act', $headers);
-                $wtDeclIndex = array_search('wt decl', $headers) !== false ? array_search('wt decl', $headers) : array_search('wt_decl', $headers);
-                $lIndex = array_search('l', $headers);
-                $wIndex = array_search('w', $headers);
-                $hIndex = array_search('h', $headers);
-                
-                // If header row not found or SKU column not found, use default positions
-                if ($skuIndex === false) {
-                    $skuIndex = 0;
-                    $wtActIndex = 1;
-                    $wtDeclIndex = 2;
-                    $lIndex = 3;
-                    $wIndex = 4;
-                    $hIndex = 5;
-                }
-                
-                // Skip header row (first row)
-                for ($i = 1; $i < count($rows); $i++) {
-                    $row = $rows[$i];
-                    if (empty($row[$skuIndex])) continue; // Skip empty rows
-                    
-                    $data[] = [
-                        'sku' => trim($row[$skuIndex] ?? ''),
-                        'wt_act' => ($wtActIndex !== false && isset($row[$wtActIndex]) && $row[$wtActIndex] !== '') ? (float)$row[$wtActIndex] : null,
-                        'wt_decl' => ($wtDeclIndex !== false && isset($row[$wtDeclIndex]) && $row[$wtDeclIndex] !== '') ? (float)$row[$wtDeclIndex] : null,
-                        'l' => ($lIndex !== false && isset($row[$lIndex]) && $row[$lIndex] !== '') ? (float)$row[$lIndex] : null,
-                        'w' => ($wIndex !== false && isset($row[$wIndex]) && $row[$wIndex] !== '') ? (float)$row[$wIndex] : null,
-                        'h' => ($hIndex !== false && isset($row[$hIndex]) && $row[$hIndex] !== '') ? (float)$row[$hIndex] : null,
-                    ];
-                }
-            } else {
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid file format. Please upload an Excel file (.xlsx or .xls)'
-                ], 400);
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
             }
 
-            if (empty($data)) {
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings
+            $columnMap = [
+                'sku' => 'sku',
+                'wt_act' => 'wt_act',
+                'wt_decl' => 'wt_decl',
+                'l' => 'l',
+                'w' => 'w',
+                'h' => 'h',
+                'ctn_l' => 'ctn_l',
+                'ctn_w' => 'ctn_w',
+                'ctn_h' => 'ctn_h',
+                'ctn_cbm' => 'ctn_cbm',
+                'ctn_qty' => 'ctn_qty',
+                'ctn_cbm_each' => 'ctn_cbm_each',
+                'cbm_e' => 'cbm_e',
+                'ctn_gwt' => 'ctn_gwt'
+            ];
+
+            // Find column indices
+            $columnIndices = [];
+            foreach ($columnMap as $key => $value) {
+                $index = array_search($key, $headers);
+                if ($index !== false) {
+                    $columnIndices[$value] = $index;
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No data found in the Excel file'
-                ], 400);
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
             }
 
             $imported = 0;
             $updated = 0;
             $errors = [];
 
-            foreach ($data as $rowData) {
-                if (empty($rowData['sku'])) {
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
-                try {
-                    // Normalize SKU
-                    $sku = trim($rowData['sku']);
-                    
-                    // Find product by SKU
-                    $product = ProductMaster::where('sku', $sku)
-                        ->where('sku', 'NOT LIKE', 'PARENT %')
-                        ->first();
-
-                    if ($product) {
-                        // Get existing Values
-                        $existingValues = is_array($product->Values) ? $product->Values : 
-                                         (is_string($product->Values) ? json_decode($product->Values, true) : []);
-                        
-                        if (!is_array($existingValues)) {
-                            $existingValues = [];
-                        }
-
-                        // Update Values with dim & wt data
-                        if ($rowData['wt_act'] !== null) {
-                            $existingValues['wt_act'] = $rowData['wt_act'];
-                        }
-                        if ($rowData['wt_decl'] !== null) {
-                            $existingValues['wt_decl'] = $rowData['wt_decl'];
-                        }
-                        if ($rowData['l'] !== null) {
-                            $existingValues['l'] = $rowData['l'];
-                        }
-                        if ($rowData['w'] !== null) {
-                            $existingValues['w'] = $rowData['w'];
-                        }
-                        if ($rowData['h'] !== null) {
-                            $existingValues['h'] = $rowData['h'];
-                        }
-
-                        $product->Values = $existingValues;
-                        $product->save();
-                        $updated++;
-                    } else {
-                        // Product not found - could create new or skip
-                        $errors[] = "SKU '{$sku}' not found in database";
-                    }
-                } catch (\Exception $e) {
-                    $errors[] = "Error processing SKU '{$rowData['sku']}': " . $e->getMessage();
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)
+                    ->where('sku', 'NOT LIKE', 'PARENT %')
+                    ->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
                 }
+
+                // Get existing Values
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                // Process each column
+                foreach ($columnIndices as $field => $colIndex) {
+                    if ($field === 'sku') continue; // Skip SKU field
+                    
+                    if (isset($row[$colIndex]) && $row[$colIndex] !== '' && $row[$colIndex] !== null) {
+                        $value = trim($row[$colIndex]);
+                        if ($value !== '') {
+                            // Convert to float for numeric fields
+                            if (in_array($field, ['wt_act', 'wt_decl', 'l', 'w', 'h', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt'])) {
+                                $value = is_numeric($value) ? (float)$value : null;
+                            }
+                            if ($value !== null) {
+                                $values[$field] = $value;
+                            }
+                        }
+                    }
+                }
+
+                // Calculate CTN CBM if CTN L, W, H are provided but CTN CBM is not
+                if (!isset($values['ctn_cbm']) || $values['ctn_cbm'] == 0) {
+                    if (isset($values['ctn_l']) && isset($values['ctn_w']) && isset($values['ctn_h'])) {
+                        $values['ctn_cbm'] = ($values['ctn_l'] * $values['ctn_w'] * $values['ctn_h']) / 1000000;
+                    }
+                }
+
+                // Calculate CTN CBM/Each if CTN CBM and CTN QTY are provided but CTN CBM/Each is not
+                if (!isset($values['ctn_cbm_each']) || $values['ctn_cbm_each'] == 0) {
+                    if (isset($values['ctn_cbm']) && isset($values['ctn_qty']) && $values['ctn_qty'] > 0) {
+                        $values['ctn_cbm_each'] = $values['ctn_cbm'] / $values['ctn_qty'];
+                    }
+                }
+
+                // Save the updated Values
+                $product->Values = $values;
+                $product->save();
+                $updated++;
+                $imported++;
             }
 
-            $message = "Import completed. Updated: {$updated}";
-            if (!empty($errors)) {
-                $message .= ". Errors: " . count($errors);
-                if (count($errors) <= 5) {
-                    $message .= " - " . implode(", ", $errors);
-                }
+            $message = "Successfully imported {$imported} records.";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
             }
 
             return response()->json([
                 'success' => true,
                 'message' => $message,
+                'imported' => $imported,
                 'updated' => $updated,
                 'errors' => $errors
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
         } catch (\Exception $e) {
+            Log::error('Dim Wt Master Import Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Error importing file: ' . $e->getMessage()
+                'message' => 'Import failed: ' . $e->getMessage()
             ], 500);
         }
     }
