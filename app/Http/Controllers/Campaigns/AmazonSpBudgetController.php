@@ -532,6 +532,21 @@ class AmazonSpBudgetController extends Controller
             
             $record = AmazonDataView::where('sku', $skuKey)->first();
             
+            // Check if record exists and has valid data (not blank/zero data)
+            // Blank data (all counts = 0) is inserted for next date, so we should calculate directly
+            $isValidRecord = false;
+            if ($record) {
+                $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
+                // Check if any count is greater than 0 (valid data)
+                $totalCount = ($value['over_utilized_7ub'] ?? 0) + 
+                             ($value['under_utilized_7ub'] ?? 0) + 
+                             ($value['correctly_utilized_7ub'] ?? 0) +
+                             ($value['over_utilized_7ub_1ub'] ?? 0) + 
+                             ($value['under_utilized_7ub_1ub'] ?? 0) + 
+                             ($value['correctly_utilized_7ub_1ub'] ?? 0);
+                $isValidRecord = $totalCount > 0;
+            }
+            
             // If this is an "under-utilized" page, always calculate total campaigns to match table
             // regardless of whether we have stored data or not
             if ($pageType === 'under' && $campaignType === 'PT') {
@@ -553,23 +568,13 @@ class AmazonSpBudgetController extends Controller
                     $totalCount = $this->getTotalCampaignsCountForPt();
                 }
                 
-                if ($record) {
-                    $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
-                    return response()->json([
-                        'over_utilized' => $value['over_utilized'] ?? 0,
-                        'under_utilized' => $totalCount, // Return total campaigns to match table
-                        'correctly_utilized' => $value['correctly_utilized'] ?? 0,
-                        'status' => 200,
-                    ]);
-                } else {
-                    // If no record, still return the total count
-                    return response()->json([
-                        'over_utilized' => 0,
-                        'under_utilized' => $totalCount, // Return total campaigns to match table
-                        'correctly_utilized' => 0,
-                        'status' => 200,
-                    ]);
-                }
+                // Always return the table count (ignore blank/stored data)
+                return response()->json([
+                    'over_utilized' => 0,
+                    'under_utilized' => $totalCount, // Return total campaigns to match table
+                    'correctly_utilized' => 0,
+                    'status' => 200,
+                ]);
             }
             
             // If this is an "under-utilized" page for HL, always calculate total campaigns to match table
@@ -596,24 +601,13 @@ class AmazonSpBudgetController extends Controller
                     $totalCount = 0;
                 }
                 
-                // Always return the table count, regardless of stored data
-                if ($record) {
-                    $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
-                    return response()->json([
-                        'over_utilized' => $value['over_utilized'] ?? 0,
-                        'under_utilized' => $totalCount, // Return total campaigns to match table (26)
-                        'correctly_utilized' => $value['correctly_utilized'] ?? 0,
-                        'status' => 200,
-                    ]);
-                } else {
-                    // If no record, still return the total count from table
-                    return response()->json([
-                        'over_utilized' => 0,
-                        'under_utilized' => $totalCount, // Return total campaigns to match table (26)
-                        'correctly_utilized' => 0,
-                        'status' => 200,
-                    ]);
-                }
+                // Always return the table count (ignore blank/stored data)
+                return response()->json([
+                    'over_utilized' => 0,
+                    'under_utilized' => $totalCount, // Return total campaigns to match table
+                    'correctly_utilized' => 0,
+                    'status' => 200,
+                ]);
             }
         
         // For PT campaigns, always get under count from actual table data to ensure accuracy
@@ -654,7 +648,8 @@ class AmazonSpBudgetController extends Controller
             }
         }
         
-        if ($record) {
+        // Only use stored data if it's valid (not blank/zero data)
+        if ($isValidRecord && $record) {
             $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
             return response()->json([
                 // 7UB only condition
@@ -669,7 +664,7 @@ class AmazonSpBudgetController extends Controller
             ]);
         }
 
-        // If no data for today, calculate from current data
+        // If no valid data for today (blank/zero data or no record), calculate from current data
         $productMasters = ProductMaster::orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
