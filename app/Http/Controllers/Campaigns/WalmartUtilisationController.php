@@ -149,9 +149,26 @@ class WalmartUtilisationController extends Controller
 
         $uniqueResult = collect($result)->unique('sku')->values()->all();
 
+        // Calculate totals from ALL L30 campaigns (not just filtered ones)
+        $allL30Campaigns = WalmartCampaignReport::where('report_range', 'L30')->get();
+        
+        $totalSpend = 0;
+        $totalSales = 0;
+        
+        foreach ($allL30Campaigns as $campaign) {
+            $totalSpend += (float)($campaign->spend ?? 0);
+            $totalSales += (float)($campaign->sales ?? 0);
+        }
+        
+        // Calculate average ACOS: (total spend / total sales) * 100
+        $avgAcos = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
+
         return response()->json([
             'message' => 'Data fetched successfully',
             'data'    => $uniqueResult,
+            'total_spend' => round($totalSpend, 2),
+            'total_sales' => round($totalSales, 2),
+            'avg_acos' => round($avgAcos, 2),
             'status'  => 200,
         ]);
     }

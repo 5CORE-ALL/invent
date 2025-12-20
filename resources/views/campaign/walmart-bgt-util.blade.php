@@ -133,6 +133,42 @@
         'page_title' => 'Walmart BGT Util.',
         'sub_title' => 'Walmart BGT Util.',
     ])
+    
+    <!-- Stats Section -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <div class="row text-center">
+                        <!-- Total Spend -->
+                        <div class="col-md-4 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Total Spend</div>
+                                <div class="h3 mb-0 fw-bold text-success" id="total-spend">$0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Total Sales -->
+                        <div class="col-md-4 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Total Sales</div>
+                                <div class="h3 mb-0 fw-bold text-info" id="total-sales">$0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Avg ACOS -->
+                        <div class="col-md-4">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Avg ACOS</div>
+                                <div class="h3 mb-0 fw-bold text-danger" id="avg-acos">0.00%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
@@ -507,6 +543,17 @@
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
+                    // Update totals from API response
+                    if (response.total_spend !== undefined) {
+                        document.getElementById("total-spend").innerText = "$" + parseFloat(response.total_spend).toFixed(2);
+                    }
+                    if (response.total_sales !== undefined) {
+                        document.getElementById("total-sales").innerText = "$" + parseFloat(response.total_sales).toFixed(2);
+                    }
+                    if (response.avg_acos !== undefined) {
+                        document.getElementById("avg-acos").innerText = parseFloat(response.avg_acos).toFixed(2) + "%";
+                    }
+                    
                     return response.data;
                 }
             });
