@@ -581,11 +581,11 @@
 
                 <!-- Left side: Title + Total + Graph Button -->
                 <div class="d-flex align-items-center flex-wrap gap-3">
-                <div class="d-flex align-items-center">
+                {{-- <div class="d-flex align-items-center">
                     <h5 class="mb-0 me-2">Zero Views Counts -</h5>
                     <span id="zeroViewsTotalDisplay" 
                         style="color: red; font-weight: 800; font-size: 1.25rem;">0</span>
-                </div>
+                </div> --}}
 
                 <button id="zeroGraphBtn" type="button" class="btn btn-outline-primary btn-sm" title="Show daily totals graph">
                     <i class="mdi mdi-chart-bar"></i>&nbsp;Graph
@@ -622,6 +622,7 @@
                     <tr>
                         <th>SL</th>
                         <th>Channel</th>
+                        <th>L30 Sales</th>
                         <th>Sheet Link</th>
                         <th>R&A</th>
                         <th>Zero Visibility SKU Count</th>
@@ -713,6 +714,7 @@
         let uniqueChannelRows = [];
         let selectedChannel = '';
         let selectedExec = '';
+        let l30SalesMap = {}; // Store L30 Sales data by channel name
 
         // Debounce function to limit function calls
         function debounce(func, wait) {
@@ -740,6 +742,31 @@
             if (typeof value === 'number') return value;
             const cleaned = String(value).replace(/[^0-9.-]/g, '');
             return parseFloat(cleaned) || 0;
+        }
+
+        // Helper function to extract value from object with multiple possible keys
+        function pick(obj, keys, def = '') {
+            for (const k of keys) {
+                const v = obj[k];
+                if (v !== undefined && v !== null && v !== '') return v;
+            }
+            return def;
+        }
+
+        // Helper function to convert value to number (alias for parseNumber with comma handling)
+        function toNum(v, def = 0) {
+            const n = parseFloat(String(v).replace(/,/g, ''));
+            return Number.isFinite(n) ? n : def;
+        }
+
+        // Normalize channel name to match backend normalization (remove spaces, dashes, ampersands, slashes, then lowercase)
+        // Backend uses: strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)))
+        function normalizeChannelName(channelName) {
+            if (!channelName) return '';
+            return String(channelName)
+                .trim()
+                .replace(/[\s\-&/]/g, '') // Remove spaces, dashes, ampersands, forward slashes
+                .toLowerCase();
         }
 
         // Function to update all summary cards
@@ -828,7 +855,7 @@
                 searching: true,
                 pageLength: 50,
                 order: [
-                    [4, 'desc']
+                    [2, 'desc'] // Default sort by L30 Sales (column index 2) descending
                 ],
                 ajax: {
                     url: '/show-zero-visibility-data',
@@ -842,17 +869,33 @@
                         d.sort_order = currentSortOrder;
                     },
                     dataSrc: function(json) {
-                        originalChannelData = json.data || [];
-                        allChannelData = json.data;
+                        if (!json || !json.data) return [];
+                        
+                        // Map and normalize the data, merging L30 Sales from the global l30SalesMap
+                        const mappedData = json.data.map(item => {
+                            const channelName = item['Channel '] || '';
+                            const normalizedName = normalizeChannelName(channelName);
+                            // Get L30 Sales from the global map using normalized name, fallback to 0 if not found
+                            const l30Sales = l30SalesMap[normalizedName] || l30SalesMap[channelName.trim().toLowerCase()] || 0;
+                            
+                            // Return normalized object with L30 Sales
+                            return {
+                                ...item,
+                                'L30 Sales': l30Sales
+                            };
+                        });
+                        
+                        originalChannelData = mappedData || [];
+                        allChannelData = mappedData;
                         if (!originalChannelData.length) {
-                            originalChannelData = json.data;
+                            originalChannelData = mappedData;
                         }
                         setTimeout(() => {
                             const table = jq('#channelTable').DataTable();
-                            // default order by Zero Visibility SKU Count (now column index 4)
-                            table.order([4, 'desc']).draw(false);
+                            // default order by L30 Sales (column index 2) descending
+                            table.order([2, 'desc']).draw(false);
                         }, 300);
-                        return json.data;
+                        return mappedData;
                     },
                     error: function(xhr, error, thrown) {
                         console.log("AJAX error:", error, thrown);
@@ -914,6 +957,15 @@
                             } else {
                                 return `<div class="d-flex align-items-center channel-name"><span>${data}</span></div>`;
                             }
+                        }
+                    },
+                    {
+                        data: 'L30 Sales',
+                        title: 'L30 Sales',
+                        render: function(data, type, row) {
+                            const n = toNum(data);
+                            if (type === 'sort' || type === 'type') return n; // numeric for sorting
+                            return `<span class="metric-value">${n.toLocaleString('en-US')}</span>`;
                         }
                     },
                     {
@@ -985,11 +1037,11 @@
                         cell.innerHTML = i + 1;
                     });
 
-                    // ✅ Only calculate zero-visibility total now (column 5 after adding Graph column)
-                    let zeroVisibilityTotal = api.column(4, { search: 'applied' }).data()
+                    // ✅ Calculate zero-visibility total (column 5 after adding L30 Sales column)
+                    let zeroVisibilityTotal = api.column(5, { search: 'applied' }).data()
                         .reduce((a, b) => (parseInt(a) || 0) + (parseInt(b) || 0), 0);
 
-                    let zeroVisibilityHeader = api.column(4).header();
+                    let zeroVisibilityHeader = api.column(5).header();
 
                     jq(zeroVisibilityHeader).html(
                         'Zero Visibility SKU Count<br><span style="color:white; font-weight:bold; font-size:1rem;">' +
@@ -1023,7 +1075,7 @@
             const cell = table.cell(this);
             const rowData = table.row(this).data();
 
-            if (cell.index().column === 2) { 
+            if (cell.index().column === 3) { // Sheet Link column is now at index 3 
                 // If there's an open timer on the anchor, clear it so single-click won't open
                 const anchor = jq(this).find('.sheet-link-open');
                 if (anchor.length) {
@@ -1506,7 +1558,7 @@
             // Update UI
             jq('#play-auto').hide();
             jq('#play-pause').show();
-            table.column(3).visible(true);
+            table.column(4).visible(true); // R&A column is now at index 4
 
             console.log('Playback started. Current channel:', uniqueChannelRows[currentChannelIndex]['Channel ']);
 
@@ -1527,7 +1579,7 @@
             // Update UI
             jq('#play-pause').hide();
             jq('#play-auto').show();
-            table.column(3).visible(false);
+            table.column(4).visible(false); // R&A column is now at index 4
         }
 
         function showCurrentChannel() {
@@ -1676,18 +1728,38 @@
         jq(document).ready(function() {
             // console.log('Document ready - initializing...');
 
-            // First load the data
+            // First fetch L30 Sales data from channels-master-data
             jq.ajax({
                 url: '/channels-master-data',
                 type: "GET",
+                async: false, // Synchronous to ensure data is loaded before DataTable initialization
                 success: function(json) {
-                    originalChannelData = json.data;
+                    if (json && json.data && Array.isArray(json.data)) {
+                        // Create a map of channel name to L30 Sales (using normalized channel names)
+                        json.data.forEach(item => {
+                            const channelName = item['Channel '] || item['Channel'] || '';
+                            const normalizedName = normalizeChannelName(channelName);
+                            const l30Sales = toNum(pick(item, ['L30 Sales', 'l30_sales', 'T_Sale_l30', 'l30sales'], 0), 0);
+                            l30SalesMap[normalizedName] = l30Sales;
+                            // Also store with original channel name (lowercase) as fallback
+                            const originalLower = channelName.trim().toLowerCase();
+                            if (originalLower !== normalizedName) {
+                                l30SalesMap[originalLower] = l30Sales;
+                            }
+                        });
+                    }
+                    originalChannelData = json.data || [];
+                },
+                error: function(xhr, error, thrown) {
+                    console.warn('Failed to fetch L30 Sales data:', error);
+                    l30SalesMap = {}; // Set empty map on error
+                }
+            });
 
-                    // Now initialize the DataTable
-                    table = initializeDataTable();
+            // Now initialize the DataTable
+            table = initializeDataTable();
 
-
-                    jq(document).on('change', '.ra-checkbox', function() {
+            jq(document).on('change', '.ra-checkbox', function() {
                         const checkbox = this;
                         const isChecked = checkbox.checked;
 
@@ -1731,89 +1803,79 @@
                                 alert('Error updating checkbox in Google Sheet');
                                 checkbox.checked = !isChecked; // Revert if failed
                             });
-                    });
+            });
 
+            // Set up event handlers
+            jq('#play-auto').on('click', startPlayback);
+            jq('#play-pause').on('click', stopPlayback);
+            jq('#play-forward').on('click', nextChannel);
+            jq('#play-backward').on('click', previousChannel);
 
+            // Hide pause button initially
+            jq('#play-pause').hide();
 
+            // Hide R&A column initially
+            table.column(4).visible(false); // R&A column is now at index 4
 
-                    // Set up event handlers
-                    jq('#play-auto').on('click', startPlayback);
-                    jq('#play-pause').on('click', stopPlayback);
-                    jq('#play-forward').on('click', nextChannel);
-                    jq('#play-backward').on('click', previousChannel);
+            // Setup sorting
+            setupSorting();
 
-                    // Hide pause button initially
-                    jq('#play-pause').hide();
+            // Setup dropdowns
+            jq('#channelSearchInput').on('focus', function() {
+                populateChannelDropdown();
+            });
 
-                    // Hide R&A column initially
-                    table.column(3).visible(false);
+            jq('#channelSearchDropdown').on('click', '.dropdown-search-item', function() {
+                const selectedChannel = jq(this).data('value').toString().trim();
+                console.log('[Dropdown Click] Selected:', selectedChannel);
+                jq('#channelSearchInput').val(selectedChannel);
+                jq('#channelSearchDropdown').hide();
 
-                    // Setup sorting
-                    setupSorting();
+                table.search(selectedChannel).draw();
+                // table.column(0).search(selectedChannel, true, false).draw();
+            });
 
-                    // Setup dropdowns
-                    jq('#channelSearchInput').on('focus', function() {
-
-                        populateChannelDropdown();
-                    });
-
-                    jq('#channelSearchDropdown').on('click', '.dropdown-search-item', function() {
-                        const selectedChannel = jq(this).data('value').toString().trim();
-                        console.log('[Dropdown Click] Selected:', selectedChannel);
-                        jq('#channelSearchInput').val(selectedChannel);
-                        jq('#channelSearchDropdown').hide();
-
-                        table.search(selectedChannel).draw();
-                        // table.column(0).search(selectedChannel, true, false).draw();
-                    });
-
-                    jq('#channelSearchInput').on('input', function() {
-                        const val = jq(this).val().trim();
-                        if (val === '') {
-                            table.column(0).search('').draw();
-                        }
-                    });
-
-                    jq('#execSearchInput').on('focus', function() {
-                        populateExecDropdown();
-                    });
-
-                    jq('#execSearchDropdown').on('click', '.dropdown-search-item', function() {
-                        const selected = jq(this).data('value').toString().trim();
-                        selectedExec = selected;
-                        jq('#execSearchInput').val(selected);
-                        jq('#execSearchDropdown').hide();
-                        table.ajax.reload();
-                    });
-
-                    jq('#execSearchInput').on('input', function() {
-                        const val = jq(this).val().trim();
-                        if (val === '') {
-                            selectedExec = '';
-                            debouncedTableReload();
-                        }
-                    });
-
-                    // Hide dropdown if clicked outside
-                    jq(document).on('click', function(e) {
-                        if (!jq(e.target).closest('.dropdown-search-container').length) {
-                            jq('#channelSearchDropdown').hide();
-                            // jq('#execSearchDropdown').hide();
-                        }
-                    });
-
-                    // Update totals when table is filtered/searched
-                    table.on('draw', function() {
-                        var data = table.rows({
-                            search: 'applied'
-                        }).data().toArray();
-                        updateAllTotals(data);
-                    });
-
-                },
-                error: function(xhr, error, thrown) {
-                    console.error('Error loading data:', error, thrown);
+            jq('#channelSearchInput').on('input', function() {
+                const val = jq(this).val().trim();
+                if (val === '') {
+                    table.column(0).search('').draw();
                 }
+            });
+
+            jq('#execSearchInput').on('focus', function() {
+                populateExecDropdown();
+            });
+
+            jq('#execSearchDropdown').on('click', '.dropdown-search-item', function() {
+                const selected = jq(this).data('value').toString().trim();
+                selectedExec = selected;
+                jq('#execSearchInput').val(selected);
+                jq('#execSearchDropdown').hide();
+                table.ajax.reload();
+            });
+
+            jq('#execSearchInput').on('input', function() {
+                const val = jq(this).val().trim();
+                if (val === '') {
+                    selectedExec = '';
+                    debouncedTableReload();
+                }
+            });
+
+            // Hide dropdown if clicked outside
+            jq(document).on('click', function(e) {
+                if (!jq(e.target).closest('.dropdown-search-container').length) {
+                    jq('#channelSearchDropdown').hide();
+                    // jq('#execSearchDropdown').hide();
+                }
+            });
+
+            // Update totals when table is filtered/searched
+            table.on('draw', function() {
+                var data = table.rows({
+                    search: 'applied'
+                }).data().toArray();
+                updateAllTotals(data);
             });
 
         });
