@@ -1839,6 +1839,15 @@
                                         <div class="collapse" id="amazonBudget">
                                             <ul class="side-nav-fourth-level">
                                                 <li>
+                                                    <a href="{{ route('amazon.utilized.kw') }}">Amazon KW Utilized's</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.utilized.pt') }}">Amazon PT Utilized's</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.utilized.hl') }}">Amazon HL Utilized's</a>
+                                                </li>
+                                                <li>
                                                     <a href=" {{ route('amazon-sp.amz-utilized-bgt-kw') }} "> >
                                                         UTILIZED BGT KW</a>
                                                 </li>

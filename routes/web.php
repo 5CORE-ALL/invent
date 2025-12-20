@@ -2197,6 +2197,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-sp/get-utilization-counts', 'getAmazonUtilizationCounts');
         Route::post('/update-amazon-sp-bid-price', 'updateAmazonSpBidPrice');
         Route::put('/update-keywords-bid-price', 'updateCampaignKeywordsBid');
+        
+        // Consolidated Amazon Utilized pages (KW, PT, HL)
+        Route::get('/amazon/utilized/kw', 'amazonUtilizedView')->name('amazon.utilized.kw');
+        Route::get('/amazon/utilized/kw/ads/data', 'getAmazonUtilizedKwAdsData');
+        Route::get('/amazon/utilized/pt', 'amazonUtilizedPtView')->name('amazon.utilized.pt');
+        Route::get('/amazon/utilized/pt/ads/data', 'getAmazonUtilizedPtAdsData');
+        Route::get('/amazon/get-utilization-counts', 'getAmazonUtilizationCounts');
+        Route::get('/amazon/get-utilization-chart-data', 'getAmazonUtilizationChartData');
 
         Route::get('/amazon-sp/amz-utilized-bgt-pt', 'amzUtilizedBgtPt')->name('amazon-sp.amz-utilized-bgt-pt');
         Route::get('/amazon-sp/get-amz-utilized-bgt-pt', 'getAmzUtilizedBgtPt');
@@ -2209,6 +2217,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-sb/get-amz-utilized-bgt-hl', 'getAmzUtilizedBgtHl');
         Route::post('/update-amazon-sb-bid-price', 'updateAmazonSbBidPrice');
         Route::put('/amazon-sb/update-keywords-bid-price', 'updateCampaignKeywordsBid');
+        
+        // Consolidated Amazon HL Utilized page
+        Route::get('/amazon/utilized/hl', 'amazonUtilizedHlView')->name('amazon.utilized.hl');
+        Route::get('/amazon/utilized/hl/ads/data', 'getAmazonUtilizedHlAdsData');
 
         Route::get('/amazon-sb/amz-under-utilized-bgt-hl', 'amzUnderUtilizedBgtHl')->name('amazon-sb.amz-under-utilized-bgt-hl');
         Route::get('/amazon-sb/get-amz-under-utilized-bgt-hl', 'getAmzUnderUtilizedBgtHl');
