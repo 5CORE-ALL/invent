@@ -679,6 +679,12 @@ class AmazonSpBudgetController extends Controller
 
         // Get NRA values to filter out NRA campaigns (same as in getAmzUnderUtilizedBgtKw)
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        
+        // Get INV values from ShopifySku for KW and PT campaigns (same as StoreAmazonUtilizationCounts)
+        $shopifyData = [];
+        if ($campaignType === 'KW' || $campaignType === 'PT') {
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        }
 
         // Handle HL campaigns differently (use AmazonSbCampaignReport)
         if ($campaignType === 'HL') {
@@ -774,6 +780,15 @@ class AmazonSpBudgetController extends Controller
             // Skip if NRA === 'NRA' (same filter as in getAmzUnderUtilizedBgtKw/getAmzUnderUtilizedBgtPt)
             if ($nra === 'NRA') {
                 continue;
+            }
+            
+            // For KW and PT: Skip campaigns with INV = 0 (same as StoreAmazonUtilizationCounts)
+            if ($campaignType === 'KW' || $campaignType === 'PT') {
+                $shopify = $shopifyData[$pm->sku] ?? null;
+                $inv = $shopify ? ($shopify->inv ?? 0) : 0;
+                if (floatval($inv) <= 0) {
+                    continue;
+                }
             }
 
             if ($campaignType === 'HL') {
