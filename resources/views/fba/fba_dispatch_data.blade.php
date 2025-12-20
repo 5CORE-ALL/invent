@@ -851,7 +851,7 @@
 
                         {
                             title: "Pft%",
-                            field: "Pft%",
+                            field: "Gpft",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = cell.getValue();
@@ -870,6 +870,26 @@
                             field: "ROI%",
                             hozAlign: "center",
                             visible: false,
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            }
+                        },
+
+                        {
+                            title: "GPFT%",
+                            field: "GPFT%",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            }
+                        },
+
+                        {
+                            title: "GROI%",
+                            field: "GROI%",
+                            hozAlign: "center",
+                            visible: true,
                             formatter: function(cell) {
                                 return cell.getValue();
                             }
@@ -1600,7 +1620,7 @@
 
                     if (pftFilter !== 'all') {
                         table.addFilter(function(data) {
-                            const value = parseFloat(data['Pft%']);
+                            const value = parseFloat(data['Gpft']);
                             if (isNaN(value)) return false;
 
                             switch (pftFilter) {

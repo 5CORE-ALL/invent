@@ -84,4 +84,13 @@ return [
         'ad_account_id' => env('META_AD_ACCOUNT_ID'),
         'api_version' => env('META_API_VERSION', 'v21.0'),
     ],
+
+    'tiktok' => [
+        'client_key' => env('TIKTOK_CLIENT_KEY'),
+        'client_secret' => env('TIKTOK_CLIENT_SECRET'),
+        'redirect_uri' => env('TIKTOK_REDIRECT_URI'),
+        'auth_base' => env('TIKTOK_AUTH_BASE', 'https://auth.tiktok-shops.com'),
+        'api_base' => env('TIKTOK_API_BASE', 'https://open-api.tiktokglobalshop.com'),
+        'shop_id' => env('TIKTOK_SHOP_ID'),
+    ],
 ];

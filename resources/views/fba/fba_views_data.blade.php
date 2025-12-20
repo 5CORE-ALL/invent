@@ -53,7 +53,7 @@
 
                     <select id="pft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Pft%</option>
+                        <option value="all">All Gpft</option>
                         <option value="0-10">0-10%</option>
                         <option value="11-14">11-14%</option>
                         <option value="15-20">15-20%</option>
@@ -2567,7 +2567,7 @@
 
                                     let TPFT = GPFT - parseFloat(d.TCOS_Percentage || 0);
 
-                                    updateData['Pft%'] = `${(PFT*100).toFixed(2)} %`;
+                                    updateData['Gpft'] = `${(PFT*100).toFixed(2)} %`;
                                     updateData['ROI%'] = (ROI * 100).toFixed(2);
                                     updateData['GPFT%'] = `${(GPFT*100).toFixed(2)} %`;
                                     updateData['TPFT'] = TPFT.toFixed(2);
@@ -2714,7 +2714,7 @@
 
                     if (pftFilter !== 'all') {
                         table.addFilter(function(data) {
-                            const value = parseFloat(data['Pft%']);
+                            const value = parseFloat(data['Gpft']);
                             if (isNaN(value)) return false;
 
                             switch (pftFilter) {
