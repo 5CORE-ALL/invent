@@ -174,7 +174,7 @@ class AmazonLowVisibilityController extends Controller
             return
                 stripos($childSku, 'PARENT') === false &&
                 $sess30 >= 1 &&
-                $sess30 <= 100;
+                $sess30 < 300;
         });
 
         $result = array_values($result);

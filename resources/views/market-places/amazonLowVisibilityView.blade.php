@@ -1090,6 +1090,58 @@
         .nr-hide{
             display: none !important;
         }
+        
+        /* ========== TABULATOR PAGINATION ========== */
+        .tabulator .tabulator-footer {
+            background: #f4f7fa;
+            border-top: 1px solid #262626;
+            font-size: 1rem;
+            color: #4b5563;
+            padding: 10px;
+            min-height: 50px;
+        }
+
+        .tabulator .tabulator-footer:hover {
+            background: #e0eaff;
+        }
+
+        /* Pagination button styling */
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+            padding: 8px 16px;
+            margin: 0 4px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            border: 1px solid #dee2e6;
+            background: white;
+            cursor: pointer;
+        }
+
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+            background: #e0eaff;
+            color: #2563eb;
+            border-color: #2563eb;
+        }
+
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            font-size: 0.9rem;
+        }
+
+        /* Custom pagination label */
+        .tabulator-paginator label {
+            margin-right: 5px;
+            font-weight: 500;
+        }
         /*popup modal style end */
     </style>
 @endsection
@@ -1366,7 +1418,7 @@
                         </div>
                     </div>
 
-                    <div id="amazonLowVisibility-table-wrapper" style="height: calc(100vh - 300px);">
+                    <div id="amazonLowVisibility-table-wrapper" style="min-height: 400px;">
                         <div id="amazonLowVisibility-table"></div>
                     </div>
 
@@ -1992,8 +2044,30 @@
                     data: tableData,
                     layout: "fitDataStretch",
                     pagination: true,
-                    paginationSize: 100,
+                    paginationMode: "local",
+                    paginationSize: 50,
+                    paginationSizeSelector: [10, 25, 50, 100, 200],
                     paginationCounter: "rows",
+                    langs: {
+                        "default": {
+                            "pagination": {
+                                "page_size": "Show",
+                                "first": "First",
+                                "first_title": "First Page",
+                                "last": "Last",
+                                "last_title": "Last Page",
+                                "prev": "Prev",
+                                "prev_title": "Prev Page",
+                                "next": "Next",
+                                "next_title": "Next Page",
+                                "counter": {
+                                    "showing": "Showing",
+                                    "of": "of",
+                                    "rows": "rows"
+                                }
+                            }
+                        }
+                    },
                     initialSort: [{
                         column: "Sess30",
                         dir: "asc"
