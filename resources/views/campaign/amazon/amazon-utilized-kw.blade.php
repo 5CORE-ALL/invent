@@ -312,101 +312,85 @@
                 return 'pink';
             };
 
-            // Function to update button counts - respects inventory filter
-            let countUpdateTimeout = null;
+            // Function to update button counts from table data (calculated directly from frontend)
+            // Counts are based on filtered data (respects INV, NRA, status, search filters)
+            // but shows all utilization types (not filtered by utilization type button)
             function updateButtonCounts() {
+                // Calculate counts directly from table data, not from database
                 if (typeof table === 'undefined' || !table) {
                     return;
                 }
-
-                // Debounce for performance
-                if (countUpdateTimeout) {
-                    clearTimeout(countUpdateTimeout);
-                }
-                countUpdateTimeout = setTimeout(function() {
-                    // Get all data (not filtered) for accurate counts
-                    const allData = table.getData('all');
+                
+                // Get all data and apply filters (except utilization type filter)
+                const allData = table.getData('all');
+                let overCount = 0;
+                let underCount = 0;
+                let correctlyCount = 0;
+                
+                allData.forEach(function(row) {
+                    // Apply all filters except utilization type filter
+                    // Global search filter
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal))) {
+                        return;
+                    }
                     
-                    // Get current inventory filter value
+                    // Status filter
+                    let statusVal = $("#status-filter").val();
+                    if (statusVal && row.campaignStatus !== statusVal) {
+                        return;
+                    }
+                    
+                    // Inventory filter
                     let invFilterVal = $("#inv-filter").val();
+                    let inv = parseFloat(row.INV || 0);
                     
-                    // Count for each type (mutually exclusive like controller)
-                    let overCount = 0;
-                    let underCount = 0;
-                    let correctlyCount = 0;
-
-                    allData.forEach(function(row) {
-                        let acos = parseFloat(row.acos || 0);
-                        let budget = parseFloat(row.campaignBudgetAmount) || 0;
-                        let l7_spend = parseFloat(row.l7_spend || 0);
-                        let l1_spend = parseFloat(row.l1_spend || 0);
-                        let inv = parseFloat(row.INV || 0);
-
-                        // Apply inventory filter logic to counts
-                        if (!invFilterVal || invFilterVal === '') {
-                            // Default: Skip INV = 0 campaigns
-                            if (inv === 0) {
-                                return;
-                            }
-                        } else if (invFilterVal === "ALL") {
-                            // ALL: Include all campaigns (no filtering)
-                        } else if (invFilterVal === "INV_0") {
-                            // INV_0: Only count INV = 0 campaigns
-                            if (inv !== 0) {
-                                return;
-                            }
-                        } else if (invFilterVal === "OTHERS") {
-                            // OTHERS: Only count INV > 0 campaigns
-                            if (inv === 0) {
-                                return;
-                            }
-                        }
-
-                        let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                        let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-
-                        let rowAcos = parseFloat(acos) || 0;
-                        if (isNaN(rowAcos) || rowAcos === 0) {
-                            rowAcos = 100;
-                        }
-
-                        // Check DIL color
-                        let l30 = parseFloat(row.L30 || 0);
-                        let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
-                        let dilColor = getDilColor(dilDecimal);
-                        let isPink = (dilColor === "pink");
-
-                        // Mutually exclusive categorization (same as controller for eBay3)
-                        let categorized = false;
-
-                        // Over-utilized check (priority 1): ub7 > 90 && ub1 > 90
-                        if (!categorized && ub7 > 90 && ub1 > 90) {
-                            overCount++;
-                            categorized = true;
-                        }
-
-                        // Under-utilized check (priority 2: only if not over-utilized): ub7 < 70
-                        if (!categorized && ub7 < 70 && ub1 < 70) {
-                            underCount++;
-                            categorized = true;
-                        }
-
-                        // Correctly-utilized check (priority 3: only if not already categorized): ub7 >= 70 && ub7 <= 90
-                        if (!categorized && ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90) {
-                            correctlyCount++;
-                        }
-                    });
-
-                    // Update all button counts by default
-                    const overBtnCount = document.getElementById('over-btn-count');
-                    const underBtnCount = document.getElementById('under-btn-count');
-                    const correctlyBtnCount = document.getElementById('correctly-btn-count');
+                    if (!invFilterVal || invFilterVal === '') {
+                        // Default: exclude INV = 0 and negative
+                        if (inv <= 0) return;
+                    } else if (invFilterVal === "ALL") {
+                        // ALL option shows everything
+                    } else if (invFilterVal === "INV_0") {
+                        // Show only INV = 0
+                        if (inv !== 0) return;
+                    } else if (invFilterVal === "OTHERS") {
+                        // Show only INV > 0
+                        if (inv <= 0) return;
+                    }
                     
-                    // Show all counts by default
-                    if (overBtnCount) overBtnCount.textContent = `( ${overCount} )`;
-                    if (underBtnCount) underBtnCount.textContent = `( ${underCount} )`;
-                    if (correctlyBtnCount) correctlyBtnCount.textContent = `( ${correctlyCount} )`;
-                }, 150);
+                    // NRA filter
+                    let nraFilterVal = $("#nra-filter").val();
+                    if (nraFilterVal) {
+                        let rowVal = row.NRA || "";
+                        if (rowVal !== nraFilterVal) return;
+                    }
+                    
+                    // Now calculate utilization and count
+                    let budget = parseFloat(row.campaignBudgetAmount) || 0;
+                    let l7_spend = parseFloat(row.l7_spend || 0);
+                    let l1_spend = parseFloat(row.l1_spend || 0);
+                    
+                    let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                    let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                    
+                    // 7UB + 1UB condition categorization (matches command)
+                    if (ub7 > 90 && ub1 > 90) {
+                        overCount++;
+                    } else if (ub7 < 70 && ub1 < 70) {
+                        underCount++;
+                    } else if (ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90) {
+                        correctlyCount++;
+                    }
+                });
+                
+                // Update button counts directly
+                const overBtnCount = document.getElementById('over-btn-count');
+                const underBtnCount = document.getElementById('under-btn-count');
+                const correctlyBtnCount = document.getElementById('correctly-btn-count');
+                
+                if (overBtnCount) overBtnCount.textContent = `( ${overCount} )`;
+                if (underBtnCount) underBtnCount.textContent = `( ${underCount} )`;
+                if (correctlyBtnCount) correctlyBtnCount.textContent = `( ${correctlyCount} )`;
             }
 
             // Utilization type button handlers
@@ -481,6 +465,15 @@
                         visible: false
                     },
                     {
+                        title: "FBA INV",
+                        field: "FBA_INV",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<div class="text-center">${value || 0}</div>`;
+                        }
+                    },
+                    {
                         title: "OV L30",
                         field: "L30",
                         visible: false
@@ -502,20 +495,110 @@
                         visible: false
                     },
                     {
+                        title: "AL 30",
+                        field: "A_L30",
+                        visible: false
+                    },
+                    {
+                        title: "A DIL %",
+                        field: "A DIL %",
+                        formatter: function(cell) {
+                            const data = cell.getData();
+                            const al30 = parseFloat(data.A_L30);
+                            const inv = parseFloat(data.INV);
+                            if (!isNaN(al30) && !isNaN(inv) && inv !== 0) {
+                                const dilDecimal = (al30 / inv);
+                                const color = getDilColor(dilDecimal);
+                                return `<div class="text-center"><span class="dil-percent-value ${color}">${Math.round(dilDecimal * 100)}%</span></div>`;
+                            }
+                            return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "NRL",
+                        field: "NRL",
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData().sku;
+                            const value = cell.getValue();
+
+                            let bgColor = "";
+                            if (value === "NRL") {
+                                bgColor = "background-color:#dc3545;color:#fff;"; // red
+                            } else if (value === "RL") {
+                                bgColor = "background-color:#28a745;color:#fff;"; // green
+                            }
+
+                            return `
+                                <select class="form-select form-select-sm editable-select" 
+                                        data-sku="${sku}" 
+                                        data-field="NRL"
+                                        style="width: 90px; ${bgColor}">
+                                    <option value="RL" ${value === 'RL' ? 'selected' : ''}>RL</option>
+                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>NRL</option>
+                                </select>
+                            `;
+                        },
+                        visible: false,
+                        hozAlign: "center"
+                    },
+                    {
                         title: "NRA",
                         field: "NRA",
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
-                            const value = cell.getValue() || '';
+                            const value = cell.getValue()?.trim();
+
+                            let bgColor = "";
+                            if (value === "NRA") {
+                                bgColor = "background-color:#dc3545;color:#fff;"; // red
+                            } else if (value === "RA") {
+                                bgColor = "background-color:#28a745;color:#fff;"; // green
+                            } else if (value === "LATER") {
+                                bgColor = "background-color:#ffc107;color:#000;"; // yellow
+                            }
+
                             return `
                                 <select class="form-select form-select-sm editable-select" 
                                         data-sku="${sku}" 
                                         data-field="NRA"
-                                        style="width: 90px;">
+                                        style="width: 100px; ${bgColor}">
                                     <option value="RA" ${value === 'RA' ? 'selected' : ''}>RA</option>
                                     <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>NRA</option>
                                     <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
+                                </select>
+                            `;
+                        },
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "FBA",
+                        field: "FBA",
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData().sku;
+                            const value = cell.getValue();
+
+                            let bgColor = "";
+                            if (value === "FBA") {
+                                bgColor = "background-color:#007bff;color:#fff;"; // blue
+                            } else if (value === "FBM") {
+                                bgColor = "background-color:#6f42c1;color:#fff;"; // purple
+                            } else if (value === "BOTH") {
+                                bgColor = "background-color:#90ee90;color:#000;"; // light green
+                            }
+
+                            return `
+                                <select class="form-select form-select-sm editable-select" 
+                                        data-sku="${sku}" 
+                                        data-field="FBA"
+                                        style="width: 90px; ${bgColor}">
+                                    <option value="FBA" ${value === 'FBA' ? 'selected' : ''}>FBA</option>
+                                    <option value="FBM" ${value === 'FBM' ? 'selected' : ''}>FBM</option>
+                                    <option value="BOTH" ${value === 'BOTH' ? 'selected' : ''}>BOTH</option>
                                 </select>
                             `;
                         },
@@ -800,19 +883,21 @@
                     return false;
                 }
 
-                // Inventory filter - Default to INV > 0 for all types
+                // Inventory filter - Default to INV > 0 (exclude INV = 0 and negative)
                 let invFilterVal = $("#inv-filter").val();
-                // By default (no filter selected), show only INV > 0
+                let inv = parseFloat(data.INV || 0);
+                
+                // By default (no filter selected), show only INV > 0 (exclude INV = 0 and negative)
                 if (!invFilterVal || invFilterVal === '') {
-                    if (parseFloat(data.INV) === 0) return false;
+                    if (inv <= 0) return false;
                 } else if (invFilterVal === "ALL") {
-                    // ALL option shows everything, so no filtering needed
+                    // ALL option shows everything (including INV = 0 and negative), so no filtering needed
                 } else if (invFilterVal === "INV_0") {
                     // Show only INV = 0
-                    if (parseFloat(data.INV) !== 0) return false;
+                    if (inv !== 0) return false;
                 } else if (invFilterVal === "OTHERS") {
-                    // Show only INV > 0
-                    if (parseFloat(data.INV) === 0) return false;
+                    // Show only INV > 0 (exclude INV = 0 and negative)
+                    if (inv <= 0) return false;
                 }
 
                 // NRA filter
@@ -905,7 +990,7 @@
 
             document.addEventListener("click", function(e) {
                 if (e.target.classList.contains("toggle-cols-btn")) {
-                    let colsToToggle = ["INV", "L30", "DIL %", "NR"];
+                    let colsToToggle = ["INV", "L30", "DIL %", "NR", "A_L30", "ADIL %", "NRL", "NRA", "FBA"];
                     colsToToggle.forEach(colName => {
                         let col = table.getColumn(colName);
                         if (col) {
@@ -1061,6 +1146,9 @@
                         
                         document.getElementById('7ub-count').textContent = count7ub || 0;
                         document.getElementById('7ub-1ub-count').textContent = count7ub1ub || 0;
+                        
+                        // Button counts are now calculated from table data, not from database
+                        // updateButtonCounts() will be called after table loads
                     }
                 })
                 .catch(err => console.error('Error loading counts:', err));

@@ -745,6 +745,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon/low-visibility/view-data-fba', [AmazonLowVisibilityController::class, 'getViewAmazonLowVisibilityDataFba']);
     Route::get('/amazon/low-visibility/view-data-fbm', [AmazonLowVisibilityController::class, 'getViewAmazonLowVisibilityDataFbm']);
     Route::get('/amazon/low-visibility/view-data-both', [AmazonLowVisibilityController::class, 'getViewAmazonLowVisibilityDataBoth']);
+    Route::get('/amazon/low-visibility/campaign-clicks', [AmazonLowVisibilityController::class, 'getCampaignClicksBySku']);
+    Route::get('/amazon/low-visibility/daily-views-data', [AmazonLowVisibilityController::class, 'getDailyViewsData']);
 
     Route::get('/ad-cvr-ebay', action: [EbayZeroController::class, 'adcvrEbay'])->name('adcvr.ebay');
     Route::get('/ad-cvr-ebay-data', action: [EbayZeroController::class, 'adcvrEbayData'])->name('adcvr.ebay.data');

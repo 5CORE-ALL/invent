@@ -12,6 +12,9 @@ use App\Models\MarketplacePercentage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use App\Models\AmazonDataView; // Import the AmazonDataView model
+use App\Models\AmazonSpCampaignReport;
+use App\Models\AmazonSbCampaignReport;
+use App\Models\AmazonSkuDailyData;
 use Illuminate\Support\Facades\DB;
 
 class AmazonLowVisibilityController extends Controller
@@ -623,6 +626,306 @@ class AmazonLowVisibilityController extends Controller
                     ->pluck('Parent')
                     ->unique()
                     ->values()
+            ]
+        ]);
+    }
+
+    public function getCampaignClicksBySku(Request $request)
+    {
+        $sku = $request->input('sku');
+        
+        if (!$sku) {
+            return response()->json([
+                'status' => 400,
+                'message' => 'SKU is required'
+            ], 400);
+        }
+
+        $sku = strtoupper(trim($sku));
+        
+        // Get KW clicks_l30 (SPONSORED_PRODUCTS, campaignName matches SKU exactly, excluding PT)
+        // Match logic from getAmazonKwAdsData: campaignName equals SKU (excluding PT campaigns)
+        $kwCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->where(function($q) use ($sku) {
+                foreach ([$sku, $sku . '.'] as $skuVar) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . $skuVar . '%');
+                }
+            })
+            ->where('campaignName', 'NOT LIKE', '%PT')
+            ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+        
+        // Filter to match campaignName exactly equals SKU (same logic as KW controller)
+        $kwCampaign = $kwCampaigns->first(function($item) use ($sku) {
+            $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+            $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+            return $campaignName === $cleanSku;
+        });
+
+        // Get PT clicks_l30 (SPONSORED_PRODUCTS, campaignName ends with "SKU PT")
+        // Match logic from getAmazonPtAdsData: campaigns ending with "SKU PT" or "SKU PT."
+        $ptCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->where(function($q) use ($sku) {
+                foreach ([$sku, $sku . '.'] as $skuVar) {
+                    $q->orWhere('campaignName', 'LIKE', $skuVar . ' PT')
+                      ->orWhere('campaignName', 'LIKE', $skuVar . ' PT.');
+                }
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+        
+        // Filter to exclude FBA PT campaigns (same logic as PT controller)
+        $ptCampaign = $ptCampaigns->first(function($item) use ($sku) {
+            $cleanName = strtoupper(trim($item->campaignName));
+            // Exclude FBA PT campaigns
+            if (str_contains($cleanName, 'FBA PT')) {
+                return false;
+            }
+            // Match campaigns ending with SKU PT or SKU PT.
+            return (str_ends_with($cleanName, strtoupper($sku) . ' PT') || 
+                    str_ends_with($cleanName, strtoupper($sku) . ' PT.'));
+        });
+
+        // Get HL clicks_l30 (SPONSORED_BRANDS, campaignName matches SKU or "SKU HEAD")
+        // Match logic from getAmazonHlAdsData: campaignName equals SKU or "SKU HEAD"
+        $hlCampaigns = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L30')
+            ->where(function($q) use ($sku) {
+                foreach ([$sku, $sku . '.'] as $skuVar) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($skuVar) . '%');
+                }
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+        
+        // Filter to match campaignName equals SKU or "SKU HEAD" (same logic as HL controller)
+        $hlCampaign = $hlCampaigns->first(function($item) use ($sku) {
+            $cleanName = strtoupper(trim($item->campaignName));
+            $expected1 = strtoupper($sku);
+            $expected2 = strtoupper($sku) . ' HEAD';
+            return ($cleanName === $expected1 || $cleanName === $expected2);
+        });
+
+        // Get organic views from AmazonDatasheet (same as amazon-organic-views.blade.php)
+        // Use exact same lookup method as OrganicViewsController:
+        // OrganicViewsController line 54-56: 
+        //   $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) { return strtoupper($item->sku); });
+        // Line 98: $sku = strtoupper($pm->sku);  (NO trim! - uses ProductMaster SKU as-is)
+        // Line 105: $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
+        // Line 119: $row['organic_views'] = $amazonSheet->organic_views;
+        
+        // Since we receive SKU from request (which may be trimmed), we need to handle variations
+        // The key is that OrganicViewsController keys by strtoupper WITHOUT trim
+        // So we'll use case-insensitive comparison that handles spacing
+        
+        // Get original SKU from request (before trimming) to preserve spacing
+        $skuOriginal = $request->input('sku');
+        
+        // Try multiple lookup strategies to match OrganicViewsController behavior
+        $amazonDatasheet = null;
+        
+        // Strategy 1: Exact match (as stored in ProductMaster/DB)
+        if ($skuOriginal) {
+            $amazonDatasheet = AmazonDatasheet::where('sku', $skuOriginal)->first();
+        }
+        
+        // Strategy 2: Case-insensitive match without trim (matching OrganicViewsController's keyBy pattern)
+        if (!$amazonDatasheet) {
+            // Use case-insensitive comparison - matches how OrganicViewsController keys by strtoupper($item->sku)
+            $amazonDatasheet = AmazonDatasheet::whereRaw('UPPER(sku) = UPPER(?)', [$skuOriginal ?: $sku])->first();
+        }
+        
+        // Strategy 3: Case-insensitive match with trim (fallback for trimmed SKUs from frontend)
+        if (!$amazonDatasheet) {
+            $amazonDatasheet = AmazonDatasheet::whereRaw('UPPER(TRIM(sku)) = UPPER(TRIM(?))', [$skuOriginal ?: $sku])->first();
+        }
+        
+        // Get organic_views from the same field as OrganicViewsController line 119: $amazonSheet->organic_views
+        $organicViews = $amazonDatasheet ? (int)($amazonDatasheet->organic_views ?? 0) : 0;
+
+        return response()->json([
+            'status' => 200,
+            'data' => [
+                'kw_clicks_l30' => $kwCampaign ? (int)($kwCampaign->clicks ?? 0) : 0,
+                'kw_impressions_l30' => $kwCampaign ? (int)($kwCampaign->impressions ?? 0) : 0,
+                'kw_spend_l30' => $kwCampaign ? (float)($kwCampaign->spend ?? 0) : 0,
+                'kw_campaign_name' => $kwCampaign ? $kwCampaign->campaignName : null,
+                
+                'pt_clicks_l30' => $ptCampaign ? (int)($ptCampaign->clicks ?? 0) : 0,
+                'pt_impressions_l30' => $ptCampaign ? (int)($ptCampaign->impressions ?? 0) : 0,
+                'pt_spend_l30' => $ptCampaign ? (float)($ptCampaign->spend ?? 0) : 0,
+                'pt_campaign_name' => $ptCampaign ? $ptCampaign->campaignName : null,
+                
+                'hl_clicks_l30' => $hlCampaign ? (int)($hlCampaign->clicks ?? 0) : 0,
+                'hl_impressions_l30' => $hlCampaign ? (int)($hlCampaign->impressions ?? 0) : 0,
+                'hl_spend_l30' => $hlCampaign ? (float)($hlCampaign->cost ?? 0) : 0,
+                'hl_campaign_name' => $hlCampaign ? $hlCampaign->campaignName : null,
+                
+                // Organic views from amazon_datasheets.organic_views (same as amazon-organic-views.blade.php)
+                'organic_views' => $organicViews,
+            ]
+        ]);
+    }
+
+    public function getDailyViewsData(Request $request)
+    {
+        $sku = $request->input('sku');
+        
+        if (!$sku) {
+            return response()->json([
+                'status' => 400,
+                'message' => 'SKU is required'
+            ], 400);
+        }
+
+        $skuOriginal = trim($sku);
+        $sku = strtoupper(trim($sku));
+        
+        // Get AmazonDatasheet data using same lookup method as getCampaignClicksBySku
+        $amazonDatasheet = null;
+        
+        // Strategy 1: Exact match
+        if ($skuOriginal) {
+            $amazonDatasheet = AmazonDatasheet::where('sku', $skuOriginal)->first();
+        }
+        
+        // Strategy 2: Case-insensitive match
+        if (!$amazonDatasheet) {
+            $amazonDatasheet = AmazonDatasheet::whereRaw('UPPER(sku) = UPPER(?)', [$skuOriginal ?: $sku])->first();
+        }
+        
+        // Strategy 3: Case-insensitive with trim
+        if (!$amazonDatasheet) {
+            $amazonDatasheet = AmazonDatasheet::whereRaw('UPPER(TRIM(sku)) = UPPER(TRIM(?))', [$skuOriginal ?: $sku])->first();
+        }
+
+        if (!$amazonDatasheet) {
+            return response()->json([
+                'status' => 404,
+                'message' => 'SKU not found',
+                'data' => [
+                    'dates' => [],
+                    'total_views' => [],
+                    'l30_units' => [],
+                    'organic_views' => []
+                ]
+            ], 404);
+        }
+
+        // Get daily data for last 30 days (v1-v30 for views, l1-l30 for units)
+        // v1 is the oldest day (30 days ago), v30 is the most recent day (today)
+        // l1 is the oldest day (30 days ago), l30 is the most recent day (today)
+        $dates = [];
+        $totalViews = [];
+        $l30Units = [];
+        $organicViews = [];
+
+        // Get L30 totals as fallback
+        $totalViewsL30 = (int)($amazonDatasheet->sessions_l30 ?? 0);
+        $totalUnitsL30 = (int)($amazonDatasheet->units_ordered_l30 ?? 0);
+        $totalOrganicViews = (int)($amazonDatasheet->organic_views ?? 0);
+        
+        // Try to get daily data from amazon_sku_daily_data table (has date-wise records)
+        $startDate = now()->subDays(29)->startOfDay(); // 30 days including today
+        $endDate = now()->endOfDay();
+        
+        // Use case-insensitive SKU matching to ensure we find the records
+        $dailyDataRecords = AmazonSkuDailyData::whereRaw('UPPER(TRIM(sku)) = UPPER(TRIM(?))', [trim($sku)])
+            ->whereBetween('record_date', [$startDate, $endDate])
+            ->orderBy('record_date', 'asc')
+            ->get()
+            ->keyBy(function($item) {
+                return $item->record_date->format('Y-m-d');
+            });
+        
+        // Generate dates for last 30 days (oldest to newest)
+        $dates = [];
+        $totalViews = [];
+        $l30Units = [];
+        $organicViews = [];
+        
+        $today = now();
+        $hasDateWiseData = $dailyDataRecords->isNotEmpty();
+        
+        for ($i = 1; $i <= 30; $i++) {
+            $date = $today->copy()->subDays(30 - $i);
+            $dateKey = $date->format('Y-m-d');
+            $dates[] = $date->format('M d');
+            
+            if ($hasDateWiseData && isset($dailyDataRecords[$dateKey])) {
+                // Use data from amazon_sku_daily_data table
+                // This table stores L30 totals per day (views = sessions_l30, a_l30 = units_ordered_l30, organic_views)
+                $record = $dailyDataRecords[$dateKey];
+                $dailyDataRaw = $record->daily_data;
+                
+                // Handle JSON - Laravel model should auto-decode, but handle both cases
+                if (is_string($dailyDataRaw)) {
+                    $dailyData = json_decode($dailyDataRaw, true) ?? [];
+                } else {
+                    $dailyData = $dailyDataRaw ?? [];
+                }
+                
+                // Extract views (this is sessions_l30 from that day's record)
+                $views = isset($dailyData['views']) && $dailyData['views'] !== null ? (int)$dailyData['views'] : 0;
+                $totalViews[] = $views;
+                
+                // Extract units (this is a_l30 from that day's record - L30 units ordered)
+                $units = isset($dailyData['a_l30']) && $dailyData['a_l30'] !== null ? (int)$dailyData['a_l30'] : 0;
+                $l30Units[] = $units;
+                
+                // Extract organic views from daily_data if available, otherwise calculate proportionally
+                if (isset($dailyData['organic_views']) && $dailyData['organic_views'] !== null && $dailyData['organic_views'] !== '') {
+                    // Use stored organic_views value
+                    $dailyOrganicViews = (int)$dailyData['organic_views'];
+                } else {
+                    // Fallback: Calculate proportionally based on views ratio for old records without organic_views
+                    if ($views > 0 && $totalViewsL30 > 0 && $totalOrganicViews > 0) {
+                        $organicRatio = $totalOrganicViews / $totalViewsL30;
+                        $dailyOrganicViews = (int)round($views * $organicRatio);
+                    } else {
+                        $dailyOrganicViews = 0;
+                    }
+                }
+                $organicViews[] = $dailyOrganicViews;
+            } else {
+                // Fallback: Use current L30 totals from amazon_datsheets for missing dates
+                // This shows the same value for days without records
+                $totalViews[] = $totalViewsL30;
+                $l30Units[] = $totalUnitsL30;
+                $organicViews[] = $totalOrganicViews;
+            }
+        }
+
+        return response()->json([
+            'status' => 200,
+            'data' => [
+                'dates' => $dates,
+                'total_views' => $totalViews,
+                'l30_units' => $l30Units,
+                'organic_views' => $organicViews,
+                'debug' => [
+                    'has_date_wise_data' => $hasDateWiseData,
+                    'daily_records_count' => $dailyDataRecords->count(),
+                    'total_views_l30' => $totalViewsL30,
+                    'total_units_l30' => $totalUnitsL30,
+                    'total_organic_views' => $totalOrganicViews,
+                    'sku_found' => true,
+                    'sku_searched' => strtoupper(trim($sku)),
+                    'sample_daily_data' => $hasDateWiseData && $dailyDataRecords->first() ? ($dailyDataRecords->first()->daily_data ?? null) : null,
+                    'first_5_total_views' => array_slice($totalViews, 0, 5),
+                    'first_5_l30_units' => array_slice($l30Units, 0, 5),
+                    'first_5_organic_views' => array_slice($organicViews, 0, 5),
+                    'last_5_total_views' => array_slice($totalViews, -5),
+                    'last_5_l30_units' => array_slice($l30Units, -5),
+                    'last_5_organic_views' => array_slice($organicViews, -5),
+                    'dates_range' => [
+                        'start' => $startDate->format('Y-m-d'),
+                        'end' => $endDate->format('Y-m-d')
+                    ]
+                ]
             ]
         ]);
     }
