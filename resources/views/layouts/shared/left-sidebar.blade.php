@@ -912,6 +912,9 @@
                         <li>
                             <a href="{{ url('amazon/daily-sales') }}">Amazon Sales Data</a>
                         </li>
+                        <li>
+                            <a href="{{ url('doba/daily-sales') }}">Doba Sales Data</a>
+                        </li>
 
                         <li><a href="{{ url('temu-tabulator') }}">Temu Sales Data</a></li>
 
@@ -1710,6 +1713,10 @@
                                                         Data</a>
                                                 </li>
                                                 <li>
+                                                    <a href="{{ url('doba/daily-sales') }}">Doba Sales
+                                                        Data</a>
+                                                </li>
+                                                <li>
                                                     <a href="{{ route('amazon.low.visibility.view') }}">Amz FBM
                                                         Low Visibility</a>
                                                 </li>
@@ -2451,7 +2458,7 @@
                                         <a href="#">Listing Audit doba</a>
                                     </li>
                                     <li>
-                                        <a href="{{ url('doba-pricing-cvr') }}">Doba Pricing - CVR</a>
+                                        <a href="{{ url('doba-pricing-cvr') }}">Doba Pricing </a>
                                     </li>
 
 
