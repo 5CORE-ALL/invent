@@ -8,6 +8,10 @@ use App\Models\ShopifySku;
 use App\Models\WalmartCampaignReport;
 use App\Models\WalmartDataView;
 use App\Models\WalmartProductSheet;
+use App\Models\Walmart7ubDailyCount;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Carbon\Carbon;
 
 class WalmartUtilisationController extends Controller
 {
@@ -163,6 +167,9 @@ class WalmartUtilisationController extends Controller
         // Calculate average ACOS: (total spend / total sales) * 100
         $avgAcos = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
 
+        // Calculate and store today's 7UB counts
+        $this->calculateAndStore7ubCounts($avgAcos, $uniqueResult);
+
         return response()->json([
             'message' => 'Data fetched successfully',
             'data'    => $uniqueResult,
@@ -173,5 +180,112 @@ class WalmartUtilisationController extends Controller
         ]);
     }
 
+    /**
+     * Calculate and store daily 7UB counts
+     */
+    private function calculateAndStore7ubCounts($avgAcos, $data)
+    {
+        $today = Carbon::today();
+        
+        // Check if today's count already exists
+        $existingCount = Walmart7ubDailyCount::where('date', $today)->first();
+        
+        if ($existingCount) {
+            // Already calculated for today
+            return;
+        }
+
+        $pinkCount = 0;
+        $redCount = 0;
+        $greenCount = 0;
+
+        foreach ($data as $row) {
+            $spend_l7 = (float)($row->spend_l7 ?? 0);
+            $acos = (float)($row->acos_l30 ?? 0);
+            
+            // Calculate ALD BGT
+            $aldBgt = 0;
+            if ($avgAcos > 0) {
+                $halfAvgAcos = $avgAcos / 2;
+                if ($acos > $avgAcos) {
+                    $aldBgt = 1;
+                } elseif ($acos > $halfAvgAcos && $acos <= $avgAcos) {
+                    $aldBgt = 3;
+                } elseif ($acos <= $halfAvgAcos) {
+                    $aldBgt = 5;
+                }
+            }
+            
+            // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
+            $ub7 = ($aldBgt > 0 && $aldBgt * 7 > 0) ? ($spend_l7 / ($aldBgt * 7)) * 100 : 0;
+            
+            // Categorize
+            if ($ub7 > 90) {
+                $pinkCount++;
+            } elseif ($ub7 < 70) {
+                $redCount++;
+            } elseif ($ub7 >= 70 && $ub7 <= 90) {
+                $greenCount++;
+            }
+        }
+
+        // Store the counts
+        Walmart7ubDailyCount::updateOrCreate(
+            ['date' => $today],
+            [
+                'pink_count' => $pinkCount,
+                'red_count' => $redCount,
+                'green_count' => $greenCount,
+            ]
+        );
+    }
+
+    /**
+     * Get 7UB chart data
+     */
+    public function get7ubChartData()
+    {
+        try {
+            // Check if table exists
+            if (!\Schema::hasTable('walmart_7ub_daily_counts')) {
+                return response()->json([
+                    'status' => 200,
+                    'data' => [],
+                    'message' => 'Table does not exist yet. Please run migration.',
+                ]);
+            }
+
+            $data = Walmart7ubDailyCount::orderBy('date', 'asc')
+                ->get()
+                ->map(function ($item) {
+                    $date = $item->date;
+                    if ($date instanceof \Carbon\Carbon || $date instanceof \DateTime) {
+                        $dateStr = $date->format('Y-m-d');
+                    } else {
+                        $dateStr = is_string($date) ? $date : (string)$date;
+                    }
+                    
+                    return [
+                        'date' => $dateStr,
+                        'pink_count' => (int)($item->pink_count ?? 0),
+                        'red_count' => (int)($item->red_count ?? 0),
+                        'green_count' => (int)($item->green_count ?? 0),
+                    ];
+                });
+
+            return response()->json([
+                'status' => 200,
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in get7ubChartData: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error loading chart data: ' . $e->getMessage(),
+                'data' => [],
+            ], 500);
+        }
+    }
 
 }

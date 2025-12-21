@@ -180,6 +180,26 @@
                             Walmart BGT Util.
                         </h4>
 
+                        <!-- Utilization Filter Buttons Row -->
+                        <div class="row g-3 mb-3">
+                            <div class="col-12">
+                                <div class="d-flex gap-2 align-items-center">
+                                    <button id="over-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); color: white; border: none; min-width: 150px;">
+                                        <div>OVER UTILIZED</div>
+                                        <div id="over-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
+                                    </button>
+                                    <button id="under-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ff2727 0%, #ff6b6b 100%); color: white; border: none; min-width: 150px;">
+                                        <div>UNDER UTILIZED</div>
+                                        <div id="under-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
+                                    </button>
+                                    <button id="correctly-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); color: white; border: none; min-width: 150px;">
+                                        <div>CORRECTLY UTILIZED</div>
+                                        <div id="correctly-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Filters Row -->
                         <div class="row g-3 mb-3">
                             <!-- Inventory Filters -->
@@ -196,13 +216,16 @@
                                         <option value="NRL">NRL</option>
                                         <option value="RL">RL</option>
                                     </select>
-
                                 </div>
                             </div>
 
                             <!-- Stats -->
                             <div class="col-md-6">
-                                <div class="d-flex gap-2 justify-content-end">
+                                <div class="d-flex gap-2 justify-content-end align-items-center">
+                                    <button id="7ub-chart-btn" class="btn btn-primary btn-md">
+                                        <i class="fa fa-chart-line me-1"></i>
+                                        7UB
+                                    </button>
                                     <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none">
                                         APR ALL SBID
                                     </button>
@@ -241,6 +264,27 @@
         </div>
     </div>
 
+    <!-- Chart Modal -->
+    <div class="modal fade" id="7ubChartModal" tabindex="-1" aria-labelledby="7ubChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="7ubChartModalLabel">
+                        <i class="fa-solid fa-chart-line me-2"></i>
+                        7UB Daily Counts Trend
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <canvas id="7ubChart" height="80"></canvas>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="progress-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 9999;">
         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
             <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
@@ -259,6 +303,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <!-- SheetJS for Excel Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
@@ -280,6 +325,9 @@
 
             // Variable to store avg_acos for use in column formatters
             var avgAcosValue = 0;
+            
+            // Variable to store current utilization filter (global)
+            window.currentUtilizationFilter = null;
 
             // Helper function to calculate ALD BGT from ACOS
             function calculateAldBgt(acos) {
@@ -302,7 +350,7 @@
                 return 0;
             }
 
-            var table = new Tabulator("#budget-under-table", {
+            window.table = new Tabulator("#budget-under-table", {
                 index: "Sku",
                 ajaxURL: "/walmart/utilized/kw/data",
                 layout: "fitData",
@@ -678,11 +726,18 @@
                         document.getElementById("avg-acos").innerText = avgAcosValue.toFixed(2) + "%";
                     }
                     
+                    // Update utilization counts after data is loaded
+                    setTimeout(function() {
+                        if (window.updateUtilizationCounts) {
+                            window.updateUtilizationCounts();
+                        }
+                    }, 100);
+                    
                     return response.data;
                 }
             });
 
-            table.on("rowSelectionChanged", function(data, rows){
+            window.table.on("rowSelectionChanged", function(data, rows){
                 if(data.length > 0){
                     document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
                 } else {
@@ -690,7 +745,7 @@
                 }
             });
 
-            table.on("cellEdited", function(cell){
+            window.table.on("cellEdited", function(cell){
                 if(cell.getField() === "crnt_bid"){
                     var row = cell.getRow();
                     var rowData = row.getData();
@@ -755,9 +810,37 @@
                 });
             });
 
-            table.on("tableBuilt", function () {
+            window.table.on("tableBuilt", function () {
 
                 function combinedFilter(data) {
+                    // Utilization filter (7UB) - always read current value
+                    const currentFilter = window.currentUtilizationFilter;
+                    if (currentFilter) {
+                        const spend_l7 = parseFloat(data.spend_l7) || 0;
+                        const acos = parseFloat(data.acos_l30) || 0;
+                        
+                        // Calculate ALD BGT
+                        let aldBgt = 0;
+                        if (avgAcosValue > 0) {
+                            const halfAvgAcos = avgAcosValue / 2;
+                            if (acos > avgAcosValue) {
+                                aldBgt = 1;
+                            } else if (acos > halfAvgAcos && acos <= avgAcosValue) {
+                                aldBgt = 3;
+                            } else if (acos <= halfAvgAcos) {
+                                aldBgt = 5;
+                            }
+                        }
+                        
+                        // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
+                        const ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+                        
+                        // Match the type - use currentFilter variable to ensure we get latest value
+                        if (currentFilter === 'pink' && ub7 <= 90) return false;
+                        if (currentFilter === 'red' && ub7 >= 70) return false;
+                        if (currentFilter === 'green' && (ub7 < 70 || ub7 > 90)) return false;
+                    }
+
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
                     if (searchVal) {
                         let campaignMatch = data.campaignName?.toLowerCase().includes(searchVal);
@@ -795,24 +878,92 @@
                 }
 
                 function updateCampaignStats() {
-                    let total = table.getDataCount();                 
-                    let filtered = table.getDataCount("active");      
+                    if (!window.table) return;
+                    let total = window.table.getDataCount();                 
+                    let filtered = window.table.getDataCount("active");      
                     let percentage = total > 0 ? ((filtered / total) * 100).toFixed(0) : 0;
 
                     document.getElementById("total-campaigns").innerText = filtered;
                     document.getElementById("percentage-campaigns").innerText = percentage + "%";
+                    
+                    // Update utilization counts
+                    updateUtilizationCounts();
+                }
+                
+                function updateUtilizationCounts() {
+                    if (!window.table) return;
+                    
+                    const allData = window.table.getData();
+                    let pinkCount = 0;
+                    let redCount = 0;
+                    let greenCount = 0;
+                    
+                    allData.forEach(row => {
+                        const spend_l7 = parseFloat(row.spend_l7) || 0;
+                        const acos = parseFloat(row.acos_l30) || 0;
+                        
+                        // Calculate ALD BGT
+                        let aldBgt = 0;
+                        if (avgAcosValue > 0) {
+                            const halfAvgAcos = avgAcosValue / 2;
+                            if (acos > avgAcosValue) {
+                                aldBgt = 1;
+                            } else if (acos > halfAvgAcos && acos <= avgAcosValue) {
+                                aldBgt = 3;
+                            } else if (acos <= halfAvgAcos) {
+                                aldBgt = 5;
+                            }
+                        }
+                        
+                        // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
+                        const ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+                        
+                        // Categorize
+                        if (ub7 > 90) {
+                            pinkCount++;
+                        } else if (ub7 < 70) {
+                            redCount++;
+                        } else if (ub7 >= 70 && ub7 <= 90) {
+                            greenCount++;
+                        }
+                    });
+                    
+                    // Update button counts
+                    const overCountEl = document.getElementById("over-utilized-count");
+                    const underCountEl = document.getElementById("under-utilized-count");
+                    const correctlyCountEl = document.getElementById("correctly-utilized-count");
+                    
+                    if (overCountEl) overCountEl.innerText = pinkCount;
+                    if (underCountEl) underCountEl.innerText = redCount;
+                    if (correctlyCountEl) correctlyCountEl.innerText = greenCount;
                 }
 
                 function refreshFilters() {
-                    table.setFilter(combinedFilter);
-                    updateCampaignStats(); 
+                    if (window.table) {
+                        // Create a new function reference to force Tabulator to re-evaluate
+                        // This ensures it reads the current window.currentUtilizationFilter value
+                        const filterWrapper = function(data) {
+                            return combinedFilter(data);
+                        };
+                        
+                        // Set filter with new function reference
+                        window.table.setFilter(filterWrapper);
+                        updateCampaignStats(); 
+                    }
                 }
 
-                table.setFilter(combinedFilter);
+                // Make combinedFilter accessible globally
+                window.combinedFilter = combinedFilter;
+                window.updateCampaignStats = updateCampaignStats;
+                window.updateUtilizationCounts = updateUtilizationCounts;
+                window.refreshFilters = refreshFilters;
 
-                table.on("dataFiltered", updateCampaignStats);
-                table.on("pageLoaded", updateCampaignStats);
-                table.on("dataProcessed", updateCampaignStats);
+                window.table.setFilter(combinedFilter);
+
+                window.table.on("dataFiltered", updateCampaignStats);
+                window.table.on("pageLoaded", updateCampaignStats);
+                window.table.on("dataProcessed", updateCampaignStats);
+                window.table.on("dataLoaded", updateCampaignStats);
 
                 $("#global-search").on("keyup", refreshFilters);
                 $("#status-filter, #nrl-filter, #inv-filter").on("change", refreshFilters);
@@ -827,7 +978,7 @@
                     let colsToToggle = ["INV", "L30", "DIL %", "WA_L30", "NRL"];
 
                     colsToToggle.forEach(colName => {
-                        let col = table.getColumn(colName);
+                        let col = window.table.getColumn(colName);
                         if (col) {
                             col.toggle();
                         }
@@ -846,7 +997,165 @@
             }
 
             document.body.style.zoom = "78%";
+
+            // 7UB Chart Button Handler
+            document.getElementById("7ub-chart-btn").addEventListener("click", function() {
+                show7ubChart();
+            });
+
+            // Utilization Filter Button Handlers
+            document.getElementById("over-utilized-btn").addEventListener("click", function() {
+                if (window.currentUtilizationFilter === 'pink') {
+                    filterByUtilization(null); // Clear filter
+                } else {
+                    filterByUtilization('pink');
+                }
+            });
+
+            document.getElementById("under-utilized-btn").addEventListener("click", function() {
+                if (window.currentUtilizationFilter === 'red') {
+                    filterByUtilization(null); // Clear filter
+                } else {
+                    filterByUtilization('red');
+                }
+            });
+
+            document.getElementById("correctly-utilized-btn").addEventListener("click", function() {
+                if (window.currentUtilizationFilter === 'green') {
+                    filterByUtilization(null); // Clear filter
+                } else {
+                    filterByUtilization('green');
+                }
+            });
         });
+
+        let chart7ubInstance = null;
+
+        function show7ubChart() {
+            const modal = new bootstrap.Modal(document.getElementById('7ubChartModal'));
+            modal.show();
+
+            fetch('/walmart/utilized/bgt/7ub-chart-data')
+                .then(res => {
+                    if (!res.ok) {
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    if(data.status === 200 && data.data && data.data.length > 0) {
+                        const chartData = data.data;
+                        const dates = chartData.map(d => d.date);
+                        
+                        const ctx = document.getElementById('7ubChart').getContext('2d');
+                        
+                        // Destroy existing chart if any
+                        if(chart7ubInstance) {
+                            chart7ubInstance.destroy();
+                        }
+
+                        chart7ubInstance = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: dates,
+                                datasets: [
+                                    {
+                                        label: 'Pink (> 90%)',
+                                        data: chartData.map(d => d.pink_count),
+                                        borderColor: '#ff01d0',
+                                        backgroundColor: 'rgba(255, 1, 208, 0.1)',
+                                        tension: 0.4,
+                                        fill: true,
+                                        borderWidth: 2
+                                    },
+                                    {
+                                        label: 'Red (< 70%)',
+                                        data: chartData.map(d => d.red_count),
+                                        borderColor: '#ff2727',
+                                        backgroundColor: 'rgba(255, 39, 39, 0.1)',
+                                        tension: 0.4,
+                                        fill: true,
+                                        borderWidth: 2
+                                    },
+                                    {
+                                        label: 'Green (70-90%)',
+                                        data: chartData.map(d => d.green_count),
+                                        borderColor: '#05bd30',
+                                        backgroundColor: 'rgba(5, 189, 48, 0.1)',
+                                        tension: 0.4,
+                                        fill: true,
+                                        borderWidth: 2
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        position: 'top'
+                                    },
+                                    tooltip: {
+                                        enabled: true
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: {
+                                            precision: 0
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    } else {
+                        // Show message in modal
+                        const ctx = document.getElementById('7ubChart').getContext('2d');
+                        const canvas = document.getElementById('7ubChart');
+                        const parent = canvas.parentElement;
+                        parent.innerHTML = '<div class="text-center p-5"><p class="text-muted">No chart data available yet. Data will be collected starting from today.</p></div>';
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading chart:', err);
+                    const canvas = document.getElementById('7ubChart');
+                    if (canvas) {
+                        const parent = canvas.parentElement;
+                        parent.innerHTML = '<div class="text-center p-5"><p class="text-danger">Error loading chart data. Please try again later.</p><p class="text-muted small">' + err.message + '</p></div>';
+                    }
+                });
+        }
+
+        function filterByUtilization(type) {
+            // Set the current utilization filter
+            window.currentUtilizationFilter = type;
+            
+            console.log('Filter changed to:', type, 'Current filter value:', window.currentUtilizationFilter);
+            
+            // Refresh the table filter - use refreshFilters which preserves other filters
+            if (window.table && window.refreshFilters) {
+                // Use refreshFilters which will reapply the combinedFilter
+                // The combinedFilter function reads window.currentUtilizationFilter dynamically
+                window.refreshFilters();
+            } else if (window.table && window.combinedFilter) {
+                // Fallback: recreate filter function to force re-evaluation
+                const filterWrapper = function(data) {
+                    return window.combinedFilter(data);
+                };
+                
+                // Set filter with new function reference to force re-evaluation
+                window.table.setFilter(filterWrapper);
+                
+                // Update stats
+                if (window.updateCampaignStats) {
+                    setTimeout(function() {
+                        window.updateCampaignStats();
+                    }, 100);
+                }
+            }
+        }
     </script>
 @endsection
 
