@@ -621,14 +621,7 @@ class AmazonFbaAdsController extends Controller
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // Filter by utilization type
-            if ($utilizationType === 'over' && !($ub7 > 90 && $ub1 > 90)) {
-                continue;
-            } elseif ($utilizationType === 'under' && !($ub7 < 70 && $ub1 < 70)) {
-                continue;
-            } elseif ($utilizationType === 'correctly' && !($ub7 >= 70 && $ub7 <= 90)) {
-                continue;
-            }
+            // Don't filter by utilization type here - let frontend handle it
 
             $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
@@ -740,6 +733,43 @@ class AmazonFbaAdsController extends Controller
         $campaignType = $request->get('type', 'KW'); // KW or PT
         
         try {
+            $today = now()->format('Y-m-d');
+            $skuKey = 'AMAZON_FBA_UTILIZATION_' . $campaignType . '_' . $today;
+            
+            $record = AmazonDataView::where('sku', $skuKey)->first();
+            
+            // Check if record exists and has valid data (not blank/zero data)
+            // Blank data (all counts = 0) is inserted for next date, so we should calculate directly
+            $isValidRecord = false;
+            if ($record) {
+                $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
+                // Check if any count is greater than 0 (valid data)
+                $totalCount = ($value['over_utilized_7ub'] ?? 0) + 
+                             ($value['under_utilized_7ub'] ?? 0) + 
+                             ($value['correctly_utilized_7ub'] ?? 0) +
+                             ($value['over_utilized_7ub_1ub'] ?? 0) + 
+                             ($value['under_utilized_7ub_1ub'] ?? 0) + 
+                             ($value['correctly_utilized_7ub_1ub'] ?? 0);
+                $isValidRecord = $totalCount > 0;
+            }
+
+            // Only use stored data if it's valid (not blank/zero data)
+            if ($isValidRecord && $record) {
+                $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
+                return response()->json([
+                    // 7UB only condition
+                    'over_utilized_7ub' => $value['over_utilized_7ub'] ?? 0,
+                    'under_utilized_7ub' => $value['under_utilized_7ub'] ?? 0,
+                    'correctly_utilized_7ub' => $value['correctly_utilized_7ub'] ?? 0,
+                    // 7UB + 1UB condition
+                    'over_utilized_7ub_1ub' => $value['over_utilized_7ub_1ub'] ?? 0,
+                    'under_utilized_7ub_1ub' => $value['under_utilized_7ub_1ub'] ?? 0,
+                    'correctly_utilized_7ub_1ub' => $value['correctly_utilized_7ub_1ub'] ?? 0,
+                    'status' => 200,
+                ]);
+            }
+
+            // If no valid data for today (blank/zero data or no record), calculate from current data
             $overCount = 0;
             $underCount = 0;
             $correctlyCount = 0;
@@ -778,10 +808,19 @@ class AmazonFbaAdsController extends Controller
                 $correctlyCount = count($correctlyData['data'] ?? []);
             }
 
+            // For backward compatibility, also return old format
             return response()->json([
                 'over_utilized' => $overCount,
                 'under_utilized' => $underCount,
                 'correctly_utilized' => $correctlyCount,
+                // 7UB only condition (for chart)
+                'over_utilized_7ub' => $overCount,
+                'under_utilized_7ub' => $underCount,
+                'correctly_utilized_7ub' => $correctlyCount,
+                // 7UB + 1UB condition (for chart)
+                'over_utilized_7ub_1ub' => $overCount,
+                'under_utilized_7ub_1ub' => $underCount,
+                'correctly_utilized_7ub_1ub' => $correctlyCount,
                 'status' => 200,
             ]);
         } catch (\Exception $e) {
@@ -798,10 +837,44 @@ class AmazonFbaAdsController extends Controller
 
     public function getAmazonFbaUtilizationChartData(Request $request)
     {
-        // Placeholder for chart data (can be enhanced later with historical data)
+        $campaignType = $request->get('type', 'KW'); // KW or PT
+        
+        // Fetch historical data from database
+        $data = AmazonDataView::where('sku', 'LIKE', 'AMAZON_FBA_UTILIZATION_' . $campaignType . '_%')
+            ->orderBy('sku', 'desc')
+            ->limit(30)
+            ->get();
+        
+        $condition = $request->get('condition', '7ub'); // Default to 7ub, can be '7ub-1ub'
+        
+        $data = $data->map(function ($item) use ($campaignType, $condition) {
+                $value = is_array($item->value) ? $item->value : json_decode($item->value, true);
+                
+                // Extract date from SKU
+                $date = str_replace('AMAZON_FBA_UTILIZATION_' . $campaignType . '_', '', $item->sku);
+                
+                if ($condition === '7ub') {
+                    return [
+                        'date' => $date,
+                        'over_utilized_7ub' => $value['over_utilized_7ub'] ?? 0,
+                        'under_utilized_7ub' => $value['under_utilized_7ub'] ?? 0,
+                        'correctly_utilized_7ub' => $value['correctly_utilized_7ub'] ?? 0,
+                    ];
+                } else {
+                    return [
+                        'date' => $date,
+                        'over_utilized_7ub_1ub' => $value['over_utilized_7ub_1ub'] ?? 0,
+                        'under_utilized_7ub_1ub' => $value['under_utilized_7ub_1ub'] ?? 0,
+                        'correctly_utilized_7ub_1ub' => $value['correctly_utilized_7ub_1ub'] ?? 0,
+                    ];
+                }
+            })
+            ->reverse()
+            ->values();
+
         return response()->json([
             'message' => 'Data fetched successfully',
-            'data' => [],
+            'data' => $data,
             'status' => 200,
         ]);
     }
@@ -975,14 +1048,7 @@ class AmazonFbaAdsController extends Controller
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // Filter by utilization type
-            if ($utilizationType === 'over' && !($ub7 > 90 && $ub1 > 90)) {
-                continue;
-            } elseif ($utilizationType === 'under' && !($ub7 < 70 && $ub1 < 70)) {
-                continue;
-            } elseif ($utilizationType === 'correctly' && !($ub7 >= 70 && $ub7 <= 90)) {
-                continue;
-            }
+            // Don't filter by utilization type here - let frontend handle it
 
             $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sellerSkuUpper) {
                 $cleanName = strtoupper(trim(rtrim($item->campaignName, '.')));
