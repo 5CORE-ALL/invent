@@ -1713,14 +1713,14 @@
                                                     <a href="{{ route('amazon.low.visibility.view') }}">Amz FBM
                                                         Low Visibility</a>
                                                 </li>
-                                                <li>
+                                                {{-- <li>
                                                     <a href="{{ route('amazon.low.visibility.view.fba') }}">
                                                         Amz FBM Low Visibility </a>
                                                 </li>
                                                 <li>
                                                     <a href="{{ route('amazon.low.visibility.view.fbm') }}">
                                                         Amz FBM Low Visibility </a>
-                                                </li>
+                                                </li> --}}
                                                 <li>
                                                     <a href="{{ route('amazon.low.visibility.view.both') }}">
                                                         Amz FBM Low Visibility BOTH</a>

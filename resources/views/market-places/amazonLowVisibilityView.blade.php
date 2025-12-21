@@ -1420,6 +1420,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!--for popup modal script-->
     <script>
         flatpickr("#duration", {
@@ -1994,15 +1995,15 @@
                     paginationSize: 100,
                     paginationCounter: "rows",
                     initialSort: [{
-                        column: "L30",
-                        dir: "desc"
+                        column: "Sess30",
+                        dir: "asc"
                     }],
                     rowFormatter: function(row) {
                         const data = row.getData();
                         if (data.is_parent) {
                             row.getElement().style.backgroundColor = "#bde0ff";
                             row.getElement().style.fontWeight = "bold";
-                            row.getElement().classList.add("parent-row");
+                            row.getElement().classList.add("parent-row");   
                         }
                         if (data.NR === 'NR') {
                             row.getElement().classList.add("nr-hide");
@@ -2213,7 +2214,9 @@
                                         data-bs-placement="left" 
                                         title="visibility View"
                                         data-item='${JSON.stringify(rawData)}'
-                                        style="cursor:pointer; margin-left:5px;">V</span>
+                                        style="cursor:pointer; margin-left:5px;">
+                                        <i class="fas fa-eye"></i>
+                                    </span>
                                 `;
                             },
                             bottomCalc: function(values, data) {
@@ -2664,136 +2667,251 @@
                     let fieldsToDisplay = [];
                     switch (type.toLowerCase()) {
                         case 'visibility view':
-                            fieldsToDisplay = [{
-                                    title: 'Sess30',
-                                    content: selectedItem['Sess30']
+                            // Get raw_data if available for KW and Headline data
+                            const rawData = dataToUse.raw_data || dataToUse || {};
+                            
+                            // Calculate organic views (Total - KW - PT - Headline)
+                            const totalViews = parseFloat(dataToUse['Sess30'] || rawData['Sess30'] || 0);
+                            const kwImpressions30 = parseFloat(rawData['KwImp30'] || rawData['kw_impr_L30'] || dataToUse['KwImp30'] || 0);
+                            const ptImpressions30 = parseFloat(rawData['PtImp30'] || rawData['pt_impr_L30'] || dataToUse['PtImp30'] || 0);
+                            const headlineImpressions30 = parseFloat(rawData['HdImp30'] || rawData['hd_impr_L30'] || dataToUse['HdImp30'] || 0);
+                            const organicViews = Math.max(0, totalViews - kwImpressions30 - ptImpressions30 - headlineImpressions30);
+                            
+                            // Get KW data from raw data (fallback)
+                            const kwClicks30Fallback = parseFloat(rawData['KwClks30'] || rawData['kw_clicks_L30'] || dataToUse['KwClks30'] || 0);
+                            const kwSpend30Fallback = parseFloat(rawData['KwSpend30'] || rawData['kw_spend_L30'] || dataToUse['KwSpend30'] || 0);
+                            
+                            // Get Headline data from raw data (fallback)
+                            const hdClicks30Fallback = parseFloat(rawData['HdClks30'] || rawData['hd_clicks_L30'] || dataToUse['HdClks30'] || 0);
+                            const hdSpend30Fallback = parseFloat(rawData['HdSpend30'] || rawData['hd_spend_L30'] || dataToUse['HdSpend30'] || 0);
+                            
+                            // Create a structured modal content
+                            const sku = dataToUse['(Child) sku'] || rawData['(Child) sku'] || 'N/A';
+                            
+                            // Show loading modal first
+                            const loadingContent = `
+                                <div class="visibility-view-modal" style="padding: 20px; text-align: center;">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-3">Loading campaign data...</p>
+                                </div>
+                            `;
+                            
+                            const modal = ModalSystem.createModal(modalId, 'Visibility View Details', loadingContent);
+                            ModalSystem.showModal(modalId);
+                            
+                            // Fetch campaign clicks data from backend
+                            $.ajax({
+                                url: '/amazon/low-visibility/campaign-clicks',
+                                type: 'GET',
+                                data: { sku: sku },
+                                success: function(response) {
+                                    if (response.status === 200 && response.data) {
+                                        const campaignData = response.data;
+                                        
+                                        // Use fetched data or fallback to raw data
+                                        const kwClicks30 = campaignData.kw_clicks_l30 || kwClicks30Fallback;
+                                        const kwImpressions30Final = campaignData.kw_impressions_l30 || kwImpressions30;
+                                        const kwSpend30 = campaignData.kw_spend_l30 || kwSpend30Fallback;
+                                        
+                                        const ptClicks30 = campaignData.pt_clicks_l30 || 0;
+                                        const ptImpressions30Final = campaignData.pt_impressions_l30 || ptImpressions30;
+                                        const ptSpend30 = campaignData.pt_spend_l30 || 0;
+                                        
+                                        const hlClicks30 = campaignData.hl_clicks_l30 || hdClicks30Fallback;
+                                        const hlImpressions30Final = campaignData.hl_impressions_l30 || headlineImpressions30;
+                                        const hlSpend30 = campaignData.hl_spend_l30 || hdSpend30Fallback;
+                                        
+                                        // Use organic_views from API response (from amazon_datasheets.organic_views)
+                                        // This matches the data shown in amazon-organic-views.blade.php
+                                        const organicViewsFromDB = campaignData.organic_views !== undefined && campaignData.organic_views !== null 
+                                            ? parseInt(campaignData.organic_views) 
+                                            : organicViews;
+                                        
+                                        // Pass the totalViews and organicViewsFromDB to the chart function
+                                        window.chartTotalViews = totalViews;
+                                        window.chartOrganicViews = organicViewsFromDB;
+                                        
+                                        const modalContent = `
+                                            <div class="visibility-view-modal" style="padding: 20px;">
+                                                <div class="row mb-4">
+                                                    <div class="col-12">
+                                                        <h5 style="border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                                                            <i class="fas fa-eye text-info"></i> Visibility Details for SKU: <strong>${sku}</strong>
+                                                        </h5>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="row mb-4">
+                                                    <div class="col-md-12">
+                                                        <div class="card">
+                                                            <div class="card-header bg-info text-white">
+                                                                <i class="fas fa-chart-line"></i> Last 30 Days Trend
+                                                            </div>
+                                                            <div class="card-body">
+                                                                <canvas id="dailyViewsChart-${sku.replace(/\s+/g, '-')}" style="max-height: 400px;"></canvas>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="row">
+                                                    <div class="col-md-6 mb-3">
+                                                        <div class="card border-primary">
+                                                            <div class="card-header bg-primary text-white">
+                                                                <i class="fas fa-chart-line"></i> Total Views
+                                                            </div>
+                                                            <div class="card-body">
+                                                                <h3 class="text-primary">${totalViews.toLocaleString()}</h3>
+                                                                <small class="text-muted">Sessions (Last 30 Days)</small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div class="col-md-6 mb-3">
+                                                        <div class="card border-success">
+                                                            <div class="card-header bg-success text-white">
+                                                                <i class="fas fa-leaf"></i> L30 Org Views
+                                                            </div>
+                                                            <div class="card-body">
+                                                                <h3 class="text-success">${organicViewsFromDB.toLocaleString()}</h3>
+                                                                <small class="text-muted">Organic Views (from amazon_datasheets.organic_views)</small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="row mt-3">
+                                                    <div class="col-md-12 mb-3">
+                                                        <div class="card border-warning">
+                                                            <div class="card-header bg-warning text-dark">
+                                                                <i class="fas fa-key"></i> Keyword (KW) Campaign Data (Last 30 Days)
+                                                                ${campaignData.kw_campaign_name ? `<small class="float-end">${campaignData.kw_campaign_name}</small>` : ''}
+                                                            </div>
+                                                            <div class="card-body">
+                                                                <div class="row">
+                                                                    <div class="col-md-3">
+                                                                        <strong>Impressions:</strong>
+                                                                        <p class="mb-0">${kwImpressions30Final.toLocaleString()}</p>
+                                                                    </div>
+                                                                    <div class="col-md-3">
+                                                                        <strong>Clicks:</strong>
+                                                                        <p class="mb-0"><strong class="text-primary">${kwClicks30.toLocaleString()}</strong></p>
+                                                                    </div>
+                                                                    <div class="col-md-3">
+                                                                        <strong>CTR:</strong>
+                                                                        <p class="mb-0">${kwImpressions30Final > 0 ? ((kwClicks30 / kwImpressions30Final) * 100).toFixed(2) : '0.00'}%</p>
+                                                                    </div>
+                                                                    <div class="col-md-3">
+                                                                        <strong>Spend:</strong>
+                                                                        <p class="mb-0">$${kwSpend30.toFixed(2)}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="row mt-3">
+                                                    <div class="col-md-12 mb-3">
+                                                        <div class="card border-secondary">
+                                                            <div class="card-header bg-secondary text-white">
+                                                                <i class="fas fa-tag"></i> Product Targeting (PT) Campaign Data (Last 30 Days)
+                                                                ${campaignData.pt_campaign_name ? `<small class="float-end">${campaignData.pt_campaign_name}</small>` : ''}
+                                                            </div>
+                                                            <div class="card-body">
+                                                                <div class="row">
+                                                                    <div class="col-md-3">
+                                                                        <strong>Impressions:</strong>
+                                                                        <p class="mb-0">${ptImpressions30Final.toLocaleString()}</p>
+                                                                    </div>
+                                                                    <div class="col-md-3">
+                                                                        <strong>Clicks:</strong>
+                                                                        <p class="mb-0"><strong class="text-primary">${ptClicks30.toLocaleString()}</strong></p>
+                                                                    </div>
+                                                                    <div class="col-md-3">
+                                                                        <strong>CTR:</strong>
+                                                                        <p class="mb-0">${ptImpressions30Final > 0 ? ((ptClicks30 / ptImpressions30Final) * 100).toFixed(2) : '0.00'}%</p>
+                                                                    </div>
+                                                                    <div class="col-md-3">
+                                                                        <strong>Spend:</strong>
+                                                                        <p class="mb-0">$${ptSpend30.toFixed(2)}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="row mt-3">
+                                                    <div class="col-md-12 mb-3">
+                                                        <div class="card border-info">
+                                                            <div class="card-header bg-info text-white">
+                                                                <i class="fas fa-heading"></i> Headline (HL) Campaign Data (Last 30 Days)
+                                                                ${campaignData.hl_campaign_name ? `<small class="float-end">${campaignData.hl_campaign_name}</small>` : ''}
+                                                            </div>
+                                                            <div class="card-body">
+                                                                <div class="row">
+                                                                    <div class="col-md-3">
+                                                                        <strong>Impressions:</strong>
+                                                                        <p class="mb-0">${hlImpressions30Final.toLocaleString()}</p>
+                                                                    </div>
+                                                                    <div class="col-md-3">
+                                                                        <strong>Clicks:</strong>
+                                                                        <p class="mb-0"><strong class="text-primary">${hlClicks30.toLocaleString()}</strong></p>
+                                                                    </div>
+                                                                    <div class="col-md-3">
+                                                                        <strong>CTR:</strong>
+                                                                        <p class="mb-0">${hlImpressions30Final > 0 ? ((hlClicks30 / hlImpressions30Final) * 100).toFixed(2) : '0.00'}%</p>
+                                                                    </div>
+                                                                    <div class="col-md-3">
+                                                                        <strong>Spend:</strong>
+                                                                        <p class="mb-0">$${hlSpend30.toFixed(2)}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="row mt-2">
+                                                    <div class="col-md-12">
+                                                        <small class="text-muted">
+                                                            <i class="fas fa-info-circle"></i> 
+                                                            Organic Views = Total Views - KW Impressions - PT Impressions - Headline Impressions
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        `;
+                                        
+                                        // Update modal content
+                                        const modalBody = document.querySelector(`#${modalId} .custom-modal-body`);
+                                        if (modalBody) {
+                                            modalBody.innerHTML = modalContent;
+                                            
+                                            // Fetch and render daily views chart with fallback values
+                                            fetchDailyViewsChart(sku, modalId, totalViews, organicViewsFromDB);
+                                        }
+                                    } else {
+                                        // Fallback if API fails - use raw data
+                                        const modalBody = document.querySelector(`#${modalId} .custom-modal-body`);
+                                        if (modalBody) {
+                                            modalBody.innerHTML = '<div class="alert alert-warning">Failed to load campaign data. Please try again.</div>';
+                                        }
+                                    }
                                 },
-                                {
-                                    title: 'Sessl60',
-                                    content: selectedItem['sessions_l60']
-                                },
-                                {
-                                    title: 'KwImp60',
-                                    content: selectedItem['KwImp60']
-                                },
-                                {
-                                    title: 'KwImp30',
-                                    content: selectedItem['KwImp30']
-                                },
-                                {
-                                    title: 'KwClks60',
-                                    content: selectedItem['KwClks60']
-                                },
-                                {
-                                    title: 'KwClks30',
-                                    content: selectedItem['KwClks30']
-                                },
-                                {
-                                    title: 'KwCtr60',
-                                    content: selectedItem['KwCtr60']
-                                },
-                                {
-                                    title: 'KwCtr30',
-                                    content: selectedItem['KwCtr30']
-                                },
-                                {
-                                    title: 'PtImp60',
-                                    content: selectedItem['PtImp60']
-                                },
-                                {
-                                    title: 'PtImp30',
-                                    content: selectedItem['PtImp30']
-                                },
-                                {
-                                    title: 'PtClks60',
-                                    content: selectedItem['PtClks60']
-                                },
-                                {
-                                    title: 'PtClks30',
-                                    content: selectedItem['PtClks30']
-                                },
-                                {
-                                    title: 'PtCtr60',
-                                    content: selectedItem['PtCtr60']
-                                },
-                                {
-                                    title: 'PtCtr30',
-                                    content: selectedItem['PtCtr30']
-                                },
-                                {
-                                    title: 'DspImp60',
-                                    content: selectedItem['DspImp60']
-                                },
-                                {
-                                    title: 'DspImp30',
-                                    content: selectedItem['DspImp30']
-                                },
-                                {
-                                    title: 'DspClks60',
-                                    content: selectedItem['DspClks60']
-                                },
-                                {
-                                    title: 'DspClks30',
-                                    content: selectedItem['DspClks30']
-                                },
-                                {
-                                    title: 'DspCtr60',
-                                    content: selectedItem['DspCtr60']
-                                },
-                                {
-                                    title: 'DspCtr30',
-                                    content: selectedItem['DspCtr30']
-                                },
-                                {
-                                    title: 'HdImp60',
-                                    content: selectedItem['HdImp60']
-                                },
-                                {
-                                    title: 'HdImp30',
-                                    content: selectedItem['HdImp30']
-                                },
-                                {
-                                    title: 'HdClks60',
-                                    content: selectedItem['HdClks60']
-                                },
-                                {
-                                    title: 'HdClks30',
-                                    content: selectedItem['HdClks30']
-                                },
-                                {
-                                    title: 'HdCtr60',
-                                    content: selectedItem['HdCtr60']
-                                },
-                                {
-                                    title: 'HdCtr30',
-                                    content: selectedItem['HdCtr30']
-                                },
-                                {
-                                    title: 'TImp60',
-                                    content: selectedItem['TImp60']
-                                },
-                                {
-                                    title: 'TImp30',
-                                    content: selectedItem['TImp30']
-                                },
-                                {
-                                    title: 'TClks60',
-                                    content: selectedItem['TClks60']
-                                },
-                                {
-                                    title: 'TClks30',
-                                    content: selectedItem['TClks30']
-                                },
-                                {
-                                    title: 'TCtr60',
-                                    content: selectedItem['TCtr60']
-                                },
-                                {
-                                    title: 'TCtr30',
-                                    content: selectedItem['TCtr30']
+                                error: function(xhr, status, error) {
+                                    console.error('Error fetching campaign clicks:', error);
+                                    // Show error message
+                                    const modalBody = document.querySelector(`#${modalId} .custom-modal-body`);
+                                    if (modalBody) {
+                                        modalBody.innerHTML = '<div class="alert alert-danger">Error loading campaign data. Please try again later.</div>';
+                                    }
                                 }
-                            ];
-                            break;
+                            });
+                            return;
                         case 'wmpnm view':
                             fieldsToDisplay = [{
                                     title: 'HIDE',
@@ -4749,6 +4867,175 @@
                     $('#reasonActionModal').modal('hide');
                 }
             });
+
+            // Function to fetch and render daily views chart
+            function fetchDailyViewsChart(sku, modalId, fallbackTotalViews, fallbackOrganicViews) {
+                fallbackTotalViews = fallbackTotalViews || 0;
+                fallbackOrganicViews = fallbackOrganicViews || 0;
+                
+                $.ajax({
+                    url: '/amazon/low-visibility/daily-views-data',
+                    type: 'GET',
+                    data: { sku: sku },
+                    success: function(response) {
+                        console.log('Daily views data response:', response);
+                        if (response.status === 200 && response.data) {
+                            console.log('Chart data:', response.data);
+                            console.log('Debug info:', response.data.debug);
+                            console.log('Dates:', response.data.dates);
+                            console.log('Total Views:', response.data.total_views);
+                            console.log('L30 Units:', response.data.l30_units);
+                            console.log('Organic Views:', response.data.organic_views);
+                            console.log('Fallback Total Views:', fallbackTotalViews);
+                            console.log('Fallback Organic Views:', fallbackOrganicViews);
+                            
+                            // Check if all values are 0 and we have fallback values to use
+                            const allViewsZero = response.data.total_views.every(v => v === 0);
+                            const allOrganicZero = response.data.organic_views.every(v => v === 0);
+                            
+                            if ((allViewsZero || allOrganicZero) && (fallbackTotalViews > 0 || fallbackOrganicViews > 0)) {
+                                console.log('All API values are 0, using fallback values to distribute across 30 days');
+                                // Use fallback values: distribute across 30 days
+                                const chartData = {
+                                    dates: response.data.dates,
+                                    total_views: Array(30).fill(Math.round(fallbackTotalViews / 30)),
+                                    l30_units: response.data.l30_units, // Keep original (may be 0)
+                                    organic_views: Array(30).fill(Math.round(fallbackOrganicViews / 30))
+                                };
+                                renderDailyViewsChart(chartData, sku, modalId);
+                            } else {
+                                renderDailyViewsChart(response.data, sku, modalId);
+                            }
+                        } else {
+                            console.warn('No daily data available for chart', response);
+                            // Use fallback if available
+                            if (fallbackTotalViews > 0 || fallbackOrganicViews > 0) {
+                                const dates = [];
+                                const today = new Date();
+                                for (let i = 1; i <= 30; i++) {
+                                    const date = new Date(today);
+                                    date.setDate(date.getDate() - (30 - i));
+                                    dates.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+                                }
+                                const fallbackData = {
+                                    dates: dates,
+                                    total_views: Array(30).fill(Math.round(fallbackTotalViews / 30)),
+                                    l30_units: Array(30).fill(0),
+                                    organic_views: Array(30).fill(Math.round(fallbackOrganicViews / 30))
+                                };
+                                renderDailyViewsChart(fallbackData, sku, modalId);
+                            }
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error fetching daily views data:', error, xhr.responseText);
+                        // Use fallback if available
+                        if (fallbackTotalViews > 0 || fallbackOrganicViews > 0) {
+                            const dates = [];
+                            const today = new Date();
+                            for (let i = 1; i <= 30; i++) {
+                                const date = new Date(today);
+                                date.setDate(date.getDate() - (30 - i));
+                                dates.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+                            }
+                            const fallbackData = {
+                                dates: dates,
+                                total_views: Array(30).fill(Math.round(fallbackTotalViews / 30)),
+                                l30_units: Array(30).fill(0),
+                                organic_views: Array(30).fill(Math.round(fallbackOrganicViews / 30))
+                            };
+                            renderDailyViewsChart(fallbackData, sku, modalId);
+                        }
+                    }
+                });
+            }
+
+            // Function to render the daily views chart
+            function renderDailyViewsChart(chartData, sku, modalId) {
+                const canvasId = `dailyViewsChart-${sku.replace(/\s+/g, '-')}`;
+                const canvas = document.getElementById(canvasId);
+                
+                if (!canvas) {
+                    console.error('Canvas element not found:', canvasId);
+                    return;
+                }
+
+                // Destroy existing chart if it exists
+                if (window.dailyViewsCharts && window.dailyViewsCharts[canvasId]) {
+                    window.dailyViewsCharts[canvasId].destroy();
+                }
+
+                // Initialize charts object if it doesn't exist
+                if (!window.dailyViewsCharts) {
+                    window.dailyViewsCharts = {};
+                }
+
+                const ctx = canvas.getContext('2d');
+                window.dailyViewsCharts[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.dates || [],
+                        datasets: [
+                            {
+                                label: 'Total Views (L30)',
+                                data: chartData.total_views || [],
+                                borderColor: 'rgb(0, 123, 255)',
+                                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            },
+                            {
+                                label: 'L30 Units Ordered',
+                                data: chartData.l30_units || [],
+                                borderColor: 'rgb(40, 167, 69)',
+                                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            },
+                            {
+                                label: 'Organic Views',
+                                data: chartData.organic_views || [],
+                                borderColor: 'rgb(255, 193, 7)',
+                                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 0
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        },
+                        interaction: {
+                            mode: 'nearest',
+                            axis: 'x',
+                            intersect: false
+                        }
+                    }
+                });
+            }
 
             // Initialize everything
             initTable();
