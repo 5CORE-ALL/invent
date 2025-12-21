@@ -100,33 +100,27 @@
         }
 
         .dil-percent-value.red {
-            background-color: #dc3545;
-            color: white;
+            color: #dc3545;
         }
 
         .dil-percent-value.blue {
-            background-color: #3591dc;
-            color: white;
+            color: #3591dc;
         }
 
         .dil-percent-value.yellow {
-            background-color: #ffc107;
-            color: #212529;
+            color: #ffc107;
         }
 
         .dil-percent-value.green {
-            background-color: #28a745;
-            color: white;
+            color: #28a745;
         }
 
         .dil-percent-value.pink {
-            background-color: #e83e8c;
-            color: white;
+            color: #e83e8c;
         }
 
         .dil-percent-value.gray {
-            background-color: #6c757d;
-            color: white;
+            color: #6c757d;
         }
 
         /* ========== TABLE CONTROLS ========== */
@@ -150,11 +144,6 @@
         .sort-arrow {
             display: inline-block;
             margin-left: 5px;
-        }
-
-        /* ========== PARENT ROWS ========== */
-        .parent-row {
-            background-color: rgba(69, 233, 255, 0.1) !important;
         }
 
         /* ========== SKU TOOLTIPS ========== */
@@ -910,22 +899,12 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body d-flex align-items-center" style="gap: 12px;">
-                    <div id="percent-edit-div" class="d-flex align-items-center">
-                        <div class="input-group" style="width: 150px;">
-                            <input type="number" id="updateAllSkusPercent" class="form-control" min="0"
-                                max="100" value="{{ $dobaPercentage }}" step="0.01" title="Percent" disabled />
-                            <span class="input-group-text">%</span>
-                        </div>
-                        <button id="editPercentBtn" class="btn btn-outline-primary ms-2">
-                            <i class="fa fa-pen"></i>
-                        </button>
-                    </div>
                     <div class="d-inline-flex align-items-center ms-2">
                         <div class="badge bg-danger text-white px-3 py-2 me-2" style="font-size: 1rem; border-radius: 8px;">
-                            0 SOLD - <span id="zero-sold-count">0</span>
+                            <span id="zero-sold-count">0</span>
                         </div>
                         <div class="badge bg-primary text-white px-3 py-2" style="font-size: 1rem; border-radius: 8px;">
-                            SOLD - <span id="sold-count">0</span>
+                            <span id="sold-count">0</span>
                         </div>
                     </div>
 
@@ -966,75 +945,6 @@
                             </ul>
                         </div>
 
-                        <!-- A Dil% Filter -->
-                        <div class="dropdown manual-dropdown-container ">
-                            <button class="btn btn-light dropdown-toggle" type="button" id="eDilFilterDropdown">
-                                <span class="status-circle default"></span> D Dil%
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="eDilFilterDropdown">
-                                <li><a class="dropdown-item column-filter" href="#" data-column="A Dil%"
-                                        data-color="all">
-                                        <span class="status-circle default"></span> All D Dil</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="D Dil%"
-                                        data-color="red">
-                                        <span class="status-circle red"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="D Dil%"
-                                        data-color="yellow">
-                                        <span class="status-circle yellow"></span> Yellow</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="D Dil%"
-                                        data-color="green">
-                                        <span class="status-circle green"></span> Green</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="D Dil%"
-                                        data-color="pink">
-                                        <span class="status-circle pink"></span> Pink</a></li>
-                            </ul>
-                        </div>
-
-                        <!-- A Dil% Filter -->
-                        <div class="dropdown manual-dropdown-container ">
-                            <button class="btn btn-light dropdown-toggle" type="button" id="ovClicksFilterDropdown">
-                                <span class="status-circle default"></span> Click 90
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="ovClicksFilterDropdown">
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Click 90"
-                                        data-color="all">
-                                        <span class="status-circle default"></span> All OV CLICKS</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Click 90"
-                                        data-color="red">
-                                        <span class="status-circle red"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Click 90"
-                                        data-color="green">
-                                        <span class="status-circle green"></span> Green </a></li>
-                            </ul>
-                        </div>
-
-                        <!-- PFT % Filter -->
-                        <div class="dropdown manual-dropdown-container">
-                            <button class="btn btn-light dropdown-toggle" type="button" id="pftFilterDropdown">
-                                <span class="status-circle default"></span> PFT%
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="pftFilterDropdown">
-                                <li><a class="dropdown-item column-filter" href="#" data-column="PFT %"
-                                        data-color="all">
-                                        <span class="status-circle default"></span> All PFT</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="PFT %"
-                                        data-color="red">
-                                        <span class="status-circle red"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="PFT %"
-                                        data-color="yellow">
-                                        <span class="status-circle yellow"></span> Yellow</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="PFT %"
-                                        data-color="blue">
-                                        <span class="status-circle blue"></span> Blue</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="PFT %"
-                                        data-color="green">
-                                        <span class="status-circle green"></span> Green</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="PFT %"
-                                        data-color="pink">
-                                        <span class="status-circle pink"></span> Pink</a></li>
-                            </ul>
-                        </div>
-
                         <!-- ROI Filter -->
                         <div class="dropdown manual-dropdown-container">
                             <button class="btn btn-light dropdown-toggle" type="button" id="roiFilterDropdown">
@@ -1056,33 +966,6 @@
                                 <li><a class="dropdown-item column-filter" href="#" data-column="Roi"
                                         data-color="pink">
                                         <span class="status-circle pink"></span> Pink</a></li>
-                            </ul>
-                        </div>
-
-                        <!-- Tacos Filter -->
-                        <div class="dropdown manual-dropdown-container">
-                            <button class="btn btn-light dropdown-toggle" type="button" id="tacosFilterDropdown">
-                                <span class="status-circle default"></span> IMP 90
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="tacosFilterDropdown">
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Imp"
-                                        data-color="all">
-                                        <span class="status-circle default"></span> All IMP 90</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Imp"
-                                        data-color="pink">
-                                        <span class="status-circle pink"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Imp"
-                                        data-color="green">
-                                        <span class="status-circle green"></span> Green</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Imp"
-                                        data-color="blue">
-                                        <span class="status-circle blue"></span> Blue</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Imp"
-                                        data-color="yellow">
-                                        <span class="status-circle yellow"></span> Yellow</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Imp"
-                                        data-color="red">
-                                        <span class="status-circle red"></span> Pink</a></li>
                             </ul>
                         </div>
 
@@ -1301,15 +1184,7 @@
                                     <select id="inv-filter" class="form-control form-control-sm">
                                         <option value="all">All</option>
                                         <option value="0">0</option>
-                                        <option value="1-100+">1-100+</option>
-                                    </select>
-                                </div>
-                                <div class="form-group mb-2">
-                                    <label for="el30-filter" class="mr-2">DL 30:</label>
-                                    <select id="el30-filter" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="0">0</option>
-                                        <option value="1-100+">1-100+</option>
+                                        <option value="1-100+" selected>1-100+</option>
                                     </select>
                                 </div>
                             </div>
@@ -1328,6 +1203,11 @@
                                     Show All
                                 </button>
                             </div>
+                            <div class="form-group">
+                                <button id="exportCsvBtn" class="btn btn-sm btn-success">
+                                    <i class="fas fa-download"></i> Export CSV
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Search on right -->
@@ -1340,23 +1220,34 @@
                         </div>
                     </div>
 
+                    <!-- Sold Count Info -->
+                    <div class="d-flex justify-content-center mb-2">
+                        <div class="alert alert-info py-1 px-3" style="font-size: 0.9em;">
+                            <strong>Sold Count:</strong> 
+                            <span id="sold-with-count" class="text-success">0</span> items with sales | 
+                            <span id="sold-zero-count" class="text-danger">0</span> items with no sales
+                        </div>
+                    </div>
+
+                    <!-- Promo Count Info -->
+                    <div class="d-flex justify-content-center mb-2">
+                        <div class="py-1 px-3" style="font-size: 1.1em; color: #333;">
+                            <strong>Promo Count:</strong>
+                            <span id="promo-count" style="color: #000; font-weight: bold;">0</span> items eligible for promotion
+                        </div>
+                    </div>
+
+                    <!-- Missing Count Info -->
+                    <div class="d-flex justify-content-center mb-2">
+                        <span id="missing-count-badge" style="cursor: pointer; font-size: 1.2em; font-weight: bold; color: #dc3545; background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 8px 16px; border-radius: 4px;">
+                            <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i> Missing Listing: <span id="missing-count" style="color: #dc3545; font-weight: bold;">0</span> items
+                        </span>
+                    </div>
+
                     <div class="table-container">
                         <table class="custom-resizable-table" id="doba-table">
                             <thead>
                                 <tr>
-                                    <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th>
-                                    <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center sortable-header">
-                                                Parent <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm parent-search"
-                                                    placeholder="Search parent..." id="parentSearch">
-                                                <div class="dropdown-search-results" id="parentSearchResults"></div>
-                                            </div>
-                                        </div>
-                                    </th>
                                     <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center sortable">
                                             <div class="d-flex align-items-center">
@@ -1404,50 +1295,65 @@
                                             <div class="metric-total" id="ovdil-total">0%</div>
                                         </div>
                                     </th>
-                                    <th data-field="el_30" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="sold" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
-                                                DL 30 <span class="sort-arrow">↓</span>
+                                                SOLD <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="el30-total">0</div>
+                                            <div class="metric-total" id="sold-total">0</div>
                                         </div>
                                     </th>
-                                    <th data-field="e_dil" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="promo" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
-                                                D DIL <span class="sort-arrow">↓</span>
+                                                PROMO <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="eDil-total">0%</div>
+                                            <div class="metric-total" id="promo-total">$0.00</div>
                                         </div>
                                     </th>
-                                    <th>NRL</th>
+                                    <th data-field="promo_pu" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                Promo PU <span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="promo-pu-total">$0.00</div>
+                                        </div>
+                                    </th>
+                                    <th data-field="missing" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                Missing <span class="sort-arrow">↓</span>
+                                            </div>
+                                        </div>
+                                    </th>
                                     {{-- <th>Hide</th> --}}
-                                    <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                Click 90 <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="views-total">0</div>
-                                        </div>
-                                    </th>
                                     <th data-field="price"
                                         style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
-                                        <div class="d-flex flex-column align-items-center">
+                                        <div class="d-flex flex-column align-items-center sortable">
                                             <div class="d-flex align-items-center">
                                                 PRICE <span class="sort-arrow">↓</span>
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="pft" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="price_pu" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
-                                                PFT <span class="sort-arrow">↓</span>
+                                                Price (PU) <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
+                                            <div class="metric-total" id="price-pu-total">$0.00</div>
+                                        </div>
+                                    </th>
+                                    <th data-field="npft_pct" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                NPFT% <span class="sort-arrow">↓</span>
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                            <div class="metric-total" id="npft-pct-total">0%</div>
                                         </div>
                                     </th>
                                     <th data-field="roi" style="vertical-align: middle; white-space: nowrap;">
@@ -1487,14 +1393,6 @@
                                         </div>
                                     </th>
 
-                                    <th data-field="Imp" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                IMP 90<span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        </div>
-                                    </th>
                                     <th data-field="cvr" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
@@ -1571,49 +1469,6 @@
     <script>
         document.body.style.zoom = "80%";
         $(document).ready(function() {
-            $('#editPercentBtn').on('click', function() {
-                var $input = $('#updateAllSkusPercent');
-                var $icon = $(this).find('i');
-                var originalValue = $input.val(); // Store original value
-
-                if ($icon.hasClass('fa-pen')) {
-                    // Enable editing
-                    $input.prop('disabled', false).focus();
-                    $icon.removeClass('fa-pen').addClass('fa-check');
-                } else {
-                    // Submit and disable editing
-                    var percent = parseFloat($input.val());
-
-                    // Validate input
-                    if (isNaN(percent) || percent < 0 || percent > 100) {
-                        showNotification('danger', 'Invalid percentage value. Must be between 0 and 100.');
-                        $input.val(originalValue); // Restore original value
-                        return;
-                    }
-
-                    $.ajax({
-                        url: '/update-all-doba-skus',
-                        type: 'POST',
-                        data: {
-                            percent: percent,
-                            _token: $('meta[name="csrf-token"]').attr('content')
-                        },
-                        success: function(response) {
-                            showNotification('success', 'Percentage updated successfully!');
-                            $input.prop('disabled', true);
-                            $icon.removeClass('fa-check').addClass('fa-pen');
-                        },
-                        error: function(xhr) {
-                            showNotification('danger', 'Error updating percentage.');
-                            $input.val(originalValue); // Restore original value
-                            $input.prop('disabled', true);
-                            $icon.removeClass('fa-check').addClass('fa-pen');
-                        }
-                    });
-                }
-            });
-
-
             // Cache system
             const dobaViewDataCache = {
                 cache: {},
@@ -1684,11 +1539,7 @@
             const state = {
                 filters: {
                     'ov_dil': 'all',
-                    'D Dil%': 'all',
-                    'Click 90': 'all',
-                    'PFT %': 'all',
                     'Roi': 'all',
-                    'Imp': 'all',
                     // 'SCVR': 'all',
                     'entryType': 'all'
                 }
@@ -2107,6 +1958,7 @@
                     // Hide R&A column initially
                     $('th[data-field="r&a"], td:nth-child(4)').addClass('hide-column');
                     renderTable();
+                    applyColumnFilters(); // Apply initial filter state
                     initResizableColumns();
                     initSorting();
                     initPagination();
@@ -2120,7 +1972,8 @@
                     initPlaybackControls();
                     initRAEditHandlers(); // Add this line
                     initCheckBoxEditHandlers();
-                    initNRSelectChangeHandler();
+                    initExportCsv();
+                    initMissingFilter();
 
                 });
             }
@@ -2204,11 +2057,14 @@
                                 const inv = Number(item.INV) || 0;
                                 const l30 = Number(item.L30) || 0;
                                 const ovDil = inv > 0 ? l30 / inv : 0;
-
-                                let scvr = 0;
-                                if (Number(item['Click 90']) > 0) {
-                                    scvr = Number(item['doba L30']) / Number(item['Click 90']);
-                                }
+                                const price = Number(item['doba Price']) || 0;
+                                const ship = Number(item.Ship_productmaster) || 0;
+                                const lp = Number(item.LP_productmaster) || 0;
+                                const npft_pct = price > 0 ? ((price * 0.95) - ship - lp) / price : 0;
+                                const price_pu = price - ship;
+                                const sold = Number(item['doba L30']) || 0;
+                                const promo = sold === 0 ? price * 0.90 : 0;
+                                const promo_pu = promo - ship;
 
                                 return {
                                     sl_no: index + 1,
@@ -2221,29 +2077,30 @@
                                     L30: l30,
                                     ov_dil: ovDil,
                                     'doba L30': item['doba L30'] || 0,
-                                    'D Dil%': item['D Dil%'] || 0,
-                                    'Click 90': Number(item['Click 90']) || 0,
-                                    'doba Price': item['doba Price'] || 0,
-                                    'PFT %': item['PFT %'] || 0,
+                                    'doba Price': price,
                                     Profit: item.Profit || item['Profit'] || item['profit'] ||
                                         item['PFT'] || 0,
                                     'Sales L30': item['Sales L30'] || item['sales_l30'] ||
                                         l30 || 0,
                                     Roi: item['ROI'] || 0,
-                                    Imp: item['Imp 90'] || 0,
                                     pickup_price: item['PICK UP PRICE '] || 0,
                                     is_parent: item['(Child) sku'] ? item['(Child) sku']
                                         .toUpperCase().includes("PARENT") : false,
                                     raw_data: item || {},
                                     NR: item.NR !== undefined ? item.NR : '',
-                                    LP: item.LP_productmaster || 0,
-                                    SHIP: item.Ship_productmaster || 0,
+                                    LP: lp,
+                                    SHIP: ship,
                                     SPRICE: (item.SPRICE !== null && !isNaN(parseFloat(item
                                         .SPRICE))) ? parseFloat(item.SPRICE) : 0,
                                     SPFT: (item.SPFT !== null && !isNaN(parseFloat(item
                                         .SPFT))) ? parseFloat(item.SPFT) : 0,
                                     SROI: (item.SROI !== null && !isNaN(parseFloat(item
                                         .SROI))) ? parseFloat(item.SROI) : 0,
+                                    npft_pct: npft_pct,
+                                    price_pu: price_pu,
+                                    promo: promo,
+                                    promo_pu: promo_pu,
+                                    missing: price === 0 && inv !== 0,
                                 };
                             });
 
@@ -2285,25 +2142,25 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="17" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="17" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
                 filteredData.forEach(item => {
+
+                    // Skip parent rows
+                    if (item.is_parent) return;
 
                     //   if (item['INV'] === 0 || item['Click 90'] === 0) {
                     //                         return; // skip this row
                     //  }
 
                     const $row = $('<tr>');
-                    if (item.is_parent) {
-                        $row.addClass('parent-row');
-                    }
                     if (item.NR === 'NR') {
                         $row.addClass('nr-hide');
                     }
@@ -2366,32 +2223,25 @@
                         return 'pink';
                     };
 
-                    $row.append($('<td>').text(item['Sl']));
-                    $row.append($('<td>').text(item.Parent));
-
                     // SKU with hover content for links
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
-                    if (item.is_parent) {
-                        $skuCell.html(`<strong>${item['(Child) sku']}</strong>`);
-                    } else {
-                        const imageUrl = item.raw_data.image || '';
-                        const buyerLink = item.raw_data['B Link'] || '';
-                        const sellerLink = item.raw_data['S Link'] || '';
+                    const imageUrl = item.raw_data.image || '';
+                    const buyerLink = item.raw_data['B Link'] || '';
+                    const sellerLink = item.raw_data['S Link'] || '';
 
-                        if (buyerLink || sellerLink || imageUrl) {
-                            $skuCell.html(`
-                                <div class="sku-tooltip-container">
-                                    <span class="sku-text">${item['(Child) sku']}</span>
-                                    <div class="sku-tooltip">
-                                        ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
-                                        ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
-                                        ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
-                                    </div>
+                    if (buyerLink || sellerLink || imageUrl) {
+                        $skuCell.html(`
+                            <div class="sku-tooltip-container">
+                                <span class="sku-text">${item['(Child) sku']}</span>
+                                <div class="sku-tooltip">
+                                    ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
+                                    ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
+                                    ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
                                 </div>
-                            `);
-                        } else {
-                            $skuCell.text(item['(Child) sku']);
-                        }
+                            </div>
+                        `);
+                    } else {
+                        $skuCell.text(item['(Child) sku']);
                     }
                     $row.append($skuCell);
 
@@ -2439,50 +2289,32 @@
                                data-item='${JSON.stringify(item.raw_data)}'>W</span>`
                     ));
 
+                    // SOLD column
+
                     $row.append($('<td>').text(item['doba L30']));
 
-                    // A DIL with color coding
+                    // PROMO column
                     $row.append($('<td>').html(
-                        `<span class="dil-percent-value ${getEDilColor(item['D Dil%'])}">${Math.round(item['D Dil%'] * 100)}%</span>`
+                        typeof item.promo === 'number' && !isNaN(item.promo) && item.promo > 0 ?
+                        `<span class="dil-percent-value ${getPftColor(item.promo)}">$${item.promo.toFixed(2)}</span>` :
+                        ''
                     ));
 
-                    if (item.is_parent) {
-                        $row.append($('<td>')); // Empty cell for parent
-                    } else {
-                        const currentNR = item.NR === 'REQ' || item.NR === 'NR' ? item.NR :
-                            'REQ'; // default to REQ
-                        const $select = $(`
-                            <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
-                                <option value="NR" ${currentNR === 'NR' ? 'selected' : ''}>NR</option>
-                                <option value="REQ" ${currentNR === 'REQ' ? 'selected' : ''}>REQ</option>
-                            </select>
-                        `);
-
-                        // Set background color based on value
-                        if (currentNR === 'NR') {
-                            $select.css('background-color', '#dc3545');
-                            $select.css('color', '#ffffff');
-                        } else if (currentNR === 'REQ') {
-                            $select.css('background-color', '#28a745');
-                            $select.css('color', '#ffffff');
-                        }
-                        $select.data('sku', item['(Child) sku']);
-                        $row.append($('<td>').append($select));
-                    }
-
-
-                    // Click 90 with tooltip icon (no color coding)
+                    // PROMO PU column
                     $row.append($('<td>').html(
-                        `<span class="dil-percent-value ${getViewColor(item['Click 90'])}">${Math.round(item['Click 90'])}</span>
-                         <span class="text-info tooltip-icon ad-view-trigger" 
-                               data-bs-toggle="tooltip" 
-                               data-bs-placement="left" 
-                               title="visibility View"
-                               data-item='${JSON.stringify(item.raw_data)}'>V</span>`
+                        typeof item.promo_pu === 'number' && !isNaN(item.promo_pu) && item.promo_pu > 0 ?
+                        `<span class="dil-percent-value ${getPftColor(item.promo_pu)}">$${item.promo_pu.toFixed(2)}</span>` :
+                        ''
+                    ));
+
+                    // MISSING column
+                    $row.append($('<td>').html(
+                        item.missing ?
+                        '<i class="fas fa-exclamation-triangle text-danger" style="font-size: 16px;"></i>' :
+                        ''
                     ));
 
                     //price with tooltip
-                    // Replace the existing price section with this:
                     $row.append($('<td>').html(
                         `$${(parseFloat(item['doba Price']) || 0).toFixed(2)}
                             <span class="tooltip-container" style="margin-left:8px">
@@ -2491,16 +2323,24 @@
                                 data-bs-toggle="tooltip" 
                                 data-bs-placement="top-end" 
                                 title="Pricing view"
-                                data-item='${JSON.stringify(item.raw_data)}'"></i>
+                                data-item='${JSON.stringify(item.raw_data)}'></i>
                             </span>`
                     ));
 
-                    // PFT with color coding
+                    // Price (PU) with color coding
                     $row.append($('<td>').html(
-                        typeof item['PFT %'] === 'number' && !isNaN(item['PFT %']) ?
-                        `<span class="dil-percent-value ${getPftColor(item['PFT %'])}">${Math.round(item['PFT %'] * 100)}%</span>` :
+                        typeof item.price_pu === 'number' && !isNaN(item.price_pu) ?
+                        `<span class="dil-percent-value ${getPftColor(item.price_pu)}">$${item.price_pu.toFixed(2)}</span>` :
                         ''
                     ));
+
+                    // NPFT% with color coding
+                    $row.append($('<td>').html(
+                        typeof item.npft_pct === 'number' && !isNaN(item.npft_pct) ?
+                        `<span class="dil-percent-value ${getPftColor(item.npft_pct)}">${Math.round(item.npft_pct * 100)}%</span>` :
+                        ''
+                    ));
+
                     // ROI with color coding
                     $row.append($('<td>').html(
                         typeof item.Roi === 'number' && !isNaN(item.Roi) ?
@@ -2551,12 +2391,6 @@
 
 
 
-
-                    $row.append($('<td>').html(
-                        typeof item.Imp === 'number' && !isNaN(item.Imp) ?
-                        `<span class="dil-percent-value ${getRoiColor(item.Imp)}">${item.Imp.toFixed(2)}</span>` :
-                        ''
-                    ));
 
                     $row.append($('<td>').html(
                         typeof item.pickup_price === 'number' && !isNaN(item.pickup_price) ?
@@ -2623,53 +2457,6 @@
                 $(document).on('change', '.ra-checkbox:not(:disabled)', function(e) {
                     e.stopPropagation();
                     $(this).siblings('.edit-icon').trigger('click');
-                });
-            }
-
-            function initNRSelectChangeHandler() {
-                $(document).off('change', '.nr-select');
-                $(document).on('change', '.nr-select', function() {
-                    const $select = $(this);
-                    const newValue = $select.val();
-                    const sku = $select.data('sku');
-
-                    // Change background color based on selected value
-                    if (newValue === 'NR') {
-                        $select.css('background-color', '#dc3545').css('color', '#ffffff');
-                    } else {
-                        $select.css('background-color', '#28a745').css('color', '#ffffff');
-                    }
-
-                    // Send AJAX
-                    $.ajax({
-                        url: '/doba/save-nr',
-                        type: 'POST',
-                        data: {
-                            sku: sku,
-                            nr: newValue,
-                            _token: $('meta[name="csrf-token"]').attr('content')
-                        },
-                        success: function(response) {
-                            showNotification('success', 'NR updated successfully!');
-
-                            // Update tableData and filteredData
-                            tableData.forEach(item => {
-                                if (item['(Child) sku'] === sku) {
-                                    item.NR = newValue;
-                                }
-                            });
-                            filteredData.forEach(item => {
-                                if (item['(Child) sku'] === sku) {
-                                    item.NR = newValue;
-                                }
-                            });
-                            calculateTotals();
-                            renderTable();
-                        },
-                        error: function(xhr) {
-                            showNotification('danger', 'Failed to update NR.');
-                        }
-                    });
                 });
             }
 
@@ -2800,16 +2587,7 @@
                     let fieldsToDisplay = [];
                     switch (type.toLowerCase()) {
                         case 'conversion view':
-                            fieldsToDisplay = [{
-                                    title: 'Click 90',
-                                    content: selectedItem['Click 90']
-                                },
-                                {
-                                    title: 'SCVR',
-                                    content: (Number(selectedItem['Click 90']) > 0) ?
-                                        ((Number(selectedItem['doba L30']) / Number(selectedItem[
-                                            'Click 90'])) * 100).toFixed(2) + '%' : '0%'
-                                },
+                            fieldsToDisplay = [
                                 {
                                     title: 'KwClkL60',
                                     content: selectedItem['KwClkL60']
@@ -2873,10 +2651,7 @@
                             ];
                             break;
                         case 'visibility view':
-                            fieldsToDisplay = [{
-                                    title: 'Click 90',
-                                    content: selectedItem['Click 90']
-                                },
+                            fieldsToDisplay = [
                                 {
                                     title: 'KwImpL60',
                                     content: selectedItem['KwImpL60']
@@ -2947,10 +2722,6 @@
                                 {
                                     title: 'doba Price',
                                     content: selectedItem['doba Price']
-                                },
-                                {
-                                    title: 'PFT %',
-                                    content: selectedItem['PFT %']
                                 },
                                 {
                                     title: 'ROI%',
@@ -4359,17 +4130,6 @@
                         return true;
                     });
                 }
-                // Apply DL 30 filter
-                const el30Filter = $('#el30-filter').val();
-                if (el30Filter && el30Filter !== 'all') {
-                    filteredData = filteredData.filter(item => {
-                        const el30 = Number(item['doba L30']) || 0;
-                        if (el30Filter === '0') return el30 === 0;
-                        if (el30Filter === '1-100+') return el30 >= 1;
-                        return true;
-                    });
-                }
-
                 // Apply other filters
                 Object.entries(state.filters).forEach(([column, filterValue]) => {
                     if (filterValue === 'all') return;
@@ -4420,7 +4180,7 @@
                 const value = parseFloat(rowData[column]) * 100;
 
                 // Special cases for numeric columns that must be valid numbers
-                const numericColumns = ['PFT %', 'Roi', 'Imp', 'SCVR']; // Add other numeric columns as needed
+                const numericColumns = ['Roi', 'SCVR']; // Add other numeric columns as needed
                 if (numericColumns.includes(column) && isNaN(value)) {
                     return '';
                 }
@@ -4431,21 +4191,9 @@
                         ranges: [16.66, 25, 50],
                         colors: ['red', 'yellow', 'green', 'pink']
                     },
-                    'D Dil%': {
-                        ranges: [12.5, 16.66, 25, 50],
-                        colors: ['red', 'yellow', 'blue', 'green', 'pink']
-                    },
-                    'PFT %': {
-                        ranges: [10, 15, 20, 40],
-                        colors: ['red', 'yellow', 'blue', 'green', 'pink']
-                    },
                     'Roi': {
                         ranges: [50, 75, 125],
                         colors: ['red', 'yellow', 'green', 'pink']
-                    },
-                    'Imp': {
-                        ranges: [7, 14, 21],
-                        colors: ['pink', 'green', 'yellow', 'red']
                     },
                     'SCVR': {
                         ranges: [4, 7, 10],
@@ -4479,14 +4227,17 @@
                         invTotal: 0,
                         ovL30Total: 0,
                         ovDilTotal: 0,
-                        el30Total: 0,
-                        eDilTotal: 0,
-                        viewsTotal: 0,
                         profitSum: 0, // <-- new
                         salesL30Sum: 0, // <-- new
                         roiSum: 0,
-                        tacosTotal: 0,
-                        scvrSum: 0,
+                        npftPctSum: 0,
+                        pricePuSum: 0,
+                        promoSum: 0,
+                        promoPuSum: 0,
+                        promoCount: 0,
+                        missingCount: 0,
+                        soldWithCount: 0,
+                        soldZeroCount: 0,
                         rowCount: 0
                     };
 
@@ -4503,20 +4254,36 @@
                         }
                         metrics.invTotal += parseFloat(item.INV) || 0;
                         metrics.ovL30Total += parseFloat(item.L30) || 0;
-                        metrics.el30Total += parseFloat(item['doba L30']) || 0;
-                        metrics.viewsTotal += parseFloat(item['Click 90']) || 0;
                         metrics.roiSum += parseFloat(item.Roi) || 0;
-                        metrics.tacosTotal += parseFloat(item.Imp) || 0;
-                        metrics.scvrSum += (Number(item['Click 90']) > 0) ?
-                            (Number(item['doba L30']) / Number(item['Click 90'])) :
-                            0;
+                        metrics.npftPctSum += parseFloat(item.npft_pct) || 0;
+                        metrics.pricePuSum += parseFloat(item.price_pu) || 0;
+                        metrics.promoSum += parseFloat(item.promo) || 0;
+                        metrics.promoPuSum += parseFloat(item.promo_pu) || 0;
+                        
+                        // Count promo eligible items (where promo > 0, meaning sold = 0)
+                        if (parseFloat(item.promo) > 0) {
+                            metrics.promoCount++;
+                        }
+
+                        // Count missing price items (where price = 0 and inventory != 0)
+                        if (parseFloat(item['doba Price']) === 0 && parseFloat(item.INV) !== 0) {
+                            metrics.missingCount++;
+                        }
+                        
+                        // Count items with sales > 0 vs = 0
+                        const salesCount = parseFloat(item.L30) || 0;
+                        if (salesCount > 0) {
+                            metrics.soldWithCount++;
+                        } else {
+                            metrics.soldZeroCount++;
+                        }
+                        
                         metrics.rowCount++;
                     });
 
                     // Calculate percentages
                     metrics.ovDilTotal = metrics.invTotal > 0 ?
                         (metrics.ovL30Total / metrics.invTotal) * 100 : 0;
-                    metrics.eDilTotal = metrics.ovL30Total > 0 ? (metrics.el30Total / metrics.ovL30Total) * 100 : 0;
 
                     const divisor = metrics.rowCount || 1;
 
@@ -4524,9 +4291,28 @@
                     $('#inv-total').text(metrics.invTotal.toLocaleString());
                     $('#ovl30-total').text(metrics.ovL30Total.toLocaleString());
                     $('#ovdil-total').text(Math.round(metrics.ovDilTotal) + '%');
-                    $('#el30-total').text(metrics.el30Total.toLocaleString());
-                    $('#eDil-total').text(Math.round(metrics.eDilTotal) + '%');
-                    $('#views-total').text(metrics.viewsTotal.toLocaleString());
+                    
+                    // Update sold count displays
+                    $('#sold-with-count').text(metrics.soldWithCount);
+                    $('#sold-zero-count').text(metrics.soldZeroCount);
+
+                    // Update promo count display
+                    $('#promo-count').text(metrics.promoCount);
+
+                    // Update missing count display
+                    $('#missing-count').text(metrics.missingCount);
+
+                    // Update NPFT% total
+                    $('#npft-pct-total').text(Math.round((metrics.npftPctSum / divisor) * 100) + '%');
+
+                    // Update Price (PU) total
+                    $('#price-pu-total').text('$' + (metrics.pricePuSum / divisor).toFixed(2));
+
+                    // Update PROMO total
+                    $('#promo-total').text('$' + (metrics.promoSum / divisor).toFixed(2));
+
+                    // Update Promo PU total
+                    $('#promo-pu-total').text('$' + (metrics.promoPuSum / divisor).toFixed(2));
 
                     // Calculate and display averages
                     let pftTotal = 0;
@@ -4534,10 +4320,7 @@
                         pftTotal = (metrics.profitSum / metrics.salesL30Sum) * 100;
                     }
 
-                    $('#pft-total').text(pftTotal.toFixed(2) + '%');
                     $('#roi-total').text(Math.round((metrics.roiSum / divisor) * 100) + '%');
-                    $('#tacos-total').text(Math.round((metrics.tacosTotal / divisor) * 100) + '%');
-                    $('#cvr-total').text(Math.round((metrics.scvrSum / divisor) * 100) + '%');
 
                 } catch (error) {
                     console.error('Error in calculateTotals:', error);
@@ -4549,13 +4332,16 @@
                 $('#inv-total').text('0');
                 $('#ovl30-total').text('0');
                 $('#ovdil-total').text('0%');
-                $('#el30-total').text('0');
-                $('#eDil-total').text('0%');
-                $('#views-total').text('0');
+                $('#sold-with-count').text('0');
+                $('#sold-zero-count').text('0');
+                $('#promo-count').text('0');
+                $('#missing-count').text('0');
+                $('#npft-pct-total').text('0%');
+                $('#price-pu-total').text('$0.00');
+                $('#promo-total').text('$0.00');
+                $('#promo-pu-total').text('$0.00');
                 $('#pft-total').text('0%');
                 $('#roi-total').text('0%');
-                $('#tacos-total').text('0%');
-                $('#cvr-total').text('0%');
             }
 
             // Initialize enhanced dropdowns
@@ -5220,6 +5006,83 @@
                     }
                 });
             });
+
+            // Initialize CSV export functionality
+            function initExportCsv() {
+                $('#exportCsvBtn').on('click', function() {
+                    // Get filtered data (only items that are not hidden by NR)
+                    const exportData = filteredData.filter(item => item.NR !== 'NR');
+
+                    if (exportData.length === 0) {
+                        showNotification('warning', 'No data available to export.');
+                        return;
+                    }
+
+                    // Create CSV content with only SKU, Promo, and Promo PU columns
+                    let csvContent = 'SKU,Promo,Promo PU\n';
+
+                    exportData.forEach(item => {
+                        const sku = item['(Child) sku'] || '';
+                        const promo = item.promo && item.promo > 0 ? item.promo.toFixed(2) : '';
+                        const promoPu = item.promo_pu && item.promo_pu > 0 ? item.promo_pu.toFixed(2) : '';
+
+                        // Escape commas and quotes in values
+                        const escapedSku = sku.toString().replace(/"/g, '""');
+                        const escapedPromo = promo.toString().replace(/"/g, '""');
+                        const escapedPromoPu = promoPu.toString().replace(/"/g, '""');
+
+                        csvContent += `"${escapedSku}","${escapedPromo}","${escapedPromoPu}"\n`;
+                    });
+
+                    // Create and trigger download
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    const url = URL.createObjectURL(blob);
+
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', `doba_promo_export_${new Date().toISOString().split('T')[0]}.csv`);
+                    link.style.visibility = 'hidden';
+
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    showNotification('success', `Exported ${exportData.length} rows to CSV.`);
+                });
+            }
+
+            // Initialize missing filter functionality
+            function initMissingFilter() {
+                let missingFilterActive = false;
+
+                $('#missing-count-badge').on('click', function() {
+                    if (missingFilterActive) {
+                        // Remove filter - show all data
+                        filteredData = [...tableData];
+                        $(this).css({
+                            'background-color': '#fff3cd',
+                            'color': '#dc3545',
+                            'border-color': '#ffeaa7'
+                        });
+                        $(this).find('i, #missing-count').css('color', '#dc3545');
+                        showNotification('info', 'Showing all items');
+                    } else {
+                        // Apply filter - show only missing price items (excluding those with 0 inventory)
+                        filteredData = tableData.filter(item => parseFloat(item['doba Price']) === 0 && parseFloat(item.INV) !== 0);
+                        $(this).css({
+                            'background-color': '#dc3545',
+                            'color': '#ffffff',
+                            'border-color': '#dc3545'
+                        });
+                        $(this).find('i, #missing-count').css('color', '#ffffff');
+                        showNotification('warning', `Filtered to ${filteredData.length} items with missing listings`);
+                    }
+
+                    missingFilterActive = !missingFilterActive;
+                    renderTable();
+                    calculateTotals();
+                });
+            }
 
             // Initialize everything
             initTable();

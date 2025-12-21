@@ -276,6 +276,7 @@ use App\Http\Controllers\FacebookAdsController;
 use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
 use App\Http\Controllers\Sales\EbaySalesController;
 use App\Http\Controllers\Sales\AmazonSalesController;
+use App\Http\Controllers\Sales\DobaSalesController;
 use App\Http\Controllers\Sales\MercariController;
 
 /*  
@@ -794,6 +795,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon/daily-sales', [AmazonSalesController::class, 'index'])->name('amazon.daily.sales');
     Route::get('/amazon-column-visibility', [AmazonSalesController::class, 'getColumnVisibility']);
     Route::post('/amazon-column-visibility', [AmazonSalesController::class, 'saveColumnVisibility']);
+    
+    // Doba Sales Routes
+    Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
+    Route::get('/doba/daily-sales', [DobaSalesController::class, 'index'])->name('doba.daily.sales');
+    Route::get('/doba-column-visibility', [DobaSalesController::class, 'getColumnVisibility']);
+    Route::post('/doba-column-visibility', [DobaSalesController::class, 'saveColumnVisibility']);
     
     // Mercari Sales Routes (With Ship - buyer_shipping_fee = 0 or null)
     Route::post('/mercari/upload-daily-data', [MercariController::class, 'uploadDailyDataChunk'])->name('mercari.upload.daily.data');
