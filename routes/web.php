@@ -1413,6 +1413,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //data save routes
     Route::post('/product_master/store', [ProductMasterController::class, 'store'])->name('product_master.store');
+    Route::post('/product_master/update-field', [ProductMasterController::class, 'updateField'])->name('product_master.update-field');
+    Route::post('/product-master/import', [ProductMasterController::class, 'import'])->name('product_master.import');
     Route::post('/product-master/batch-update', [ProductMasterController::class, 'batchUpdate']);
     Route::post('/channel_master/store', [ChannelMasterController::class, 'store'])->name('channel_master.store');
     Route::post('/channel-master/update-sheet-link', [ChannelMasterController::class, 'updateSheetLink']);
