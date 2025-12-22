@@ -2620,6 +2620,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/walmart/under/utilized', 'underUtilisedView')->name('walmart.under.utilized');
         Route::get('/walmart/correctly/utilized', 'correctlyUtilisedView')->name('walmart.correctly.utilized');
         Route::get('/walmart/utilized/kw/data', 'getWalmartAdsData');
+        Route::get('/walmart/utilized/bgt/7ub-chart-data', 'get7ubChartData');
     });
 
     Route::controller(WalmartMissingAdsController::class)->group(function () {
