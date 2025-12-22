@@ -44,9 +44,9 @@ class FetchReverbData extends Command
         $l30End = $today->copy();
         $l30Start = $today->copy()->subDays(30);
 
-        // Calculate L60 range (31-60 days from today) - expand to catch all orders
+        // Calculate L60 range (31-60 days from today) - should be exactly 30 days
         $l60End = $l30Start->copy()->subDay();
-        $l60Start = $l60End->copy()->subDays(35); // Go back further to catch August orders
+        $l60Start = $l60End->copy()->subDays(29); // 30 days total for L60 period
 
         $this->info("Date ranges - L30: {$l30Start->toDateString()} to {$l30End->toDateString()}, L60: {$l60Start->toDateString()} to {$l60End->toDateString()}");
 
@@ -191,7 +191,7 @@ class FetchReverbData extends Command
         $this->info("Calculating quantities from metrics table for {$startDate->toDateString()} to {$endDate->toDateString()}...");
 
         $quantities = ReverbOrderMetric::whereBetween('order_date', [$startDate->toDateString(), $endDate->toDateString()])
-            ->where('status', '!=', 'returned')
+            ->whereNotIn('status', ['returned', 'refunded'])
             ->whereNotNull('sku')
             ->selectRaw('sku, SUM(quantity) as total_quantity')
             ->groupBy('sku')
