@@ -222,6 +222,10 @@
                             <!-- Stats -->
                             <div class="col-md-6">
                                 <div class="d-flex gap-2 justify-content-end align-items-center">
+                                    <button id="export-btn" class="btn btn-success btn-md">
+                                        <i class="fa fa-download me-1"></i>
+                                        Export
+                                    </button>
                                     <button id="7ub-chart-btn" class="btn btn-primary btn-md">
                                         <i class="fa fa-chart-line me-1"></i>
                                         7UB
@@ -998,6 +1002,11 @@
 
             document.body.style.zoom = "78%";
 
+            // Export Button Handler
+            document.getElementById("export-btn").addEventListener("click", function() {
+                exportTableData();
+            });
+
             // 7UB Chart Button Handler
             document.getElementById("7ub-chart-btn").addEventListener("click", function() {
                 show7ubChart();
@@ -1126,6 +1135,70 @@
                         parent.innerHTML = '<div class="text-center p-5"><p class="text-danger">Error loading chart data. Please try again later.</p><p class="text-muted small">' + err.message + '</p></div>';
                     }
                 });
+        }
+
+        function exportTableData() {
+            if (!window.table) {
+                alert('Table not initialized');
+                return;
+            }
+
+            // Get filtered/visible data
+            const data = window.table.getData("active");
+            
+            if (!data || data.length === 0) {
+                alert('No data to export');
+                return;
+            }
+
+            // Prepare data for export - get visible columns only
+            const visibleColumns = window.table.getColumns().filter(col => col.isVisible());
+            const headers = visibleColumns.map(col => col.getDefinition().title || col.getField());
+            
+            // Create worksheet data
+            const wsData = [];
+            
+            // Add headers
+            wsData.push(headers);
+            
+            // Add rows
+            data.forEach(row => {
+                const rowData = [];
+                visibleColumns.forEach(col => {
+                    const field = col.getField();
+                    let value = row[field];
+                    
+                    // Format values based on column type
+                    if (value === null || value === undefined) {
+                        value = '';
+                    } else if (typeof value === 'number') {
+                        value = value;
+                    } else {
+                        value = String(value);
+                    }
+                    
+                    rowData.push(value);
+                });
+                wsData.push(rowData);
+            });
+            
+            // Create workbook
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            
+            // Set column widths
+            const colWidths = visibleColumns.map(() => ({ wch: 15 }));
+            ws['!cols'] = colWidths;
+            
+            // Add worksheet to workbook
+            XLSX.utils.book_append_sheet(wb, ws, 'Walmart BGT Util');
+            
+            // Generate filename with timestamp
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+            const filename = `walmart-bgt-util-${timestamp}.xlsx`;
+            
+            // Download file
+            XLSX.writeFile(wb, filename);
         }
 
         function filterByUtilization(type) {
