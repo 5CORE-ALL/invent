@@ -2461,6 +2461,9 @@
                                         <a href="{{ url('doba-pricing-cvr') }}">Doba Pricing </a>
                                     </li>
 
+                                       <li>
+                                        <a href="{{ url('doba-tabulator') }}">Doba Listing </a>
+                                    </li>
 
                                 </ul>
                             </div>

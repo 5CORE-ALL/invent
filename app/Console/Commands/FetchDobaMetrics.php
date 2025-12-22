@@ -82,21 +82,21 @@ class FetchDobaMetrics extends Command
 
     private function getQuantity()
     {
-       $this->info("Fetching Doba Orders Quantity..."); 
+       $this->info("Fetching Doba Orders Count..."); 
         $ranges = $this->getDateRanges(); // ['l30' => [...], 'l60' => [...]]
         
         foreach ($ranges as $key => $range) {
-            $statuses = [1, 4, 5, 6, 7];
+            $statuses = [1, 4, 5, 7]; // Non-cancelled statuses (assuming 6 is cancelled)
 
             foreach ($statuses as $status) {
                 $page = 1;
-                $skuTotals = [];
+                $skuOrderCounts = [];
 
                 do {
                     $timestamp = $this->getMillisecond();
                     $getContent = $this->getContent($timestamp);
                     $sign = $this->generateSignature($getContent);
-                        info('$range', [$range['begin'], $range['end']]);
+                    
                     $response = Http::withHeaders([
                         'appKey' => env('DOBA_APP_KEY'),
                         'signType' => 'rsa2',
@@ -118,30 +118,30 @@ class FetchDobaMetrics extends Command
 
                     $responseData = $response->json();
                     $data = $responseData['businessData'][0]['data'] ?? [];
-                    info("status $status", [$data]);
-                    info('data', [$data]);
+                    
                     if (empty($data)) break;
 
                     foreach ($data as $order) {
+                        $skusInOrder = [];
                         foreach ($order['orderItemList'] as $item) {
                             $sku = $item['goodsSkuCode'];
-                            $qty = $item['quantity'];
-
-                            if (!isset($skuTotals[$sku])) {
-                                $skuTotals[$sku] = 0;
+                            if (!in_array($sku, $skusInOrder)) {
+                                $skusInOrder[] = $sku;
+                                if (!isset($skuOrderCounts[$sku])) {
+                                    $skuOrderCounts[$sku] = 0;
+                                }
+                                $skuOrderCounts[$sku]++;
                             }
-                            $skuTotals[$sku] += $qty;
                         }
                     }
                     $page++;
                 } while (count($data) === 100);
 
                 // Save to DB after all pages fetched for this range
-                foreach ($skuTotals as $sku => $totalQty) {
-                    info('$skuTotals', [$skuTotals]);
+                foreach ($skuOrderCounts as $sku => $orderCount) {
                     DobaMetric::updateOrCreate(
                         ['sku' => $sku],
-                        ['quantity_' . $key => (int) $totalQty] // quantity_l30 or quantity_l60
+                        ['order_count_' . $key => (int) $orderCount] // order_count_l30 or order_count_l60
                     );
                 }
             }
