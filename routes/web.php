@@ -709,6 +709,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/doba/saveLowProfit', [DobaController::class, 'saveLowProfit']);
     Route::post('/update-doba-pricing', [DobaController::class, 'updatePrice']);
     Route::get('/doba-pricing-cvr', [DobaController::class, 'dobaPricingCVR']);
+    Route::get('/doba-tabulator', [DobaController::class, 'dobaTabulatorView']);
     Route::post('/doba/save-sprice', [DobaController::class, 'saveSpriceToDatabase'])->name('doba.save-sprice');
     Route::post('/update-all-doba-skus', [DobaController::class, 'updateAllDobaSkus']);
     Route::post('/doba-analytics/import', [DobaController::class, 'importDobaAnalytics'])->name('doba.analytics.import');

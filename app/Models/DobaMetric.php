@@ -17,5 +17,7 @@ class DobaMetric extends Model
         'anticipated_income',
         'impressions',
         'clicks',
+        'order_count_l30',
+        'order_count_l60',
     ];
 }

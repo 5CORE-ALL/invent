@@ -177,8 +177,8 @@ class DobaController extends Controller
             $row["L30"] = $shopify->quantity ?? 0;
 
             //Doba Metrics
-            $row["doba L30"] = $dobaMetric->quantity_l30 ?? 0;
-            $row["doba L60"] = $dobaMetric->quantity_l60 ?? 0;
+            $row["doba L30"] = $dobaMetric->order_count_l30 ?? 0;
+            $row["doba L60"] = $dobaMetric->order_count_l60 ?? 0;
             $row["doba Price"] = $dobaMetric->anticipated_income ?? 0;
             $row['doba_item_id'] = $dobaMetric->item_id ?? null;
 
@@ -597,5 +597,30 @@ class DobaController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    public function dobaTabulatorView(Request $request)
+    {
+        $mode = $request->query('mode');
+        $demo = $request->query('demo');
+
+        // Get percentage from cache or database (same as dobaPricingCVR)
+        $percentage = Cache::remember(
+            "doba_marketplace_percentage",
+            now()->addDays(30),
+            function () {
+                $marketplaceData = MarketplacePercentage::where(
+                    "marketplace",
+                    "Doba"
+                )->first();
+                return $marketplaceData ? $marketplaceData->percentage : 100;
+            }
+        );
+
+        return view('market-places.doba_tabulator_view', [
+            'mode' => $mode,
+            'demo' => $demo,
+            'dobaPercentage' => $percentage,
+        ]);
     }
 }
