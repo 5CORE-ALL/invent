@@ -325,8 +325,9 @@ a.tab-link:hover {
 }
 
 .tabulator-row.parent-row {
-  background-color: #bde0ff !important;
+  background-color: #e3f2fd !important;
   font-weight: bold;
+  width: 100% !importanti;
 }
 
 .tabulator .tabulator-header-filter input {
@@ -410,7 +411,7 @@ a.tab-link:hover {
 
 /* parent row background css */
 .parent-row {
-  background-color: #dff0ff;
+  background-color: #e3f2fd;
 }
 
 /* Full screen layout */
