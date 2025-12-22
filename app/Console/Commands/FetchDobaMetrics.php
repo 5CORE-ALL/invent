@@ -6,6 +6,7 @@ use App\Models\DobaMetric;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -30,6 +31,16 @@ class FetchDobaMetrics extends Command
      */
     public function handle()
     {
+        $this->info("Calculating Doba Metrics from doba_daily_data...");
+        
+        // Calculate L30/L60 quantities from daily data
+        $this->getQuantity();
+        
+        $this->info("Doba metrics updated successfully!");
+        return;
+
+        // Skip API call for now due to IP whitelist
+        /*
         $this->info("Fetching Doba Metrics...");
 
         $page = 1;
@@ -77,75 +88,71 @@ class FetchDobaMetrics extends Command
 
         $this->getQuantity();
         $this->info("Done.");
-
+        */
     }
 
     private function getQuantity()
     {
-       $this->info("Fetching Doba Orders Count..."); 
-        $ranges = $this->getDateRanges(); // ['l30' => [...], 'l60' => [...]]
+        $this->info("Calculating Doba L30/L60 from doba_daily_data..."); 
         
-        foreach ($ranges as $key => $range) {
-            $statuses = [1, 4, 5, 7]; // Non-cancelled statuses (assuming 6 is cancelled)
-
-            foreach ($statuses as $status) {
-                $page = 1;
-                $skuOrderCounts = [];
-
-                do {
-                    $timestamp = $this->getMillisecond();
-                    $getContent = $this->getContent($timestamp);
-                    $sign = $this->generateSignature($getContent);
-                    
-                    $response = Http::withHeaders([
-                        'appKey' => env('DOBA_APP_KEY'),
-                        'signType' => 'rsa2',
-                        'timestamp' => $timestamp,
-                        'sign' => $sign,
-                        'Content-Type' => 'application/json',
-                    ])->post('https://openapi.doba.com/api/seller/queryOrderDetail', [
-                        'beginTime' => $range['begin'],
-                        'endTime' => $range['end'],
-                        'pageNo' => $page,
-                        'pageSize' => 100,
-                        'status' => $status
-                    ]);
-
-                    if (!$response->ok()) {
-                        $this->error("API Failed for status $status: " . $response->body());
-                        break;
-                    }
-
-                    $responseData = $response->json();
-                    $data = $responseData['businessData'][0]['data'] ?? [];
-                    
-                    if (empty($data)) break;
-
-                    foreach ($data as $order) {
-                        $skusInOrder = [];
-                        foreach ($order['orderItemList'] as $item) {
-                            $sku = $item['goodsSkuCode'];
-                            if (!in_array($sku, $skusInOrder)) {
-                                $skusInOrder[] = $sku;
-                                if (!isset($skuOrderCounts[$sku])) {
-                                    $skuOrderCounts[$sku] = 0;
-                                }
-                                $skuOrderCounts[$sku]++;
-                            }
-                        }
-                    }
-                    $page++;
-                } while (count($data) === 100);
-
-                // Save to DB after all pages fetched for this range
-                foreach ($skuOrderCounts as $sku => $orderCount) {
-                    DobaMetric::updateOrCreate(
-                        ['sku' => $sku],
-                        ['order_count_' . $key => (int) $orderCount] // order_count_l30 or order_count_l60
-                    );
-                }
-            }
+        $today = Carbon::today();
+        $l30Start = $today->copy()->subDays(30);
+        $l60Start = $today->copy()->subDays(60);
+        
+        $this->info("L30 range: {$l30Start->toDateString()} to {$today->toDateString()}");
+        $this->info("L60 range: {$l60Start->toDateString()} to {$l30Start->copy()->subDay()->toDateString()}");
+        
+        // Aggregate L30 data from doba_daily_data
+        $l30Data = DB::table('doba_daily_data')
+            ->select('sku', 
+                DB::raw('SUM(quantity) as total_quantity'),
+                DB::raw('COUNT(DISTINCT order_no) as order_count'))
+            ->whereNotNull('sku')
+            ->where('order_time', '>=', $l30Start)
+            ->where('order_time', '<=', $today)
+            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled'])
+            ->groupBy('sku')
+            ->get()
+            ->keyBy('sku');
+        
+        // Aggregate L60 data from doba_daily_data
+        $l60Data = DB::table('doba_daily_data')
+            ->select('sku', 
+                DB::raw('SUM(quantity) as total_quantity'),
+                DB::raw('COUNT(DISTINCT order_no) as order_count'))
+            ->whereNotNull('sku')
+            ->where('order_time', '>=', $l60Start)
+            ->where('order_time', '<', $l30Start)
+            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled'])
+            ->groupBy('sku')
+            ->get()
+            ->keyBy('sku');
+        
+        $this->info("Found L30 data for " . $l30Data->count() . " SKUs");
+        $this->info("Found L60 data for " . $l60Data->count() . " SKUs");
+        
+        // Get all unique SKUs from both periods
+        $allSkus = $l30Data->keys()->merge($l60Data->keys())->unique();
+        
+        // Update doba_metrics with aggregated quantities and order counts
+        foreach ($allSkus as $sku) {
+            $l30Qty = $l30Data->get($sku)->total_quantity ?? 0;
+            $l60Qty = $l60Data->get($sku)->total_quantity ?? 0;
+            $l30Count = $l30Data->get($sku)->order_count ?? 0;
+            $l60Count = $l60Data->get($sku)->order_count ?? 0;
+            
+            DobaMetric::updateOrCreate(
+                ['sku' => $sku],
+                [
+                    'quantity_l30' => (int) $l30Qty,
+                    'quantity_l60' => (int) $l60Qty,
+                    'order_count_l30' => (int) $l30Count,
+                    'order_count_l60' => (int) $l60Count,
+                ]
+            );
         }
+        
+        $this->info("Updated doba_metrics for {$allSkus->count()} SKUs");
     }
 
     private function generateSignature($content)
