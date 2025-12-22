@@ -196,6 +196,10 @@
                                         <div>CORRECTLY UTILIZED</div>
                                         <div id="correctly-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
                                     </button>
+                                    <button id="show-all-btn" class="btn btn-sm btn-secondary" style="min-width: 150px; margin-left: 10px;">
+                                        <i class="fa fa-refresh me-1"></i>
+                                        <div>SHOW ALL</div>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1002,6 +1006,13 @@
 
             document.body.style.zoom = "78%";
 
+            // Initialize Show All button as active (no filter on page load)
+            const showAllBtn = document.getElementById("show-all-btn");
+            if (showAllBtn) {
+                showAllBtn.classList.remove('btn-secondary');
+                showAllBtn.classList.add('btn-primary');
+            }
+
             // Export Button Handler
             document.getElementById("export-btn").addEventListener("click", function() {
                 exportTableData();
@@ -1035,6 +1046,11 @@
                 } else {
                     filterByUtilization('green');
                 }
+            });
+
+            // Show All Button Handler
+            document.getElementById("show-all-btn").addEventListener("click", function() {
+                filterByUtilization(null); // Clear filter to show all campaigns
             });
         });
 
@@ -1206,6 +1222,44 @@
             window.currentUtilizationFilter = type;
             
             console.log('Filter changed to:', type, 'Current filter value:', window.currentUtilizationFilter);
+            
+            // Update button visual states
+            const overBtn = document.getElementById("over-utilized-btn");
+            const underBtn = document.getElementById("under-utilized-btn");
+            const correctlyBtn = document.getElementById("correctly-utilized-btn");
+            const showAllBtn = document.getElementById("show-all-btn");
+            
+            // Reset all button styles
+            [overBtn, underBtn, correctlyBtn].forEach(btn => {
+                btn.style.opacity = '1';
+                btn.style.transform = 'scale(1)';
+                btn.style.boxShadow = 'none';
+            });
+            
+            // Highlight active filter button or show all button
+            if (type === 'pink') {
+                overBtn.style.opacity = '1';
+                overBtn.style.transform = 'scale(1.05)';
+                overBtn.style.boxShadow = '0 4px 12px rgba(255, 1, 208, 0.5)';
+                showAllBtn.classList.remove('btn-primary');
+                showAllBtn.classList.add('btn-secondary');
+            } else if (type === 'red') {
+                underBtn.style.opacity = '1';
+                underBtn.style.transform = 'scale(1.05)';
+                underBtn.style.boxShadow = '0 4px 12px rgba(255, 39, 39, 0.5)';
+                showAllBtn.classList.remove('btn-primary');
+                showAllBtn.classList.add('btn-secondary');
+            } else if (type === 'green') {
+                correctlyBtn.style.opacity = '1';
+                correctlyBtn.style.transform = 'scale(1.05)';
+                correctlyBtn.style.boxShadow = '0 4px 12px rgba(40, 167, 69, 0.5)';
+                showAllBtn.classList.remove('btn-primary');
+                showAllBtn.classList.add('btn-secondary');
+            } else {
+                // No filter active - highlight show all button
+                showAllBtn.classList.remove('btn-secondary');
+                showAllBtn.classList.add('btn-primary');
+            }
             
             // Refresh the table filter - use refreshFilters which preserves other filters
             if (window.table && window.refreshFilters) {
