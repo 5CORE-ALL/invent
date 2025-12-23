@@ -515,7 +515,7 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             return `
-                                <span>${Math.floor(parseFloat(cell.getValue() || 0)) + "%"}</span>
+                                <span>${(parseFloat(cell.getValue() || 0)).toFixed(2) + "%"}</span>
                             `;
                             
                         }
@@ -566,26 +566,25 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var acos = parseFloat(row.acos_L30 || 0);
-                            var acosFloored = Math.floor(acos);
                             var sbgt;
                             
-                            // New rule: if acos_L30 > total_acos, then sbgt = 1
-                            // Compare raw decimal values for accuracy
-                            if (globalTotalACOS > 0 && acos > globalTotalACOS) {
-                                sbgt = 1;
+                            // New ACOS-based sbgt rule
+                            if (acos < 5) {
+                                sbgt = 8;
+                            } else if (acos < 10) {
+                                sbgt = 7;
+                            } else if (acos < 15) {
+                                sbgt = 6;
+                            } else if (acos < 20) {
+                                sbgt = 5;
+                            } else if (acos < 25) {
+                                sbgt = 4;
+                            } else if (acos < 30) {
+                                sbgt = 3;
+                            } else if (acos < 35) {
+                                sbgt = 2;
                             } else {
-                                // Old formula (using floored value for consistency)
-                                if (acosFloored < 10) {
-                                    sbgt = 5;
-                                } else if (acosFloored < 20) {
-                                    sbgt = 4;
-                                } else if (acosFloored < 30) {
-                                    sbgt = 3;
-                                } else if (acosFloored < 40) {
-                                    sbgt = 2;
-                                } else {
-                                    sbgt = 1;
-                                }
+                                sbgt = 1;
                             }
                             
                             return `

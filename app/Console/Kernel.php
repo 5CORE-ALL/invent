@@ -69,6 +69,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\StoreAmazonUtilizationCounts::class,
         \App\Console\Commands\StoreAmazonFbaUtilizationCounts::class,
         \App\Console\Commands\StoreEbayUtilizationCounts::class,
+        \App\Console\Commands\StoreGoogleShoppingUtilizationCounts::class,
         FetchMiraklDailyData::class,
         FetchEbay3DailyData::class,
         FetchReverbDailyData::class,
@@ -364,6 +365,10 @@ class Kernel extends ConsoleKernel
         // Store Amazon Utilization Counts - Daily
         $schedule->command('amazon:store-utilization-counts')
             ->dailyAt('00:10')
+            ->timezone('Asia/Kolkata');
+
+        $schedule->command('google:store-shopping-utilization-counts')
+            ->dailyAt('00:15')
             ->timezone('Asia/Kolkata');
 
         // Store Amazon FBA Utilization Counts - Daily

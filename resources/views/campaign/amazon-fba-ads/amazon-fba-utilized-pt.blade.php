@@ -617,17 +617,17 @@
                             
                             var sbid = '';
                             if (currentUtilizationType === 'over') {
-                                // Over-utilized: l7_cpc * 0.90 (if l7_cpc === 0, then 0.75)
+                                // Over-utilized: l1_cpc * 0.90 (if l7_cpc === 0, then 0.50)
                                 if (l7_cpc === 0) {
-                                    sbid = 0.75;
+                                    sbid = 0.50;
                                 } else {
-                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                                 }
                             } else if (currentUtilizationType === 'under') {
                                 // Under-utilized: Complex logic based on ub7 and l7_cpc
                                 if (ub7 < 70) {
                                     if (ub7 < 10 || l7_cpc === 0) {
-                                        sbid = 0.75;
+                                        sbid = 0.50;
                                     } else if (l7_cpc > 0 && l7_cpc < 0.30) {
                                         sbid = (l7_cpc + 0.20).toFixed(2);
                                     } else {
@@ -667,14 +667,14 @@
                                 var sbid = '';
                                 if (currentUtilizationType === 'over') {
                                     if (l7_cpc === 0) {
-                                        sbid = 0.75;
+                                        sbid = 0.50;
                                     } else {
-                                        sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                        sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                                     }
                                 } else if (currentUtilizationType === 'under') {
                                     if (ub7 < 70) {
                                         if (ub7 < 10 || l7_cpc === 0) {
-                                            sbid = 0.75;
+                                            sbid = 0.50;
                                         } else if (l7_cpc > 0 && l7_cpc < 0.30) {
                                             sbid = parseFloat((l7_cpc + 0.20).toFixed(2));
                                         } else {
@@ -902,14 +902,14 @@
                         var sbid = '';
                         if (currentUtilizationType === 'over') {
                             if (l7_cpc === 0) {
-                                sbid = 0.75;
+                                sbid = 0.50;
                             } else {
-                                sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                             }
                         } else if (currentUtilizationType === 'under') {
                             if (ub7 < 70) {
                                 if (ub7 < 10 || l7_cpc === 0) {
-                                    sbid = 0.75;
+                                    sbid = 0.50;
                                 } else if (l7_cpc > 0 && l7_cpc < 0.30) {
                                     sbid = parseFloat((l7_cpc + 0.20).toFixed(2));
                                 } else {

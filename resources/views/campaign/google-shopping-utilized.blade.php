@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'G-Shopping Under Utilized', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'G-Shopping Utilized', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -126,6 +126,30 @@
         .red-bg {
             color: #ff2727 !important;
         }
+        
+        .utilization-type-btn {
+            padding: 8px 16px;
+            border: 2px solid #dee2e6;
+            background: white;
+            color: #495057;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .utilization-type-btn.active {
+            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+            color: white;
+            border-color: #2563eb;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+        }
+
+        .utilization-type-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+        
         #campaignChart {
             height: 500px !important;
         }
@@ -139,8 +163,8 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'G-Shopping Under Utilized',
-        'sub_title' => 'G-Shopping Under Utilized',
+        'page_title' => 'G-Shopping Utilized',
+        'sub_title' => 'G-Shopping Utilized',
     ])
     <div class="row">
         <div class="col-12">
@@ -213,71 +237,109 @@
                         <!-- Title -->
                         <h4 class="fw-bold text-primary mb-3 d-flex align-items-center">
                             <i class="fa-solid fa-chart-line me-2"></i>
-                            G-Shopping Under Utilized
+                            G-Shopping Utilized's
                         </h4>
 
                         <!-- Filters Row -->
                         <div class="row g-3 mb-3">
-                            <!-- Inventory Filters -->
+                            <!-- Utilization Type Selector -->
                             <div class="col-md-6">
-                                <div class="d-flex gap-2">
-                                    <select id="inv-filter" class="form-select form-select-md">
-                                        <option value="OTHERS" selected>INV > 0</option>
-                                        <option value="ALL">ALL</option>
-                                        <option value="INV_0">0 INV</option>
-                                    </select>
-
-                                    <select id="nrl-filter" class="form-select form-select-md">
-                                        <option value="">Select NRL</option>
-                                        <option value="NRL">NRL</option>
-                                        <option value="RL">RL</option>
-                                    </select>
-
+                                <div class="d-flex gap-2 align-items-center">
+                                    <span class="fw-bold me-2">Type:</span>
+                                    <button class="utilization-type-btn active" data-type="over">Over Utilized <span class="btn-count fs-4 fw-bold" id="over-btn-count"></span></button>
+                                    <button class="utilization-type-btn" data-type="under">Under Utilized <span class="btn-count fs-4 fw-bold" id="under-btn-count"></span></button>
                                 </div>
                             </div>
 
                             <!-- Stats -->
                             <div class="col-md-6">
-                                <div class="d-flex gap-2 justify-content-end">
-                                    <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none">
+                                <div class="d-flex gap-2 justify-content-end align-items-center flex-wrap">
+                                    <!-- Count Cards -->
+                                    <div class="d-flex gap-2">
+                                        <div class="card shadow-sm border-0 utilization-card" data-type="7ub" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); cursor: pointer; min-width: 120px; transition: transform 0.2s;">
+                                            <div class="card-body text-center text-white p-2">
+                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">7UB</h6>
+                                                <h5 class="mb-0 fw-bold" id="7ub-count" style="font-size: 1.2rem;">0</h5>
+                                            </div>
+                                        </div>
+                                        <div class="card shadow-sm border-0 utilization-card" data-type="7ub-1ub" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); cursor: pointer; min-width: 120px; transition: transform 0.2s;">
+                                            <div class="card-body text-center text-white p-2">
+                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">7UB + 1UB</h6>
+                                                <h5 class="mb-0 fw-bold" id="7ub-1ub-count" style="font-size: 1.2rem;">0</h5>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none shadow-sm">
+                                        <i class="fa-solid fa-check-double me-1"></i>
                                         APR ALL SBID
                                     </button>
                                     <a href="javascript:void(0)" id="export-btn" class="btn btn-sm btn-success d-flex align-items-center justify-content-center">
                                         <i class="fas fa-file-export me-1"></i> Export Excel/CSV
                                     </a>
-                                    <button class="btn btn-success btn-md">
-                                        <i class="fa fa-arrow-up me-1"></i>
-                                        Need to increase bids: <span id="total-campaigns" class="fw-bold ms-1 fs-4">0</span>
-                                    </button>
-                                    <button class="btn btn-primary btn-md">
-                                        <i class="fa fa-percent me-1"></i>
-                                        of Total: <span id="percentage-campaigns" class="fw-bold ms-1 fs-4">0%</span>
-                                    </button>
                                 </div>
                             </div>
                         </div>
 
                         <!-- Search and Controls Row -->
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <div class="d-flex gap-2">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
                                     <div class="input-group">
+                                    <span class="input-group-text bg-light">
+                                        <i class="fa-solid fa-search text-muted"></i>
+                                    </span>
                                         <input type="text" id="global-search" class="form-control form-control-md" 
                                                placeholder="Search campaign...">
                                     </div>
-                                    <select id="status-filter" class="form-select form-select-md" style="width: 140px;">
+                            </div>
+                            <div class="col-md-2">
+                                <select id="status-filter" class="form-select form-select-md">
                                         <option value="">All Status</option>
                                         <option value="ENABLED">Enabled</option>
                                         <option value="PAUSED">Paused</option>
-                                        <option value="ARCHIVED">Archived</option>
+                                    <option value="ARCHIVED">Archived</option>
                                     </select>
                                 </div>
+                            <div class="col-md-3">
+                                <select id="inv-filter" class="form-select form-select-md">
+                                    <option value="ALL">ALL</option>
+                                    <option value="INV_GT_0" selected>INV > 0</option>
+                                    <option value="INV_0">0 INV</option>
+                                </select>
                             </div>
+                            <div class="col-md-3">
+                                <select id="nrl-filter" class="form-select form-select-md">
+                                    <option value="">Select NRL</option>
+                                    <option value="NRL">NRL</option>
+                                    <option value="RL">RL</option>
+                                </select>
                         </div>
+                        </div>
+
                     </div>
 
                     <!-- Table Section -->
                     <div id="budget-under-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart Modal -->
+    <div class="modal fade" id="utilizationChartModal" tabindex="-1" aria-labelledby="utilizationChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="utilizationChartModalLabel">
+                        <i class="fa-solid fa-chart-line me-2"></i>
+                        <span id="chart-title">Utilization Trend</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <canvas id="utilizationChart" height="80"></canvas>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -300,6 +362,7 @@
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <!-- Bootstrap JS for modal functionality -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -314,11 +377,10 @@
 
             document.body.style.zoom = "75%";
 
+            let currentUtilizationType = 'over'; // Default to over
+
             const invFilter  = document.querySelector("#inv-filter");
             const nrlFilter  = document.querySelector("#nrl-filter");
-            const nraFilter  = document.querySelector("#nra-filter");
-            const fbaFilter  = document.querySelector("#fba-filter");
-
 
             const getDilColor = (value) => {
                 const percent = parseFloat(value) * 100;
@@ -327,6 +389,83 @@
                 if (percent >= 25 && percent < 50) return 'green';
                 return 'pink';
             };
+
+            // Function to update button counts from table data
+            function updateButtonCounts() {
+                if (typeof table === 'undefined' || !table) {
+                    return;
+                }
+                
+                const allData = table.getData('all');
+                let overCount = 0;
+                let underCount = 0;
+                
+                allData.forEach(function(row) {
+                    let budget = parseFloat(row.campaignBudgetAmount) || 0;
+                    let spend_L7 = parseFloat(row.spend_L7 || 0);
+                    let spend_L1 = parseFloat(row.spend_L1 || 0);
+                    let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
+                    let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
+                    
+                    // Apply other filters (except utilization type filter)
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal) || row.sku?.toLowerCase().includes(searchVal))) {
+                        return;
+                    }
+                    
+                    let statusVal = $("#status-filter").val();
+                    if (statusVal && row.status !== statusVal) {
+                        return;
+                    }
+                    
+                    let invFilterVal = $("#inv-filter").val();
+                    let inv = parseFloat(row.INV || 0);
+                    
+                    if (!invFilterVal || invFilterVal === 'INV_GT_0') {
+                        if (inv <= 0) return;
+                    } else if (invFilterVal === "ALL") {
+                        // ALL option shows everything
+                    } else if (invFilterVal === "INV_0") {
+                        if (inv !== 0) return;
+                    }
+                    
+                    let nrlFilterVal = $("#nrl-filter").val();
+                    if (nrlFilterVal) {
+                        let rowVal = row.NRL || "";
+                        if (rowVal !== nrlFilterVal) return;
+                    }
+                    
+                    // Count by utilization type (using 7UB + 1UB condition like Amazon)
+                    if (ub7 > 90 && ub1 > 90) {
+                        overCount++;
+                    } else if (ub7 < 70 && ub1 < 70) {
+                        underCount++;
+                    }
+                });
+                
+                const overBtnCount = document.getElementById('over-btn-count');
+                const underBtnCount = document.getElementById('under-btn-count');
+                
+                if (overBtnCount) overBtnCount.textContent = `( ${overCount} )`;
+                if (underBtnCount) underBtnCount.textContent = `( ${underCount} )`;
+            }
+
+            // Utilization type button handlers
+            document.querySelectorAll('.utilization-type-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.utilization-type-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentUtilizationType = this.getAttribute('data-type');
+                    
+                    if (typeof table !== 'undefined' && table) {
+                        table.setFilter(combinedFilter);
+                        table.redraw(true);
+                        setTimeout(function() {
+                            updateButtonCounts();
+                        }, 200);
+                    }
+                });
+            });
 
             var table = new Tabulator("#budget-under-table", {
                 index: "Sku",
@@ -413,13 +552,11 @@
                         title: "BGT",
                         field: "campaignBudgetAmount",
                         hozAlign: "right",
-                        sorter: "number"
                     },
                     {
                         title: "Clicks L30 ",
                         field: "clicks_L30",
                         hozAlign: "right",
-                        sorter: "number",
                         formatter: function(cell){
                             var row = cell.getRow().getData();
                             var clicks_L30 = parseFloat(row.clicks_L30) || 0;
@@ -430,7 +567,6 @@
                         title: "Spend L7",
                         field: "spend_L7",
                         hozAlign: "right",
-                        sorter: "number",
                         formatter: function(cell){
                             var row = cell.getRow().getData();
                             var spend_L7 = parseFloat(row.spend_L7) || 0;
@@ -462,10 +598,12 @@
                         sorter: function(a, b, aRow, bRow, column, dir) {
                             var dataA = aRow.getData();
                             var dataB = bRow.getData();
+
                             var ubA = dataA.campaignBudgetAmount > 0 ? (parseFloat(dataA.spend_L7) / (parseFloat(dataA.campaignBudgetAmount) * 7)) * 100 : 0;
                             var ubB = dataB.campaignBudgetAmount > 0 ? (parseFloat(dataB.spend_L7) / (parseFloat(dataB.campaignBudgetAmount) * 7)) * 100 : 0;
-                            return ubA - ubB;
-                        }
+
+                            return ubA - ubB; 
+                        },
                     },
                     {
                         title: "1 UB%",
@@ -488,20 +626,12 @@
                             }
 
                             return ub1.toFixed(0) + "%";
-                        },
-                        sorter: function(a, b, aRow, bRow, column, dir) {
-                            var dataA = aRow.getData();
-                            var dataB = bRow.getData();
-                            var ubA = dataA.campaignBudgetAmount > 0 ? (parseFloat(dataA.spend_L1) / parseFloat(dataA.campaignBudgetAmount)) * 100 : 0;
-                            var ubB = dataB.campaignBudgetAmount > 0 ? (parseFloat(dataB.spend_L1) / parseFloat(dataB.campaignBudgetAmount)) * 100 : 0;
-                            return ubA - ubB;
                         }
                     },
                     {
                         title: "L7 CPC",
                         field: "cpc_L7",
                         hozAlign: "center",
-                        sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var cpc_L7 = parseFloat(row.cpc_L7) || 0;
@@ -512,7 +642,6 @@
                         title: "L1 CPC",
                         field: "cpc_L1",
                         hozAlign: "center",
-                        sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var cpc_L1 = parseFloat(row.cpc_L1) || 0;
@@ -527,36 +656,33 @@
                             var row = cell.getRow().getData();
                             var cpc_L1 = parseFloat(row.cpc_L1) || 0;
                             var cpc_L7 = parseFloat(row.cpc_L7) || 0;
+                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
+                            var spend_L7 = parseFloat(row.spend_L7) || 0;
+                            var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
                             var sbid;
-                            
-                            if (cpc_L1 === 0 && cpc_L7 === 0) {
+
+                            if (currentUtilizationType === 'over') {
+                                // Over-utilized: decrease bid
+                            if (cpc_L7 === 0) {
                                 sbid = 0.75;
                             } else {
-                                sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                                sbid = Math.floor(cpc_L7 * 0.90 * 100) / 100;
+                                }
+                            } else {
+                                // Under-utilized: increase bid
+                                if (cpc_L1 === 0 && cpc_L7 === 0) {
+                                    sbid = 0.75;
+                                } else if (ub7 < 10 || cpc_L7 === 0) {
+                                    sbid = 0.75;
+                                } else if (cpc_L7 > 0 && cpc_L7 < 0.30) {
+                                    sbid = parseFloat((cpc_L7 + 0.20).toFixed(2));
+                                } else {
+                                    sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                                }
                             }
 
-                            return sbid.toFixed(2);
+                            return typeof sbid === 'number' ? sbid.toFixed(2) : parseFloat(sbid || 0).toFixed(2);
                         },
-                        sorter: function(a, b, aRow, bRow, column, dir) {
-                            var dataA = aRow.getData();
-                            var dataB = bRow.getData();
-                            var sbidA = 0;
-                            var sbidB = 0;
-                            
-                            if (dataA.cpc_L1 === 0 && dataA.cpc_L7 === 0) {
-                                sbidA = 0.75;
-                            } else {
-                                sbidA = Math.floor(parseFloat(dataA.cpc_L7 || 0) * 1.10 * 100) / 100;
-                            }
-                            
-                            if (dataB.cpc_L1 === 0 && dataB.cpc_L7 === 0) {
-                                sbidB = 0.75;
-                            } else {
-                                sbidB = Math.floor(parseFloat(dataB.cpc_L7 || 0) * 1.10 * 100) / 100;
-                            }
-                            
-                            return sbidA - sbidB;
-                        }
                     },
                     {
                         title: "APR BID",
@@ -575,13 +701,29 @@
                                 var row = cell.getRow().getData();
                                 var cpc_L1 = parseFloat(row.cpc_L1) || 0;
                                 var cpc_L7 = parseFloat(row.cpc_L7) || 0;
+                                var budget = parseFloat(row.campaignBudgetAmount) || 0;
+                                var spend_L7 = parseFloat(row.spend_L7) || 0;
+                                var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
                                 var sbid;
-                                
-                                if (cpc_L1 === 0 && cpc_L7 === 0) {
+
+                                if (currentUtilizationType === 'over') {
+                                if (cpc_L7 === 0) {
                                     sbid = 0.75;
                                 } else {
-                                    sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                                    sbid = Math.floor(cpc_L7 * 0.90 * 100) / 100;
+                                    }
+                                } else {
+                                    if (cpc_L1 === 0 && cpc_L7 === 0) {
+                                        sbid = 0.75;
+                                    } else if (ub7 < 10 || cpc_L7 === 0) {
+                                        sbid = 0.75;
+                                    } else if (cpc_L7 > 0 && cpc_L7 < 0.30) {
+                                        sbid = parseFloat((cpc_L7 + 0.20).toFixed(2));
+                                    } else {
+                                        sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                                    }
                                 }
+
                                 updateBid(sbid.toFixed(2), row.campaign_id);
                             }
                         }
@@ -603,45 +745,49 @@
                 }
             });
 
-            table.on("cellEdited", function(cell){
-                if(cell.getField() === "crnt_bid"){
-                    var row = cell.getRow();
-                    var rowData = row.getData();
-                    var newCrntBid = parseFloat(rowData.crnt_bid) || 0;
+            // document.addEventListener("change", function(e){
+            //     if(e.target.classList.contains("editable-select")){
+            //         let sku   = e.target.getAttribute("data-sku");
+            //         let field = e.target.getAttribute("data-field");
+            //         let value = e.target.value;
 
-                    row.update({
-                        sbid: (newCrntBid * 0.9).toFixed(2)
-                    });
-
-                    $.ajax({
-                        url: '/update-amazon-sp-bid-price', 
-                        method: 'POST',
-                        data: {
-                            id: rowData.campaign_id,
-                            crnt_bid: newCrntBid,
-                            _token: '{{ csrf_token() }}'
-                        },
-                        success: function(response){
-                            console.log(response);
-                        },
-                        error: function(xhr){
-                            alert('Error updating CRNT BID');
-                        }
-                    });
-                }
-            });
+            //         fetch('/update-amazon-nr-nrl-fba', {
+            //             method: 'POST',
+            //             headers: {
+            //                 'Content-Type': 'application/json',
+            //                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            //             },
+            //             body: JSON.stringify({
+            //                 sku: sku,
+            //                 field: field,
+            //                 value: value
+            //             })
+            //         })
+            //         .then(res => res.json())
+            //         .then(data => {
+            //             console.log(data);
+            //         })
+            //         .catch(err => console.error(err));
+            //     }
+            // });
 
 
-            table.on("tableBuilt", function () {
-
+            // ✅ Combined Filter Function (defined outside so it's accessible)
                 function combinedFilter(data) {
                     let budget = parseFloat(data.campaignBudgetAmount) || 0;
                     let spend_L7 = parseFloat(data.spend_L7) || 0;
-                    let spend_l1 = parseFloat(data.spend_l1) || 0;
-
+                let spend_L1 = parseFloat(data.spend_L1) || 0;
                     let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
+                let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
 
-                    if (!(ub7 < 70)) return false;
+                // Filter by utilization type (using 7UB + 1UB condition like Amazon)
+                if (currentUtilizationType === 'over') {
+                    // Over-utilized: ub7 > 90 && ub1 > 90
+                    if (!(ub7 > 90 && ub1 > 90)) return false;
+                } else if (currentUtilizationType === 'under') {
+                    // Under-utilized: ub7 < 70 && ub1 < 70
+                    if (!(ub7 < 70 && ub1 < 70)) return false;
+                }
 
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
                     if (searchVal) {
@@ -659,17 +805,15 @@
                     }
 
                     let invFilterVal = $("#inv-filter").val();
-                    // By default, show only campaigns with inventory > 0
-                    // User can use filter to see others (INV_0 or ALL)
-                    if (invFilterVal === "INV_0") {
-                        // Show only 0 inventory campaigns
-                        if (parseFloat(data.INV) !== 0) return false;
-                    } else if (invFilterVal === "ALL") {
-                        // Show all campaigns (no inventory filter)
-                        // Do nothing, allow all
-                    } else {
-                        // Default: Show only campaigns with inventory > 0
-                        if (parseFloat(data.INV) <= 0) return false;
+                let inv = parseFloat(data.INV) || 0;
+                
+                // Default to INV > 0 if not specified or INV_GT_0
+                if (!invFilterVal || invFilterVal === "INV_GT_0") {
+                    if (inv <= 0) return false;
+                } else if (invFilterVal === "ALL") {
+                    // Show all campaigns
+                } else if (invFilterVal === "INV_0") {
+                    if (inv !== 0) return false;
                     }
 
                     let nrlFilterVal = $("#nrl-filter").val();
@@ -685,33 +829,190 @@
                 }
 
                 function updateCampaignStats() {
-                    let total = table.getDataCount();                 
-                    let filtered = table.getDataCount("active");      
-                    let percentage = total > 0 ? ((filtered / total) * 100).toFixed(0) : 0;
-
-                    const totalEl = document.getElementById("total-campaigns");
-                    const percentageEl = document.getElementById("percentage-campaigns");
-
-                    if (totalEl) totalEl.innerText = filtered;
-                    if (percentageEl) percentageEl.innerText = percentage + "%";
+                // Stats are now shown in chart cards, no need for total/percentage
                 }
 
                 function refreshFilters() {
                     table.setFilter(combinedFilter);
                     updateCampaignStats(); 
-                }
+                updateButtonCounts();
+            }
 
+            // Load utilization counts for chart cards
+            function loadUtilizationCounts() {
+                fetch('/google/shopping/get-utilization-counts')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 200) {
+                            // 7UB count: sum of over and under (no correctly for Google Shopping)
+                            const count7ub = (data.over_utilized_7ub || 0) + (data.under_utilized_7ub || 0);
+                            // 7UB + 1UB count: sum of over and under
+                            const count7ub1ub = (data.over_utilized_7ub_1ub || 0) + (data.under_utilized_7ub_1ub || 0);
+                            
+                            const count7ubEl = document.getElementById('7ub-count');
+                            const count7ub1ubEl = document.getElementById('7ub-1ub-count');
+                            
+                            if (count7ubEl) count7ubEl.textContent = count7ub || 0;
+                            if (count7ub1ubEl) count7ub1ubEl.textContent = count7ub1ub || 0;
+                        }
+                    })
+                    .catch(err => console.error('Error loading counts:', err));
+            }
+
+            // Chart card click handlers (set up after DOM is ready)
+            setTimeout(function() {
+                document.querySelectorAll('.utilization-card').forEach(card => {
+                    card.addEventListener('click', function() {
+                        const type = this.getAttribute('data-type');
+                        showUtilizationChart(type);
+                    });
+                });
+            }, 100);
+
+            let utilizationChartInstance = null;
+
+            function showUtilizationChart(type) {
+                const chartTitle = document.getElementById('chart-title');
+                const modal = new bootstrap.Modal(document.getElementById('utilizationChartModal'));
+                
+                const titles = {
+                    '7ub': '7UB Utilization Trend (Last 30 Days)',
+                    '7ub-1ub': '7UB + 1UB Utilization Trend (Last 30 Days)'
+                };
+                chartTitle.textContent = titles[type] || 'Utilization Trend';
+
+                modal.show();
+
+                fetch('/google/shopping/get-utilization-chart-data?condition=' + type)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 200 && data.data && data.data.length > 0) {
+                            const chartData = data.data;
+                            const dates = chartData.map(d => d.date);
+                            
+                            const ctx = document.getElementById('utilizationChart').getContext('2d');
+                            
+                            if (utilizationChartInstance) {
+                                utilizationChartInstance.destroy();
+                            }
+
+                            // Show over and under lines (no correctly for Google Shopping)
+                            const datasets = [];
+                            
+                            if (type === '7ub') {
+                                datasets.push({
+                                    label: 'Over Utilized',
+                                    data: chartData.map(d => d.over_utilized_7ub || 0),
+                                    borderColor: '#ff01d0',
+                                    backgroundColor: 'rgba(255, 1, 208, 0.1)',
+                                    tension: 0.4,
+                                    fill: true,
+                                    borderWidth: 2
+                                });
+                                datasets.push({
+                                    label: 'Under Utilized',
+                                    data: chartData.map(d => d.under_utilized_7ub || 0),
+                                    borderColor: '#ff2727',
+                                    backgroundColor: 'rgba(255, 39, 39, 0.1)',
+                                    tension: 0.4,
+                                    fill: true,
+                                    borderWidth: 2
+                                });
+                            } else if (type === '7ub-1ub') {
+                                datasets.push({
+                                    label: 'Over Utilized',
+                                    data: chartData.map(d => d.over_utilized_7ub_1ub || 0),
+                                    borderColor: '#ff01d0',
+                                    backgroundColor: 'rgba(255, 1, 208, 0.1)',
+                                    tension: 0.4,
+                                    fill: true,
+                                    borderWidth: 2
+                                });
+                                datasets.push({
+                                    label: 'Under Utilized',
+                                    data: chartData.map(d => d.under_utilized_7ub_1ub || 0),
+                                    borderColor: '#ff2727',
+                                    backgroundColor: 'rgba(255, 39, 39, 0.1)',
+                                    tension: 0.4,
+                                    fill: true,
+                                    borderWidth: 2
+                                });
+                            }
+
+                            utilizationChartInstance = new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: dates,
+                                    datasets: datasets
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: true,
+                                    plugins: {
+                                        legend: {
+                                            display: true,
+                                            position: 'top'
+                                        },
+                                        tooltip: {
+                                            enabled: true,
+                                            mode: 'index',
+                                            intersect: false,
+                                            callbacks: {
+                                                title: function(context) {
+                                                    return 'Date: ' + context[0].label;
+                                                },
+                                                label: function(context) {
+                                                    return context.dataset.label + ': ' + context.parsed.y;
+                                                }
+                                            }
+                                        }
+                                    },
+                                    scales: {
+                                        y: {
+                                            beginAtZero: true,
+                                            ticks: {
+                                                precision: 0
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    })
+                    .catch(err => console.error('Error loading chart:', err));
+            }
+
+            table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
 
-                table.on("dataFiltered", updateCampaignStats);
-                table.on("pageLoaded", updateCampaignStats);
-                table.on("dataProcessed", updateCampaignStats);
+                table.on("dataFiltered", function() {
+                    updateCampaignStats();
+                    updateButtonCounts();
+                });
+                table.on("pageLoaded", function() {
+                    updateCampaignStats();
+                    updateButtonCounts();
+                });
+                table.on("dataProcessed", function() {
+                    updateCampaignStats();
+                    updateButtonCounts();
+                });
 
                 $("#global-search").on("keyup", refreshFilters);
                 $("#status-filter, #nrl-filter, #inv-filter").on("change", refreshFilters);
 
                 updateCampaignStats();
+                updateButtonCounts();
+                loadUtilizationCounts(); // Load counts for chart cards
             });
+
+            table.on("dataLoaded", function() {
+                table.setFilter(combinedFilter);
+                updateCampaignStats();
+                updateButtonCounts();
+                loadUtilizationCounts(); // Load counts for chart cards
+            });
+
 
             document.addEventListener("click", function(e) {
                 if (e.target.classList.contains("toggle-cols-btn")) {
@@ -742,15 +1043,29 @@
                     if(rowEl && rowEl.offsetParent !== null){
                         
                         var rowData = row.getData();
-                        // Fixed: Use correct field names (cpc_L1, cpc_L7) instead of lowercase versions
-                        var l1_cpc = parseFloat(rowData.cpc_L1) || 0;
-                        var l7_cpc = parseFloat(rowData.cpc_L7) || 0;
+                        var cpc_L1 = parseFloat(rowData.cpc_L1) || 0;
+                        var cpc_L7 = parseFloat(rowData.cpc_L7) || 0;
+                        var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
+                        var spend_L7 = parseFloat(rowData.spend_L7) || 0;
+                        var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
 
                         var sbid = 0;
-                        if (l1_cpc === 0 && l7_cpc === 0) {
+                        if (currentUtilizationType === 'over') {
+                            if (cpc_L7 === 0) {
                             sbid = 0.75;
-                        }else{
-                            sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                            } else {
+                            sbid = Math.floor(cpc_L7 * 0.90 * 100) / 100;
+                            }
+                        } else {
+                            if (cpc_L1 === 0 && cpc_L7 === 0) {
+                                sbid = 0.75;
+                            } else if (ub7 < 10 || cpc_L7 === 0) {
+                                sbid = 0.75;
+                            } else if (cpc_L7 > 0 && cpc_L7 < 0.30) {
+                                sbid = parseFloat((cpc_L7 + 0.20).toFixed(2));
+                            } else {
+                                sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                            }
                         }
 
                         campaignIds.push(rowData.campaign_id);
@@ -831,9 +1146,25 @@
                 let exportData = filteredData.map(row => {
                     let cpc_L1 = parseFloat(row.cpc_L1 || 0);
                     let cpc_L7 = parseFloat(row.cpc_L7 || 0);
+                    let budget = parseFloat(row.campaignBudgetAmount) || 0;
+                    let spend_L7 = parseFloat(row.spend_L7) || 0;
+                    let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
                     let sbid = 0;
 
-                    sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                    if (currentUtilizationType === 'over') {
+                        sbid = parseFloat((cpc_L7 * 0.90).toFixed(2));
+                    } else {
+                        if (cpc_L1 === 0 && cpc_L7 === 0) {
+                            sbid = 0.75;
+                        } else if (ub7 < 10 || cpc_L7 === 0) {
+                            sbid = 0.75;
+                        } else if (cpc_L7 > 0 && cpc_L7 < 0.30) {
+                            sbid = parseFloat((cpc_L7 + 0.20).toFixed(2));
+                        } else {
+                            sbid = parseFloat((cpc_L7 * 1.10).toFixed(2));
+                        }
+                    }
+
 
                     return {
                         campaignName: row.campaignName || "",
@@ -852,6 +1183,8 @@
 
                 XLSX.writeFile(wb, "ebay_over_acos_pink.xlsx");
             });
+
+            document.body.style.zoom = "78%";
         });
     </script>
 
@@ -1030,7 +1363,7 @@
 
     function fetchChartData(startDate, endDate) {
         $.ajax({
-            url: "{{ route('google.shopping.under.chart.filter') }}",
+            url: "{{ route('google.shopping.chart.filter') }}",
             type: "GET",
             data: { startDate, endDate },
             success: function(response) {

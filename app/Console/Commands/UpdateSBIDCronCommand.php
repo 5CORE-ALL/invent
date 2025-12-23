@@ -64,8 +64,10 @@ class UpdateSBIDCronCommand extends Command
 
         $this->info("Found " . $productMasters->count() . " product masters");
 
-        // Fetch SHOPPING campaigns data within L7 range only
+        // Fetch SHOPPING campaigns data within L30 range (same as getGoogleShoppingAdsData)
+        // We fetch L30 data and then aggregate L7 from it to match controller logic
         // Note: SEARCH campaigns should not be updated via this command
+        $l30Start = $today->copy()->subDays($endDateDaysBack + 29)->format('Y-m-d');
         $googleCampaigns = GoogleAdsCampaign::select(
                 'campaign_id',
                 'campaign_name',
@@ -77,10 +79,10 @@ class UpdateSBIDCronCommand extends Command
             )
             ->where('advertising_channel_type', 'SHOPPING')
             ->where('campaign_status', 'ENABLED')
-            ->whereBetween('date', [$dateRanges['L7']['start'], $dateRanges['L7']['end']])
+            ->whereBetween('date', [$l30Start, $dateRanges['L7']['end']])
             ->get();
 
-        $this->info("Found " . $googleCampaigns->count() . " Google Ads campaigns in L7 range");
+        $this->info("Found " . $googleCampaigns->count() . " Google Ads campaigns in L30 range (for L7 aggregation)");
 
         $ranges = ['L1', 'L7']; 
 
@@ -119,18 +121,26 @@ class UpdateSBIDCronCommand extends Command
 
             $campaignId = $matchedCampaign->campaign_id;
             $row = [];
-            $row['campaignBudgetAmount'] = $matchedCampaign->budget_amount_micros ? $matchedCampaign->budget_amount_micros / 1000000 : null;
+            // Get budget from the latest campaign record for this campaign_id (to ensure consistency)
+            // Budget should be same across dates, but get latest to be safe
+            $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)
+                ->sortByDesc('date')
+                ->first();
+            $row['campaignBudgetAmount'] = $latestCampaign && $latestCampaign->budget_amount_micros 
+                ? $latestCampaign->budget_amount_micros / 1000000 
+                : null;
 
-            // Aggregate metrics for each date range
+            // Aggregate metrics for each date range using same logic as aggregateMetricsByRange
             foreach ($ranges as $rangeName) {
                 $campaignRanges = $googleCampaigns->filter(function ($c) use ($sku, $dateRanges, $rangeName) {
                     $campaign = strtoupper(trim($c->campaign_name));
                     $skuTrimmed = strtoupper(trim($sku));
                     
-                    // Use improved matching logic (same as above)
+                    // Use same matching logic as aggregateMetricsByRange (for SHOPPING campaigns)
                     $parts = array_map('trim', explode(',', $campaign));
                     $exactMatch = in_array($skuTrimmed, $parts);
                     
+                    // If not in list, check if campaign name exactly equals SKU
                     if (!$exactMatch) {
                         $exactMatch = $campaign === $skuTrimmed;
                     }
@@ -148,9 +158,10 @@ class UpdateSBIDCronCommand extends Command
                 $totalCost = $campaignRanges->sum('metrics_cost_micros');
                 $totalClicks = $campaignRanges->sum('metrics_clicks');
                 
+                // Same calculation as aggregateMetricsByRange
                 $row["spend_$rangeName"] = $totalCost / 1000000;
                 $row["clicks_$rangeName"] = $totalClicks;
-                $row["cpc_$rangeName"] = $totalClicks ? ($totalCost / 1000000) / $totalClicks : 0;
+                $row["cpc_$rangeName"] = $totalClicks > 0 ? ($totalCost / 1000000) / $totalClicks : 0;
             }
     
             $ub7 = $row['campaignBudgetAmount'] > 0 ? ($row["spend_L7"] / ($row['campaignBudgetAmount'] * 7)) * 100 : 0;
@@ -162,7 +173,7 @@ class UpdateSBIDCronCommand extends Command
             $cpc_L7 = isset($row["cpc_L7"]) ? floatval($row["cpc_L7"]) : 0;
 
             if ($ub7 > 90) {
-                // Over Utilized - decrease bid
+                // Over Utilized (UB7 > 90%) - decrease bid by 10%
                 if ($cpc_L7 === 0.0) {
                     $sbid = 0.75;
                 } else {
@@ -170,7 +181,7 @@ class UpdateSBIDCronCommand extends Command
                 }
                 // Over utilized - decreasing SBID
             } elseif ($ub7 < 70) {
-                // Under Utilized - increase bid
+                // Under Utilized (UB7 < 70%) - increase bid by 10%
                 if ($cpc_L1 === 0.0 && $cpc_L7 === 0.0) {
                     $sbid = 0.75;
                 } else {
@@ -178,7 +189,7 @@ class UpdateSBIDCronCommand extends Command
                 }
                 // Under utilized - increasing SBID
             } else {
-                // Budget utilization within target range - no update needed
+                // Budget utilization within target range (70% <= UB7 <= 90%) - no update needed
                 continue;
             }
             
@@ -186,7 +197,8 @@ class UpdateSBIDCronCommand extends Command
                 try {
                     $this->sbidService->updateCampaignSbids($customerId, $campaignId, $sbid);
                     $campaignUpdates[$campaignId] = true;
-                    $this->info("Updated campaign {$campaignId} (SKU: {$pm->sku}): SBID=\${$sbid}, UB7={$ub7}%");
+                    $action = $ub7 > 90 ? "OVER-UTILIZED (decreased)" : "UNDER-UTILIZED (increased)";
+                    $this->info("Updated campaign {$campaignId} (SKU: {$pm->sku}): SBID=\${$sbid}, UB7={$ub7}%, Action: {$action}");
                 } catch (\Exception $e) {
                     $this->error("Failed to update campaign {$campaignId}: " . $e->getMessage());
                 }
