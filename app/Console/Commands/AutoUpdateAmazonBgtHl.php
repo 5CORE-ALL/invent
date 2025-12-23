@@ -128,13 +128,22 @@ class AutoUpdateAmazonBgtHl extends Command
             $spend = (float) ($row['spend_l30'] ?? 0);
             $sales = (float) ($row['ad_sales_l30'] ?? 0);
 
-            if ($acos < 10) {
-                $sbgt = 10;        
-            } else if ($acos < 20) {
-                $sbgt = 5;         
-            } else if ($acos < 30) {
-                $sbgt = 2;         
-            } else {  
+            // New ACOS-based sbgt rule
+            if ($acos < 5) {
+                $sbgt = 8;
+            } elseif ($acos < 10) {
+                $sbgt = 7;
+            } elseif ($acos < 15) {
+                $sbgt = 6;
+            } elseif ($acos < 20) {
+                $sbgt = 5;
+            } elseif ($acos < 25) {
+                $sbgt = 4;
+            } elseif ($acos < 30) {
+                $sbgt = 3;
+            } elseif ($acos < 35) {
+                $sbgt = 2;
+            } else {
                 $sbgt = 1;
             } 
 

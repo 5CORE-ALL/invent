@@ -495,7 +495,7 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             return `
-                                <span>${parseFloat(cell.getValue() || 0).toFixed(0) + "%"}</span>
+                                <span>${parseFloat(cell.getValue() || 0).toFixed(2) + "%"}</span>
                             `;
                             
                         }
@@ -555,14 +555,23 @@
                             const sales = parseFloat(row.ad_sales_L30) || 0;
                             const clicks = parseFloat(row.clicks_L30) || 0;
                             
-                            if (acos < 10) {
-                                sbgt = 10;        // 0–10%
+                            // New ACOS-based sbgt rule
+                            if (acos < 5) {
+                                sbgt = 8;
+                            } else if (acos < 10) {
+                                sbgt = 7;
+                            } else if (acos < 15) {
+                                sbgt = 6;
                             } else if (acos < 20) {
-                                sbgt = 5;         // 10–20%
+                                sbgt = 5;
+                            } else if (acos < 25) {
+                                sbgt = 4;
                             } else if (acos < 30) {
-                                sbgt = 2;         // 20–30%
+                                sbgt = 3;
+                            } else if (acos < 35) {
+                                sbgt = 2;
                             } else {
-                                sbgt = 1;         // 30% se zyada
+                                sbgt = 1;
                             }
 
                             
