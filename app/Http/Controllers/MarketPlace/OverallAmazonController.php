@@ -1645,16 +1645,7 @@ class OverallAmazonController extends Controller
                 2
             );
 
-            // Load NR field from AmazonListingStatus model
-            $listingStatus = $nrListingStatuses->get($pm->sku);
-            if ($listingStatus && $listingStatus->value) {
-                $listingValue = is_array($listingStatus->value) ? $listingStatus->value : [];
-                $row['NR'] = $listingValue['nr_req'] ?? null;
-                $row['buyer_link'] = $listingValue['buyer_link'] ?? null;
-                $row['seller_link'] = $listingValue['seller_link'] ?? null;
-            }
-
-            // Load other data from AmazonDataView for backward compatibility
+            // Load NR field from AmazonDataView (where ListingAmazonController saves it)
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
 
@@ -1663,10 +1654,20 @@ class OverallAmazonController extends Controller
                 }
 
                 if (is_array($raw)) {
-                    // Only set NR if not already set from AmazonListingStatus
-                    if (!isset($row['NR'])) {
-                        $row['NR'] = $raw['NR'] ?? null;
+                    // Read NRL field from amazon_data_view - "REQ" means RL, "NRL" means NRL
+                    $nrlValue = $raw['NRL'] ?? null;
+                    if ($nrlValue === 'NRL') {
+                        $row['NR'] = 'NR';
+                    } else if ($nrlValue === 'REQ') {
+                        $row['NR'] = 'REQ';
+                    } else {
+                        $row['NR'] = null;
                     }
+                    
+                    // Load buyer and seller links
+                    $row['buyer_link'] = $raw['buyer_link'] ?? null;
+                    $row['seller_link'] = $raw['seller_link'] ?? null;
+                    
                     $row['NRA'] = $raw['NRA'] ?? null;
                     $row['FBA'] = $raw['FBA'] ?? null;
                     $row['shopify_id'] = $shopify->id ?? null;
@@ -1681,6 +1682,22 @@ class OverallAmazonController extends Controller
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['js_comp_manual_api_link'] = $raw['js_comp_manual_api_link'] ?? '';
                     $row['js_comp_manual_link'] = $raw['js_comp_manual_link'] ?? '';
+                }
+            }
+            
+            // Fallback to AmazonListingStatus if NR not set from AmazonDataView
+            if (!isset($row['NR']) || $row['NR'] === null) {
+                $listingStatus = $nrListingStatuses->get($pm->sku);
+                if ($listingStatus && $listingStatus->value) {
+                    $listingValue = is_array($listingStatus->value) ? $listingStatus->value : [];
+                    $row['NR'] = $listingValue['nr_req'] ?? null;
+                    // Only set links from listing status if not already set from AmazonDataView
+                    if (!isset($row['buyer_link'])) {
+                        $row['buyer_link'] = $listingValue['buyer_link'] ?? null;
+                    }
+                    if (!isset($row['seller_link'])) {
+                        $row['seller_link'] = $listingValue['seller_link'] ?? null;
+                    }
                 }
             }
             

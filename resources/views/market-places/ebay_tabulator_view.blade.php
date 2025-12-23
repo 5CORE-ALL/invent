@@ -1888,15 +1888,15 @@
                             }
                             
                             return `<select class="form-select form-select-sm nr-req-dropdown" 
-                                style="background-color: ${bgColor}; color: ${textColor}; border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 4px;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
-                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>NR</option>
+                                style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px;">
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>🔴</option>
                             </select>`;
                         },
                         cellClick: function(e, cell) {
                             e.stopPropagation();
                         },
-                        width: 90
+                        width: 60
                     },
                    
                     {
@@ -2517,15 +2517,6 @@
             $(document).on('change', '.nr-req-dropdown', function() {
                 const $select = $(this);
                 const value = $select.val();
-                
-                // Update dropdown colors
-                if (value === 'REQ') {
-                    $select.css('background-color', '#28a745').css('color', 'white');
-                } else if (value === 'NR') {
-                    $select.css('background-color', '#dc3545').css('color', 'white');
-                } else {
-                    $select.css('background-color', '#f8f9fa').css('color', '#000');
-                }
                 
                 // Find the row and get SKU
                 const $cell = $select.closest('.tabulator-cell');

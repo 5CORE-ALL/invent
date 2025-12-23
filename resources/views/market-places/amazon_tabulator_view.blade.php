@@ -1650,15 +1650,15 @@
                             }
 
                             return `<select class="form-select form-select-sm nr-select" data-sku="${sku}"
-                                style="background-color: ${bgColor}; color: ${textColor}; border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 4px;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>RL</option>
-                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>NRL</option>
+                                style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px;">
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>🔴</option>
                             </select>`;
                         },
                         cellClick: function(e, cell) {
                             e.stopPropagation();
                         },
-                        width: 90
+                        width: 60
                     },
                     {
                         title: "Prc",
@@ -2153,13 +2153,6 @@
                 const $select = $(this);
                 const value = $select.val();
                 const sku = $select.data('sku');
-
-                // Update dropdown colors
-                if (value === 'REQ') {
-                    $select.css('background-color', '#28a745').css('color', 'white');
-                } else if (value === 'NR') {
-                    $select.css('background-color', '#dc3545').css('color', 'white');
-                }
 
                 // Save to database
                 $.ajax({
