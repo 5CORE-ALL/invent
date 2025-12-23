@@ -131,7 +131,7 @@
                                         </select>
                                     </td>
                                     <td><input type="number" class="form-control qty-input" name="qty[]" min="0"></td>
-                                    <td><input type="number" class="form-control rate-input" name="rate[]" min="0" step="0.01"></td>
+                                    <td><input type="number" class="form-control rate-input" name="rate[]" min="0" step="any"></td>
                                     <td><input type="number" class="form-control amount-input" name="amount[]" readonly></td>
                                     <td class="text-center text-muted">—</td>
                                 </tr>
@@ -430,7 +430,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     </select>
                 </td>
                 <td><input type="number" class="form-control qty-input" name="qty[]" min="0"></td>
-                <td><input type="number" class="form-control rate-input" name="rate[]" min="0" step="0.01"></td>
+                <td><input type="number" class="form-control rate-input" name="rate[]" min="0" step="any"></td>
                 <td><input type="number" class="form-control amount-input" name="amount[]" readonly></td>
                 <td class="text-center">
                     <i class="fas fa-trash-alt text-danger delete-product-row-btn" style="cursor: pointer;"></i>
@@ -450,7 +450,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     </select>
                 </td>
                 <td><input type="number" class="form-control qty-input" name="qty[]" value="${item.qty ?? 0}" min="0"></td>
-                <td><input type="number" class="form-control rate-input" name="rate[]" value="${item.price ?? 0}" min="0" step="0.01"></td>
+                <td><input type="number" class="form-control rate-input" name="rate[]" value="${item.price ?? 0}" min="0" step="any"></td>
                 <td><input type="number" class="form-control amount-input" name="amount[]" value="${(item.qty * item.price).toFixed(2)}" readonly></td>
                 <td class="text-center">
                     <i class="fas fa-trash-alt text-danger delete-product-row-btn" style="cursor: pointer;"></i>
