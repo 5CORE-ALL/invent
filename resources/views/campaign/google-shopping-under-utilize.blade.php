@@ -222,9 +222,9 @@
                             <div class="col-md-6">
                                 <div class="d-flex gap-2">
                                     <select id="inv-filter" class="form-select form-select-md">
+                                        <option value="OTHERS" selected>INV > 0</option>
                                         <option value="ALL">ALL</option>
                                         <option value="INV_0">0 INV</option>
-                                        <option value="OTHERS">OTHERS</option>
                                     </select>
 
                                     <select id="nrl-filter" class="form-select form-select-md">
@@ -413,11 +413,13 @@
                         title: "BGT",
                         field: "campaignBudgetAmount",
                         hozAlign: "right",
+                        sorter: "number"
                     },
                     {
                         title: "Clicks L30 ",
                         field: "clicks_L30",
                         hozAlign: "right",
+                        sorter: "number",
                         formatter: function(cell){
                             var row = cell.getRow().getData();
                             var clicks_L30 = parseFloat(row.clicks_L30) || 0;
@@ -428,6 +430,7 @@
                         title: "Spend L7",
                         field: "spend_L7",
                         hozAlign: "right",
+                        sorter: "number",
                         formatter: function(cell){
                             var row = cell.getRow().getData();
                             var spend_L7 = parseFloat(row.spend_L7) || 0;
@@ -456,7 +459,13 @@
 
                             return ub7.toFixed(0) + "%";
                         },
-                        
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+                            var ubA = dataA.campaignBudgetAmount > 0 ? (parseFloat(dataA.spend_L7) / (parseFloat(dataA.campaignBudgetAmount) * 7)) * 100 : 0;
+                            var ubB = dataB.campaignBudgetAmount > 0 ? (parseFloat(dataB.spend_L7) / (parseFloat(dataB.campaignBudgetAmount) * 7)) * 100 : 0;
+                            return ubA - ubB;
+                        }
                     },
                     {
                         title: "1 UB%",
@@ -479,12 +488,20 @@
                             }
 
                             return ub1.toFixed(0) + "%";
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+                            var ubA = dataA.campaignBudgetAmount > 0 ? (parseFloat(dataA.spend_L1) / parseFloat(dataA.campaignBudgetAmount)) * 100 : 0;
+                            var ubB = dataB.campaignBudgetAmount > 0 ? (parseFloat(dataB.spend_L1) / parseFloat(dataB.campaignBudgetAmount)) * 100 : 0;
+                            return ubA - ubB;
                         }
                     },
                     {
                         title: "L7 CPC",
                         field: "cpc_L7",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var cpc_L7 = parseFloat(row.cpc_L7) || 0;
@@ -495,6 +512,7 @@
                         title: "L1 CPC",
                         field: "cpc_L1",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var cpc_L1 = parseFloat(row.cpc_L1) || 0;
@@ -519,6 +537,26 @@
 
                             return sbid.toFixed(2);
                         },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+                            var sbidA = 0;
+                            var sbidB = 0;
+                            
+                            if (dataA.cpc_L1 === 0 && dataA.cpc_L7 === 0) {
+                                sbidA = 0.75;
+                            } else {
+                                sbidA = Math.floor(parseFloat(dataA.cpc_L7 || 0) * 1.10 * 100) / 100;
+                            }
+                            
+                            if (dataB.cpc_L1 === 0 && dataB.cpc_L7 === 0) {
+                                sbidB = 0.75;
+                            } else {
+                                sbidB = Math.floor(parseFloat(dataB.cpc_L7 || 0) * 1.10 * 100) / 100;
+                            }
+                            
+                            return sbidA - sbidB;
+                        }
                     },
                     {
                         title: "APR BID",
@@ -621,10 +659,17 @@
                     }
 
                     let invFilterVal = $("#inv-filter").val();
+                    // By default, show only campaigns with inventory > 0
+                    // User can use filter to see others (INV_0 or ALL)
                     if (invFilterVal === "INV_0") {
+                        // Show only 0 inventory campaigns
                         if (parseFloat(data.INV) !== 0) return false;
-                    } else if (invFilterVal === "OTHERS") {
-                        if (parseFloat(data.INV) === 0) return false;
+                    } else if (invFilterVal === "ALL") {
+                        // Show all campaigns (no inventory filter)
+                        // Do nothing, allow all
+                    } else {
+                        // Default: Show only campaigns with inventory > 0
+                        if (parseFloat(data.INV) <= 0) return false;
                     }
 
                     let nrlFilterVal = $("#nrl-filter").val();

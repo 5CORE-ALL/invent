@@ -732,55 +732,85 @@ class GoogleAdsController extends Controller
             ->get();
 
         $result = [];
+        
+        // Get all unique campaign IDs from the fetched campaigns
+        $uniqueCampaignIds = $googleCampaigns->pluck('campaign_id')->unique();
+        
+        // Create a map of campaign_id to campaign_name for quick lookup
+        $campaignMap = $googleCampaigns->groupBy('campaign_id')->map(function ($campaigns) {
+            return $campaigns->first();
+        });
 
-        foreach ($productMasters as $pm) {
-            $sku = strtoupper(trim($pm->sku));
-            $parent = $pm->parent;
-
-            // Fixed: Use original SKU for shopifyData lookup (not uppercase)
-            $shopify = $shopifyData[$pm->sku] ?? null;
-
-            // Fixed: Use consistent matching logic (same as aggregateMetricsByRange)
-            $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
-                $campaign = strtoupper(trim($c->campaign_name));
+        // Process each unique campaign
+        foreach ($uniqueCampaignIds as $campaignId) {
+            $campaign = $campaignMap[$campaignId];
+            $campaignName = $campaign->campaign_name;
+            
+            // Try to find matching SKU from ProductMaster
+            $matchedSku = null;
+            $matchedPm = null;
+            
+            foreach ($productMasters as $pm) {
+                $sku = strtoupper(trim($pm->sku));
+                // Remove trailing period from campaign name (some campaigns have "." at the end)
+                $campaignCleaned = rtrim(trim($campaignName), '.');
+                $campaignUpper = strtoupper(trim($campaignCleaned));
                 $skuTrimmed = strtoupper(trim($sku));
                 
-                $parts = array_map('trim', explode(',', $campaign));
+                $parts = array_map('trim', explode(',', $campaignUpper));
+                // Also clean each part (remove trailing periods)
+                $parts = array_map(function($part) {
+                    return rtrim(trim($part), '.');
+                }, $parts);
                 $exactMatch = in_array($skuTrimmed, $parts);
                 
-                // Allow single-campaign names to match only when fully equal (prevents partial substring matches)
                 if (!$exactMatch) {
-                    $exactMatch = $campaign === $skuTrimmed;
+                    $exactMatch = $campaignUpper === $skuTrimmed;
                 }
                 
-                return $exactMatch;
-            });
-
+                if ($exactMatch) {
+                    $matchedSku = $pm->sku;
+                    $matchedPm = $pm;
+                    break;
+                }
+            }
+            
             $row = [];
-            $row['parent'] = $parent;
-            $row['sku']    = $pm->sku;
-            $row['INV']    = $shopify->inv ?? 0;
-            $row['L30']    = $shopify->quantity ?? 0;
             
-            // Fixed: Add null checks before accessing properties to prevent null pointer exceptions
-            $row['campaign_id'] = $matchedCampaign ? ($matchedCampaign->campaign_id ?? null) : null;
-            $row['campaignName'] = $matchedCampaign ? ($matchedCampaign->campaign_name ?? null) : null;
+            if ($matchedPm) {
+                // Campaign has matching SKU
+                $row['parent'] = $matchedPm->parent;
+                $row['sku'] = $matchedPm->sku;
+                $shopify = $shopifyData[$matchedPm->sku] ?? null;
+                $row['INV'] = $shopify->inv ?? 0;
+                $row['L30'] = $shopify->quantity ?? 0;
+                $skuForMetrics = strtoupper(trim($matchedPm->sku));
+            } else {
+                // Campaign has no matching SKU - still show it
+                $row['parent'] = null;
+                $row['sku'] = null;
+                $row['INV'] = 0;
+                $row['L30'] = 0;
+                $skuForMetrics = strtoupper(trim($campaignName));
+            }
             
-            // Get budget from the latest campaign record for this campaign_id (to ensure consistency with command)
-            // Budget should be same across dates, but get latest to be safe
-            $campaignId = $matchedCampaign ? $matchedCampaign->campaign_id : null;
-            $latestCampaign = $campaignId ? $googleCampaigns->where('campaign_id', $campaignId)
+            $row['campaign_id'] = $campaignId;
+            $row['campaignName'] = $campaignName;
+            
+            // Get budget from the latest campaign record
+            $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)
                 ->sortByDesc('date')
-                ->first() : null;
+                ->first();
             $row['campaignBudgetAmount'] = $latestCampaign && $latestCampaign->budget_amount_micros 
                 ? $latestCampaign->budget_amount_micros / 1000000 
                 : null;
-            $row['status'] = $matchedCampaign ? ($matchedCampaign->campaign_status ?? null) : null;
+            $row['status'] = $campaign->campaign_status ?? null;
 
+            // Calculate metrics using campaign name as SKU (for campaigns without SKU match)
             foreach ($rangesNeeded as $rangeName) {
                 $metrics = $this->aggregateMetricsByRange(
                     $googleCampaigns, 
-                    $sku, 
+                    $skuForMetrics, 
                     $dateRanges[$rangeName], 
                     'ENABLED'
                 );
@@ -793,21 +823,19 @@ class GoogleAdsController extends Controller
                 $row["ad_sold_$rangeName"] = $metrics['ad_sold'];
             }
 
-            // Calculate UB7 to filter only over-utilized campaigns (UB7 > 90%)
-            // This matches the frontend filter logic in google-shopping-over-utilize.blade.php
+            // Calculate UB7
             $budget = $row['campaignBudgetAmount'] ?? 0;
             $spend_L7 = $row['spend_L7'] ?? 0;
             $ub7 = $budget > 0 ? ($spend_L7 / ($budget * 7)) * 100 : 0;
 
-            // Fixed: Use !empty() instead of != '' to properly handle null values
-            // Only include campaigns with UB7 > 90% (over-utilized) for this page
+            // Include all campaigns (with or without SKU match)
             if(!empty($row['campaignName'])) {
                 $result[] = (object) $row;
             }
-
         }
         
-        $uniqueResult = collect($result)->unique('sku')->values()->all();
+        // Use unique by campaign_id since we're now iterating by campaigns, not SKUs
+        $uniqueResult = collect($result)->unique('campaign_id')->values()->all();
 
         return response()->json([
             'message' => 'Data fetched successfully',
