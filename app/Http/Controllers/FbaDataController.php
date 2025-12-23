@@ -729,39 +729,46 @@ class FbaDataController extends Controller
          }
 
          $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
-         // --- Calculate all profit & ROI metrics (same as analytics) ---
          
-         // PFT and ROI calculations matching analytics exactly (using same LP and FBA_SHIP sources)
-         $pft = ($PRICE > 0) ? (($PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $PRICE : 0;
-         $roi = ($LP_FOR_PFT > 0) ? (($PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
+         // Use 15% as default commission if not set, blank, or 0
+         if (empty($commissionPercentage) || $commissionPercentage == 0) {
+            $commissionPercentage = 15;
+         }
          
-         // SPFT and SROI calculations matching analytics exactly (using same LP and FBA_SHIP sources)
-         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $S_PRICE : 0;
-         $sroi = ($LP_FOR_PFT > 0) ? (($S_PRICE * 0.8) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
+         // --- Calculate all profit & ROI metrics using 0.95 - commission% formula ---
+         $marginAfterCommission = 0.95 - ($commissionPercentage / 100);
+         
+         // PFT and ROI calculations (using same LP and FBA_SHIP sources)
+         $pft = ($PRICE > 0) ? (($PRICE * $marginAfterCommission) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $PRICE : 0;
+         $roi = ($LP_FOR_PFT > 0) ? (($PRICE * $marginAfterCommission) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
+         
+         // SPFT and SROI calculations (using same LP and FBA_SHIP sources)
+         $spft = ($S_PRICE > 0) ? (($S_PRICE * $marginAfterCommission) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $S_PRICE : 0;
+         $sroi = ($LP_FOR_PFT > 0 && $S_PRICE > 0) ? (($S_PRICE * $marginAfterCommission) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
 
          $cvr = ($monthlySales ? ($monthlySales->l30_units ?? 0) : 0) / ($fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?: 1) : 1) * 100;
 
-         // Keep GPFT and GROI calculations with commission for backward compatibility
+         // GPFT and GROI calculations with commission (same formula)
          $gpft = 0;
          if ($PRICE > 0) {
-            $gpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+            $gpft = (($PRICE * $marginAfterCommission) - $LP - $FBA_SHIP) / $PRICE;
          }
 
          $groi = 0;
          if ($LP > 0) {
-            $groi = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $LP;
+            $groi = (($PRICE * $marginAfterCommission) - $LP - $FBA_SHIP) / $LP;
          }
 
-         // Keep SGPFT and SGROI calculations with commission for backward compatibility
-         $sgpft = ($S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $S_PRICE : 0;
-         $sgroi = ($LP > 0 && $S_PRICE > 0) ? ($S_PRICE * (1 - ($commissionPercentage  / 100 + 0.05)) - $LP - $FBA_SHIP)  / $LP : 0;
+         // SGPFT and SGROI calculations with commission (same formula)
+         $sgpft = ($S_PRICE > 0) ? (($S_PRICE * $marginAfterCommission) - $LP - $FBA_SHIP) / $S_PRICE : 0;
+         $sgroi = ($LP > 0 && $S_PRICE > 0) ? (($S_PRICE * $marginAfterCommission) - $LP - $FBA_SHIP) / $LP : 0;
 
          $avgprice = $overallAvgPrice;
 
 
            $topgpft = 0;
          if ($PRICE > 0) {
-            $topgpft = ($PRICE * (1 - ($commissionPercentage / 100 + 0.05)) - $LP - $FBA_SHIP) / $PRICE;
+            $topgpft = (($PRICE * $marginAfterCommission) - $LP - $FBA_SHIP) / $PRICE;
          }
 
          $gpftPercentage = round($gpft * 100);

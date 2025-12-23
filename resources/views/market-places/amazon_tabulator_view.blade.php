@@ -188,6 +188,7 @@
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">AVG PFT: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
@@ -1845,8 +1846,21 @@
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
+                            const status = rowData.SPRICE_STATUS || null;
+                            const currentPrice = parseFloat(rowData.price) || 0;
+                            const sprice = parseFloat(value) || 0;
                             
                             if (!value) return '';
+                            
+                            // Show blank if status is 'applied' (double tick) or 'pushed'
+                            if (status === 'applied' || status === 'pushed') {
+                                return '';
+                            }
+                            
+                            // Show blank if price and SPRICE match
+                            if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
+                                return '';
+                            }
                             
                             const formattedValue = `$${parseFloat(value).toFixed(2)}`;
                             
@@ -2423,6 +2437,7 @@
 
                 $('#pft-calc').text(avgPft.toFixed(2) + '%');
                 $('#roi-calc').text(avgRoi.toFixed(2) + '%');
+                $('#avg-pft-badge').text('AVG PFT: ' + avgPft.toFixed(2) + '%');
             }
 
             // Update summary badges for INV > 0
@@ -2496,7 +2511,22 @@
                 $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
                 $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
-                const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
+                
+                // AVG PFT = Profit / Sales (before ads)
+                const avgPft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
+                $('#avg-pft-badge').text('AVG PFT: ' + avgPft + '%');
+                
+                // AVG GPFT = Average of GPFT% values from each row
+                let totalGpft = 0;
+                let gpftCount = 0;
+                data.forEach(row => {
+                    if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
+                        const gpft = parseFloat(row['GPFT%']) || 0;
+                        totalGpft += gpft;
+                        gpftCount++;
+                    }
+                });
+                const avgGpft = gpftCount > 0 ? Math.round(totalGpft / gpftCount) : 0;
                 $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
                 
                 // Update total SKU count badge
