@@ -765,8 +765,16 @@ class GoogleAdsController extends Controller
             // Fixed: Add null checks before accessing properties to prevent null pointer exceptions
             $row['campaign_id'] = $matchedCampaign ? ($matchedCampaign->campaign_id ?? null) : null;
             $row['campaignName'] = $matchedCampaign ? ($matchedCampaign->campaign_name ?? null) : null;
-            $row['campaignBudgetAmount'] = $matchedCampaign ? ($matchedCampaign->budget_amount_micros ?? null) : null;
-            $row['campaignBudgetAmount'] = $row['campaignBudgetAmount'] ? $row['campaignBudgetAmount'] / 1000000 : null;
+            
+            // Get budget from the latest campaign record for this campaign_id (to ensure consistency with command)
+            // Budget should be same across dates, but get latest to be safe
+            $campaignId = $matchedCampaign ? $matchedCampaign->campaign_id : null;
+            $latestCampaign = $campaignId ? $googleCampaigns->where('campaign_id', $campaignId)
+                ->sortByDesc('date')
+                ->first() : null;
+            $row['campaignBudgetAmount'] = $latestCampaign && $latestCampaign->budget_amount_micros 
+                ? $latestCampaign->budget_amount_micros / 1000000 
+                : null;
             $row['status'] = $matchedCampaign ? ($matchedCampaign->campaign_status ?? null) : null;
 
             foreach ($rangesNeeded as $rangeName) {
@@ -785,7 +793,14 @@ class GoogleAdsController extends Controller
                 $row["ad_sold_$rangeName"] = $metrics['ad_sold'];
             }
 
+            // Calculate UB7 to filter only over-utilized campaigns (UB7 > 90%)
+            // This matches the frontend filter logic in google-shopping-over-utilize.blade.php
+            $budget = $row['campaignBudgetAmount'] ?? 0;
+            $spend_L7 = $row['spend_L7'] ?? 0;
+            $ub7 = $budget > 0 ? ($spend_L7 / ($budget * 7)) * 100 : 0;
+
             // Fixed: Use !empty() instead of != '' to properly handle null values
+            // Only include campaigns with UB7 > 90% (over-utilized) for this page
             if(!empty($row['campaignName'])) {
                 $result[] = (object) $row;
             }
