@@ -2739,4 +2739,45 @@ class OverallAmazonController extends Controller
         Cache::put($key, $visibility, now()->addDays(30));
         return response()->json(['success' => true]);
     }
+
+    public function updateAmazonRating(Request $request)
+    {
+        $sku = strtoupper(trim($request->input('sku')));
+        $rating = $request->input('rating');
+
+        // Validate rating
+        if (!is_numeric($rating) || $rating < 0 || $rating > 5) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Rating must be a number between 0 and 5'
+            ], 400);
+        }
+
+        try {
+            // Find or create the manual data record
+            $manual = AmazonFbmManual::firstOrNew(['sku' => $sku]);
+            
+            // Decode existing data
+            $data = $manual->data ? json_decode($manual->data, true) : [];
+            
+            // Update rating
+            $data['rating'] = floatval($rating);
+            
+            // Save
+            $manual->data = json_encode($data);
+            $manual->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Rating updated successfully',
+                'rating' => floatval($rating)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error updating Amazon rating: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error updating rating'
+            ], 500);
+        }
+    }
 }

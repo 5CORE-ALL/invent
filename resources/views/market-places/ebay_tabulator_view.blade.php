@@ -159,6 +159,14 @@
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
+
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+                        <i class="fas fa-upload"></i> Import Ratings
+                    </button>
+
+                    <a href="{{ url('/ebay-ratings-sample') }}" class="btn btn-sm btn-info">
+                        <i class="fas fa-download"></i> Sample CSV
+                    </a>
                     
                     <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
@@ -308,6 +316,34 @@
                         <i class="fa fa-file-excel"></i> Export Selected Columns
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Import eBay Ratings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="importForm">
+                    @csrf
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="csvFile" class="form-label">Select CSV File</label>
+                            <input type="file" class="form-control" id="csvFile" name="file" accept=".csv" required>
+                            <div class="form-text">Upload a CSV file with columns: sku, rating (0-5)</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="uploadBtn">
+                            <i class="fa fa-upload"></i> Import
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -1631,13 +1667,13 @@
                         formatter: function(cell) {
                             const sku = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            // const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
                             
-                            // if (isParent) {
-                            //     return `<span>${sku}</span>`;
-                            // }
+                            // Ratings display with star icon (like FBA/Amazon format)
+                            const ratingDisplay = (rowData.rating && rowData.rating > 0) 
+                                ? ` <i class="fa fa-star" style="color: orange;"></i> ${rowData.rating}` 
+                                : '';
                             
-                            let html = `<span>${sku}</span>`;
+                            let html = `<span>${sku}${ratingDisplay}</span>`;
                             
                             // Copy button
                             html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
@@ -1652,6 +1688,14 @@
                             
                             return html;
                         }
+                    },
+                    {
+                        title: "Ratings",
+                        field: "rating",
+                        hozAlign: "center",
+                        editor: "input",
+                        tooltip: "Enter rating between 0 and 5",
+                        width: 80
                     },
                     {
                         title: "Links",
@@ -2528,6 +2572,39 @@
                 var field = cell.getColumn().getField();
                 var value = cell.getValue();
 
+                // Validate and save ratings field (must be between 0 and 5)
+                if (field === 'rating') {
+                    var numValue = parseFloat(value);
+                    if (isNaN(numValue) || numValue < 0 || numValue > 5) {
+                        alert('Ratings must be a number between 0 and 5');
+                        cell.setValue(data.rating || 0); // Revert to original value
+                        return;
+                    }
+                    
+                    // Save rating to database
+                    $.ajax({
+                        url: '/update-ebay-rating',
+                        method: 'POST',
+                        data: {
+                            sku: data['(Child) sku'],
+                            rating: numValue,
+                            _token: $('meta[name=\"csrf-token\"]').attr('content')
+                        },
+                        success: function(response) {
+                            console.log('Rating saved successfully');
+                            showToast('success', 'Rating updated successfully');
+                            // Update the row data
+                            row.update({rating: numValue});
+                        },
+                        error: function(xhr) {
+                            console.error('Error saving rating:', xhr.responseText);
+                            showToast('error', 'Error saving rating');
+                            cell.setValue(data.rating || 0); // Revert on error
+                        }
+                    });
+                    return;
+                }
+
                 if (field === 'SPRICE') {
                     // Save SPRICE and recalculate SPFT, SROI
                     const row = cell.getRow();
@@ -3106,6 +3183,49 @@
                 if (table) {
                     buildExportColumnsList();
                 }
+            });
+
+            // Import Ratings Modal Handler
+            $('#importForm').on('submit', function(e) {
+                e.preventDefault();
+
+                const formData = new FormData();
+                const file = $('#csvFile')[0].files[0];
+
+                if (!file) {
+                    showToast('error', 'Please select a CSV file');
+                    return;
+                }
+
+                formData.append('file', file);
+                formData.append('_token', '{{ csrf_token() }}');
+
+                const uploadBtn = $('#uploadBtn');
+                uploadBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Importing...');
+
+                $.ajax({
+                    url: '/import-ebay-ratings',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        uploadBtn.prop('disabled', false).html('<i class="fa fa-upload"></i> Import');
+                        $('#importModal').modal('hide');
+                        $('#csvFile').val('');
+                        showToast('success', response.success || 'Ratings imported successfully');
+                        
+                        // Reload table data
+                        setTimeout(() => {
+                            table.setData('/ebay-data-json');
+                        }, 1000);
+                    },
+                    error: function(xhr) {
+                        uploadBtn.prop('disabled', false).html('<i class="fa fa-upload"></i> Import');
+                        const errorMsg = xhr.responseJSON?.error || 'Failed to import ratings';
+                        showToast('error', errorMsg);
+                    }
+                });
             });
         });
 
