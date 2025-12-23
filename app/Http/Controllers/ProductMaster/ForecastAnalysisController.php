@@ -83,11 +83,16 @@ class ForecastAnalysisController extends Controller
         }
 
         // Key forecastMap by SKU only for easier matching
-        // If multiple records exist for same SKU, prefer the one with non-empty nr value
+        // If multiple records exist for same SKU, prefer the one with non-empty stage value, then non-empty nr value
         $forecastMap = DB::table('forecast_analysis')->get()->groupBy(function($item) use ($normalizeSku) {
             return $normalizeSku($item->sku);
         })->map(function($group) {
-            // If multiple records, prefer one with non-empty nr, otherwise take first
+            // Prefer record with non-empty stage value
+            $withStage = $group->firstWhere('stage', '!=', null);
+            if ($withStage && !empty(trim($withStage->stage))) {
+                return $withStage;
+            }
+            // Otherwise prefer one with non-empty nr
             $withNr = $group->firstWhere('nr', '!=', null);
             if ($withNr && !empty(trim($withNr->nr))) {
                 return $withNr;
@@ -228,11 +233,15 @@ class ForecastAnalysisController extends Controller
                 $item->rfq_form_link = $forecast->rfq_form_link ?? '';
                 $item->rfq_report = $forecast->rfq_report ?? '';
                 $item->date_apprvl = $forecast->date_apprvl ?? '';
-                $item->stage = $forecast->stage ?? '';
+                // Normalize stage value: trim and convert to lowercase
+                $stageValue = $forecast->stage ?? '';
+                $item->stage = !empty($stageValue) ? strtolower(trim($stageValue)) : '';
             } else {
                 // If key not found in map, try direct database lookup by SKU only
                 $forecastRecord = DB::table('forecast_analysis')
                     ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($sheetSku))])
+                    ->orderByRaw("CASE WHEN stage IS NOT NULL AND stage != '' THEN 0 ELSE 1 END")
+                    ->orderByRaw("CASE WHEN nr IS NOT NULL AND nr != '' THEN 0 ELSE 1 END")
                     ->first();
                 
                 if ($forecastRecord) {
@@ -259,7 +268,9 @@ class ForecastAnalysisController extends Controller
                     $item->rfq_form_link = $forecastRecord->rfq_form_link ?? '';
                     $item->rfq_report = $forecastRecord->rfq_report ?? '';
                     $item->date_apprvl = $forecastRecord->date_apprvl ?? '';
-                    $item->stage = $forecastRecord->stage ?? '';
+                    // Normalize stage value: trim and convert to lowercase
+                    $stageValue = $forecastRecord->stage ?? '';
+                    $item->stage = !empty($stageValue) ? strtolower(trim($stageValue)) : '';
                 }
             }
 
@@ -443,10 +454,12 @@ class ForecastAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid column']);
         }
 
+        // Match by SKU only - prefer record with stage value if multiple exist
         $existing = DB::table('forecast_analysis')
             ->select('*')
             ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
-            ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
+            ->orderByRaw("CASE WHEN stage IS NOT NULL AND stage != '' THEN 0 ELSE 1 END")
+            ->orderByRaw("CASE WHEN nr IS NOT NULL AND nr != '' THEN 0 ELSE 1 END")
             ->first();
 
         if ($existing) {
@@ -458,6 +471,16 @@ class ForecastAnalysisController extends Controller
                 // Ensure value is one of the valid options
                 if (!in_array($value, ['REQ', 'NR', 'LATER'])) {
                     $value = 'REQ'; // Default to REQ if invalid
+                }
+            }
+
+            // Normalize Stage values to lowercase
+            if ($columnKey === 'stage' && !empty($value)) {
+                $value = strtolower(trim($value));
+                // Ensure value is one of the valid options
+                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'all_good', 'to_order_analysis'];
+                if (!in_array($value, $validStages)) {
+                    $value = ''; // Default to empty if invalid
                 }
             }
 
@@ -498,10 +521,10 @@ class ForecastAnalysisController extends Controller
                     // Always use MOQ value from ProductMaster
                     $qtyToSet = (int)($orderQty ?? 0);
                     
-                    // Check if record exists
+                    // Check if record exists - match by SKU only
                     $existingMfrg = DB::table('mfrg_progress')
                         ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
-                        ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
+                        ->orderByRaw("CASE WHEN ready_to_ship = 'No' THEN 0 ELSE 1 END")
                         ->first();
                     
                     if ($existingMfrg) {
@@ -511,6 +534,7 @@ class ForecastAnalysisController extends Controller
                             ->update([
                                 'qty' => $qtyToSet,
                                 'ready_to_ship' => 'No',
+                                'parent' => $parent, // Update parent if different
                                 'updated_at' => now(),
                             ]);
                     } else {
@@ -551,6 +575,16 @@ class ForecastAnalysisController extends Controller
                     $value = 'REQ'; // Default to REQ if invalid
                 }
             }
+
+            // Normalize Stage values to lowercase before inserting
+            if ($columnKey === 'stage' && !empty($value)) {
+                $value = strtolower(trim($value));
+                // Ensure value is one of the valid options
+                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'all_good', 'to_order_analysis'];
+                if (!in_array($value, $validStages)) {
+                    $value = ''; // Default to empty if invalid
+                }
+            }
             
             DB::table('forecast_analysis')->insert([
                 'sku' => $sku,
@@ -588,10 +622,10 @@ class ForecastAnalysisController extends Controller
                     // Always use MOQ value from ProductMaster
                     $qtyToSet = (int)($orderQty ?? 0);
                     
-                    // Check if record exists
+                    // Check if record exists - match by SKU only
                     $existingMfrg = DB::table('mfrg_progress')
                         ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
-                        ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
+                        ->orderByRaw("CASE WHEN ready_to_ship = 'No' THEN 0 ELSE 1 END")
                         ->first();
                     
                     if ($existingMfrg) {
@@ -601,6 +635,7 @@ class ForecastAnalysisController extends Controller
                             ->update([
                                 'qty' => $qtyToSet,
                                 'ready_to_ship' => 'No',
+                                'parent' => $parent, // Update parent if different
                                 'updated_at' => now(),
                             ]);
                     } else {
@@ -696,11 +731,16 @@ class ForecastAnalysisController extends Controller
             }
 
             // Forecast, Movement, Mfrg, ReadyToShip - key by SKU only for easier matching
-            // If multiple records exist for same SKU, prefer the one with non-empty nr value
+            // If multiple records exist for same SKU, prefer the one with non-empty stage value, then non-empty nr value
             $forecastMap = DB::table('forecast_analysis')->get()->groupBy(function($item) use ($normalizeSku) {
                 return $normalizeSku($item->sku);
             })->map(function($group) {
-                // If multiple records, prefer one with non-empty nr, otherwise take first
+                // Prefer record with non-empty stage value
+                $withStage = $group->firstWhere('stage', '!=', null);
+                if ($withStage && !empty(trim($withStage->stage))) {
+                    return $withStage;
+                }
+                // Otherwise prefer one with non-empty nr
                 $withNr = $group->firstWhere('nr', '!=', null);
                 if ($withNr && !empty(trim($withNr->nr))) {
                     return $withNr;
@@ -811,11 +851,15 @@ class ForecastAnalysisController extends Controller
                     $item->rfq_form_link = $forecast->rfq_form_link ?? '';
                     $item->rfq_report = $forecast->rfq_report ?? '';
                     $item->date_apprvl = $forecast->date_apprvl ?? '';
-                    $item->stage = $forecast->stage ?? '';
+                    // Normalize stage value: trim and convert to lowercase
+                    $stageValue = $forecast->stage ?? '';
+                    $item->stage = !empty($stageValue) ? strtolower(trim($stageValue)) : '';
                 } else {
                     // If key not found in map, try direct database lookup by SKU only
                     $forecastRecord = DB::table('forecast_analysis')
                         ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($normalizedSkuForForecast))])
+                        ->orderByRaw("CASE WHEN stage IS NOT NULL AND stage != '' THEN 0 ELSE 1 END")
+                        ->orderByRaw("CASE WHEN nr IS NOT NULL AND nr != '' THEN 0 ELSE 1 END")
                         ->first();
                     
                     if ($forecastRecord) {
@@ -843,7 +887,9 @@ class ForecastAnalysisController extends Controller
                         $item->rfq_form_link = $forecastRecord->rfq_form_link ?? '';
                         $item->rfq_report = $forecastRecord->rfq_report ?? '';
                         $item->date_apprvl = $forecastRecord->date_apprvl ?? '';
-                        $item->stage = $forecastRecord->stage ?? '';
+                        // Normalize stage value: trim and convert to lowercase
+                        $stageValue = $forecastRecord->stage ?? '';
+                        $item->stage = !empty($stageValue) ? strtolower(trim($stageValue)) : '';
                     }
                 }
 

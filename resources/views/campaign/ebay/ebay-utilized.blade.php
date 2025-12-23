@@ -318,7 +318,7 @@
                 return 'pink';
             };
 
-            // Function to update button counts - optimized and shows only active button's count
+            // Function to update button counts - shows all counts on all buttons
             let countUpdateTimeout = null;
             function updateButtonCounts() {
                 if (typeof table === 'undefined' || !table) {
@@ -387,34 +387,14 @@
                         }
                     });
 
-                    // Update only the active button's count, reset others to 0
+                    // Update all button counts - always show all counts
                     const overBtnCount = document.getElementById('over-btn-count');
                     const underBtnCount = document.getElementById('under-btn-count');
                     const correctlyBtnCount = document.getElementById('correctly-btn-count');
                     
-                    const activeBtn = document.querySelector('.utilization-type-btn.active');
-                    if (activeBtn) {
-                        const activeType = activeBtn.getAttribute('data-type');
-                        
-                        // Reset all counts to 0 first
-                        if (overBtnCount) overBtnCount.textContent = '( 0 )';
-                        if (underBtnCount) underBtnCount.textContent = '( 0 )';
-                        if (correctlyBtnCount) correctlyBtnCount.textContent = '( 0 )';
-                        
-                        // Update only the active button's count
-                        if (activeType === 'over' && overBtnCount) {
-                            overBtnCount.textContent = `( ${overCount} )`;
-                        } else if (activeType === 'under' && underBtnCount) {
-                            underBtnCount.textContent = `( ${underCount} )`;
-                        } else if (activeType === 'correctly' && correctlyBtnCount) {
-                            correctlyBtnCount.textContent = `( ${correctlyCount} )`;
-                        }
-                    } else {
-                        // If no active button, reset all to 0
-                        if (overBtnCount) overBtnCount.textContent = '( 0 )';
-                        if (underBtnCount) underBtnCount.textContent = '( 0 )';
-                        if (correctlyBtnCount) correctlyBtnCount.textContent = '( 0 )';
-                    }
+                    if (overBtnCount) overBtnCount.textContent = `( ${overCount} )`;
+                    if (underBtnCount) underBtnCount.textContent = `( ${underCount} )`;
+                    if (correctlyBtnCount) correctlyBtnCount.textContent = `( ${correctlyCount} )`;
                 }, 150);
             }
 
@@ -425,19 +405,11 @@
                     this.classList.add('active');
                     currentUtilizationType = this.getAttribute('data-type');
                     
-                    // Reset all button counts to 0 first
-                    const overBtnCount = document.getElementById('over-btn-count');
-                    const underBtnCount = document.getElementById('under-btn-count');
-                    const correctlyBtnCount = document.getElementById('correctly-btn-count');
-                    if (overBtnCount) overBtnCount.textContent = '0';
-                    if (underBtnCount) underBtnCount.textContent = '0';
-                    if (correctlyBtnCount) correctlyBtnCount.textContent = '0';
-                    
                     if (typeof table !== 'undefined' && table) {
                         table.setFilter(combinedFilter);
                         // Redraw cells to update formatter colors based on new type
                         table.redraw(true);
-                        // Update button count for the clicked button after filter is applied
+                        // Update all button counts after filter is applied
                         setTimeout(function() {
                             updateButtonCounts();
                         }, 200);
@@ -832,14 +804,6 @@
             table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
 
-                // Reset all button counts to 0 on initial load
-                const overBtnCount = document.getElementById('over-btn-count');
-                const underBtnCount = document.getElementById('under-btn-count');
-                const correctlyBtnCount = document.getElementById('correctly-btn-count');
-                if (overBtnCount) overBtnCount.textContent = '0';
-                if (underBtnCount) underBtnCount.textContent = '0';
-                if (correctlyBtnCount) correctlyBtnCount.textContent = '0';
-
                 // Update counts when data is filtered (debounced)
                 let filterTimeout = null;
                 table.on("dataFiltered", function(filteredRows) {
@@ -862,7 +826,7 @@
                     table.setFilter(combinedFilter);
                 });
 
-                // Initial update of button counts after data loads (only for active button)
+                // Initial update of all button counts after data loads
                 setTimeout(function() {
                     updateButtonCounts();
                 }, 1000);

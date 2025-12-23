@@ -790,10 +790,16 @@
                 {
                     title: "Stage",
                     field: "stage",
-                    accessor: row => row?.["stage"] ?? null,
+                    accessor: function(row) {
+                        const stageValue = row?.["stage"] ?? '';
+                        // Normalize stage value: trim and convert to lowercase
+                        return stageValue ? String(stageValue).trim().toLowerCase() : '';
+                    },
                     headerSort: false,
                     formatter: function(cell) {
-                        const value = cell.getValue() ?? '';
+                        let value = cell.getValue() ?? '';
+                        // Ensure value is normalized (should already be from accessor, but double-check)
+                        value = String(value).trim().toLowerCase();
                         const rowData = cell.getRow().getData();
 
                         return `
@@ -813,6 +819,15 @@
                             <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>2 Order</option>
                         </select>
                     `;
+                    },
+                    cellCreated: function(cell) {
+                        // Ensure the select element has the correct value set after creation
+                        const selectEl = cell.getElement().querySelector('select');
+                        if (selectEl) {
+                            let value = cell.getValue() ?? '';
+                            value = String(value).trim().toLowerCase();
+                            selectEl.value = value;
+                        }
                     }
                 },
                 {
@@ -1917,11 +1932,16 @@
                     const isSelect = $el.hasClass('editable-select');
                     const isDate = $el.hasClass('editable-date');
 
-                    const newValue = $el.val().trim();
+                    let newValue = $el.val().trim();
                     const sku = $el.data('sku');
                     const parent = $el.data('parent');
                     const field = isSelect ? $el.data('type') : $el.data('field');
                     const originalValue = isDate ? $el.data('original') : null;
+
+                    // Normalize stage value to lowercase
+                    if (field === "Stage" && newValue) {
+                        newValue = newValue.toLowerCase();
+                    }
 
                     if (field === "Stage" && newValue === "appr_req") {
                         const row = table.getRow(sku);
@@ -2028,7 +2048,14 @@
                                                 const r2sCell = row.getCells().find(cell => cell.getField() === 'readyToShipQty');
                                                 const transitCell = row.getCells().find(cell => cell.getField() === 'transit');
                                                 
-                                                if (stageCell) stageCell.reformat();
+                                                if (stageCell) {
+                                                    stageCell.reformat();
+                                                    // Also manually set the select value to ensure it's selected
+                                                    const selectEl = stageCell.getElement().querySelector('select');
+                                                    if (selectEl) {
+                                                        selectEl.value = newValue.toLowerCase();
+                                                    }
+                                                }
                                                 if (mipCell) mipCell.reformat();
                                                 if (r2sCell) r2sCell.reformat();
                                                 if (transitCell) transitCell.reformat();
@@ -2046,6 +2073,20 @@
                                         // For stages without table check (appr_req, to_order_analysis, all_good)
                                         // Still clear other stage fields
                                         row.update(updateData, true);
+                                        
+                                        // Refresh the stage cell to show updated value
+                                        setTimeout(() => {
+                                            const stageCell = row.getCells().find(cell => cell.getField() === 'stage');
+                                            if (stageCell) {
+                                                stageCell.reformat();
+                                                // Also manually set the select value to ensure it's selected
+                                                const selectEl = stageCell.getElement().querySelector('select');
+                                                if (selectEl) {
+                                                    selectEl.value = newValue.toLowerCase();
+                                                }
+                                            }
+                                        }, 100);
+                                        
                                         setCombinedFilters();
                                     }
                                 }
