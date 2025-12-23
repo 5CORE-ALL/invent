@@ -1111,18 +1111,18 @@
                     // Get stage from item to determine which fields to use for to_order calculation
                     const itemStage = item.stage || '';
                     
-                    // For to_order calculation, only use the quantity from the matching stage
+                    // For to_order calculation, transit is always considered (since it always shows)
+                    // MIP and R2S are only considered when their respective stage matches
                     let effectiveOrderGiven = 0;
                     let effectiveR2s = 0;
-                    let effectiveTransit = transit;
+                    let effectiveTransit = transit; // Always include transit in calculation
                     
                     if (itemStage === 'mip') {
                         effectiveOrderGiven = orderGiven;
                     } else if (itemStage === 'r2s') {
                         effectiveR2s = r2s;
-                    } else if (itemStage === 'transit') {
-                        effectiveTransit = transit;
                     }
+                    // Note: Transit is always included regardless of stage
 
                     const toOrder = Math.round(msl - inv - effectiveTransit - effectiveOrderGiven - effectiveR2s);
 
@@ -1153,17 +1153,16 @@
                     const originalTransit = parseFloat(item['transit'] ?? item['Transit'] ?? 0);
                     
                     // Clear stage fields based on current stage - only show value for matching stage
+                    // Transit values always show regardless of stage
                     let finalOrderGiven = 0;
                     let finalReadyToShipQty = 0;
-                    let finalTransit = 0;
+                    let finalTransit = originalTransit; // Always show transit value
                     
-                    // If stage is set, only show value for matching stage
+                    // If stage is set, only show value for matching stage (except transit which always shows)
                     if (itemStage === 'mip') {
                         finalOrderGiven = originalOrderGiven;
                     } else if (itemStage === 'r2s') {
                         finalReadyToShipQty = originalReadyToShipQty;
-                    } else if (itemStage === 'transit') {
-                        finalTransit = originalTransit;
                     }
 
                     const processedItem = {

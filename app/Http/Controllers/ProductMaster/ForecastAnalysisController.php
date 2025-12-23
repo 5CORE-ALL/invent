@@ -116,6 +116,19 @@ class ForecastAnalysisController extends Controller
                 });
             });
 
+        // Get container records that have been successfully pushed to warehouse
+        $warehousePushedRecords = DB::table('inventory_warehouse')
+            ->where('push_status', 'success')
+            ->select('our_sku', 'tab_name')
+            ->get()
+            ->map(function($record) {
+                return [
+                    'sku' => strtoupper(trim($record->our_sku)),
+                    'container' => strtoupper(trim($record->tab_name ?? ''))
+                ];
+            })
+            ->toArray();
+
         $transitContainer = TransitContainerDetail::whereNull('deleted_at')
             ->where(function ($q) {
                 $q->whereNull('status')
@@ -123,6 +136,21 @@ class ForecastAnalysisController extends Controller
             })
             ->select('our_sku', 'tab_name', 'no_of_units', 'total_ctn', 'rate')
             ->get()
+            ->filter(function ($item) use ($warehousePushedRecords) {
+                // Only exclude specific container records that have been pushed to warehouse
+                $normalizedSku = strtoupper(trim($item->our_sku));
+                $containerName = strtoupper(trim($item->tab_name ?? ''));
+                
+                // Check if this specific SKU + Container combination has been pushed to warehouse
+                foreach ($warehousePushedRecords as $pushedRecord) {
+                    if ($pushedRecord['sku'] === $normalizedSku && 
+                        (strpos($containerName, $pushedRecord['container']) !== false || 
+                         strpos($pushedRecord['container'], $containerName) !== false)) {
+                        return false; // Exclude this specific container record
+                    }
+                }
+                return true; // Keep this record
+            })
             ->groupBy(fn($item) => strtoupper(trim($item->our_sku)))
             ->map(function ($group) {
                 $transitSum = 0;
