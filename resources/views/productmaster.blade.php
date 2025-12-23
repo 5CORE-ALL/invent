@@ -237,6 +237,15 @@
             width: 16px;
             height: 16px;
             cursor: pointer;
+            pointer-events: auto !important;
+            z-index: 10;
+            position: relative;
+        }
+        
+        .checkbox-cell {
+            pointer-events: auto !important;
+            z-index: 10;
+            position: relative;
         }
 
         .selection-actions {
@@ -1656,7 +1665,7 @@
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
             let filteredProductData = [];
-
+            let selectionMode = false; // Global selection mode flag
 
             // Track selected items with both SKU and ID
             let selectedItems = {}; // Format: { sku: { id: 123, checked: true } }
@@ -1759,7 +1768,7 @@
 
                 const hasEditPermission = productPermissions.includes('edit');
                 const hasDeletePermission = productPermissions.includes('delete');
-                const selectionMode = document.querySelector('.checkbox-column')?.style.display === 'table-cell';
+                // Use global selectionMode variable instead of checking DOM
 
                 // Get columns to hide for current user
                 const hiddenColumns = getUserHiddenColumns();
@@ -1955,11 +1964,40 @@
                         const checkboxCell = document.createElement('td');
                         checkboxCell.className = 'checkbox-cell';
                         checkboxCell.style.textAlign = 'center';
-                        checkboxCell.innerHTML = `
-                        <input type="checkbox" class="row-checkbox" 
-                            data-sku="${escapeHtml(item.SKU || '')}" 
-                            data-id="${escapeHtml(item.id || '')}" ${isChecked}>
-                    `;
+                        
+                        // Ensure we have an ID - try multiple sources
+                        let itemId = item.id;
+                        if (!itemId || itemId === '' || itemId === null || itemId === undefined) {
+                            // Try to get from productMap
+                            const product = productMap.get(item.SKU);
+                            if (product && product.id) {
+                                itemId = product.id;
+                            }
+                        }
+                        
+                        // Ensure itemId is a valid number, convert to string for data attribute
+                        const numericId = itemId ? parseInt(itemId, 10) : null;
+                        const idValue = (numericId && !isNaN(numericId) && numericId > 0) ? numericId.toString() : '';
+                        
+                        // Create checkbox element directly instead of using innerHTML for better event handling
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.className = 'row-checkbox';
+                        checkbox.setAttribute('data-sku', escapeHtml(item.SKU || ''));
+                        checkbox.setAttribute('data-id', idValue);
+                        checkbox.style.cursor = 'pointer';
+                        checkbox.style.pointerEvents = 'auto';
+                        checkbox.disabled = false; // Ensure checkbox is not disabled
+                        if (isChecked) {
+                            checkbox.checked = true;
+                        }
+                        
+                        // Add click handler directly to ensure it works
+                        checkbox.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                        });
+                        
+                        checkboxCell.appendChild(checkbox);
                         row.appendChild(checkboxCell);
                     }
 
@@ -2581,10 +2619,23 @@
                     // Clear button reference
                     currentMissingDataButton = null;
 
-                    // Reload data to ensure consistency
-                    setTimeout(() => {
-                        loadData();
-                    }, 500);
+                    // Update the productMap to keep data in sync
+                    if (product) {
+                        // Recalculate derived fields if needed
+                        if (field === 'l' || field === 'w' || field === 'h') {
+                            // CBM and FRGHT will be recalculated on next render if needed
+                            const l = parseFloat(product.l) || 0;
+                            const w = parseFloat(product.w) || 0;
+                            const h = parseFloat(product.h) || 0;
+                            if (l > 0 && w > 0 && h > 0) {
+                                const cbm = (((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000);
+                                product.cbm = cbm.toFixed(4);
+                                product.frght = (cbm * 200).toFixed(2);
+                            }
+                        }
+                    }
+                    
+                    // Don't reload data - just update in place
 
                 } catch (error) {
                     errorDiv.textContent = error.message;
@@ -3008,10 +3059,21 @@
                     const checkboxCell = document.createElement('td');
                     checkboxCell.className = 'checkbox-cell';
                     checkboxCell.style.textAlign = 'center';
+                    
+                    // Ensure we have an ID - try multiple sources
+                    let itemId = item.id;
+                    if (!itemId || itemId === '' || itemId === null || itemId === undefined) {
+                        // Try to get from productMap
+                        const product = productMap.get(item.SKU);
+                        if (product && product.id) {
+                            itemId = product.id;
+                        }
+                    }
+                    
                     checkboxCell.innerHTML = `
             <input type="checkbox" class="row-checkbox" 
                 data-sku="${escapeHtml(item.SKU || '')}" 
-                data-id="${escapeHtml(item.id || '')}" ${isChecked}>
+                data-id="${escapeHtml(itemId || '')}" ${isChecked}>
         `;
                     row.appendChild(checkboxCell);
                 }
@@ -4156,17 +4218,35 @@
                         // Show specific success message for update
                         showToast('success', `Product ${formData.get('sku')} updated successfully!`);
                         modal.hide();
-                        // Small delay to ensure server has processed the update
-                        setTimeout(() => {
-                            // Load data and reapply filters after successful update
-                            loadData(function() {
-                                const currentFilters = getCurrentFilters();
-                                const filteredData = applyFiltersToData(currentFilters);
-                                renderTable(filteredData);
-                                setupEditButtons();
-                                setupDeleteButtons();
+                        
+                        // Update local data and visible cells without reloading
+                        const sku = formData.get('sku');
+                        if (data.data) {
+                            const updatedProduct = data.data;
+                            
+                            // Update tableData
+                            const existingIndex = tableData.findIndex(p => p.SKU === sku);
+                            if (existingIndex !== -1) {
+                                Object.assign(tableData[existingIndex], updatedProduct);
+                            }
+                            
+                            // Update productMap
+                            const existing = productMap.get(sku);
+                            if (existing) {
+                                Object.assign(existing, updatedProduct);
+                            } else {
+                                productMap.set(sku, updatedProduct);
+                            }
+                            
+                            // Update all visible cells for the updated product
+                            Object.keys(updatedProduct).forEach(fieldName => {
+                                if (fieldName !== 'SKU' && fieldName !== 'id' && fieldName !== 'Parent') {
+                                    const newValue = updatedProduct[fieldName];
+                                    updateTableCellInPlace(sku, fieldName, newValue);
+                                }
                             });
-                        }, 500);
+                        }
+                        
                         resetProductForm();
                     } catch (error) {
                         showAlert('danger', error.message);
@@ -4373,7 +4453,6 @@
                 const selectionActions = document.getElementById('selectionActions');
                 const selectionCount = selectionActions.querySelector('.selection-count');
                 const cancelButton = document.getElementById('cancelSelection');
-                let selectionMode = false;
 
                 // Toggle selection mode
                 toggleButton.addEventListener('click', function() {
@@ -4395,12 +4474,18 @@
                         // ✅ Show header checkbox column
                         document.querySelectorAll('.checkbox-column').forEach(col => col.style.display = 'table-cell');
 
-                        // ✅ Show existing row checkboxes
-                        document.querySelectorAll('.checkbox-cell').forEach(cell => cell.style.display = 'table-cell');
-
                         selectionActions.style.display = 'block';
                         this.innerHTML = '<i class="fas fa-times"></i>';
-                        addCheckboxesToRows();
+                        
+                        // Re-render table with checkboxes included
+                        const currentFilters = getCurrentFilters();
+                        let filteredData = applyFiltersToData(currentFilters);
+                        renderTable(filteredData);
+                        
+                        // Also add checkboxes to any rows that might have been missed
+                        setTimeout(() => {
+                            addCheckboxesToRows();
+                        }, 100);
                     }
 
                     updateSelectionCount();
@@ -4420,15 +4505,99 @@
                     renderTable(filteredData);
                 });
 
-                // Handle individual checkbox clicks
+                // Handle individual checkbox clicks - use event delegation
+                // Use 'click' event instead of 'change' for better compatibility
+                document.addEventListener('click', function(e) {
+                    if (e.target && e.target.classList.contains('row-checkbox')) {
+                        e.stopPropagation(); // Prevent event bubbling
+                        const checkbox = e.target;
+                        const sku = checkbox.dataset.sku;
+                        let id = checkbox.dataset.id;
+                        
+                        // Toggle checkbox state manually if needed
+                        if (checkbox.type === 'checkbox') {
+                            // Let the default behavior handle the toggle
+                        }
+
+                        // If ID is missing or empty, try to get it from productMap
+                        if (!id || id === '' || id === 'undefined' || id === null || id === undefined) {
+                            const product = productMap.get(sku);
+                            if (product && product.id) {
+                                id = product.id;
+                                // Update the checkbox data attribute for future reference
+                                e.target.dataset.id = product.id;
+                            } else {
+                                // If still no ID found, log warning and skip this item
+                                console.warn('No ID found for SKU:', sku);
+                                e.target.checked = false;
+                                return;
+                            }
+                        }
+
+                        // Ensure ID is a valid number
+                        const numericId = parseInt(id, 10);
+                        if (isNaN(numericId) || numericId <= 0) {
+                            console.warn('Invalid ID for SKU:', sku, 'ID:', id);
+                            checkbox.checked = false;
+                            return;
+                        }
+
+                        // Use setTimeout to ensure checkbox state is updated
+                        setTimeout(() => {
+                            if (checkbox.checked) {
+                                selectedItems[sku] = {
+                                    id: numericId,
+                                    checked: true
+                                };
+                            } else {
+                                delete selectedItems[sku];
+                            }
+                            updateSelectionCount();
+                        }, 0);
+
+                        // Update "select all" checkbox state will be done in setTimeout above
+                        // Update "select all" checkbox state
+                        setTimeout(() => {
+                            const visibleCheckboxes = document.querySelectorAll('.row-checkbox');
+                            const allChecked = Array.from(visibleCheckboxes).every(cb => cb.checked);
+                            if (selectAllCheckbox) {
+                                selectAllCheckbox.checked = allChecked && visibleCheckboxes.length > 0;
+                            }
+                        }, 0);
+                    }
+                });
+                
+                // Also handle change event as backup
                 document.addEventListener('change', function(e) {
                     if (e.target && e.target.classList.contains('row-checkbox')) {
-                        const sku = e.target.dataset.sku;
-                        const id = e.target.dataset.id;
+                        e.stopPropagation();
+                        const checkbox = e.target;
+                        const sku = checkbox.dataset.sku;
+                        let id = checkbox.dataset.id;
 
-                        if (e.target.checked) {
+                        // If ID is missing or empty, try to get it from productMap
+                        if (!id || id === '' || id === 'undefined' || id === null || id === undefined) {
+                            const product = productMap.get(sku);
+                            if (product && product.id) {
+                                id = product.id;
+                                checkbox.dataset.id = product.id;
+                            } else {
+                                console.warn('No ID found for SKU:', sku);
+                                checkbox.checked = false;
+                                return;
+                            }
+                        }
+
+                        const numericId = parseInt(id, 10);
+                        if (isNaN(numericId) || numericId <= 0) {
+                            console.warn('Invalid ID for SKU:', sku, 'ID:', id);
+                            checkbox.checked = false;
+                            return;
+                        }
+
+                        if (checkbox.checked) {
                             selectedItems[sku] = {
-                                id: id,
+                                id: numericId,
                                 checked: true
                             };
                         } else {
@@ -4437,10 +4606,11 @@
 
                         updateSelectionCount();
 
-                        // Update "select all" checkbox state
                         const visibleCheckboxes = document.querySelectorAll('.row-checkbox');
                         const allChecked = Array.from(visibleCheckboxes).every(cb => cb.checked);
-                        selectAllCheckbox.checked = allChecked && visibleCheckboxes.length > 0;
+                        if (selectAllCheckbox) {
+                            selectAllCheckbox.checked = allChecked && visibleCheckboxes.length > 0;
+                        }
                     }
                 });
             }
@@ -4498,10 +4668,32 @@
 
                     if (this.checked) {
                         checkboxes.forEach(checkbox => {
-                            checkbox.checked = true;
                             const sku = checkbox.dataset.sku;
-                            const id = checkbox.dataset.id;
-                            selectedItems[sku] = { id: id, checked: true };
+                            let id = checkbox.dataset.id;
+                            
+                            // If ID is missing or empty, try to get it from productMap
+                            if (!id || id === '' || id === 'undefined' || id === null || id === undefined) {
+                                const product = productMap.get(sku);
+                                if (product && product.id) {
+                                    id = product.id;
+                                    // Update the checkbox data attribute for future reference
+                                    checkbox.dataset.id = product.id;
+                                } else {
+                                    // Skip items without valid IDs
+                                    console.warn('Skipping SKU without ID:', sku);
+                                    return;
+                                }
+                            }
+                            
+                            // Ensure ID is a valid number
+                            const numericId = parseInt(id, 10);
+                            if (isNaN(numericId) || numericId <= 0) {
+                                console.warn('Skipping SKU with invalid ID:', sku, 'ID:', id);
+                                return;
+                            }
+                            
+                            checkbox.checked = true;
+                            selectedItems[sku] = { id: numericId, checked: true };
                         });
                     } else {
                         checkboxes.forEach(checkbox => {
@@ -4520,28 +4712,74 @@
             function addCheckboxesToRows() {
                 const rows = document.querySelectorAll('#table-body tr');
                 rows.forEach(row => {
+                    // Skip parent rows
+                    if (row.style.backgroundColor && row.style.backgroundColor.includes('rgba(13, 110, 253')) {
+                        return;
+                    }
+                    
                     if (!row.querySelector('.row-checkbox')) {
                         const firstCell = row.cells[0];
-                        const skuCell = row.cells[1] || row.cells[0];
-                        const sku = skuCell.textContent.trim();
+                        
+                        // Find SKU from the row - try multiple cell positions
+                        let sku = '';
+                        for (let i = 0; i < row.cells.length; i++) {
+                            const cell = row.cells[i];
+                            const skuSpan = cell.querySelector('.sku-hover');
+                            if (skuSpan) {
+                                sku = skuSpan.getAttribute('data-sku') || skuSpan.textContent.trim();
+                                break;
+                            }
+                            // Also check if cell text looks like a SKU
+                            const cellText = cell.textContent.trim();
+                            if (cellText && !cellText.match(/^\d+$/) && cellText.length > 0 && !cellText.includes('PARENT')) {
+                                // Check if it's not a number-only cell and not empty
+                                const isLikelySku = !cellText.match(/^[\d.,\s%]+$/); // Not just numbers, decimals, commas
+                                if (isLikelySku && cellText.length > 2) {
+                                    sku = cellText;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (!sku) {
+                            console.warn('Could not find SKU for row');
+                            return;
+                        }
 
                         // Find the item in tableData to get the ID
                         const item = productMap.get(sku); // O(1) lookup
-                        const id = item ? item.id : '';
+                        let id = item ? item.id : null;
+                        
+                        // Ensure id is a valid number
+                        if (id) {
+                            const numericId = parseInt(id, 10);
+                            id = (!isNaN(numericId) && numericId > 0) ? numericId.toString() : '';
+                        } else {
+                            id = '';
+                        }
 
                         const checkboxCell = document.createElement('td');
                         checkboxCell.className = 'checkbox-cell';
                         checkboxCell.style.textAlign = 'center';
+                        checkboxCell.style.display = 'table-cell';
 
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
                         checkbox.className = 'row-checkbox';
                         checkbox.dataset.sku = sku;
                         checkbox.dataset.id = id;
+                        checkbox.style.cursor = 'pointer';
+                        checkbox.style.pointerEvents = 'auto';
+                        checkbox.disabled = false; // Ensure checkbox is not disabled
 
                         if (selectedItems[sku]) {
                             checkbox.checked = true;
                         }
+                        
+                        // Add click handler directly to ensure it works
+                        checkbox.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                        });
 
                         checkboxCell.appendChild(checkbox);
                         row.insertBefore(checkboxCell, firstCell);
@@ -4810,16 +5048,81 @@
                     }
 
                     // Prepare data for update with item IDs
+                    // Use the id from selectedItems which was stored when checkbox was checked
+                    const itemsWithIssues = [];
+                    const items = Object.entries(selectedItems)
+                        .map(([sku, item]) => {
+                            // Try to get ID from selectedItems first (should already be validated)
+                            let id = item.id;
+                            
+                            // If ID is missing or invalid, try to get it from productMap
+                            if (!id || id === '' || id === 'undefined' || id === null || id === undefined) {
+                                const product = productMap.get(sku);
+                                if (product && product.id) {
+                                    id = product.id;
+                                } else {
+                                    if (!itemsWithIssues.includes(sku)) {
+                                        itemsWithIssues.push(sku);
+                                    }
+                                    return null;
+                                }
+                            }
+                            
+                            // If still no ID, try to get it from the checkbox element
+                            if (!id || id === '' || id === 'undefined' || id === null || id === undefined) {
+                                const checkbox = document.querySelector(`.row-checkbox[data-sku="${sku}"]`);
+                                if (checkbox && checkbox.dataset.id && checkbox.dataset.id !== '') {
+                                    id = checkbox.dataset.id;
+                                } else {
+                                    if (!itemsWithIssues.includes(sku)) {
+                                        itemsWithIssues.push(sku);
+                                    }
+                                    return null;
+                                }
+                            }
+                            
+                            // Convert to integer if it's a string
+                            let numericId = null;
+                            if (id !== null && id !== undefined && id !== '') {
+                                numericId = parseInt(id, 10);
+                                if (isNaN(numericId) || numericId <= 0) {
+                                    numericId = null;
+                                    if (!itemsWithIssues.includes(sku)) {
+                                        itemsWithIssues.push(sku);
+                                    }
+                                }
+                            } else {
+                                if (!itemsWithIssues.includes(sku)) {
+                                    itemsWithIssues.push(sku);
+                                }
+                            }
+                            
+                            // Only return if we have a valid numeric ID
+                            if (numericId !== null && !isNaN(numericId) && numericId > 0) {
+                                return {
+                                    sku: sku,
+                                    id: numericId
+                                };
+                            }
+                            return null;
+                        })
+                        .filter(item => item !== null); // Filter out null items
+
+                    if (items.length === 0) {
+                        const errorMsg = itemsWithIssues.length > 0 
+                            ? `No valid items selected. The following SKUs are missing IDs: ${itemsWithIssues.slice(0, 5).join(', ')}${itemsWithIssues.length > 5 ? '...' : ''}. Please refresh the page and try again.`
+                            : 'No valid items selected. Please ensure all selected items have valid IDs. Try refreshing the page and selecting items again.';
+                        showBatchResult('warning', errorMsg);
+                        return;
+                    }
+                    
+                    // Log warning if some items were filtered out
+                    if (itemsWithIssues.length > 0 && items.length > 0) {
+                        console.warn('Some items were filtered out due to missing IDs:', itemsWithIssues);
+                    }
+
                     const updateData = {
-                        // Convert selectedItems to array of {sku, id} objects
-                        items: Object.entries(selectedItems).map(([sku, item]) => {
-                            // Find the full item data to get the ID
-                            const fullItem = productMap.get(sku); // O(1) lookup
-                            return {
-                                sku: sku,
-                                id: fullItem ? fullItem.id : null
-                            };
-                        }),
+                        items: items,
                         operations: operations
                     };
 
@@ -4841,12 +5144,124 @@
 
                         // Show success message
                         showBatchResult('success',
-                            `Successfully updated ${Object.keys(selectedItems).length} products`);
+                            `Successfully updated ${items.length} products`);
 
-                        // After successful update, refresh the table
+                        // Update local data and visible cells without reloading
+                        if (result.data && Array.isArray(result.data)) {
+                            // Get the operations that were applied
+                            const operations = getFieldOperations();
+                            
+                            // Update tableData and productMap with returned data
+                            result.data.forEach(updatedProduct => {
+                                const sku = updatedProduct.SKU;
+                                if (!sku) return;
+                                
+                                const existingIndex = tableData.findIndex(p => p.SKU === sku);
+                                if (existingIndex !== -1) {
+                                    // Merge updated data
+                                    Object.assign(tableData[existingIndex], updatedProduct);
+                                }
+                                
+                                // Update productMap
+                                const existing = productMap.get(sku);
+                                if (existing) {
+                                    Object.assign(existing, updatedProduct);
+                                } else {
+                                    productMap.set(sku, updatedProduct);
+                                }
+                                
+                                // Update visible table cells for each field that was changed
+                                operations.forEach(op => {
+                                    const fieldName = op.field;
+                                    let newValue = updatedProduct[fieldName];
+                                    
+                                    // If newValue is not directly in updatedProduct, calculate it
+                                    if (newValue === undefined) {
+                                        const product = productMap.get(sku);
+                                        if (product) {
+                                            const currentValue = parseFloat(product[fieldName]) || 0;
+                                            const opValue = parseFloat(op.value) || 0;
+                                            
+                                            switch (op.operation) {
+                                                case 'set':
+                                                    newValue = opValue;
+                                                    break;
+                                                case 'add':
+                                                    newValue = currentValue + opValue;
+                                                    break;
+                                                case 'subtract':
+                                                    newValue = currentValue - opValue;
+                                                    break;
+                                                case 'multiply':
+                                                    newValue = currentValue * opValue;
+                                                    break;
+                                                case 'divide':
+                                                    newValue = opValue !== 0 ? currentValue / opValue : currentValue;
+                                                    break;
+                                                default:
+                                                    newValue = currentValue;
+                                            }
+                                            
+                                            // Update the product data
+                                            product[fieldName] = newValue;
+                                        }
+                                    }
+                                    
+                                    // Update the visible cell
+                                    if (newValue !== undefined) {
+                                        updateTableCellInPlace(sku, fieldName, newValue);
+                                    }
+                                });
+                            });
+                        } else {
+                            // If server didn't return updated data, calculate and update from operations
+                            const operations = getFieldOperations();
+                            items.forEach(item => {
+                                const sku = item.sku;
+                                const product = productMap.get(sku);
+                                if (product) {
+                                    operations.forEach(op => {
+                                        const fieldName = op.field;
+                                        const currentValue = parseFloat(product[fieldName]) || 0;
+                                        const opValue = parseFloat(op.value) || 0;
+                                        let newValue = currentValue;
+                                        
+                                        switch (op.operation) {
+                                            case 'set':
+                                                newValue = opValue;
+                                                break;
+                                            case 'add':
+                                                newValue = currentValue + opValue;
+                                                break;
+                                            case 'subtract':
+                                                newValue = currentValue - opValue;
+                                                break;
+                                            case 'multiply':
+                                                newValue = currentValue * opValue;
+                                                break;
+                                            case 'divide':
+                                                newValue = opValue !== 0 ? currentValue / opValue : currentValue;
+                                                break;
+                                        }
+                                        
+                                        // Update product data
+                                        product[fieldName] = newValue;
+                                        
+                                        // Update visible cell
+                                        updateTableCellInPlace(sku, fieldName, newValue);
+                                    });
+                                }
+                            });
+                        }
+                        
+                        // Clear selections
+                        selectedItems = {};
+                        updateSelectionCount();
+                        
+                        // Close modal after a short delay
                         setTimeout(() => {
                             processSelectedModal.hide();
-                            loadData();
+                            showToast('success', `Successfully updated ${items.length} products`);
                         }, 1500);
 
                     } catch (error) {
@@ -5095,6 +5510,140 @@
                     "L(2)": "l2_url"
                 };
                 return fieldMap[columnName] || columnName.toLowerCase().replace(/\s+/g, '_');
+            }
+            
+            // Helper function to get column name from field name
+            function getColumnNameFromField(fieldName) {
+                const columnMap = {
+                    "status": "Status",
+                    "image_path": "Image",
+                    "Parent": "Parent",
+                    "SKU": "SKU",
+                    "upc": "UPC",
+                    "shopify_inv": "INV",
+                    "shopify_quantity": "OV L30",
+                    "unit": "Unit",
+                    "lp": "LP",
+                    "cp": "CP$",
+                    "frght": "FRGHT",
+                    "ship": "SHIP",
+                    "temu_ship": "TEMU SHIP",
+                    "moq": "MOQ",
+                    "ebay2_ship": "EBAY2 SHIP",
+                    "label_qty": "Label QTY",
+                    "wt_act": "WT ACT",
+                    "wt_decl": "WT DECL",
+                    "l": "L",
+                    "w": "W",
+                    "h": "H",
+                    "cbm": "CBM",
+                    "l2_url": "L(2)"
+                };
+                return columnMap[fieldName] || fieldName;
+            }
+            
+            // Helper function to update a table cell in place
+            function updateTableCellInPlace(sku, fieldName, newValue) {
+                // Find the row by SKU
+                const rows = document.querySelectorAll('#table-body tr');
+                let targetRow = null;
+                
+                for (let row of rows) {
+                    const skuCell = row.querySelector('.sku-hover');
+                    if (skuCell) {
+                        const rowSku = skuCell.getAttribute('data-sku') || skuCell.textContent.trim();
+                        if (rowSku === sku) {
+                            targetRow = row;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!targetRow) return;
+                
+                // Get column name from field name
+                const columnName = getColumnNameFromField(fieldName);
+                
+                // Get all header cells to find column index
+                const headerRow = document.querySelector('#row-callback-datatable thead tr');
+                if (!headerRow) return;
+                
+                const headerCells = Array.from(headerRow.querySelectorAll('th'));
+                let columnIndex = -1;
+                
+                // Find the column index by matching header text
+                headerCells.forEach((th, index) => {
+                    const thText = th.textContent.trim();
+                    // Remove any extra text like "(0)" from parent count
+                    const cleanText = thText.replace(/\s*\(\d+\)\s*$/, '').trim();
+                    
+                    // Check if this is the column we're looking for
+                    if (cleanText === columnName || 
+                        thText === columnName ||
+                        (columnName === "Status" && (cleanText === "Status" || cleanText === "STATUS")) ||
+                        (columnName === "CP$" && (cleanText.includes("CP") || thText.includes("CP"))) ||
+                        (columnName === "FRGHT" && (cleanText.includes("FRGHT") || thText.includes("FRGHT"))) ||
+                        (columnName === "Label QTY" && (cleanText.includes("Label") || thText.includes("Label"))) ||
+                        (columnName === "Image" && (cleanText.includes("Image") || thText.includes("Image"))) ||
+                        (columnName === "Images" && (cleanText.includes("Image") || thText.includes("Image")))) {
+                        columnIndex = index;
+                    }
+                });
+                
+                if (columnIndex === -1) {
+                    console.warn(`Column not found for field: ${fieldName}, column: ${columnName}`);
+                    return;
+                }
+                
+                // Get the cell at the column index (cells array already includes checkbox column if present)
+                const cells = targetRow.querySelectorAll('td');
+                const cell = cells[columnIndex];
+                
+                if (!cell) return;
+                
+                // Update cell content based on field type
+                const isNumeric = ['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'label_qty', 'moq'].includes(fieldName);
+                
+                if (fieldName === 'image_path') {
+                    cell.innerHTML = newValue ? `<img src="${newValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">` : '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                } else if (fieldName === 'l2_url') {
+                    cell.className = 'text-center';
+                    cell.innerHTML = newValue ? `<a href="${escapeHtml(newValue)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` : createMissingDataButton(sku, 'l2_url', 'L(2)');
+                } else if (isNumeric) {
+                    cell.className = 'text-center';
+                    const numValue = parseFloat(newValue);
+                    if (isNaN(numValue) || numValue === 0) {
+                        cell.innerHTML = createMissingDataButton(sku, fieldName, columnName);
+                    } else {
+                        const decimals = fieldName === 'cbm' ? 4 : (['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h'].includes(fieldName)) ? 2 : 0;
+                        cell.textContent = numValue.toFixed(decimals);
+                    }
+                } else {
+                    if (!newValue || newValue === '' || newValue === '-') {
+                        cell.innerHTML = addMissingIndicator('', true, sku, fieldName, columnName);
+                    } else {
+                        cell.innerHTML = addMissingIndicator(escapeHtml(newValue), false, sku, fieldName, columnName);
+                    }
+                }
+                
+                // If dimensions were updated, recalculate CBM and FRGHT
+                if (['l', 'w', 'h'].includes(fieldName)) {
+                    const product = productMap.get(sku);
+                    if (product) {
+                        const l = parseFloat(product.l) || 0;
+                        const w = parseFloat(product.w) || 0;
+                        const h = parseFloat(product.h) || 0;
+                        if (l > 0 && w > 0 && h > 0) {
+                            const cbm = (((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000);
+                            product.cbm = parseFloat(cbm.toFixed(4));
+                            product.frght = parseFloat((cbm * 200).toFixed(2));
+                            
+                            // Update CBM and FRGHT cells
+                            updateTableCellInPlace(sku, 'cbm', product.cbm);
+                            updateTableCellInPlace(sku, 'frght', product.frght);
+                        }
+                    }
+                }
             }
 
             // Helper function to create missing data button
