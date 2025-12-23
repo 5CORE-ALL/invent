@@ -16,20 +16,39 @@ class MFRGInProgressController extends Controller
 {
     public function index()
     {
+        // Improved normalization to handle multiple spaces and hidden whitespace
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse multiple spaces to single space
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace characters
+            return trim($sku);
+        };
+
         $mfrgData = MfrgProgress::all();
 
         $shopifyImages = DB::table('shopify_skus')
             ->select('sku', 'image_src')
             ->get()
-            ->keyBy(fn($item) => strtoupper(trim($item->sku)));
+            ->keyBy(fn($item) => $normalizeSku($item->sku));
 
         $productMaster = DB::table('product_master')->get()
-            ->keyBy(fn($item) => strtoupper(trim($item->sku)));
+            ->keyBy(fn($item) => $normalizeSku($item->sku));
 
-        // Get stage data from forecast_analysis table
+        // Get stage data from forecast_analysis table - match by SKU only, prefer record with stage value
         $forecastData = DB::table('forecast_analysis')
             ->get()
-            ->keyBy(fn($item) => strtoupper(trim($item->sku)));
+            ->groupBy(function($item) use ($normalizeSku) {
+                return $normalizeSku($item->sku);
+            })
+            ->map(function($group) {
+                // Prefer record with non-empty stage value
+                $withStage = $group->firstWhere('stage', '!=', null);
+                if ($withStage && !empty(trim($withStage->stage))) {
+                    return $withStage;
+                }
+                return $group->first();
+            });
 
         // Supplier Table Parent Mapping
         $supplierRows = Supplier::where('type', 'Supplier')->get();
@@ -47,7 +66,6 @@ class MFRGInProgressController extends Controller
         // Fetch purchase orders and create SKU to price mapping
         $purchaseOrders = PurchaseOrder::whereNotNull('items')->get();
         $skuToPriceMap = [];
-        $normalizeSku = fn($sku) => strtoupper(trim($sku ?? ''));
         
         foreach ($purchaseOrders as $po) {
             $items = json_decode($po->items, true);
@@ -69,7 +87,7 @@ class MFRGInProgressController extends Controller
         }
 
         foreach ($mfrgData as $row) {
-            $sku = strtoupper(trim($row->sku));
+            $sku = $normalizeSku($row->sku);
             $image = null;
             $cbm = null;
             $parent = null;
@@ -119,9 +137,14 @@ class MFRGInProgressController extends Controller
             // Get stage and nr from forecast_analysis
             $stage = '';
             $nr = '';
-            if (isset($forecastData[$sku])) {
-                $stage = $forecastData[$sku]->stage ?? '';
-                $nr = strtoupper(trim($forecastData[$sku]->nr ?? ''));
+            if ($forecastData->has($sku)) {
+                $forecast = $forecastData->get($sku);
+                $stage = $forecast->stage ?? '';
+                $nr = strtoupper(trim($forecast->nr ?? ''));
+                // Normalize stage value to lowercase
+                if (!empty($stage)) {
+                    $stage = strtolower(trim($stage));
+                }
             }
             $row->stage = $stage;
             $row->nr = $nr;
@@ -167,10 +190,20 @@ class MFRGInProgressController extends Controller
             ->get()
             ->keyBy(fn($item) => $normalizeSku($item->sku));
 
-        // Get stage data from forecast_analysis table
+        // Get stage data from forecast_analysis table - match by SKU only, prefer record with stage value
         $forecastData = DB::table('forecast_analysis')
             ->get()
-            ->keyBy(fn($item) => $normalizeSku($item->sku));
+            ->groupBy(function($item) use ($normalizeSku) {
+                return $normalizeSku($item->sku);
+            })
+            ->map(function($group) {
+                // Prefer record with non-empty stage value
+                $withStage = $group->firstWhere('stage', '!=', null);
+                if ($withStage && !empty(trim($withStage->stage))) {
+                    return $withStage;
+                }
+                return $group->first();
+            });
 
         $supplierRows = Supplier::where('type', 'Supplier')->get();
         $supplierMapByParent = [];
@@ -251,8 +284,13 @@ class MFRGInProgressController extends Controller
             
             // Get stage from forecast_analysis
             $stage = '';
-            if (isset($forecastData[$sku])) {
-                $stage = $forecastData[$sku]->stage ?? '';
+            if ($forecastData->has($sku)) {
+                $forecast = $forecastData->get($sku);
+                $stage = $forecast->stage ?? '';
+                // Normalize stage value to lowercase
+                if (!empty($stage)) {
+                    $stage = strtolower(trim($stage));
+                }
             }
             $row->stage = $stage;
             $row->order_qty = $row->qty; // Add order_qty field for validation

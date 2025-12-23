@@ -40,15 +40,46 @@ class ReadyToShipController extends Controller
             ->get()
             ->keyBy(fn($item) => strtoupper(trim($item->sku)));
 
-        // Get stage data from forecast_analysis table
+        // Improved normalization to handle multiple spaces and hidden whitespace
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse multiple spaces to single space
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace characters
+            return trim($sku);
+        };
+
+        // Get stage data from forecast_analysis table - match by SKU only, prefer record with stage value
         $forecastData = DB::table('forecast_analysis')
             ->get()
-            ->keyBy(fn($item) => strtoupper(trim($item->sku)));
+            ->groupBy(function($item) use ($normalizeSku) {
+                return $normalizeSku($item->sku);
+            })
+            ->map(function($group) {
+                // Prefer record with non-empty stage value
+                $withStage = $group->firstWhere('stage', '!=', null);
+                if ($withStage && !empty(trim($withStage->stage))) {
+                    return $withStage;
+                }
+                return $group->first();
+            });
 
-        $readyToShipData = ReadyToShip::where('transit_inv_status', 0)->get();
+        $readyToShipData = ReadyToShip::where('transit_inv_status', 0)->whereNull('deleted_at')->get();
 
-        $readyToShipData->transform(function ($item) use ($supplierMapByParent, $shopifyImages, $productMaster, $forecastData) {
-            $sku = strtoupper(trim($item->sku));
+        $readyToShipData = $readyToShipData->filter(function ($item) use ($forecastData, $normalizeSku) {
+            $sku = $normalizeSku($item->sku);
+            // Only include SKUs where stage is 'r2s' in forecast_analysis
+            if ($forecastData->has($sku)) {
+                $forecast = $forecastData->get($sku);
+                $stage = strtolower(trim($forecast->stage ?? ''));
+                return $stage === 'r2s';
+            }
+            // If no forecast record found, exclude it
+            return false;
+        });
+
+        $readyToShipData->transform(function ($item) use ($supplierMapByParent, $shopifyImages, $productMaster, $forecastData, $normalizeSku) {
+            $sku = $normalizeSku($item->sku);
             $parent = strtoupper(trim($item->parent ?? ''));
             $item->supplier_names = $supplierMapByParent[$parent] ?? [];
 
@@ -83,9 +114,14 @@ class ReadyToShipController extends Controller
             // Get stage and nr from forecast_analysis
             $stage = '';
             $nr = '';
-            if (isset($forecastData[$sku])) {
-                $stage = $forecastData[$sku]->stage ?? '';
-                $nr = strtoupper(trim($forecastData[$sku]->nr ?? ''));
+            if ($forecastData->has($sku)) {
+                $forecast = $forecastData->get($sku);
+                $stage = $forecast->stage ?? '';
+                $nr = strtoupper(trim($forecast->nr ?? ''));
+                // Normalize stage value to lowercase
+                if (!empty($stage)) {
+                    $stage = strtolower(trim($stage));
+                }
             }
             $item->stage = $stage;
             $item->nr = $nr;
