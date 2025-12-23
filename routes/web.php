@@ -2670,6 +2670,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/running', 'googleShoppingAdsRunning')->name('google.shopping.running');
         Route::get('/google/shopping/over/utilize', 'googleOverUtilizeView')->name('google.shopping.over.utilize');
         Route::get('/google/shopping/under/utilize', 'googleUnderUtilizeView')->name('google.shopping.under.utilize');
+        Route::get('/google/shopping/utilized', 'googleShoppingUtilizedView')->name('google.shopping.utilized');
+        Route::get('/google/shopping/get-utilization-counts', 'getGoogleShoppingUtilizationCounts')->name('google.shopping.utilization.counts');
+        Route::get('/google/shopping/get-utilization-chart-data', 'getGoogleShoppingUtilizationChartData')->name('google.shopping.utilization.chart.data');
         Route::get('/google/shopping/report', 'googleShoppingAdsReport')->name('google.shopping.report');
         Route::get('/adv-shopify/gshopping/save-data', 'getAdvShopifyGShoppingSaveData')->name('adv-shopify.gshopping.save-data');
 
