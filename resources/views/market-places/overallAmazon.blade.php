@@ -5,6 +5,8 @@
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* ========== TABLE STRUCTURE ========== */
         .table-container {
@@ -12,31 +14,76 @@
             overflow-y: visible;
             position: relative;
             max-height: 600px;
+            border-radius: 18px;
+            box-shadow: 0 6px 24px rgba(37, 99, 235, 0.13);
+            border: 1px solid #e5e7eb;
+            background: #fff;
         }
 
         .custom-resizable-table {
             width: 100%;
             border-collapse: collapse;
             margin: 0;
+            border-radius: 18px;
+            box-shadow: 0 6px 24px rgba(37, 99, 235, 0.13);
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
         }
 
         .custom-resizable-table th,
         .custom-resizable-table td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
+            padding: 14px 10px;
+            text-align: center;
+            border-bottom: 1px solid #262626;
+            border-right: 1px solid #262626;
             position: relative;
             white-space: nowrap;
             overflow: visible !important;
+            transition: background 0.18s, color 0.18s;
         }
 
         .custom-resizable-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
+            background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
+            border-bottom: 1px solid #403f3f;
+            box-shadow: 0 4px 16px rgba(37, 99, 235, 0.10);
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 1.08rem;
+            letter-spacing: 0.02em;
             user-select: none;
             position: sticky;
             top: 0;
             z-index: 10;
+            padding: 16px 10px;
+        }
+
+        .custom-resizable-table th:hover {
+            background: #D8F3F3;
+            color: #2563eb;
+        }
+
+        .custom-resizable-table tbody tr {
+            background-color: #fff !important;
+            transition: background 0.18s;
+        }
+
+        .custom-resizable-table tbody tr:nth-child(even) {
+            background-color: #f8fafc !important;
+        }
+
+        .custom-resizable-table tbody tr:hover {
+            background-color: #dbeafe !important;
+        }
+
+        .custom-resizable-table td {
+            color: #22223b;
+            font-size: 1rem;
+            vertical-align: middle;
+        }
+
+        .custom-resizable-table td:focus {
+            outline: 1px solid #262626;
+            background: #e0eaff;
         }
 
         /* ========== RESIZABLE COLUMNS ========== */
@@ -990,12 +1037,182 @@
             display: none !important;
         }
 
+        /* ========== TABULATOR TABLE STYLING ========== */
+        .tabulator {
+            border: 1px solid #e5e7eb;
+            border-radius: 18px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .tabulator .tabulator-header {
+            background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
+            border-bottom: 1px solid #403f3f;
+            box-shadow: 0 4px 16px rgba(37, 99, 235, 0.10);
+        }
+
+        .tabulator .tabulator-header .tabulator-col {
+            background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
+            border-right: 1px solid #262626;
+            border-bottom: 1px solid #403f3f;
+            padding: 16px 10px;
+        }
+
+        .tabulator .tabulator-header .tabulator-col:hover {
+            background: #D8F3F3;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            padding: 0;
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 1.08rem;
+            letter-spacing: 0.02em;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            text-align: center;
+        }
+
+        .tabulator .tabulator-tableHolder {
+            background: #fff;
+        }
+
+        .tabulator .tabulator-tableHolder .tabulator-table {
+            background: #fff;
+        }
+
+        .tabulator .tabulator-row {
+            background-color: #fff !important;
+            border-bottom: 1px solid #262626;
+            transition: background 0.18s;
+        }
+
+        .tabulator .tabulator-row:nth-child(even) {
+            background-color: #f8fafc !important;
+        }
+
+        .tabulator .tabulator-row:hover {
+            background-color: #dbeafe !important;
+        }
+
+        .tabulator .tabulator-row .tabulator-cell {
+            border-right: 1px solid #262626;
+            padding: 14px 10px;
+            text-align: center;
+            color: #22223b;
+            font-size: 1rem;
+            vertical-align: middle;
+        }
+
+        .tabulator .tabulator-row .tabulator-cell:focus {
+            outline: 1px solid #262626;
+            background: #e0eaff;
+        }
+
+        .tabulator .tabulator-row .tabulator-cell:last-child {
+            border-right: none;
+        }
+
+        /* Left-align specific columns */
+        .tabulator .tabulator-row .tabulator-cell[data-field="(Child) sku"] {
+            text-align: left !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col[data-field="(Child) sku"] .tabulator-col-content .tabulator-col-title {
+            text-align: left !important;
+        }
+
+        /* Tabulator sort icons */
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-arrow {
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 6px solid #1e293b;
+        }
+
+        .tabulator .tabulator-header .tabulator-col.tabulator-col-sorter-element:hover {
+            background: #D8F3F3;
+            color: #2563eb;
+        }
+
+        /* Tabulator header filter */
+        .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 0.9rem;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        /* Parent row styling */
+        .tabulator .tabulator-row.parent-row {
+            background-color: #bde0ff !important;
+            font-weight: bold !important;
+        }
+
+        /* ========== TABULATOR PAGINATION ========== */
+        .tabulator .tabulator-footer {
+            background: #f4f7fa;
+            border-top: 1px solid #262626;
+            font-size: 1rem;
+            color: #4b5563;
+            padding: 10px;
+            min-height: 50px;
+        }
+
+        .tabulator .tabulator-footer:hover {
+            background: #e0eaff;
+        }
+
+        /* Pagination button styling */
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+            padding: 8px 16px;
+            margin: 0 4px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            border: 1px solid #dee2e6;
+            background: white;
+            cursor: pointer;
+        }
+
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+            background: #e0eaff;
+            color: #2563eb;
+            border-color: #2563eb;
+        }
+
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            font-size: 0.9rem;
+        }
+
+        /* Custom pagination label */
+        .tabulator-paginator label {
+            margin-right: 5px;
+            font-weight: 500;
+        }
+
         /*popup modal style end */
     </style>
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Amazon Analysis', 'sub_title' => 'Amazon'])
+    @include('layouts.shared/page-title', ['page_title' => 'Amz FBM Analytics', 'sub_title' => 'Amazon'])
 
     <div class="row">
         <div class="col-12">
@@ -1467,313 +1684,7 @@
                 </div>
 
                 <div class="table-container">
-                    <table class="custom-resizable-table" id="amazon-table">
-                        <thead>
-                            <tr>
-                                <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th>
-                                <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center sortable-header">
-                                            Parent <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div class="mt-1 dropdown-search-container">
-                                            <input type="text" class="form-control form-control-sm parent-search"
-                                                placeholder="Search parent..." id="parentSearch">
-                                            <div class="dropdown-search-results" id="parentSearchResults"></div>
-                                        </div>
-                                    </div>
-                                </th>
-                                <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center sortable">
-                                        <div class="d-flex align-items-center">
-                                            Sku <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div class="mt-1 dropdown-search-container">
-                                            <input type="text" class="form-control form-control-sm sku-search"
-                                                placeholder="Search SKU..." id="skuSearch">
-                                            <div class="dropdown-search-results" id="skuSearchResults"></div>
-                                        </div>
-                                    </div>
-                                </th>
-                                <th data-field="r&a" class="hide-column"
-                                    style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center">
-                                            R&A <span class="sort-arrow">↓</span>
-                                        </div>
-                                    </div>
-                                </th>
-                                <th data-field="inv" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            INV <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="inv-total">0</div>
-                                    </div>
-                                </th>
-                                <th data-field="ov_l30" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            OV L30 <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="ovl30-total">0</div>
-                                    </div>
-                                </th>
-                                <th data-field="ov_dil" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            OV DIL <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="ovdil-total">0%</div>
-                                    </div>
-                                </th>
-                                <th data-field="al_30" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            AL 30 <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="al30-total">0</div>
-                                    </div>
-                                </th>
-                                <th data-field="a_dil" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            A DIL <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="lDil-total">0%</div>
-                                    </div>
-                                </th>
-
-                                <th data-field="nr" style="vertical-align: middle; white-space: nowrap;">
-                                    NRL
-                                </th>
-
-                                <th data-field="nra" style="vertical-align: middle; white-space: nowrap;">
-                                    NRA
-                                </th>
-
-                                <th data-field="fba" style="vertical-align: middle; white-space: nowrap;">
-                                    FBA
-                                <th data-field="listed" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            LISTED <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="listed-total">0</div>
-                                    </div>
-                                </th>
-                                <th data-field="live" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            LIVE <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="live-total">0</div>
-                                    </div>
-                                </th>
-                                <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            VIEWS <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="views-total">0</div>
-                                    </div>
-                                </th>
-
-                                <th data-field="cvr" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            CVR <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="cvr-total">0%</div>
-                                    </div>
-                                </th>
-                                <th data-field="price"
-                                    style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
-                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                        <div class="d-flex align-items-center">
-                                            PRICE <span class="sort-arrow">↓</span>
-                                        </div>
-                                    </div>
-                                </th>
-                                <th data-field="comp"
-                                    style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center">
-                                            COMP <span class="sort-arrow">↓</span>
-                                        </div>
-                                    </div>
-                                </th>
-                                <th data-field="pft" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center" style="gap: 4px">
-                                            GPRFT 
-                                        </div>
-                                    </div>
-                                </th>
-                                <th data-field="gprft" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center" style="gap: 4px">
-                                            PFT 
-                                        </div>
-                                    </div>
-                                </th>
-
-                                <th data-field="profit" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center" style="gap: 4px">
-                                            TPRFT 
-                                        </div>
-                                    </div>
-                                </th>
-
-                                <th data-field="total_sales" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center">
-                                            Total Sales <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="total-sales-total"></div>
-                                    </div>
-                                </th>
-                                {{-- <th data-field="tpft" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center">
-                                            Total Profit <span class="sort-arrow">↓</span>
-                                        </div>
-                                    </div>
-                                </th> --}}
-                                <th data-field="spend" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center" style="gap: 4px">
-                                            AD Spend <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        {{-- <div class="metric-total" id="Tpft-total">0</div> --}}
-                                    </div>
-                                </th>
-
-                                <th data-field="ad cost/ pc" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center">
-                                            CPS<span class="sort-arrow">↓</span>
-                                        </div>
-                                    </div>
-                                </th>
-                                {{-- <th data-field="spend" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center" style="gap: 4px">
-                                            TPFT<span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="Tpft-total">0%</div>
-                                    </div>
-                                </th>
-
-
-                                <th data-field="spend" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center" style="gap: 4px">
-                                            Profit After AD <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="Tpft-total">0%</div>
-                                    </div>
-                                </th> --}}
-
-                                {{-- <th data-field="profit" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center" style="gap: 4px">
-                                                Sold Amount <span class="sort-arrow">↓</span>
-                                            </div> 
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="sold-amount-total">0%</div>
-                                        </div>
-                                    </th>
-
-                                    <th data-field="profit" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center" style="gap: 4px">
-                                                PFT Amount <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="profit-total">0%</div>
-                                        </div>
-                                    </th>
-
-                                    <th data-field="profit" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center" style="gap: 4px">
-                                                PFT > Ads <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="profit-total">0%</div>
-                                        </div>
-                                    </th> --}}
-
-                                <th data-field="roi" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center" style="gap: 4px">
-                                            ROI <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="roi-total">0%</div>
-                                    </div>
-                                </th>
-                                <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center" style="gap: 4px">
-                                            TACOS <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="tacos-total">0%</div>
-                                    </div>
-                                </th>
-
-                                <th data-field="S-PRICE" style="vertical-align: middle; white-space: nowrap;">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <div class="d-flex align-items-center" style="gap: 4px">
-                                            S-PRICE <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                        <div class="metric-total" id="pft-total">0%</div>
-                                    </div>
-                                </th>
-
-                                {{-- <th data-field="S-PROFIT" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center" style="gap: 4px">
-                                                S-PROFIT <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th>
-
-                                    <th data-field="S-ROI" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center" style="gap: 4px">
-                                                S-ROI <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
-                                        </div>
-                                    </th> --}}
-
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Data will be populated by JavaScript -->
-                        </tbody>
-                    </table>
+                    <div id="amazon-table"></div>
                 </div>
 
                 <!-- Pagination controls -->
@@ -1827,6 +1738,7 @@
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <!--for popup modal script-->
     <script>
         flatpickr("#duration", {
@@ -1999,6 +1911,7 @@
                 direction: 1
             };
             let tableData = [];
+            let table = null; // Tabulator table instance
             let filteredData = [];
             let isResizing = false;
             let isLoading = false;
@@ -2010,6 +1923,10 @@
             let currentParentIndex = -1; // -1 means showing all products
             let uniqueParents = [];
             let isPlaying = false;
+
+            // Expandable rows system
+            let childDataMap = {}; // Store child data grouped by parent SKU
+            let expandedParents = new Set(); // Track which parents are expanded
 
             // Define status indicator fields for different modal types
             const statusIndicatorFields = {
@@ -2414,23 +2331,16 @@
             // Initialize everything
             function initTable() {
                 loadData().then(() => {
-                    // Hide R&A column initially
-                    $('th[data-field="r&a"], td:nth-child(4)').addClass('hide-column');
-                    renderTable();
-                    initResizableColumns();
-                    initSorting();
-                    initPagination();
-                    initSearch();
-                    initColumnToggle();
-                    initFilters();
+                    initTabulatorTable();
                     calculateTotals();
                     initEnhancedDropdowns();
                     initManualDropdowns();
                     initModalTriggers();
                     initPlaybackControls();
-                    initRAEditHandlers(); // Add this line
+                    initRAEditHandlers();
                     initNRSelectChangeHandler2();
                     initNRSelectChangeHandler();
+                    updateZeroSoldCount();
                 });
             }
 
@@ -2533,8 +2443,6 @@
                                     valueJson.Live) : 0;
 
                                 return {
-                                    sl_no: index + 1,
-                                    'SL No.': item['SL No.'] || index + 1,
                                     Parent: item.Parent || item.parent || item.parent_asin ||
                                         item.Parent_ASIN || '(No Parent)',
                                     '(Child) sku': item['(Child) sku'] || '',
@@ -2575,7 +2483,37 @@
                             });
 
                             // console.log('Data loaded successfully:', tableData);
-                            filteredData = [...tableData];
+                            
+                            // Group data by parent/child
+                            const parentRows = [];
+                            childDataMap = {};
+                            
+                            tableData.forEach(item => {
+                                if (item.is_parent) {
+                                    parentRows.push(item);
+                                    // Initialize child array for this parent
+                                    const parentSku = item['(Child) sku'];
+                                    childDataMap[parentSku] = [];
+                                }
+                            });
+                            
+                            // Group child rows by parent SKU
+                            tableData.forEach(item => {
+                                if (!item.is_parent && item.Parent) {
+                                    // Find the parent SKU that matches this item's Parent field
+                                    const parentRow = parentRows.find(p => p['(Child) sku'] === item.Parent || p.Parent === item.Parent);
+                                    if (parentRow) {
+                                        const parentSku = parentRow['(Child) sku'];
+                                        if (!childDataMap[parentSku]) {
+                                            childDataMap[parentSku] = [];
+                                        }
+                                        childDataMap[parentSku].push(item);
+                                    }
+                                }
+                            });
+                            
+                            // Show only parent rows initially
+                            filteredData = [...parentRows];
 
                         }
                     },
@@ -2599,8 +2537,6 @@
                     const liveVal = valueJson.Live !== undefined ? parseInt(valueJson.Live) : 0;
 
                     return {
-                        sl_no: index + 1, // Proper serial number after filtering
-                        'SL No.': index + 1,
                         Parent: item.Parent || item.parent || item.parent_asin ||
                             item.Parent_ASIN || '(No Parent)',
                         '(Child) sku': item['(Child) sku'] || '',
@@ -2639,7 +2575,39 @@
                     };
                 });
 
-                filteredData = [...tableData];
+                // Group data by parent/child
+                const parentRows = [];
+                childDataMap = {};
+                
+                tableData.forEach(item => {
+                    if (item.is_parent) {
+                        parentRows.push(item);
+                        // Initialize child array for this parent
+                        const parentSku = item['(Child) sku'];
+                        childDataMap[parentSku] = [];
+                    }
+                });
+                
+                // Group child rows by parent SKU - match by Parent field
+                tableData.forEach(item => {
+                    if (!item.is_parent) {
+                        // Find parent by matching Parent field with parent SKU or Parent field
+                        const parentRow = parentRows.find(p => {
+                            const parentSku = p['(Child) sku'];
+                            return item.Parent === parentSku || item.Parent === p.Parent;
+                        });
+                        if (parentRow) {
+                            const parentSku = parentRow['(Child) sku'];
+                            if (!childDataMap[parentSku]) {
+                                childDataMap[parentSku] = [];
+                            }
+                            childDataMap[parentSku].push(item);
+                        }
+                    }
+                });
+                
+                // Show only parent rows initially
+                filteredData = [...parentRows];
             }
 
             // After tableData is loaded and filteredData is set, update the zero-sold count
@@ -2696,8 +2664,611 @@
                     });
             }
 
-            // Render table with current data
+            // Initialize Tabulator table
+            function initTabulatorTable() {
+                if (table) {
+                    table.destroy();
+                }
+
+                const getDilColor = (value) => {
+                    const percent = parseFloat(value) * 100;
+                    if (percent < 16.66) return 'red';
+                    if (percent >= 16.66 && percent < 25) return 'yellow';
+                    if (percent >= 25 && percent < 50) return 'green';
+                    return 'pink';
+                };
+
+                const getPftColor = (value) => {
+                    const percent = parseFloat(value);
+                    if (percent < 10) return 'red';
+                    if (percent >= 10 && percent < 15) return 'yellow';
+                    if (percent >= 15 && percent < 20) return 'blue';
+                    if (percent >= 20 && percent <= 40) return 'green';
+                    return 'pink';
+                };
+
+                const getRoiColor = (value) => {
+                    const percent = parseFloat(value);
+                    if (percent >= 0 && percent < 50) return 'red';
+                    if (percent >= 50 && percent < 75) return 'yellow';
+                    if (percent >= 75 && percent <= 100) return 'green';
+                    return 'pink';
+                };
+
+                const getTacosColor = (value) => {
+                    const percent = parseFloat(value) * 100;
+                    if (percent <= 5) return 'pink';
+                    if (percent > 5 && percent <= 10) return 'green';
+                    if (percent > 10 && percent <= 15) return 'blue';
+                    if (percent > 15 && percent <= 20) return 'yellow';
+                    return 'red';
+                };
+
+                const getCvrColor = (value) => {
+                    const percent = parseFloat(value) * 100;
+                    if (percent <= 7) return 'red';
+                    if (percent > 7 && percent <= 13) return 'green';
+                    return 'pink';
+                };
+
+                // Filter to show only parent rows initially
+                const parentOnlyData = filteredData.filter(item => item.is_parent);
+                
+                table = new Tabulator("#amazon-table", {
+                    data: parentOnlyData,
+                    layout: "fitDataStretch",
+                    pagination: true,
+                    paginationMode: "local",
+                    paginationSize: 50,
+                    paginationSizeSelector: [10, 25, 50, 100, 200],
+                    paginationCounter: "rows",
+                    langs: {
+                        "default": {
+                            "pagination": {
+                                "page_size": "Show",
+                                "first": "First",
+                                "first_title": "First Page",
+                                "last": "Last",
+                                "last_title": "Last Page",
+                                "prev": "Prev",
+                                "prev_title": "Prev Page",
+                                "next": "Next",
+                                "next_title": "Next Page",
+                                "counter": {
+                                    "showing": "Showing",
+                                    "of": "of",
+                                    "rows": "rows"
+                                }
+                            }
+                        }
+                    },
+                    rowFormatter: function(row) {
+                        const data = row.getData();
+                        if (data.is_parent) {
+                            row.getElement().style.backgroundColor = "#bde0ff";
+                            row.getElement().style.fontWeight = "bold";
+                            row.getElement().classList.add("parent-row");
+                        } else {
+                            // Child rows - normal styling, no padding that misaligns columns
+                            row.getElement().style.backgroundColor = "";
+                        }
+                    },
+                    columnHeaderVertAlign: "middle",
+                    headerSort: true,
+                    resizableColumns: true,
+                    movableColumns: false,
+                    columns: [
+                        {
+                            title: "SKU",
+                            field: "(Child) sku",
+                            headerFilter: "input",
+                            headerFilterPlaceholder: "Search SKU...",
+                            hozAlign: "left",
+                            width: 200,
+                            frozen: true,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const sku = cell.getValue();
+                                const imageUrl = rowData.raw_data?.image_path || '';
+                                const buyerLink = rowData.raw_data?.['AMZ LINK BL'];
+                                const sellerLink = rowData.raw_data?.['AMZ LINK SL'];
+
+                                function isValidUrl(url) {
+                                    try {
+                                        return Boolean(url && new URL(url));
+                                    } catch (e) {
+                                        return false;
+                                    }
+                                }
+
+                                if (rowData.is_parent) {
+                                    const parentSku = rowData['(Child) sku'];
+                                    const isExpanded = expandedParents.has(parentSku);
+                                    const hasChildren = childDataMap[parentSku] && childDataMap[parentSku].length > 0;
+                                    
+                                    let expandIcon = '';
+                                    if (hasChildren) {
+                                        expandIcon = `<i class="fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'} expand-icon" 
+                                           style="cursor: pointer; color: #2563eb; font-size: 12px; margin-right: 8px; vertical-align: middle;"
+                                           data-parent-sku="${parentSku}"></i>`;
+                                    }
+                                    
+                                    return `${expandIcon}<strong>${sku}</strong>`;
+                                }
+
+                                if (buyerLink || sellerLink || imageUrl) {
+                                    return `
+                                        <div class="sku-tooltip-container" style="position:relative;display:inline-block;">
+                                            <span class="sku-text">${sku}</span>
+                                            <div class="sku-tooltip" style="display:none;">
+                                                ${imageUrl ? `<img src="${imageUrl}" alt="SKU Image" style="max-width:120px;max-height:120px;border-radius:6px;display:block;margin:0 auto 6px auto;">` : ''}
+                                                <div class="sku-link">
+                                                    ${buyerLink !== undefined ? (isValidUrl(buyerLink) ? `<a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a>` : 'link invalid') : ''}
+                                                </div>
+                                                <div class="sku-link">
+                                                    ${sellerLink !== undefined ? (isValidUrl(sellerLink) ? `<a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a>` : 'link invalid') : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+                                return sku;
+                            }
+                        },
+                        {
+                            title: "R&A",
+                            field: "R&A",
+                            hozAlign: "center",
+                            width: 80,
+                            visible: isNavigationActive,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const raValue = rowData['R&A'];
+                                if (raValue !== undefined && raValue !== null && raValue !== '') {
+                                    const checked = raValue === true || raValue === 'true' || raValue === '1';
+                                    return `
+                                        <div class="ra-edit-container d-flex align-items-center justify-content-center">
+                                            <input type="checkbox" class="ra-checkbox" ${checked ? 'checked' : ''} disabled data-original-value="${raValue}">
+                                            <i class="fas fa-pen edit-icon ml-2 text-primary" style="cursor:pointer;" title="Edit R&A"></i>
+                                        </div>
+                                    `;
+                                }
+                                return '&nbsp;';
+                            }
+                        },
+                        {
+                            title: "INV",
+                            field: "INV",
+                            hozAlign: "center",
+                            width: 80,
+                            sorter: "number",
+                            bottomCalc: function(values) {
+                                const total = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+                                $('#inv-total').text(total.toLocaleString());
+                                return total.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "OV L30",
+                            field: "L30",
+                            hozAlign: "center",
+                            width: 80,
+                            sorter: "number",
+                            bottomCalc: function(values) {
+                                const total = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+                                $('#ovl30-total').text(total.toLocaleString());
+                                return total.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "OV DIL",
+                            field: "ov_dil",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const ovDil = parseFloat(cell.getValue()) || 0;
+                                const color = getDilColor(ovDil);
+                                const rawData = rowData.raw_data || {};
+                                return `
+                                    <span class="dil-percent-value ${color}">${Math.round(ovDil * 100)}%</span>
+                                    <span class="text-info tooltip-icon wmpnm-view-trigger" 
+                                        data-bs-toggle="tooltip" 
+                                        data-bs-placement="left" 
+                                        title="WMPNM View"
+                                        data-item='${JSON.stringify(rawData)}'
+                                        style="cursor:pointer; margin-left:5px;">W</span>
+                                `;
+                            },
+                            bottomCalc: function(values, data) {
+                                const invTotal = data.reduce((sum, row) => sum + (parseFloat(row.INV) || 0), 0);
+                                const l30Total = data.reduce((sum, row) => sum + (parseFloat(row.L30) || 0), 0);
+                                const dilTotal = invTotal > 0 ? (l30Total / invTotal) * 100 : 0;
+                                $('#ovdil-total').text(Math.round(dilTotal) + '%');
+                                return Math.round(dilTotal) + '%';
+                            }
+                        },
+                        {
+                            title: "AL 30",
+                            field: "A L30",
+                            hozAlign: "center",
+                            width: 80,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const aL30 = cell.getValue();
+                                const l60 = rowData.units_ordered_l60 || 0;
+                                return `
+                                    <div class="sku-tooltip-container">
+                                        <span class="sku-text">${aL30}</span>
+                                        <div class="sku-tooltip">
+                                            <div class="sku-link"><strong>L60:</strong> ${l60}</div>
+                                            <div class="sku-link"><strong>L7:</strong></div>
+                                        </div>
+                                    </div>
+                                `;
+                            },
+                            bottomCalc: function(values) {
+                                const total = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+                                $('#al30-total').text(total.toLocaleString());
+                                return total.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "A DIL",
+                            field: "A Dil%",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const aDil = parseFloat(cell.getValue()) || 0;
+                                const color = getDilColor(aDil);
+                                return `<span class="dil-percent-value ${color}">${Math.round(aDil * 100)}%</span>`;
+                            },
+                            bottomCalc: function(values, data) {
+                                const invTotal = data.reduce((sum, row) => sum + (parseFloat(row.INV) || 0), 0);
+                                const aL30Total = data.reduce((sum, row) => sum + (parseFloat(row['A L30']) || 0), 0);
+                                const dilTotal = invTotal > 0 ? (aL30Total / invTotal) * 100 : 0;
+                                $('#lDil-total').text(Math.round(dilTotal) + '%');
+                                return Math.round(dilTotal) + '%';
+                            }
+                        },
+                        {
+                            title: "NRL",
+                            field: "NRL",
+                            hozAlign: "center",
+                            width: 100,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const currentNR = rowData.NRL === 'RL' || rowData.NRL === 'NRL' || rowData.NRL === 'LATER' ? rowData.NRL : 'RL';
+                                const bgColor = currentNR === 'NRL' ? '#dc3545' : '#28a745';
+                                const textColor = '#ffffff';
+                                return `
+                                    <select class="form-select form-select-sm nr-select" style="min-width: 100px; background-color: ${bgColor}; color: ${textColor};" data-nr-type="NRL" data-sku="${rowData['(Child) sku']}">
+                                        <option value="RL" ${currentNR === 'RL' ? 'selected' : ''}>RL</option>
+                                        <option value="NRL" ${currentNR === 'NRL' ? 'selected' : ''}>NRL</option>
+                                    </select>
+                                `;
+                            }
+                        },
+                        {
+                            title: "NRA",
+                            field: "NRA",
+                            hozAlign: "center",
+                            width: 100,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const currentNR = rowData.NRA === 'RA' || rowData.NRA === 'NRA' || rowData.NRA === 'LATER' ? rowData.NRA : 'RA';
+                                const bgColor = currentNR === 'NRA' ? '#dc3545' : '#28a745';
+                                const textColor = '#ffffff';
+                                return `
+                                    <select class="form-select form-select-sm nr-select" style="min-width: 100px; background-color: ${bgColor}; color: ${textColor};" data-nr-type="NRA" data-sku="${rowData['(Child) sku']}">
+                                        <option value="RA" ${currentNR === 'RA' ? 'selected' : ''}>RA</option>
+                                        <option value="NRA" ${currentNR === 'NRA' ? 'selected' : ''}>NRA</option>
+                                    </select>
+                                `;
+                            }
+                        },
+                        {
+                            title: "FBA",
+                            field: "FBA",
+                            hozAlign: "center",
+                            width: 80
+                        },
+                        {
+                            title: "LISTED",
+                            field: "listed",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            bottomCalc: function(values) {
+                                const total = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+                                $('#listed-total').text(total.toLocaleString());
+                                return total.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "LIVE",
+                            field: "live",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            bottomCalc: function(values) {
+                                const total = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+                                $('#live-total').text(total.toLocaleString());
+                                return total.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "VIEWS",
+                            field: "Sess30",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            bottomCalc: function(values) {
+                                const total = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+                                $('#views-total').text(total.toLocaleString());
+                                return total.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "CVR",
+                            field: "SCVR",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const cvr = parseFloat(cell.getValue()) || 0;
+                                const color = getCvrColor(cvr);
+                                return `<span class="dil-percent-value ${color}">${Math.round(cvr * 100)}%</span>`;
+                            },
+                            bottomCalc: function(values, data) {
+                                const total = data.reduce((sum, row) => sum + (parseFloat(row.SCVR) || 0), 0);
+                                const avg = data.length > 0 ? total / data.length : 0;
+                                $('#cvr-total').text(Math.round(avg * 100) + '%');
+                                return Math.round(avg * 100) + '%';
+                            }
+                        },
+                        {
+                            title: "PRICE",
+                            field: "price",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number"
+                        },
+                        {
+                            title: "COMP",
+                            field: "COMP",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number"
+                        },
+                        {
+                            title: "GPRFT",
+                            field: "PFT_percentage",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const pft = parseFloat(cell.getValue()) || 0;
+                                const color = getPftColor(pft);
+                                return `<span class="dil-percent-value ${color}">${pft.toFixed(1)}%</span>`;
+                            }
+                        },
+                        {
+                            title: "PFT",
+                            field: "PFT_percentage",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const pft = parseFloat(cell.getValue()) || 0;
+                                const color = getPftColor(pft);
+                                return `<span class="dil-percent-value ${color}">${pft.toFixed(1)}%</span>`;
+                            }
+                        },
+                        {
+                            title: "TPRFT",
+                            field: "TPFT",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number"
+                        },
+                        {
+                            title: "Total Sales",
+                            field: "total_sales",
+                            hozAlign: "center",
+                            width: 120,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const sales = parseFloat(cell.getValue()) || 0;
+                                return sales.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "AD Spend",
+                            field: "Spend",
+                            hozAlign: "center",
+                            width: 120,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const spend = parseFloat(cell.getValue()) || 0;
+                                return spend.toLocaleString();
+                            }
+                        },
+                        {
+                            title: "CPS",
+                            field: "ad cost/ pc",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number"
+                        },
+                        {
+                            title: "ROI",
+                            field: "ROI_percentage",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const roi = parseFloat(cell.getValue()) || 0;
+                                const color = getRoiColor(roi);
+                                return `<span class="dil-percent-value ${color}">${roi.toFixed(1)}%</span>`;
+                            },
+                            bottomCalc: function(values, data) {
+                                const total = data.reduce((sum, row) => sum + (parseFloat(row.ROI_percentage) || 0), 0);
+                                const avg = data.length > 0 ? total / data.length : 0;
+                                $('#roi-total').text(Math.round(avg) + '%');
+                                return Math.round(avg) + '%';
+                            }
+                        },
+                        {
+                            title: "TACOS",
+                            field: "Tacos30",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number",
+                            formatter: function(cell) {
+                                const tacos = parseFloat(cell.getValue()) || 0;
+                                const color = getTacosColor(tacos);
+                                return `<span class="dil-percent-value ${color}">${Math.round(tacos * 100)}%</span>`;
+                            },
+                            bottomCalc: function(values, data) {
+                                const total = data.reduce((sum, row) => sum + (parseFloat(row.Tacos30) || 0), 0);
+                                const avg = data.length > 0 ? total / data.length : 0;
+                                $('#tacos-total').text(Math.round(avg * 100) + '%');
+                                return Math.round(avg * 100) + '%';
+                            }
+                        },
+                        {
+                            title: "S-PRICE",
+                            field: "SPRICE",
+                            hozAlign: "center",
+                            width: 100,
+                            sorter: "number"
+                        }
+                    ]
+                });
+
+                // Setup event handlers after table is created
+                setupTabulatorEventHandlers();
+            }
+
+            function setupTabulatorEventHandlers() {
+                // Setup search
+                $('#search-input').on('keyup', function() {
+                    const value = $(this).val().toLowerCase();
+                    if (table) {
+                        table.setFilter(function(data) {
+                            return Object.values(data).some(val => 
+                                String(val).toLowerCase().includes(value)
+                            );
+                        });
+                    }
+                });
+
+                // Setup R&A edit handlers
+                $(document).on('click', '.edit-icon', function() {
+                    const $checkbox = $(this).siblings('.ra-checkbox');
+                    if ($checkbox.prop('disabled')) {
+                        $checkbox.prop('disabled', false);
+                        $(this).removeClass('fa-pen').addClass('fa-save');
+                    } else {
+                        // Save logic here
+                        $checkbox.prop('disabled', true);
+                        $(this).removeClass('fa-save').addClass('fa-pen');
+                    }
+                });
+
+                // Setup expand/collapse functionality
+                $(document).on('click', '.expand-icon', function(e) {
+                    e.stopPropagation();
+                    const parentSku = $(this).data('parent-sku');
+                    const $icon = $(this);
+                    const isExpanded = expandedParents.has(parentSku);
+                    
+                    if (isExpanded) {
+                        // Collapse - remove child rows
+                        collapseParent(parentSku, $icon);
+                    } else {
+                        // Expand - add child rows
+                        expandParent(parentSku, $icon);
+                    }
+                });
+            }
+
+            function expandParent(parentSku, $icon) {
+                const children = childDataMap[parentSku] || [];
+                if (children.length === 0) return;
+
+                // Find the parent row
+                const parentRows = table.getRows().filter(row => {
+                    const data = row.getData();
+                    return data.is_parent && data['(Child) sku'] === parentSku;
+                });
+
+                if (parentRows.length === 0) return;
+
+                const parentRow = parentRows[0];
+                
+                // Check if already expanded
+                if (expandedParents.has(parentSku)) {
+                    return;
+                }
+                
+                // Mark children with parent reference for easier removal
+                const childrenWithParent = children.map(child => ({
+                    ...child,
+                    _parentSku: parentSku
+                }));
+
+                // Add ALL child rows after parent (add in reverse order so they appear in correct order)
+                // Use a reference to the current row position
+                let insertAfterRow = parentRow;
+                childrenWithParent.forEach((child) => {
+                    const newRow = table.addRow(child, false, insertAfterRow);
+                    insertAfterRow = newRow; // Update reference for next insertion
+                });
+
+                // Update icon - need to redraw to update all icons
+                table.redraw(true);
+                expandedParents.add(parentSku);
+            }
+
+            function collapseParent(parentSku, $icon) {
+                // Find and remove all child rows for this parent
+                const rows = table.getRows();
+                
+                // Get all child rows that belong to this parent
+                const childRows = rows.filter(row => {
+                    const data = row.getData();
+                    return !data.is_parent && data._parentSku === parentSku;
+                });
+
+                // Remove child rows (in reverse order to maintain indices)
+                childRows.reverse().forEach(childRow => {
+                    childRow.delete();
+                });
+
+                // Update icon - need to redraw to update all icons
+                table.redraw(true);
+                expandedParents.delete(parentSku);
+            }
+
+            // Render table with current data (kept for backward compatibility, but will use Tabulator)
             function renderTable() {
+                if (table) {
+                    // Filter to show only parent rows
+                    const parentOnlyData = filteredData.filter(item => item.is_parent);
+                    table.replaceData(parentOnlyData);
+                    // Clear expanded state when data is refreshed
+                    expandedParents.clear();
+                    return;
+                }
+                
+                // Fallback to old rendering if Tabulator not initialized
                 const $tbody = $('#amazon-table tbody');
                 $tbody.empty();
 
@@ -2775,7 +3346,6 @@
                         return 'pink';
                     };
 
-                    $row.append($('<td>').text(item['SL No.']));
                     $row.append($('<td>').text(item.Parent));
 
                     // SKU with hover content for links
