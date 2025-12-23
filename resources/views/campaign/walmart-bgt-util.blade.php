@@ -196,6 +196,10 @@
                                         <div>CORRECTLY UTILIZED</div>
                                         <div id="correctly-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
                                     </button>
+                                    <button id="show-all-btn" class="btn btn-sm btn-secondary" style="min-width: 150px; margin-left: 10px;">
+                                        <i class="fa fa-refresh me-1"></i>
+                                        <div>SHOW ALL</div>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -222,6 +226,10 @@
                             <!-- Stats -->
                             <div class="col-md-6">
                                 <div class="d-flex gap-2 justify-content-end align-items-center">
+                                    <button id="export-btn" class="btn btn-success btn-md">
+                                        <i class="fa fa-download me-1"></i>
+                                        Export
+                                    </button>
                                     <button id="7ub-chart-btn" class="btn btn-primary btn-md">
                                         <i class="fa fa-chart-line me-1"></i>
                                         7UB
@@ -998,6 +1006,18 @@
 
             document.body.style.zoom = "78%";
 
+            // Initialize Show All button as active (no filter on page load)
+            const showAllBtn = document.getElementById("show-all-btn");
+            if (showAllBtn) {
+                showAllBtn.classList.remove('btn-secondary');
+                showAllBtn.classList.add('btn-primary');
+            }
+
+            // Export Button Handler
+            document.getElementById("export-btn").addEventListener("click", function() {
+                exportTableData();
+            });
+
             // 7UB Chart Button Handler
             document.getElementById("7ub-chart-btn").addEventListener("click", function() {
                 show7ubChart();
@@ -1026,6 +1046,11 @@
                 } else {
                     filterByUtilization('green');
                 }
+            });
+
+            // Show All Button Handler
+            document.getElementById("show-all-btn").addEventListener("click", function() {
+                filterByUtilization(null); // Clear filter to show all campaigns
             });
         });
 
@@ -1128,11 +1153,113 @@
                 });
         }
 
+        function exportTableData() {
+            if (!window.table) {
+                alert('Table not initialized');
+                return;
+            }
+
+            // Get filtered/visible data
+            const data = window.table.getData("active");
+            
+            if (!data || data.length === 0) {
+                alert('No data to export');
+                return;
+            }
+
+            // Prepare data for export - get visible columns only
+            const visibleColumns = window.table.getColumns().filter(col => col.isVisible());
+            const headers = visibleColumns.map(col => col.getDefinition().title || col.getField());
+            
+            // Create worksheet data
+            const wsData = [];
+            
+            // Add headers
+            wsData.push(headers);
+            
+            // Add rows
+            data.forEach(row => {
+                const rowData = [];
+                visibleColumns.forEach(col => {
+                    const field = col.getField();
+                    let value = row[field];
+                    
+                    // Format values based on column type
+                    if (value === null || value === undefined) {
+                        value = '';
+                    } else if (typeof value === 'number') {
+                        value = value;
+                    } else {
+                        value = String(value);
+                    }
+                    
+                    rowData.push(value);
+                });
+                wsData.push(rowData);
+            });
+            
+            // Create workbook
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            
+            // Set column widths
+            const colWidths = visibleColumns.map(() => ({ wch: 15 }));
+            ws['!cols'] = colWidths;
+            
+            // Add worksheet to workbook
+            XLSX.utils.book_append_sheet(wb, ws, 'Walmart BGT Util');
+            
+            // Generate filename with timestamp
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+            const filename = `walmart-bgt-util-${timestamp}.xlsx`;
+            
+            // Download file
+            XLSX.writeFile(wb, filename);
+        }
+
         function filterByUtilization(type) {
             // Set the current utilization filter
             window.currentUtilizationFilter = type;
             
             console.log('Filter changed to:', type, 'Current filter value:', window.currentUtilizationFilter);
+            
+            // Update button visual states
+            const overBtn = document.getElementById("over-utilized-btn");
+            const underBtn = document.getElementById("under-utilized-btn");
+            const correctlyBtn = document.getElementById("correctly-utilized-btn");
+            const showAllBtn = document.getElementById("show-all-btn");
+            
+            // Reset all button styles
+            [overBtn, underBtn, correctlyBtn].forEach(btn => {
+                btn.style.opacity = '1';
+                btn.style.transform = 'scale(1)';
+                btn.style.boxShadow = 'none';
+            });
+            
+            // Highlight active filter button or show all button
+            if (type === 'pink') {
+                overBtn.style.opacity = '1';
+                overBtn.style.transform = 'scale(1.05)';
+                overBtn.style.boxShadow = '0 4px 12px rgba(255, 1, 208, 0.5)';
+                showAllBtn.classList.remove('btn-primary');
+                showAllBtn.classList.add('btn-secondary');
+            } else if (type === 'red') {
+                underBtn.style.opacity = '1';
+                underBtn.style.transform = 'scale(1.05)';
+                underBtn.style.boxShadow = '0 4px 12px rgba(255, 39, 39, 0.5)';
+                showAllBtn.classList.remove('btn-primary');
+                showAllBtn.classList.add('btn-secondary');
+            } else if (type === 'green') {
+                correctlyBtn.style.opacity = '1';
+                correctlyBtn.style.transform = 'scale(1.05)';
+                correctlyBtn.style.boxShadow = '0 4px 12px rgba(40, 167, 69, 0.5)';
+                showAllBtn.classList.remove('btn-primary');
+                showAllBtn.classList.add('btn-secondary');
+            } else {
+                // No filter active - highlight show all button
+                showAllBtn.classList.remove('btn-secondary');
+                showAllBtn.classList.add('btn-primary');
+            }
             
             // Refresh the table filter - use refreshFilters which preserves other filters
             if (window.table && window.refreshFilters) {

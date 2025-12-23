@@ -709,6 +709,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/doba/saveLowProfit', [DobaController::class, 'saveLowProfit']);
     Route::post('/update-doba-pricing', [DobaController::class, 'updatePrice']);
     Route::get('/doba-pricing-cvr', [DobaController::class, 'dobaPricingCVR']);
+    Route::get('/doba-tabulator', [DobaController::class, 'dobaTabulatorView']);
     Route::post('/doba/save-sprice', [DobaController::class, 'saveSpriceToDatabase'])->name('doba.save-sprice');
     Route::post('/update-all-doba-skus', [DobaController::class, 'updateAllDobaSkus']);
     Route::post('/doba-analytics/import', [DobaController::class, 'importDobaAnalytics'])->name('doba.analytics.import');
@@ -1413,6 +1414,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //data save routes
     Route::post('/product_master/store', [ProductMasterController::class, 'store'])->name('product_master.store');
+    Route::post('/product_master/update-field', [ProductMasterController::class, 'updateField'])->name('product_master.update-field');
+    Route::post('/product-master/import', [ProductMasterController::class, 'import'])->name('product_master.import');
     Route::post('/product-master/batch-update', [ProductMasterController::class, 'batchUpdate']);
     Route::post('/channel_master/store', [ChannelMasterController::class, 'store'])->name('channel_master.store');
     Route::post('/channel-master/update-sheet-link', [ChannelMasterController::class, 'updateSheetLink']);

@@ -61,6 +61,34 @@
             font-style: italic;
         }
 
+        .table-responsive thead select.missing-data-filter {
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            color: #333;
+            transition: all 0.2s;
+        }
+
+        .table-responsive thead select.missing-data-filter:focus {
+            background-color: white;
+            border-color: #1a56b7;
+            box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.3);
+            outline: none;
+        }
+
+        .table-responsive thead select.missing-data-filter option[value="missing"]:checked {
+            background-color: #fecaca;
+            color: #dc2626;
+            font-weight: bold;
+        }
+
+        .table-responsive thead select.missing-data-filter[value="missing"] {
+            background-color: #fecaca;
+            color: #dc2626;
+            font-weight: bold;
+            border-color: #ef4444;
+        }
+
         .table-responsive tbody td {
             padding: 12px 18px;
             vertical-align: middle;
@@ -502,6 +530,35 @@
             padding: 2px 8px;
             border-radius: 12px;
         }
+
+        /* Red M indicator for missing data - now a button */
+        .missing-data-indicator {
+            display: inline-block;
+            color: #dc3545;
+            font-weight: bold;
+            font-size: 14px;
+            background-color: #ffebee;
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid #dc3545;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .missing-data-indicator:hover {
+            background-color: #dc3545;
+            color: white;
+            transform: scale(1.1);
+            box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+        }
+
+        .missing-data-indicator:active {
+            transform: scale(0.95);
+        }
+
+        .missing-data-cell {
+            position: relative;
+        }
     </style>
 @endsection
 
@@ -598,9 +655,13 @@
                             <i class="fas fa-file-excel me-1"></i> Download Excel
                         </button>
 
-                        <button id="missingImagesBtn" class="btn btn-success ms-2">
-                            <i class="bi bi-image"></i> Show Missing Data
+                        <button type="button" class="btn btn-info ms-2" data-bs-toggle="modal" data-bs-target="#importExcelModal">
+                            <i class="fas fa-file-upload me-1"></i> Import Missing Data
                         </button>
+
+                        {{-- <button id="missingImagesBtn" class="btn btn-success ms-2">
+                            <i class="bi bi-image"></i> Show Missing Data
+                        </button> --}}
 
                         <button type="button" class="btn btn-success ms-2" id="viewArchivedBtn">
                             <i class="fas fa-box-archive me-1"></i> View Archived Products
@@ -1222,6 +1283,90 @@
                         </div>
                     </div>
 
+                    <!-- Missing Data Entry Modal -->
+                    <div class="modal fade" id="missingDataModal" tabindex="-1" aria-labelledby="missingDataModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white;">
+                                    <h5 class="modal-title" id="missingDataModalLabel">
+                                        <i class="fas fa-edit me-2"></i>Enter Missing Data
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">SKU:</label>
+                                        <p class="form-control-plaintext" id="missingDataSku"></p>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold" id="missingDataFieldLabel">Field:</label>
+                                        <p class="form-control-plaintext" id="missingDataField"></p>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="missingDataValue" class="form-label fw-bold">Enter Value:</label>
+                                        <input type="text" class="form-control" id="missingDataValue" placeholder="Enter value here...">
+                                        <input type="file" class="form-control" id="missingDataFile" accept="image/*" style="display: none;">
+                                        <small class="form-text text-muted" id="missingDataHint"></small>
+                                        <div id="missingDataImagePreview" class="mt-2" style="display: none;">
+                                            <img id="missingDataPreviewImg" src="" alt="Preview" style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 1px solid #ddd;">
+                                        </div>
+                                    </div>
+                                    <div id="missingDataError" class="alert alert-danger" style="display: none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-danger" id="saveMissingDataBtn">
+                                        <i class="fas fa-save me-1"></i>Save
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Import Excel Modal -->
+                    <div class="modal fade" id="importExcelModal" tabindex="-1" aria-labelledby="importExcelModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                                    <h5 class="modal-title" id="importExcelModalLabel">
+                                        <i class="fas fa-upload me-2"></i>Import Product Master Data
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Instructions:</strong>
+                                        <ol class="mb-0 mt-2">
+                                            <li>Export the Excel file using the "Download Excel" button</li>
+                                            <li>Fill in the missing data (only missing fields will be updated)</li>
+                                            <li>Upload the completed file</li>
+                                        </ol>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="importFile" class="form-label fw-bold">Select Excel File</label>
+                                        <input type="file" class="form-control" id="importFile" accept=".xlsx,.xls,.csv">
+                                        <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
+                                        <div id="fileError" class="text-danger mt-2" style="display: none;"></div>
+                                    </div>
+
+                                    <div id="importProgress" class="progress mb-3" style="display: none;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                    </div>
+
+                                    <div id="importResult" class="alert" style="display: none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn btn-primary" id="importBtn" disabled>
+                                        <i class="fas fa-upload me-2"></i>Import
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Selection actions bar -->
                     <div class="selection-actions" id="selectionActions">
                         <span class="selection-count">0 items selected</span>
@@ -1688,12 +1833,13 @@
 
                         visibleColumns.forEach(col => {
                             let cell = document.createElement('td');
+                            
                             switch (col) {
                                 case "Image":
-                                cell.innerHTML = item.image_path 
-                                    ? `<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`
-                                    : '-';
-                                break;
+                                    cell.innerHTML = item.image_path 
+                                        ? `<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`
+                                        : '-';
+                                    break;
                                 case "Parent":
                                     cell.textContent = escapeHtml(item.Parent) || '-';
                                     break;
@@ -1731,18 +1877,15 @@
                                 case "SHIP":
                                     cell.textContent = escapeHtml(item.ship) || '-';
                                     break;
-                                    case "TEMU SHIP":
+                                case "TEMU SHIP":
                                     cell.textContent = escapeHtml(item.temu_ship) || '-';
                                     break;
-                                    case "MOQ":
+                                case "MOQ":
                                     cell.textContent = escapeHtml(item.moq) || '-';
                                     break;
-                                    case "EBAY2 SHIP":
+                                case "EBAY2 SHIP":
                                     cell.textContent = escapeHtml(item.ebay2_ship) || '-';
                                     break;
-                                    // case "INITIAL QUANTITY":
-                                    // cell.textContent = escapeHtml(item.initial_quantity) || '-';
-                                    // break;
                                 case "Label QTY":
                                     cell.textContent = escapeHtml(item.label_qty) || '0';
                                     break;
@@ -1836,118 +1979,242 @@
                     // Render only visible columns
                     visibleColumns.forEach(col => {
                         let cell = document.createElement('td');
+                        let cellContent = '';
+                        let isMissing = false;
+                        
                         switch (col) {
                             case "Status":
-                                cell.textContent = item.status || '-';
+                                isMissing = isDataMissing(item.status);
+                                cellContent = isMissing ? '' : escapeHtml(item.status);
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'status', 'Status');
                                 break;
                             case "Image":
-                            cell.innerHTML = item.image_path 
-                                ? `<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`
-                                : '-';
-                            break;
+                                isMissing = isDataMissing(item.image_path);
+                                cellContent = isMissing ? '' : `<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`;
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'image_path', 'Image');
+                                break;
                             case "Parent":
-                                cell.textContent = escapeHtml(item.Parent) || '-';
+                                isMissing = isDataMissing(item.Parent);
+                                cellContent = isMissing ? '' : escapeHtml(item.Parent);
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'Parent', 'Parent');
                                 break;
                             case "SKU":
-                                cell.innerHTML = `
-                                    <span class="sku-hover" 
-                                        data-sku="${escapeHtml(item.SKU) || ''}" 
-                                        data-image="${item.image_path ? item.image_path : ''}">
-                                        ${escapeHtml(item.SKU) || '-'}
-                                    </span>
-                                `;
+                                isMissing = isDataMissing(item.SKU);
+                                if (isMissing) {
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'SKU', 'SKU');
+                                } else {
+                                    cell.innerHTML = `
+                                        <span class="sku-hover" 
+                                            data-sku="${escapeHtml(item.SKU) || ''}" 
+                                            data-image="${item.image_path ? item.image_path : ''}">
+                                            ${escapeHtml(item.SKU)}
+                                        </span>
+                                    `;
+                                }
                                 break;
                             case "UPC":
                                 cell.className = 'text-center';
-                                cell.textContent = formatNumber(item.upc, 0);
+                                isMissing = isDataMissing(item.upc, true);
+                                if (isMissing) {
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'upc', 'UPC');
+                                } else {
+                                    const formatted = formatNumber(item.upc, 0);
+                                    if (formatted === '-') {
+                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'upc', 'UPC');
+                                    } else {
+                                        cell.textContent = formatted;
+                                    }
+                                }
                                 break;
                             case "INV":
                                 if (item.shopify_inv === 0 || item.shopify_inv === "0") {
                                     cell.textContent = "0";
                                 } else if (item.shopify_inv === null || item.shopify_inv === undefined || item.shopify_inv === "") {
-                                    cell.textContent = "-";
+                                    isMissing = true;
+                                    cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
                                 } else {
                                     cell.textContent = escapeHtml(item.shopify_inv);
                                 }
                                 break;
-                                // cell.textContent = escapeHtml(item.shopify_inv) || '-';
-                                // break;
                             case "OV L30":
                                 if (item.shopify_quantity === 0 || item.shopify_quantity === "0") {
                                     cell.textContent = "0";
                                 } else if (item.shopify_quantity === null || item.shopify_quantity === undefined || item.shopify_quantity === "") {
-                                    cell.textContent = "-";
+                                    isMissing = true;
+                                    cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
                                 } else {
                                     cell.textContent = escapeHtml(item.shopify_quantity);
                                 }
                                 break;
-                                // cell.textContent = escapeHtml(item.shopify_quantity) || '-';
-                                // break;
                             case "STATUS":
-                                cell.textContent = escapeHtml(item.status) || '-';
+                                isMissing = isDataMissing(item.status);
+                                cellContent = isMissing ? '' : escapeHtml(item.status);
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing);
                                 break;
                             case "Unit":
-                                cell.textContent = item.unit || '-';
+                                isMissing = isDataMissing(item.unit);
+                                cellContent = isMissing ? '' : item.unit;
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'unit', 'Unit');
                                 break;
                             case "LP":
                                 cell.className = 'text-center';
-                                cell.textContent = formatNumber(item.lp, 2);
+                                isMissing = isDataMissing(item.lp, true);
+                                if (isMissing) {
+                                    cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                                } else {
+                                    const formatted = formatNumber(item.lp, 2);
+                                    if (formatted === '-') {
+                                        cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                                    } else {
+                                        cell.textContent = formatted;
+                                    }
+                                }
                                 break;
                             case "CP$":
                                 cell.className = 'text-center';
-                                cell.textContent = formatNumber(item.cp, 2);
+                                isMissing = isDataMissing(item.cp, true);
+                                if (isMissing) {
+                                    cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                                } else {
+                                    const formatted = formatNumber(item.cp, 2);
+                                    if (formatted === '-') {
+                                        cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                                    } else {
+                                        cell.textContent = formatted;
+                                    }
+                                }
                                 break;
                             case "FRGHT":
                                 cell.className = 'text-center';
-                                cell.textContent = frght || '-';
+                                isMissing = isDataMissing(frght, true);
+                                if (isMissing) {
+                                    cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                                } else {
+                                    const formatted = frght || formatNumber(item.frght, 2);
+                                    if (formatted === '-' || formatted === '') {
+                                        cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                                    } else {
+                                        cell.textContent = formatted;
+                                    }
+                                }
                                 break;
                             case "SHIP":
-                                cell.textContent = escapeHtml(item.ship) || '-';
+                                isMissing = isDataMissing(item.ship);
+                                cellContent = isMissing ? '' : escapeHtml(item.ship);
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'ship', 'SHIP');
                                 break;
                             case "TEMU SHIP":
-                                cell.textContent = escapeHtml(item.temu_ship) || '-';
+                                isMissing = isDataMissing(item.temu_ship);
+                                cellContent = isMissing ? '' : escapeHtml(item.temu_ship);
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'temu_ship', 'TEMU SHIP');
                                 break;
                             case "MOQ":
-                                cell.textContent = escapeHtml(item.moq) || '-';
+                                isMissing = isDataMissing(item.moq);
+                                cellContent = isMissing ? '' : escapeHtml(item.moq);
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'moq', 'MOQ');
                                 break;
                             case "EBAY2 SHIP":
-                                cell.textContent = escapeHtml(item.ebay2_ship) || '-';
+                                isMissing = isDataMissing(item.ebay2_ship);
+                                cellContent = isMissing ? '' : escapeHtml(item.ebay2_ship);
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'ebay2_ship', 'EBAY2 SHIP');
                                 break;
-                            // case "INITIAL QUANTITY":
-                            //     cell.textContent = escapeHtml(item.initial_quantity) || '-';
-                            //     break;
                             case "Label QTY":
-                                cell.textContent = escapeHtml(item.label_qty) || '0';
+                                isMissing = isDataMissing(item.label_qty, true) || (item.label_qty === 0 || item.label_qty === '0');
+                                cellContent = isMissing ? '' : escapeHtml(item.label_qty);
+                                cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'label_qty', 'Label QTY');
                                 break;
                             case "WT ACT":
                                 cell.className = 'text-center';
-                                cell.textContent = formatNumber(item.wt_act || 0, 2);
+                                isMissing = isDataMissing(item.wt_act, true) || (item.wt_act === 0 || item.wt_act === '0');
+                                if (isMissing) {
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'wt_act', 'WT ACT');
+                                } else {
+                                    const formatted = formatNumber(item.wt_act, 2);
+                                    if (formatted === '-') {
+                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'wt_act', 'WT ACT');
+                                    } else {
+                                        cell.textContent = formatted;
+                                    }
+                                }
                                 break;
                             case "WT DECL":
                                 cell.className = 'text-center';
-                                cell.textContent = formatNumber(item.wt_decl || 0, 2);
+                                isMissing = isDataMissing(item.wt_decl, true) || (item.wt_decl === 0 || item.wt_decl === '0');
+                                if (isMissing) {
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'wt_decl', 'WT DECL');
+                                } else {
+                                    const formatted = formatNumber(item.wt_decl, 2);
+                                    if (formatted === '-') {
+                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'wt_decl', 'WT DECL');
+                                    } else {
+                                        cell.textContent = formatted;
+                                    }
+                                }
                                 break;
                             case "L":
                                 cell.className = 'text-center';
-                                cell.textContent = formatNumber(item.l || 0, 2);
+                                isMissing = isDataMissing(item.l, true) || (item.l === 0 || item.l === '0');
+                                if (isMissing) {
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'l', 'L');
+                                } else {
+                                    const formatted = formatNumber(item.l, 2);
+                                    if (formatted === '-') {
+                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'l', 'L');
+                                    } else {
+                                        cell.textContent = formatted;
+                                    }
+                                }
                                 break;
                             case "W":
                                 cell.className = 'text-center';
-                                cell.textContent = formatNumber(item.w || 0, 2);
+                                isMissing = isDataMissing(item.w, true) || (item.w === 0 || item.w === '0');
+                                if (isMissing) {
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'w', 'W');
+                                } else {
+                                    const formatted = formatNumber(item.w, 2);
+                                    if (formatted === '-') {
+                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'w', 'W');
+                                    } else {
+                                        cell.textContent = formatted;
+                                    }
+                                }
                                 break;
                             case "H":
                                 cell.className = 'text-center';
-                                cell.textContent = formatNumber(item.h || 0, 2);
+                                isMissing = isDataMissing(item.h, true) || (item.h === 0 || item.h === '0');
+                                if (isMissing) {
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'h', 'H');
+                                } else {
+                                    const formatted = formatNumber(item.h, 2);
+                                    if (formatted === '-') {
+                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'h', 'H');
+                                    } else {
+                                        cell.textContent = formatted;
+                                    }
+                                }
                                 break;
                             case "CBM":
                                 cell.className = 'text-center';
-                                cell.textContent = cbm || '-';
+                                isMissing = isDataMissing(cbm, true);
+                                if (isMissing) {
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'cbm', 'CBM');
+                                } else {
+                                    const formatted = cbm || formatNumber(item.cbm, 4);
+                                    if (formatted === '-' || formatted === '') {
+                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'cbm', 'CBM');
+                                    } else {
+                                        cell.textContent = formatted;
+                                    }
+                                }
                                 break;
                             case "L(2)":
                                 cell.className = 'text-center';
-                                cell.innerHTML = item.l2_url ?
-                                    `<a href="${escapeHtml(item.l2_url)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` :
-                                    '-';
+                                isMissing = isDataMissing(item.l2_url);
+                                if (isMissing) {
+                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'l2_url', 'L(2)');
+                                } else {
+                                    cell.innerHTML = `<a href="${escapeHtml(item.l2_url)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>`;
+                                }
                                 break;
                             case "Action":
                                 cell.className = 'text-center';
@@ -1990,7 +2257,343 @@
 
                 updateSelectionCount();
                 // restoreSelectAllState();
+                
+                // Convert all missing data indicators to clickable buttons
+                convertMissingIndicatorsToButtons();
             }
+
+            // Convert missing data indicators to buttons with proper data attributes
+            function convertMissingIndicatorsToButtons() {
+                const table = document.getElementById('row-callback-datatable');
+                if (!table) return;
+
+                const rows = table.querySelectorAll('tbody tr');
+                const headerCells = table.querySelectorAll('thead th');
+
+                rows.forEach((row, rowIndex) => {
+                    const cells = row.querySelectorAll('td');
+                    const skuCell = Array.from(cells).find(cell => {
+                        const span = cell.querySelector('.sku-hover');
+                        return span && span.getAttribute('data-sku');
+                    });
+                    const sku = skuCell ? skuCell.querySelector('.sku-hover')?.getAttribute('data-sku') || '' : '';
+
+                    cells.forEach((cell, cellIndex) => {
+                        // Skip checkbox column and action column
+                        if (cellIndex === 0 && cell.querySelector('.row-checkbox')) return;
+                        if (cell.querySelector('.edit-btn, .delete-btn')) return;
+
+                        const missingIndicator = cell.querySelector('.missing-data-indicator');
+                        if (missingIndicator && missingIndicator.tagName === 'SPAN') {
+                            // Get column name from header
+                            const headerCell = headerCells[cellIndex];
+                            let columnName = '';
+                            if (headerCell) {
+                                const headerText = headerCell.textContent.trim();
+                                // Extract column name (remove count and search input)
+                                columnName = headerText.split('(')[0].trim();
+                                if (!columnName) {
+                                    // Try to get from the span inside
+                                    const span = headerCell.querySelector('span');
+                                    if (span) columnName = span.textContent.trim();
+                                }
+                            }
+
+                            const fieldName = getFieldNameFromColumn(columnName);
+                            const fieldLabel = columnName || fieldName;
+
+                            // Replace span with button
+                            const button = document.createElement('button');
+                            button.type = 'button';
+                            button.className = 'missing-data-indicator';
+                            button.title = 'Click to enter missing data';
+                            button.setAttribute('data-sku', sku);
+                            button.setAttribute('data-field', fieldName);
+                            button.setAttribute('data-field-label', fieldLabel);
+                            button.textContent = 'M';
+                            
+                            missingIndicator.replaceWith(button);
+                        }
+                    });
+                });
+            }
+
+            // Store reference to clicked button
+            let currentMissingDataButton = null;
+
+            // Setup missing data button click handlers
+            function setupMissingDataButtons() {
+                // Use event delegation for dynamically created buttons
+                document.addEventListener('click', function(e) {
+                    if (e.target && e.target.classList.contains('missing-data-indicator')) {
+                        const button = e.target;
+                        const sku = button.getAttribute('data-sku');
+                        const field = button.getAttribute('data-field');
+                        const fieldLabel = button.getAttribute('data-field-label');
+
+                        if (!sku || !field) {
+                            console.error('Missing SKU or field information');
+                            return;
+                        }
+
+                        // Store button reference
+                        currentMissingDataButton = button;
+
+                        // Open modal
+                        document.getElementById('missingDataSku').textContent = sku;
+                        document.getElementById('missingDataField').textContent = fieldLabel;
+                        document.getElementById('missingDataFieldLabel').textContent = fieldLabel;
+                        document.getElementById('missingDataValue').value = '';
+                        document.getElementById('missingDataFile').value = '';
+                        document.getElementById('missingDataError').style.display = 'none';
+                        document.getElementById('missingDataImagePreview').style.display = 'none';
+                        
+                        // Handle image field specially
+                        const isImageField = field === 'image_path';
+                        const textInput = document.getElementById('missingDataValue');
+                        const fileInput = document.getElementById('missingDataFile');
+                        
+                        if (isImageField) {
+                            // Show file input, hide text input
+                            textInput.style.display = 'none';
+                            fileInput.style.display = 'block';
+                            document.getElementById('missingDataHint').textContent = 'Select an image file (max 5MB, JPG, PNG, GIF)';
+                            
+                            // Add file change listener for preview
+                            fileInput.onchange = function(e) {
+                                const file = e.target.files[0];
+                                const errorDiv = document.getElementById('missingDataError');
+                                if (file) {
+                                    // Validate file type
+                                    if (!file.type.match('image.*')) {
+                                        errorDiv.textContent = 'Please select a valid image file';
+                                        errorDiv.style.display = 'block';
+                                        fileInput.value = '';
+                                        document.getElementById('missingDataImagePreview').style.display = 'none';
+                                        return;
+                                    }
+                                    
+                                    // Validate file size (5MB)
+                                    if (file.size > 5 * 1024 * 1024) {
+                                        errorDiv.textContent = 'Image size must be less than 5MB';
+                                        errorDiv.style.display = 'block';
+                                        fileInput.value = '';
+                                        document.getElementById('missingDataImagePreview').style.display = 'none';
+                                        return;
+                                    }
+                                    
+                                    // Show preview
+                                    const reader = new FileReader();
+                                    reader.onload = function(e) {
+                                        document.getElementById('missingDataPreviewImg').src = e.target.result;
+                                        document.getElementById('missingDataImagePreview').style.display = 'block';
+                                        errorDiv.style.display = 'none';
+                                    };
+                                    reader.readAsDataURL(file);
+                                }
+                            };
+                        } else {
+                            // Show text input, hide file input
+                            textInput.style.display = 'block';
+                            fileInput.style.display = 'none';
+                            
+                            // Set input type hint
+                            const isNumeric = ['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'label_qty', 'moq'].includes(field);
+                            if (isNumeric) {
+                                textInput.type = 'number';
+                                textInput.step = field === 'cbm' ? '0.0001' : (field.includes('wt') || field === 'l' || field === 'w' || field === 'h') ? '0.01' : '0.01';
+                                document.getElementById('missingDataHint').textContent = 'Enter a numeric value';
+                            } else {
+                                textInput.type = 'text';
+                                document.getElementById('missingDataHint').textContent = '';
+                            }
+                        }
+
+                        const modal = new bootstrap.Modal(document.getElementById('missingDataModal'));
+                        modal.show();
+
+                        // Focus on input
+                        setTimeout(() => {
+                            if (isImageField) {
+                                fileInput.focus();
+                            } else {
+                                textInput.focus();
+                            }
+                        }, 300);
+                    }
+                });
+            }
+
+            // Reset button reference when modal is closed
+            document.getElementById('missingDataModal').addEventListener('hidden.bs.modal', function() {
+                currentMissingDataButton = null;
+                // Reset form inputs
+                document.getElementById('missingDataValue').value = '';
+                document.getElementById('missingDataFile').value = '';
+                document.getElementById('missingDataImagePreview').style.display = 'none';
+                document.getElementById('missingDataError').style.display = 'none';
+                document.getElementById('missingDataValue').style.display = 'block';
+                document.getElementById('missingDataFile').style.display = 'none';
+            });
+
+            // Save missing data
+            document.getElementById('saveMissingDataBtn').addEventListener('click', async function() {
+                if (!currentMissingDataButton) {
+                    showToast('danger', 'Error: Button reference lost. Please try again.');
+                    return;
+                }
+
+                const sku = document.getElementById('missingDataSku').textContent;
+                const field = currentMissingDataButton.getAttribute('data-field');
+                const fieldLabel = document.getElementById('missingDataField').textContent;
+                const errorDiv = document.getElementById('missingDataError');
+                const isImageField = field === 'image_path';
+                
+                // Validate based on field type
+                if (isImageField) {
+                    const fileInput = document.getElementById('missingDataFile');
+                    const file = fileInput.files[0];
+                    
+                    if (!file) {
+                        errorDiv.textContent = 'Please select an image file';
+                        errorDiv.style.display = 'block';
+                        return;
+                    }
+                    
+                    // Validate file type
+                    if (!file.type.match('image.*')) {
+                        errorDiv.textContent = 'Please select a valid image file (JPG, PNG, GIF)';
+                        errorDiv.style.display = 'block';
+                        return;
+                    }
+                    
+                    // Validate file size (5MB)
+                    if (file.size > 5 * 1024 * 1024) {
+                        errorDiv.textContent = 'Image size must be less than 5MB';
+                        errorDiv.style.display = 'block';
+                        return;
+                    }
+                } else {
+                    const value = document.getElementById('missingDataValue').value.trim();
+                    
+                    if (!value) {
+                        errorDiv.textContent = 'Please enter a value';
+                        errorDiv.style.display = 'block';
+                        return;
+                    }
+                    
+                    // Validate numeric fields
+                    const isNumeric = ['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'label_qty', 'moq'].includes(field);
+                    if (isNumeric) {
+                        const numValue = parseFloat(value);
+                        if (isNaN(numValue) || numValue < 0) {
+                            errorDiv.textContent = 'Please enter a valid positive number';
+                            errorDiv.style.display = 'block';
+                            return;
+                        }
+                    }
+                }
+
+                // Disable button and show loading
+                this.disabled = true;
+                this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving...';
+
+                try {
+                    let response;
+                    
+                    if (isImageField) {
+                        // Use FormData for file upload
+                        const formData = new FormData();
+                        formData.append('sku', sku);
+                        formData.append('field', field);
+                        formData.append('image', document.getElementById('missingDataFile').files[0]);
+                        formData.append('_token', csrfToken);
+                        
+                        response = await fetch('/product_master/update-field', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: formData
+                        });
+                    } else {
+                        // Use JSON for regular fields
+                        const value = document.getElementById('missingDataValue').value.trim();
+                        response = await makeRequest('/product_master/update-field', 'POST', {
+                            sku: sku,
+                            field: field,
+                            value: value
+                        });
+                    }
+
+                    const data = await response.json();
+
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.message || 'Failed to save data');
+                    }
+
+                    // Show success message
+                    showToast('success', `${fieldLabel} saved successfully!`);
+
+                    // Close modal
+                    bootstrap.Modal.getInstance(document.getElementById('missingDataModal')).hide();
+
+                    // Get the saved value from response
+                    const savedValue = data.data?.value || (isImageField ? data.data?.value : document.getElementById('missingDataValue').value.trim());
+                    
+                    // Update the cell in the table
+                    const cell = currentMissingDataButton.closest('td');
+                    if (cell) {
+                        // Update cell content based on field type
+                        if (field === 'image_path') {
+                            cell.innerHTML = `<img src="${savedValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`;
+                        } else if (field === 'l2_url') {
+                            cell.className = 'text-center';
+                            cell.innerHTML = `<a href="${escapeHtml(savedValue)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>`;
+                        } else {
+                            const isNumeric = ['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'label_qty', 'moq'].includes(field);
+                            if (isNumeric) {
+                                const decimals = field === 'cbm' ? 4 : (['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h'].includes(field)) ? 2 : 0;
+                                cell.textContent = parseFloat(savedValue).toFixed(decimals);
+                                if (!cell.className.includes('text-center')) {
+                                    cell.className = 'text-center';
+                                }
+                            } else {
+                                cell.textContent = savedValue;
+                            }
+                        }
+                    }
+
+                    // Update the data in tableData
+                    const product = productMap.get(sku);
+                    if (product) {
+                        const isNumeric = ['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'label_qty', 'moq'].includes(field);
+                        product[field] = isNumeric ? parseFloat(savedValue) : savedValue;
+                        if (field === 'image_path') {
+                            product.image_path = savedValue;
+                        }
+                        // Recalculate derived fields if needed
+                        if (field === 'l' || field === 'w' || field === 'h') {
+                            // CBM and FRGHT will be recalculated on next render
+                        }
+                    }
+
+                    // Clear button reference
+                    currentMissingDataButton = null;
+
+                    // Reload data to ensure consistency
+                    setTimeout(() => {
+                        loadData();
+                    }, 500);
+
+                } catch (error) {
+                    errorDiv.textContent = error.message;
+                    errorDiv.style.display = 'block';
+                } finally {
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-save me-1"></i>Save';
+                }
+            });
 
             //play button script
             function initProductPlaybackControls() {
@@ -2220,6 +2823,15 @@
                 const existingSkuVal = document.getElementById('skuSearch')?.value || '';
                 const existingCustomVal = document.getElementById('customSearch')?.value || '';
 
+                // Preserve missing data filter values
+                const existingFilterValues = {};
+                document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                    const columnName = filter.getAttribute('data-column');
+                    if (columnName) {
+                        existingFilterValues[columnName] = filter.value;
+                    }
+                });
+
                 // Preserve focus and selection so user's typing isn't interrupted
                 const activeEl = document.activeElement;
                 const activeId = (activeEl && ['parentSearch', 'skuSearch', 'customSearch'].includes(activeEl.id)) ? activeEl.id : null;
@@ -2257,8 +2869,19 @@
                     </div>
                     <input type="text" id="${colName.toLowerCase()}Search" class="form-control-sm" placeholder="Search ${colName}">
                 `;
-                        } else {
+                        } else if (colName === "Action") {
                             th.textContent = colName;
+                        } else {
+                            // Add filter dropdown for missing data
+                            const filterId = `filter${colName.replace(/\s+/g, '').replace(/[()]/g, '')}`;
+                            const savedFilterValue = existingFilterValues && existingFilterValues[colName] ? existingFilterValues[colName] : 'all';
+                            th.innerHTML = `
+                    <div style="font-size: 9px;">${colName}</div>
+                    <select id="${filterId}" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="${colName}">
+                        <option value="all" ${savedFilterValue === 'all' ? 'selected' : ''}>All</option>
+                        <option value="missing" ${savedFilterValue === 'missing' ? 'selected' : ''}>Missing</option>
+                    </select>
+                `;
                         }
 
                         thead.appendChild(th);
@@ -2295,6 +2918,16 @@
                 if (document.getElementById('skuSearch')) document.getElementById('skuSearch').value = existingSkuVal;
                 if (document.getElementById('customSearch')) document.getElementById('customSearch').value = existingCustomVal;
 
+                // Restore missing data filter values and apply styling
+                document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                    const columnName = filter.getAttribute('data-column');
+                    if (columnName && existingFilterValues[columnName]) {
+                        filter.value = existingFilterValues[columnName];
+                    }
+                    // Apply styling based on current value
+                    updateFilterStyling(filter);
+                });
+
                 // Restore focus and cursor position if applicable
                 if (activeId) {
                     const restored = document.getElementById(activeId);
@@ -2323,6 +2956,41 @@
                     document.getElementById('parentCount').textContent = `(${parentSet.size})`;
                     document.getElementById('skuCount').textContent = `(${skuCount})`;
                 }
+
+                // Setup missing data filter event listeners
+                setupMissingDataFilters();
+            }
+
+            // Update filter styling based on selected value
+            function updateFilterStyling(filter) {
+                if (filter.value === 'missing') {
+                    filter.style.backgroundColor = '#fecaca';
+                    filter.style.color = '#dc2626';
+                    filter.style.fontWeight = 'bold';
+                    filter.style.borderColor = '#ef4444';
+                } else {
+                    filter.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+                    filter.style.color = '#333';
+                    filter.style.fontWeight = 'normal';
+                    filter.style.borderColor = '#ddd';
+                }
+            }
+
+            // Setup missing data filter event listeners
+            function setupMissingDataFilters() {
+                // Remove existing event listeners by cloning elements
+                document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                    const newFilter = filter.cloneNode(true);
+                    filter.parentNode.replaceChild(newFilter, filter);
+                    
+                    // Apply initial styling
+                    updateFilterStyling(newFilter);
+                    
+                    newFilter.addEventListener('change', function() {
+                        updateFilterStyling(this);
+                        applyFilters();
+                    });
+                });
             }
 
             // Modified row rendering to respect column permissions
@@ -2437,10 +3105,12 @@
                 setupSelectFilter();
                 setupHeaderColumnSearch();
                 setupExcelExport();
+                setupImport();
                 setupAddProductModal();
                 setupProgressModal();
                 setupSelectionMode();
                 setupBatchProcessing();
+                setupMissingDataButtons();
             }
 
             $.ajaxSetup({
@@ -2607,6 +3277,81 @@
                         );
                     }
 
+                    // Check if any missing data filter is active
+                    let hasMissingDataFilter = false;
+                    document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                        if (filter.value === 'missing') {
+                            hasMissingDataFilter = true;
+                        }
+                    });
+
+                    // Exclude parent rows when any missing data filter is active
+                    if (hasMissingDataFilter) {
+                        filteredData = filteredData.filter(item => {
+                            // Exclude parent rows (SKU contains 'PARENT')
+                            return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
+                        });
+                    }
+
+                    // Apply missing data filters for each column
+                    document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                        const filterValue = filter.value;
+                        if (filterValue === 'missing') {
+                            const columnName = filter.getAttribute('data-column');
+                            const fieldName = getFieldNameFromColumn(columnName);
+                            
+                            filteredData = filteredData.filter(item => {
+                                let value = null;
+                                
+                                // Get value based on field name
+                                if (fieldName === 'image_path') {
+                                    value = item.image_path;
+                                } else if (fieldName === 'status') {
+                                    value = item.status;
+                                } else if (fieldName === 'unit') {
+                                    value = item.unit;
+                                } else if (fieldName === 'Parent') {
+                                    value = item.Parent;
+                                } else if (fieldName === 'SKU') {
+                                    value = item.SKU;
+                                } else if (fieldName === 'shopify_inv') {
+                                    value = item.shopify_inv;
+                                } else if (fieldName === 'shopify_quantity') {
+                                    value = item.shopify_quantity;
+                                } else {
+                                    // Get from Values array
+                                    let values = {};
+                                    if (item.Values) {
+                                        if (Array.isArray(item.Values)) {
+                                            values = item.Values;
+                                        } else if (typeof item.Values === 'string') {
+                                            try {
+                                                values = JSON.parse(item.Values);
+                                            } catch (e) {
+                                                values = {};
+                                            }
+                                        } else {
+                                            values = item.Values;
+                                        }
+                                    }
+                                    value = values[fieldName];
+                                }
+                                
+                                // Determine if numeric based on column
+                                const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'L', 'W', 'H', 'CBM', 'UPC', 'INV', 'OV L30'];
+                                const isNumeric = numericColumns.includes(columnName);
+                                
+                                // Special handling for dimensions and weights - treat 0 as missing
+                                if (isNumeric && ['l', 'w', 'h', 'wt_act', 'wt_decl', 'label_qty', 'moq'].includes(fieldName)) {
+                                    const num = parseFloat(value);
+                                    return isDataMissing(value, true) || (num === 0 || num === '0');
+                                }
+                                
+                                return isDataMissing(value, isNumeric);
+                            });
+                        }
+                    });
+
                     renderTable(filteredData);
                 }
 
@@ -2619,6 +3364,13 @@
                     }
                 }, 250));
 
+                // Listen for missing data filter changes
+                document.addEventListener('change', function (e) {
+                    if (e.target && e.target.classList.contains('missing-data-filter')) {
+                        applyFilters();
+                    }
+                });
+
                 // Clear button (delegated click) - resets inputs and renders full table
                 document.addEventListener('click', function (e) {
                     const target = e.target.closest ? e.target.closest('#clearSearch') : (e.target.id === 'clearSearch' ? e.target : null);
@@ -2629,6 +3381,10 @@
                     if (custom) custom.value = '';
                     if (sku) sku.value = '';
                     if (parent) parent.value = '';
+                    // Reset all missing data filters
+                    document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                        filter.value = 'all';
+                    });
                     renderTable(tableData);
                 });
             }
@@ -2661,7 +3417,7 @@
                     const allColumns = [
                         "Parent", "SKU", "UPC", "INV", "OV L30", "STATUS", "Unit", "LP", "CP$",
                         "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "INITIAL QUANTITY", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
-                        "CBM", "L(2)", "DC", "Pcs/Box", "L1", "B", "H1", "Weight", "MSRP", "MAP", "UPC"
+                        "CBM", "Image", "L(2)", "DC", "Pcs/Box", "L1", "B", "H1", "Weight", "MSRP", "MAP", "UPC"
                     ];
 
                     // Filter out hidden columns
@@ -2735,6 +3491,9 @@
                         "CBM": {
                             key: "cbm"
                         },
+                        "Image": {
+                            key: "image_path"
+                        },
                         "L(2)": {
                             key: "l2_url"
                         },
@@ -2788,8 +3547,14 @@
                                     const colDef = columnDefs[col];
                                     if (colDef) {
                                         const key = colDef.key;
-                                        let value = item[key] !== undefined && item[
-                                            key] !== null ? item[key] : '';
+                                        let value = '';
+                                        
+                                        // Special handling for image_path - check both direct property and Values
+                                        if (key === "image_path") {
+                                            value = item.image_path || (item.Values && item.Values.image_path) || '';
+                                        } else {
+                                            value = item[key] !== undefined && item[key] !== null ? item[key] : '';
+                                        }
 
                                         // Format special columns
                                         if (["lp", "cp", "frght"].includes(key)) {
@@ -2825,6 +3590,10 @@
                                     return {
                                         wch: 12
                                     };
+                                } else if (["Image", "L(2)"].includes(col)) {
+                                    return {
+                                        wch: 50
+                                    }; // Wider for URL columns
                                 } else {
                                     return {
                                         wch: 10
@@ -2879,6 +3648,146 @@
                             document.getElementById('downloadExcel').disabled = false;
                         }
                     }, 100); // Small timeout to allow UI to update
+                });
+            }
+
+            // Setup import functionality
+            function setupImport() {
+                const importFile = document.getElementById('importFile');
+                const importBtn = document.getElementById('importBtn');
+                const importModal = document.getElementById('importExcelModal');
+                const fileError = document.getElementById('fileError');
+                const importProgress = document.getElementById('importProgress');
+                const importResult = document.getElementById('importResult');
+
+                // Enable/disable import button based on file selection
+                importFile.addEventListener('change', function() {
+                    if (this.files && this.files.length > 0) {
+                        const file = this.files[0];
+                        const fileName = file.name.toLowerCase();
+                        const validExtensions = ['.xlsx', '.xls', '.csv'];
+                        const isValid = validExtensions.some(ext => fileName.endsWith(ext));
+
+                        if (isValid) {
+                            importBtn.disabled = false;
+                            fileError.style.display = 'none';
+                        } else {
+                            importBtn.disabled = true;
+                            fileError.textContent = 'Please select a valid Excel file (.xlsx, .xls, or .csv)';
+                            fileError.style.display = 'block';
+                        }
+                    } else {
+                        importBtn.disabled = true;
+                    }
+                });
+
+                // Handle import
+                importBtn.addEventListener('click', async function() {
+                    const file = importFile.files[0];
+                    if (!file) {
+                        showToast('danger', 'Please select a file to import');
+                        return;
+                    }
+
+                    // Disable button and show progress
+                    importBtn.disabled = true;
+                    importProgress.style.display = 'block';
+                    importResult.style.display = 'none';
+                    fileError.style.display = 'none';
+
+                    const formData = new FormData();
+                    formData.append('excel_file', file);
+                    formData.append('_token', csrfToken);
+
+                    try {
+                        const response = await fetch('/product-master/import', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: formData
+                        });
+
+                        const result = await response.json();
+
+                        // Update progress bar
+                        const progressBar = importProgress.querySelector('.progress-bar');
+                        progressBar.style.width = '100%';
+
+                        if (response.ok && result.success) {
+                            importResult.className = 'alert alert-success';
+                            importResult.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <i class="fas fa-check-circle me-2"></i>
+                                        <strong>Import Successful!</strong><br>
+                                        ${result.message || `Successfully imported ${result.imported || 0} records.`}
+                                        ${result.errors && result.errors.length > 0 ? `<br><small>Errors: ${result.errors.length}</small>` : ''}
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-success ms-3" id="importOkBtn" style="white-space: nowrap;">
+                                        <i class="fas fa-check me-1"></i> OK
+                                    </button>
+                                </div>
+                            `;
+                            importResult.style.display = 'block';
+
+                            // Reload data after successful import
+                            setTimeout(() => {
+                                loadData();
+                            }, 500);
+
+                            // Handle OK button click
+                            const okBtn = document.getElementById('importOkBtn');
+                            if (okBtn) {
+                                okBtn.addEventListener('click', function() {
+                                    const modal = bootstrap.Modal.getInstance(importModal);
+                                    if (modal) modal.hide();
+                                    // Reset form
+                                    importFile.value = '';
+                                    importBtn.disabled = true;
+                                    importProgress.style.display = 'none';
+                                    importResult.style.display = 'none';
+                                    progressBar.style.width = '0%';
+                                });
+                            }
+                        } else {
+                            importResult.className = 'alert alert-danger';
+                            importResult.innerHTML = `
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>Import Failed!</strong><br>
+                                ${result.message || 'An error occurred during import.'}
+                            `;
+                            importResult.style.display = 'block';
+                            importBtn.disabled = false;
+                        }
+                    } catch (error) {
+                        console.error('Import error:', error);
+                        importResult.className = 'alert alert-danger';
+                        importResult.innerHTML = `
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Import Failed!</strong><br>
+                            ${error.message || 'An error occurred during import.'}
+                        `;
+                        importResult.style.display = 'block';
+                        importBtn.disabled = false;
+                    } finally {
+                        // Reset progress bar after a delay
+                        setTimeout(() => {
+                            const progressBar = importProgress.querySelector('.progress-bar');
+                            progressBar.style.width = '0%';
+                        }, 2000);
+                    }
+                });
+
+                // Reset form when modal is closed
+                importModal.addEventListener('hidden.bs.modal', function() {
+                    importFile.value = '';
+                    importBtn.disabled = true;
+                    importProgress.style.display = 'none';
+                    importResult.style.display = 'none';
+                    fileError.style.display = 'none';
+                    const progressBar = importProgress.querySelector('.progress-bar');
+                    if (progressBar) progressBar.style.width = '0%';
                 });
             }
 
@@ -3673,6 +4582,81 @@
                     );
                 }
 
+                // Check if any missing data filter is active
+                let hasMissingDataFilter = false;
+                document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                    if (filter.value === 'missing') {
+                        hasMissingDataFilter = true;
+                    }
+                });
+
+                // Exclude parent rows when any missing data filter is active
+                if (hasMissingDataFilter) {
+                    filteredData = filteredData.filter(item => {
+                        // Exclude parent rows (SKU contains 'PARENT')
+                        return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
+                    });
+                }
+
+                // Apply missing data filters for each column
+                document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                    const filterValue = filter.value;
+                    if (filterValue === 'missing') {
+                        const columnName = filter.getAttribute('data-column');
+                        const fieldName = getFieldNameFromColumn(columnName);
+                        
+                        filteredData = filteredData.filter(item => {
+                            let value = null;
+                            
+                            // Get value based on field name
+                            if (fieldName === 'image_path') {
+                                value = item.image_path;
+                            } else if (fieldName === 'status') {
+                                value = item.status;
+                            } else if (fieldName === 'unit') {
+                                value = item.unit;
+                            } else if (fieldName === 'Parent') {
+                                value = item.Parent;
+                            } else if (fieldName === 'SKU') {
+                                value = item.SKU;
+                            } else if (fieldName === 'shopify_inv') {
+                                value = item.shopify_inv;
+                            } else if (fieldName === 'shopify_quantity') {
+                                value = item.shopify_quantity;
+                            } else {
+                                // Get from Values array
+                                let values = {};
+                                if (item.Values) {
+                                    if (Array.isArray(item.Values)) {
+                                        values = item.Values;
+                                    } else if (typeof item.Values === 'string') {
+                                        try {
+                                            values = JSON.parse(item.Values);
+                                        } catch (e) {
+                                            values = {};
+                                        }
+                                    } else {
+                                        values = item.Values;
+                                    }
+                                }
+                                value = values[fieldName];
+                            }
+                            
+                            // Determine if numeric based on column
+                            const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'L', 'W', 'H', 'CBM', 'UPC', 'INV', 'OV L30'];
+                            const isNumeric = numericColumns.includes(columnName);
+                            
+                            // Special handling for dimensions and weights - treat 0 as missing
+                            if (isNumeric && ['l', 'w', 'h', 'wt_act', 'wt_decl', 'label_qty', 'moq'].includes(fieldName)) {
+                                const num = parseFloat(value);
+                                return isDataMissing(value, true) || (num === 0 || num === '0');
+                            }
+                            
+                            return isDataMissing(value, isNumeric);
+                        });
+                    }
+                });
+
                 return filteredData;
             }
 
@@ -4053,6 +5037,83 @@
                     .replace(/>/g, '&gt;')
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#39;');
+            }
+
+            // Helper function to check if data is missing
+            function isDataMissing(value, isNumeric = false) {
+                if (value === null || value === undefined) return true;
+                
+                const strValue = String(value).trim();
+                
+                // Empty string or dash means missing
+                if (strValue === '' || strValue === '-' || strValue === 'null' || strValue === 'undefined') {
+                    return true;
+                }
+                
+                // For numeric fields
+                if (isNumeric) {
+                    const numValue = parseFloat(strValue);
+                    // If it's NaN, it's missing
+                    if (isNaN(numValue)) return true;
+                    // For numeric fields, 0 or negative might be valid depending on context
+                    // But we'll consider 0 as potentially missing for dimensions (L, W, H, WT ACT, WT DECL)
+                    // For now, treat 0 as valid (not missing) for most numeric fields
+                    return false; // If it's a valid number, it's not missing
+                }
+                
+                // For non-numeric fields, empty string already handled above
+                return false;
+            }
+
+            // Helper function to get field name from column name
+            function getFieldNameFromColumn(columnName) {
+                const fieldMap = {
+                    "Status": "status",
+                    "STATUS": "status",
+                    "Images": "image_path",
+                    "Image": "image_path",
+                    "Parent": "Parent",
+                    "SKU": "SKU",
+                    "UPC": "upc",
+                    "INV": "shopify_inv",
+                    "OV L30": "shopify_quantity",
+                    "Unit": "unit",
+                    "LP": "lp",
+                    "CP$": "cp",
+                    "FRGHT": "frght",
+                    "SHIP": "ship",
+                    "TEMU SHIP": "temu_ship",
+                    "MOQ": "moq",
+                    "EBAY2 SHIP": "ebay2_ship",
+                    "Label QTY": "label_qty",
+                    "WT ACT": "wt_act",
+                    "WT DECL": "wt_decl",
+                    "L": "l",
+                    "W": "w",
+                    "H": "h",
+                    "CBM": "cbm",
+                    "L(2)": "l2_url"
+                };
+                return fieldMap[columnName] || columnName.toLowerCase().replace(/\s+/g, '_');
+            }
+
+            // Helper function to create missing data button
+            function createMissingDataButton(sku, field, fieldLabel) {
+                return `<button type="button" class="missing-data-indicator" 
+                    title="Click to enter missing data" 
+                    data-sku="${escapeHtml(sku)}" 
+                    data-field="${escapeHtml(field)}" 
+                    data-field-label="${escapeHtml(fieldLabel)}">
+                    M
+                </button>`;
+            }
+
+            // Helper function to add missing data indicator
+            function addMissingIndicator(content, isMissing, sku = '', field = '', fieldLabel = '') {
+                if (isMissing) {
+                    return createMissingDataButton(sku, field, fieldLabel);
+                }
+                return content;
             }
 
             function formatNumber(num, decimals) {

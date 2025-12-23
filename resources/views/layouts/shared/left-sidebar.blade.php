@@ -279,12 +279,9 @@
                 <div class="collapse" id="pricingmaster">
                     <ul class="side-nav-second-level">
                         <li>
-                            <a href="{{ url('/pricing-master-incremental') }}">Pricing Increase </a>
+                            <a href="{{ url('pricing-masters.pricing_masters') }}">Pricing Masters </a>
                         </li>
-
-                        <li>
-                            <a href="#">Pricing Decrease </a>
-                        </li>
+                        
                     </ul>
                 </div>
             </li>
@@ -374,9 +371,7 @@
                         <li>
                             <a href="{{ url('/parent.pricing-masters') }}">ROI dashboard</a>
                         </li>
-                        <li>
-                            <a href="{{ url('pricing-masters.pricing_masters') }}">Pricing Masters </a>
-                        </li>
+                        
 
                         <li>
                             <a href="{{ url('calculate-wmp-masters') }}">WMP Masters</a>
@@ -2461,6 +2456,9 @@
                                         <a href="{{ url('doba-pricing-cvr') }}">Doba Pricing </a>
                                     </li>
 
+                                       <li>
+                                        <a href="{{ url('doba-tabulator') }}">Doba Listing </a>
+                                    </li>
 
                                 </ul>
                             </div>

@@ -471,6 +471,23 @@ class PricingMasterViewsController extends Controller
 
         $ebay3Lookup = Ebay3Metric::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $temuMetricLookup = TemuMetric::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        $dobaMetricLookup = DobaMetric::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
+        
+        // Aggregate Temu L30 from temu_daily_data - sum quantity_purchased by SKU, excluding cancelled orders
+        $temuDailyDataL30 = DB::table('temu_daily_data')
+            ->select(
+                'contribution_sku as sku',
+                DB::raw('SUM(quantity_purchased) as temu_l30_quantity')
+            )
+            ->whereIn('contribution_sku', $nonParentSkus)
+            ->where(function($query) {
+                $query->whereNotIn('order_status', ['Canceled', 'Cancelled', 'CANCELED', 'CANCELLED', 'canceled', 'cancelled'])
+                      ->orWhereNull('order_status');
+            })
+            ->groupBy('contribution_sku')
+            ->get()
+            ->keyBy('sku');
+        
         $amazonDataView = AmazonDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $ebayDataView = EbayDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $ebay2DataView = EbayTwoDataView::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
@@ -1058,8 +1075,9 @@ class PricingMasterViewsController extends Controller
                 'ebay_seller_link' => isset($ebayListingData[$sku]) ? ($ebayListingData[$sku]->value['seller_link'] ?? null) : null,
                 // Doba
                 'doba_price' => $doba ? ($doba->doba_price ?? 0) : 0,
-                'doba_l30' => $doba ? ($doba->l30 ?? 0) : 0,
-                'doba_l60' => $doba ? ($doba->l60 ?? 0) : 0,
+                'doba_l30' => isset($dobaMetricLookup[$sku]) ? ($dobaMetricLookup[$sku]->quantity_l30 ?? 0) : ($doba ? ($doba->l30 ?? 0) : 0),
+                'doba_l60' => isset($dobaMetricLookup[$sku]) ? ($dobaMetricLookup[$sku]->quantity_l60 ?? 0) : ($doba ? ($doba->l60 ?? 0) : 0),
+                'doba_anticipated_income' => isset($dobaMetricLookup[$sku]) ? ($dobaMetricLookup[$sku]->anticipated_income ?? 0) : 0,
                 'doba_views' => $dobaSheet ? ($dobaSheet->views ?? 0) : 0,
                 'doba_sgpft' => $doba && ($doba->doba_price ?? 0) > 0 ? (($doba->doba_price * 0.95 - $lp - $ship) / $doba->doba_price) * 100 : 0,
                 'doba_pft' => $doba && ($doba->doba_price ?? 0) > 0 ? (($doba->doba_price * 0.95 - $lp - $ship) / $doba->doba_price) : 0,
@@ -1088,14 +1106,14 @@ class PricingMasterViewsController extends Controller
                 'reverb_seller_link' => isset($reverbListingData[$sku]) ? ($reverbListingData[$sku]->value['seller_link'] ?? null) : null,
                 // Temu
                 'temu_price' => $temuMetric ? (float) ($temuMetric->temu_sheet_price ?? 0) : 0,
-                'temu_l30' => $temuMetric ? (float) ($temuMetric->quantity_purchased_l30 ?? 0) : 0,
+                'temu_l30' => isset($temuDailyDataL30[$sku]) ? (float) ($temuDailyDataL30[$sku]->temu_l30_quantity ?? 0) : 0,
                 'temu_l60' => $temuMetric ? (float) ($temuMetric->quantity_purchased_l60 ?? 0) : 0,
                 'temu_dil' => $temuMetric ? (float) ($temuMetric->dil ?? 0) : 0,
                 'temu_views' => $viewsPullData ? ($viewsPullData->temu !== null ? (int)$viewsPullData->temu : 'N/A') : ($temuMetric ? (float) ($temuMetric->product_clicks_l30 ?? 0) : 'N/A'),
                 'temu_pft' => $temuMetric && ($temuMetric->temu_sheet_price ?? 0) > 0 ? (($temuMetric->temu_sheet_price * 0.87 - $lp - $temuship) / $temuMetric->temu_sheet_price) : 0,
                 'temu_roi' => $temuMetric && $lp > 0 && ($temuMetric->temu_sheet_price ?? 0) > 0 ? (($temuMetric->temu_sheet_price * 0.87 - $lp - $temuship) / $lp) : 0,
-                'temu_cvr' => $temuMetric ? $this->calculateCVR($temuMetric->quantity_purchased_l30 ?? 0, $temuMetric->product_clicks_l30 ?? 0) : null,
-                'temu_req_view' => $temuMetric && ($temuMetric->quantity_purchased_l30 ?? 0) > 0 ? ($inv * 20) : 0,
+                'temu_cvr' => isset($temuDailyDataL30[$sku]) && $temuMetric ? $this->calculateCVR($temuDailyDataL30[$sku]->temu_l30_quantity ?? 0, $temuMetric->product_clicks_l30 ?? 0) : null,
+                'temu_req_view' => isset($temuDailyDataL30[$sku]) && ($temuDailyDataL30[$sku]->temu_l30_quantity ?? 0) > 0 ? ($inv * 20) : 0,
                 'temu_buyer_link' => isset($temuListingData[$sku]) ? ($temuListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'temu_seller_link' => isset($temuListingData[$sku]) ? ($temuListingData[$sku]->value['seller_link'] ?? null) : null,
                 // Walmart

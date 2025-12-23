@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ProductMasterController extends Controller
 {
@@ -499,6 +500,338 @@ class ProductMasterController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error saving product: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function updateField(Request $request)
+    {
+        $request->headers->set('Accept', 'application/json');
+
+        // Validate based on whether it's an image upload or regular field
+        $isImageField = $request->hasFile('image');
+        
+        if ($isImageField) {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'field' => 'required|string',
+                'image' => 'required|file|image|max:5120', // 5MB max
+            ]);
+        } else {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'field' => 'required|string',
+                'value' => 'required'
+            ]);
+        }
+
+        try {
+            $product = ProductMaster::where('sku', $validated['sku'])->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found'
+                ], 404);
+            }
+
+            // Get current Values
+            $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            $field = $validated['field'];
+            $value = null;
+
+            // Handle image upload
+            if ($isImageField && $field === 'image_path') {
+                // Delete old image if exists
+                $oldImagePath = !empty($values['image_path']) ? public_path($values['image_path']) : null;
+                
+                // Store new image
+                $image = $request->file('image');
+                $imagePath = $image->store('product_images', 'public');
+                $value = 'storage/' . $imagePath;
+                
+                // Delete old image after successful upload
+                if ($oldImagePath && file_exists($oldImagePath)) {
+                    @unlink($oldImagePath);
+                }
+            } else {
+                // Handle regular field updates
+                $value = $validated['value'];
+
+                // Handle numeric fields
+                $numericFields = ['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'label_qty', 'moq'];
+                if (in_array($field, $numericFields)) {
+                    $value = is_numeric($value) ? (float)$value : null;
+                }
+            }
+
+            // Update the field in Values array
+            $values[$field] = $value;
+
+            // Save updated Values
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Field updated successfully',
+                'data' => [
+                    'sku' => $product->sku,
+                    'field' => $field,
+                    'value' => $value
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error updating field: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating field: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Check if a value is considered missing
+     */
+    private function isDataMissing($value, $isNumeric = false, $field = null)
+    {
+        if ($value === null || $value === '') {
+            return true;
+        }
+        
+        $strValue = trim((string)$value);
+        
+        // Empty string or dash means missing
+        if ($strValue === '' || $strValue === '-' || $strValue === 'null' || $strValue === 'undefined') {
+            return true;
+        }
+        
+        // For numeric fields
+        if ($isNumeric) {
+            $numValue = is_numeric($strValue) ? (float)$strValue : null;
+            if ($numValue === null || is_nan($numValue)) {
+                return true;
+            }
+            // For dimensions and weights, treat 0 as missing
+            if (in_array($field, ['l', 'w', 'h', 'wt_act', 'wt_decl', 'label_qty', 'moq']) && ($numValue == 0 || $numValue == '0')) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    public function import(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            
+            // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
+            $spreadsheet = IOFactory::load($file->getPathName());
+            
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows'
+                ], 422);
+            }
+
+            // Clean headers - normalize to lowercase and replace spaces/special chars
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Expected column mappings (Excel column names to database field names)
+            $columnMap = [
+                'sku' => 'sku',
+                'parent' => 'parent',
+                'cp' => 'cp',
+                'lp' => 'lp',
+                'frght' => 'frght',
+                'ship' => 'ship',
+                'temu_ship' => 'temu_ship',
+                'moq' => 'moq',
+                'ebay2_ship' => 'ebay2_ship',
+                'label_qty' => 'label_qty',
+                'wt_act' => 'wt_act',
+                'wt_decl' => 'wt_decl',
+                'l' => 'l',
+                'w' => 'w',
+                'h' => 'h',
+                'cbm' => 'cbm',
+                'image' => 'image_path',
+                'image_path' => 'image_path',
+                'unit' => 'unit',
+                'status' => 'status',
+                'upc' => 'upc',
+                'initial_quantity' => 'initial_quantity',
+                'shopify_inv' => 'shopify_inv',
+                'shopify_quantity' => 'shopify_quantity'
+            ];
+
+            // Find column indices
+            $columnIndices = [];
+            foreach ($columnMap as $key => $value) {
+                $index = array_search($key, $headers);
+                if ($index !== false) {
+                    $columnIndices[$value] = $index;
+                }
+            }
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file'
+                ], 422);
+            }
+
+            $imported = 0;
+            $updated = 0;
+            $errors = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+                
+                // Skip empty rows
+                if (empty($row[$columnIndices['sku']])) {
+                    continue;
+                }
+
+                $sku = trim($row[$columnIndices['sku']]);
+                
+                // Find or create product by SKU
+                $product = ProductMaster::where('sku', $sku)->first();
+                
+                if (!$product) {
+                    $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                    continue;
+                }
+
+                // Get existing Values - preserve all existing data
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (!is_array($values)) {
+                    $values = [];
+                }
+
+                // Update parent only if provided, not empty, AND currently missing
+                if (isset($columnIndices['parent']) && isset($row[$columnIndices['parent']])) {
+                    $parentValue = trim($row[$columnIndices['parent']]);
+                    if ($parentValue !== '') {
+                        // Only update if parent is currently missing
+                        $currentParent = $product->parent ?? null;
+                        if ($this->isDataMissing($currentParent, false)) {
+                            $product->parent = $parentValue;
+                        }
+                        // If parent already has a value, don't update it
+                    }
+                    // If empty, keep original value (don't update)
+                }
+
+                // Process each column - only update fields that are currently MISSING in database
+                foreach ($columnIndices as $field => $colIndex) {
+                    if ($field === 'sku' || $field === 'parent') continue; // Skip SKU and parent (handled separately)
+                    
+                    // Check if the cell has a value (not empty, not null, not just whitespace)
+                    $cellValue = isset($row[$colIndex]) ? $row[$colIndex] : null;
+                    
+                    // Skip if cell is empty, null, or only whitespace
+                    if ($cellValue === null || $cellValue === '' || trim($cellValue) === '') {
+                        continue; // Don't update this field - keep existing value
+                    }
+                    
+                    $value = trim($cellValue);
+                    
+                    // Skip if value is still empty after trim
+                    if ($value === '') {
+                        continue; // Don't update this field - keep existing value
+                    }
+                    
+                    // Check if this field is currently MISSING in the database
+                    $isCurrentlyMissing = false;
+                    $currentValue = null;
+                    $isNumeric = in_array($field, ['cp', 'lp', 'frght', 'ship', 'temu_ship', 'moq', 'ebay2_ship', 'label_qty', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'initial_quantity', 'shopify_inv', 'shopify_quantity']);
+                    
+                    // Get current value from database
+                    if (in_array($field, ['cp', 'lp', 'frght', 'ship', 'temu_ship', 'moq', 'ebay2_ship', 'label_qty', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'initial_quantity', 'image_path', 'status', 'unit'])) {
+                        // All these fields are stored in Values JSON
+                        $currentValue = $values[$field] ?? null;
+                    } elseif ($field === 'shopify_inv') {
+                        $currentValue = $product->shopify_inv;
+                    } elseif ($field === 'shopify_quantity') {
+                        $currentValue = $product->shopify_quantity;
+                    }
+                    
+                    // Check if current value is missing
+                    $isCurrentlyMissing = $this->isDataMissing($currentValue, $isNumeric, $field);
+                    
+                    // Only update if the field is currently MISSING in the database
+                    if (!$isCurrentlyMissing) {
+                        continue; // Field already has a value - don't update it
+                    }
+                    
+                    // Convert to float for numeric fields
+                    if ($isNumeric) {
+                        // Only update if it's a valid number
+                        if (is_numeric($value)) {
+                            $value = (float)$value;
+                        } else {
+                            // Invalid numeric value - skip this field
+                            continue;
+                        }
+                    }
+                    
+                    // Only update fields that are currently missing and have values in Excel
+                    // Store in Values array for most fields (including status and unit)
+                    if (in_array($field, ['cp', 'lp', 'frght', 'ship', 'temu_ship', 'moq', 'ebay2_ship', 'label_qty', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'initial_quantity', 'image_path', 'status', 'unit'])) {
+                        $values[$field] = $value;
+                    } 
+                    // Store directly on product for shopify fields
+                    elseif ($field === 'shopify_inv') {
+                        $product->shopify_inv = $value;
+                    } elseif ($field === 'shopify_quantity') {
+                        $product->shopify_quantity = $value;
+                    }
+                }
+
+                // Save the updated Values
+                $product->Values = $values;
+                $product->save();
+                $updated++;
+                $imported++;
+            }
+
+            $message = "Successfully imported {$imported} records. Only missing data fields were updated - existing values were preserved.";
+            if (count($errors) > 0) {
+                $message .= " " . count($errors) . " error(s) occurred.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $imported,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Product Master Import Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage()
             ], 500);
         }
     }

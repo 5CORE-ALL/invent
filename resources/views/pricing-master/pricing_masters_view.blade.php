@@ -185,13 +185,13 @@
         }
 
         .tabulator .tabulator-row.parent-row {
-            background-color: #f8f9fa;
+            background-color: #e3f2fd !important;
             font-weight: 700;
-            border-top: 2px solid #0d6efd;
         }
 
         .tabulator .tabulator-row.parent-row .tabulator-cell {
-            color: #0d6efd;
+            color: #000000 !important;
+            background-color: #e3f2fd !important;
         }
 
         .tabulator .tabulator-row .tabulator-cell {
@@ -206,7 +206,7 @@
             content: attr(data-full-value);
             position: absolute;
             bottom: 100%;
-            left: 50%;
+           
             transform: translateX(-50%);
             background: #333;
             color: white;
@@ -1371,8 +1371,10 @@ $.ajax({
                 {
                     title: "Parent",
                     field: "Parent",
+                    width: 120,
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search Parent...",
+                    headerSort: false,
                     cssClass: "text-muted",
                     tooltip: true,
                     frozen: true
@@ -1383,6 +1385,7 @@ $.ajax({
                     width: 250,
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
+                    headerSort: false,
                     cssClass: "font-weight-bold",
                     tooltip: true,
                     frozen: true,
@@ -1419,7 +1422,9 @@ $.ajax({
                 {
                     title: "INV",
                     field: "INV",
+                    width: 80,
                     hozAlign: "right",
+                    headerSort: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return `<strong>${Math.round(value)}</strong>`;
@@ -1431,6 +1436,7 @@ $.ajax({
                {
                     title: "OVL30",
                     field: "ovl30",
+                    width: 100,
                     hozAlign: "center",
                     headerSort: false,
                     formatter: function(cell) {
@@ -1453,7 +1459,9 @@ $.ajax({
                     {
                         title: "DIL%",
                         field: "Dil%",
+                        width: 80,
                         hozAlign: "right",
+                        headerSort: false,
                         formatter: function (cell) {
                             const data = cell.getRow().getData();
                             const value = cell.getValue() || 0;
@@ -1486,8 +1494,10 @@ $.ajax({
                   {
                     title: "PRC",
                     field: "avgPrice",
+                    width: 90,
                     hozAlign: "center",
                     bold: true,
+                    headerSort: false,
                     formatter: function(cell) {
                         const data = cell.getRow().getData();
 
@@ -1629,23 +1639,9 @@ $.ajax({
                 {
                      title: "PFT%<br><span id='avgPftHeader' style='font-size:12px; color:#fff; '></span>",
                     field: "avgPftPercent",
+                    width: 100,
                     hozAlign: "right",
-                    headerSort: true,
-                    sortable: true,
-                    sorterParams: {
-                        alignEmptyValues: "bottom"
-                    },
-                    sorter: function(a, b) {
-                        let rowA = this.getRow(a);
-                        let rowB = this.getRow(b);
-                        return calculateAvgProfit(rowA.getData()) - calculateAvgProfit(rowB.getData());
-                    },
-                    headerSort: true,
-                    sorter: function(a, b) {
-                        const valA = a || 0;
-                        const valB = b || 0;
-                        return valA - valB;
-                    },
+                    headerSort: false,
                     formatter: function(cell) {
                         const data = cell.getRow().getData();
 
@@ -1811,13 +1807,9 @@ $.ajax({
                 {
                         title: "ROI%<br><span id='avgRoiHeader' style='font-size:12px; color:#fff; '></span>",
                         field: "avgRoi",
+                        width: 100,
                         hozAlign: "right",
-                        headerSort: true,
-                        sorter: function(a, b) {
-                            const valA = parseFloat(a) || 0;
-                            const valB = parseFloat(b) || 0;
-                            return valA - valB;
-                        },
+                        headerSort: false,
                         formatter: function(cell) {
                             const data = cell.getRow().getData();
                             const LP = parseFloat(data.LP) || 0;
@@ -1912,8 +1904,9 @@ $.ajax({
             {
                 title: "CVR",
                 field: "avgCvr",
+                width: 80,
                 hozAlign: "center",
-              
+                headerSort: false,
                 formatterParams: {
                     decimal: 2,
                 
@@ -1951,6 +1944,7 @@ $.ajax({
         {
                     title: "Views",
                     field: "total_views",
+                    width: 90,
                     hozAlign: "center",
                     headerSort: false,
                     formatter: function(cell) {
@@ -2003,7 +1997,9 @@ $.ajax({
                  {
                     title: "MSRP",
                     field: "MSRP",
+                    width: 90,
                     hozAlign: "right",
+                    headerSort: false,
                     formatter: "money",
                     formatterParams: {
                         precision: 2
@@ -2013,7 +2009,9 @@ $.ajax({
                   {
                     title: "MAP",
                     field: "MAP",
+                    width: 90,
                     hozAlign: "right",
+                    headerSort: false,
                     formatter: "money",
                     formatterParams: {
                         precision: 2
@@ -2023,7 +2021,9 @@ $.ajax({
                 {
                     title: "LP",
                     field: "LP",
+                    width: 90,
                     hozAlign: "right",
+                    headerSort: false,
                     formatter: "money",
                     formatterParams: {
                         precision: 2
@@ -2032,7 +2032,9 @@ $.ajax({
                 {
                     title: "SHIP",
                     field: "SHIP",
+                    width: 90,
                     hozAlign: "right",
+                    headerSort: false,
                     formatter: "money",
                     formatterParams: {
                         precision: 2
@@ -2143,10 +2145,10 @@ $.ajax({
                 { price: parent.ebay2_price, l30: parent.ebay2_l30, factor: 0.79, ship: parent.ebay2_ship },
                 { price: parent.walmart_price, l30: parent.walmart_l30, factor: 0.80 },
                 { price: parent.shein_price, l30: parent.shein_l30, factor: 0.89 },
-                { price: parent.tiktok_price, l30: parent.tiktok_price, factor: 0.80 },
-                { price: parent.bestbuy_price, l30: parent.bestbuy_price, factor: 0.80 },
-                { price: parent.tiendamia_price, l30: parent.tiendamia_price, factor: 0.83 },
-                { price: parent.aliexpress_price, l30: parent.aliexpress_price, factor: 0.89 }
+                { price: parent.tiktok_price, l30: parent.tiktok_l30, factor: 0.80 },
+                { price: parent.bestbuy_price, l30: parent.bestbuy_l30, factor: 0.80 },
+                { price: parent.tiendamia_price, l30: parent.tiendamia_l30, factor: 0.83 },
+                { price: parent.aliexpress_price, l30: parent.aliexpress_l30, factor: 0.89 }
 
             ];
 
