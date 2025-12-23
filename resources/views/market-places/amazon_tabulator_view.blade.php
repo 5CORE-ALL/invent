@@ -1441,20 +1441,30 @@
                                 return `<span style="font-weight: bold;">${sku}</span>`;
                             }
 
+                            // Ratings display with star icon (like FBA format)
+                            const ratingDisplay = (rowData.rating && rowData.rating > 0) 
+                                ? ` <i class="fa fa-star" style="color: orange;"></i> ${rowData.rating}` 
+                                : '';
+
                             return `<div style="display: flex; align-items: center; gap: 5px;">
-                                <span>${sku}</span>
+                                <span>${sku}${ratingDisplay}</span>
                                 <button class="btn btn-sm btn-link copy-sku-btn p-0" data-sku="${sku}" title="Copy SKU">
                                     <i class="fas fa-copy"></i>
                                 </button>
                                 <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;">
                                     <i class="fa fa-info-circle"></i>
                                 </button>
-                                &nbsp;
-                                &nbsp;
-                                ${rowData.rating ? `<i class="fas fa-star" style="color: orange;"></i> <span style="font-weight: bold;">${rowData.rating}</span>` : ''}
                             </div>`;
                         },
                      
+                    },
+                    {
+                        title: "Ratings",
+                        field: "rating",
+                        hozAlign: "center",
+                        editor: "input",
+                        tooltip: "Enter rating between 0 and 5",
+                        width: 80
                     },
                     {
                         title: "Links",
@@ -1640,15 +1650,15 @@
                             }
 
                             return `<select class="form-select form-select-sm nr-select" data-sku="${sku}"
-                                style="background-color: ${bgColor}; color: ${textColor}; border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 4px;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>RL</option>
-                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>NRL</option>
+                                style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px;">
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>🔴</option>
                             </select>`;
                         },
                         cellClick: function(e, cell) {
                             e.stopPropagation();
                         },
-                        width: 90
+                        width: 60
                     },
                     {
                         title: "Prc",
@@ -2144,13 +2154,6 @@
                 const value = $select.val();
                 const sku = $select.data('sku');
 
-                // Update dropdown colors
-                if (value === 'REQ') {
-                    $select.css('background-color', '#28a745').css('color', 'white');
-                } else if (value === 'NR') {
-                    $select.css('background-color', '#dc3545').css('color', 'white');
-                }
-
                 // Save to database
                 $.ajax({
                     url: '/listing_amazon/save-status',
@@ -2183,6 +2186,39 @@
                 var data = row.getData();
                 var field = cell.getColumn().getField();
                 var value = cell.getValue();
+
+                // Validate and save ratings field (must be between 0 and 5)
+                if (field === 'rating') {
+                    var numValue = parseFloat(value);
+                    if (isNaN(numValue) || numValue < 0 || numValue > 5) {
+                        alert('Ratings must be a number between 0 and 5');
+                        cell.setValue(data.rating || 0); // Revert to original value
+                        return;
+                    }
+                    
+                    // Save rating to database
+                    $.ajax({
+                        url: '/update-amazon-rating',
+                        method: 'POST',
+                        data: {
+                            sku: data['(Child) sku'],
+                            rating: numValue,
+                            _token: $('meta[name="csrf-token"]').attr('content')
+                        },
+                        success: function(response) {
+                            console.log('Rating saved successfully');
+                            showToast('success', 'Rating updated successfully');
+                            // Update the row data
+                            row.update({rating: numValue});
+                        },
+                        error: function(xhr) {
+                            console.error('Error saving rating:', xhr.responseText);
+                            showToast('error', 'Error saving rating');
+                            cell.setValue(data.rating || 0); // Revert on error
+                        }
+                    });
+                    return;
+                }
 
                 if (field === 'SPRICE') {
                     const sku = data['(Child) sku'];

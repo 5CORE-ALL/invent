@@ -310,6 +310,18 @@ class EbayController extends Controller
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
             
+            // ==== Rating from EbayDataView ====
+            $row['rating'] = null;
+            if (isset($nrValues[$pm->sku])) {
+                $raw = $nrValues[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true) ?? [];
+                }
+                if (is_array($raw) && isset($raw['rating'])) {
+                    $row['rating'] = floatval($raw['rating']);
+                }
+            }
+            
             // ==== NRL/REQ + Links ====
             // Default values
             $row['nr_req'] = 'REQ';
@@ -1742,6 +1754,198 @@ class EbayController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to fetch ads spend data'
+            ], 500);
+        }
+    }
+
+    public function updateEbayRating(Request $request)
+    {
+        $sku = strtoupper(trim($request->input('sku')));
+        $rating = $request->input('rating');
+
+        // Validate rating
+        if (!is_numeric($rating) || $rating < 0 || $rating > 5) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Rating must be a number between 0 and 5'
+            ], 400);
+        }
+
+        try {
+            // Find or create the data view record
+            $ebayDataView = EbayDataView::firstOrNew(['sku' => $sku]);
+            
+            // Decode existing value
+            $currentValue = is_array($ebayDataView->value)
+                ? $ebayDataView->value
+                : (json_decode($ebayDataView->value, true) ?? []);
+            
+            // Update rating
+            $currentValue['rating'] = floatval($rating);
+            
+            // Save
+            $ebayDataView->value = $currentValue;
+            $ebayDataView->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Rating updated successfully',
+                'rating' => floatval($rating)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error updating eBay rating: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error updating rating'
+            ], 500);
+        }
+    }
+
+    public function downloadEbayRatingsSample()
+    {
+        try {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+
+            // Set headers
+            $sheet->setCellValue('A1', 'sku');
+            $sheet->setCellValue('B1', 'rating');
+
+            // Add sample data
+            $sheet->setCellValue('A2', 'SAMPLE-SKU-001');
+            $sheet->setCellValue('B2', '4.5');
+            $sheet->setCellValue('A3', 'SAMPLE-SKU-002');
+            $sheet->setCellValue('B3', '4.0');
+            $sheet->setCellValue('A4', 'SAMPLE-SKU-003');
+            $sheet->setCellValue('B4', '3.5');
+
+            // Style header row
+            $headerStyle = [
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '4472C4']],
+                'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]
+            ];
+            $sheet->getStyle('A1:B1')->applyFromArray($headerStyle);
+
+            // Auto-size columns
+            foreach (range('A', 'B') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+
+            // Generate file
+            $writer = new Xlsx($spreadsheet);
+            $fileName = 'ebay_ratings_sample_' . date('Y-m-d') . '.xlsx';
+            $tempFile = tempnam(sys_get_temp_dir(), $fileName);
+            $writer->save($tempFile);
+
+            return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        } catch (\Exception $e) {
+            Log::error('Error generating eBay ratings sample: ' . $e->getMessage());
+            return back()->with('error', 'Failed to generate sample file');
+        }
+    }
+
+    public function importEbayRatings(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt,xlsx'
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $imported = 0;
+            $skipped = 0;
+
+            // Check if it's CSV or Excel
+            $extension = $file->getClientOriginalExtension();
+
+            if ($extension === 'xlsx') {
+                // Handle Excel file
+                $spreadsheet = IOFactory::load($file->getRealPath());
+                $worksheet = $spreadsheet->getActiveSheet();
+                $rows = $worksheet->toArray();
+                
+                // Remove header
+                array_shift($rows);
+
+                foreach ($rows as $row) {
+                    if (empty($row[0])) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $sku = strtoupper(trim($row[0]));
+                    $rating = isset($row[1]) ? floatval($row[1]) : null;
+
+                    // Validate rating
+                    if ($rating === null || $rating < 0 || $rating > 5) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    // Update or create
+                    $ebayDataView = EbayDataView::firstOrNew(['sku' => $sku]);
+                    $currentValue = is_array($ebayDataView->value)
+                        ? $ebayDataView->value
+                        : (json_decode($ebayDataView->value, true) ?? []);
+                    
+                    $currentValue['rating'] = $rating;
+                    $ebayDataView->value = $currentValue;
+                    $ebayDataView->save();
+
+                    $imported++;
+                }
+            } else {
+                // Handle CSV file
+                $content = file_get_contents($file->getRealPath());
+                $content = preg_replace('/^\x{FEFF}/u', '', $content); // Remove BOM
+                $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8');
+                $csvData = array_map('str_getcsv', explode("\n", $content));
+                $csvData = array_filter($csvData, function($row) {
+                    return count($row) > 0 && !empty(trim(implode('', $row)));
+                });
+                
+                // Remove header
+                array_shift($csvData);
+
+                foreach ($csvData as $row) {
+                    $row = array_map('trim', $row);
+                    if (empty($row[0])) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $sku = strtoupper($row[0]);
+                    $rating = isset($row[1]) ? floatval($row[1]) : null;
+
+                    // Validate rating
+                    if ($rating === null || $rating < 0 || $rating > 5) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    // Update or create
+                    $ebayDataView = EbayDataView::firstOrNew(['sku' => $sku]);
+                    $currentValue = is_array($ebayDataView->value)
+                        ? $ebayDataView->value
+                        : (json_decode($ebayDataView->value, true) ?? []);
+                    
+                    $currentValue['rating'] = $rating;
+                    $ebayDataView->value = $currentValue;
+                    $ebayDataView->save();
+
+                    $imported++;
+                }
+            }
+
+            return response()->json([
+                'success' => 'Imported ' . $imported . ' ratings successfully' . 
+                            ($skipped > 0 ? ', skipped ' . $skipped . ' invalid rows' : '')
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error importing eBay ratings: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Error importing ratings: ' . $e->getMessage()
             ], 500);
         }
     }
