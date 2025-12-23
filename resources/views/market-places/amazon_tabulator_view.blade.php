@@ -155,6 +155,10 @@
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-percent"></i> Decrease
                     </button>
+                    
+                    <button id="increase-btn" class="btn btn-sm btn-success">
+                        <i class="fas fa-percent"></i> Increase
+                    </button>
                                         
                     <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
                         <i class="fa fa-eye-slash"></i> Hide Chart
@@ -213,12 +217,18 @@
                 <!-- Discount Input Box (shown when SKUs are selected) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
                     <div class="d-flex align-items-center gap-2">
-                        <label class="mb-0 fw-bold">Discount %:</label>
+                        <label class="mb-0 fw-bold">Type:</label>
+                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 130px;">
+                            <option value="percentage">Percentage (%)</option>
+                            <option value="value">Value ($)</option>
+                        </select>
+                        
+                        <label class="mb-0 fw-bold" id="discount-input-label">Value:</label>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="Enter discount %" step="0.1" min="0" max="100" 
+                            placeholder="Enter value" step="0.1" min="0" 
                             style="width: 150px; display: inline-block;">
                         <button id="apply-discount-btn" class="btn btn-sm btn-primary">
-                            <i class="fas fa-check"></i> Apply Discount
+                            <i class="fas fa-check"></i> Apply
                         </button>
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
@@ -331,6 +341,7 @@
         let currentSku = null;
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
+        let increaseModeActive = false; // Track increase mode state
         let selectedSkus = new Set(); // Track selected SKUs across all pages
 
         // Initialize Metrics Chart
@@ -767,12 +778,32 @@
             // Show chart button by default on first load
             $('#toggle-chart-btn').show();
 
+            // Discount type dropdown change handler
+            $('#discount-type-select').on('change', function() {
+                const type = $(this).val();
+                const $input = $('#discount-percentage-input');
+                
+                if (type === 'percentage') {
+                    $input.attr('placeholder', 'Enter percentage');
+                    $input.attr('max', '100');
+                } else {
+                    $input.attr('placeholder', 'Enter value');
+                    $input.removeAttr('max');
+                }
+            });
+
             // Decrease Mode Toggle
             $('#decrease-btn').on('click', function() {
                 decreaseModeActive = !decreaseModeActive;
                 const selectColumn = table.getColumn('_select');
                 
                 if (decreaseModeActive) {
+                    // Disable increase mode if active
+                    if (increaseModeActive) {
+                        increaseModeActive = false;
+                        $('#increase-btn').removeClass('btn-danger').addClass('btn-success');
+                        $('#increase-btn').html('<i class="fas fa-percent"></i> Increase');
+                    }
                     selectColumn.show();
                     $(this).removeClass('btn-warning').addClass('btn-danger');
                     $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
@@ -780,6 +811,33 @@
                     selectColumn.hide();
                     $(this).removeClass('btn-danger').addClass('btn-warning');
                     $(this).html('<i class="fas fa-percent"></i> Decrease');
+                    // Clear all selections
+                    selectedSkus.clear();
+                    $('.sku-select-checkbox').prop('checked', false);
+                    $('#select-all-checkbox').prop('checked', false);
+                    $('#discount-input-container').hide();
+                }
+            });
+
+            // Increase Mode Toggle
+            $('#increase-btn').on('click', function() {
+                increaseModeActive = !increaseModeActive;
+                const selectColumn = table.getColumn('_select');
+                
+                if (increaseModeActive) {
+                    // Disable decrease mode if active
+                    if (decreaseModeActive) {
+                        decreaseModeActive = false;
+                        $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning');
+                        $('#decrease-btn').html('<i class="fas fa-percent"></i> Decrease');
+                    }
+                    selectColumn.show();
+                    $(this).removeClass('btn-success').addClass('btn-danger');
+                    $(this).html('<i class="fas fa-times"></i> Cancel Increase');
+                } else {
+                    selectColumn.hide();
+                    $(this).removeClass('btn-danger').addClass('btn-success');
+                    $(this).html('<i class="fas fa-percent"></i> Increase');
                     // Clear all selections
                     selectedSkus.clear();
                     $('.sku-select-checkbox').prop('checked', false);
@@ -1153,12 +1211,12 @@
                 updateSelectedCount();
             });
 
-            // Apply Discount Button
+            // Apply Discount/Increase Button
             $('#apply-discount-btn').on('click', function() {
-                const discountPercent = parseFloat($('#discount-percentage-input').val());
+                const inputValue = parseFloat($('#discount-percentage-input').val());
                 
-                if (isNaN(discountPercent) || discountPercent < 0 || discountPercent > 100) {
-                    showToast('error', 'Please enter a valid discount percentage (0-100)');
+                if (isNaN(inputValue) || inputValue < 0) {
+                    showToast('error', 'Please enter a valid positive number');
                     return;
                 }
                 
@@ -1167,7 +1225,13 @@
                     return;
                 }
                 
-                const discountDecimal = discountPercent / 100;
+                if (!decreaseModeActive && !increaseModeActive) {
+                    showToast('error', 'Please activate Decrease or Increase mode first');
+                    return;
+                }
+                
+                const mode = increaseModeActive ? 'increase' : 'decrease';
+                const discountType = $('#discount-type-select').val(); // Get selected type
                 let successCount = 0;
                 let errorCount = 0;
                 let totalToProcess = selectedSkus.size;
@@ -1190,7 +1254,25 @@
                         const originalPrice = parseFloat(rowData.price) || 0;
                         
                         if (originalPrice > 0) {
-                            const discountedPrice = originalPrice * (1 - discountDecimal);
+                            let newPrice;
+                            
+                            // Use selected type (percentage or value)
+                            if (discountType === 'percentage') {
+                                // Treat as percentage
+                                const decimal = inputValue / 100;
+                                if (mode === 'decrease') {
+                                    newPrice = originalPrice * (1 - decimal);
+                                } else {
+                                    newPrice = originalPrice * (1 + decimal);
+                                }
+                            } else {
+                                // Treat as fixed value
+                                if (mode === 'decrease') {
+                                    newPrice = Math.max(0.01, originalPrice - inputValue);
+                                } else {
+                                    newPrice = originalPrice + inputValue;
+                                }
+                            }
                             
                             // Update SPRICE via AJAX
                             $.ajax({
@@ -1201,37 +1283,40 @@
                                 },
                                 data: {
                                     sku: sku,
-                                    sprice: discountedPrice.toFixed(2)
+                                    sprice: newPrice.toFixed(2)
                                 },
                                 success: function(response) {
                                     successCount++;
                                     
-                                    // Update row data
-                                    row.update({
-                                        'SPRICE': discountedPrice.toFixed(2)
-                                    });
+                                    // Always update SPRICE with the new value, let the formatter decide display
+                                    const updateData = {
+                                        'SPRICE': newPrice.toFixed(2), // Always save the new price
+                                        'has_custom_sprice': true,
+                                        'SPRICE_STATUS': null // Reset status so formatter shows/hides based on price match
+                                    };
                                     
                                     if (response.sgpft_percent !== undefined) {
-                                        row.update({
-                                            'SGPFT': response.sgpft_percent
-                                        });
+                                        updateData['SGPFT'] = response.sgpft_percent;
                                     }
                                     if (response.spft_percent !== undefined) {
-                                        row.update({
-                                            'Spft%': response.spft_percent
-                                        });
+                                        updateData['Spft%'] = response.spft_percent;
                                     }
                                     if (response.sroi_percent !== undefined) {
-                                        row.update({
-                                            'SROI': response.sroi_percent
-                                        });
+                                        updateData['SROI'] = response.sroi_percent;
                                     }
+                                    
+                                    // Update row with all data at once
+                                    row.update(updateData);
+                                    
+                                    // Force redraw of the entire row to ensure all formatters run
+                                    row.reformat();
                                     
                                     // Check if all requests are complete
                                     if (successCount + errorCount === totalToProcess) {
-                                        $('#apply-discount-btn').prop('disabled', false).html('<i class="fas fa-check"></i> Apply Discount');
+                                        const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                                        $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                                         if (errorCount === 0) {
-                                            showToast('success', `Discount applied successfully to ${successCount} SKU${successCount > 1 ? 's' : ''}`);
+                                            showToast('success', `${actionText} applied successfully to ${successCount} SKU${successCount > 1 ? 's' : ''}`);
                                         } else {
                                             showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                                         }
@@ -1240,7 +1325,8 @@
                                 error: function(xhr) {
                                     errorCount++;
                                     if (successCount + errorCount === totalToProcess) {
-                                        $('#apply-discount-btn').prop('disabled', false).html('<i class="fas fa-check"></i> Apply Discount');
+                                        const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                                        $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                                         showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                                     }
                                 }
@@ -1248,14 +1334,16 @@
                         } else {
                             errorCount++;
                             if (successCount + errorCount === totalToProcess) {
-                                $('#apply-discount-btn').prop('disabled', false).html('<i class="fas fa-check"></i> Apply Discount');
+                                const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                                $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                                 showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                             }
                         }
                     } else {
                         errorCount++;
                         if (successCount + errorCount === totalToProcess) {
-                            $('#apply-discount-btn').prop('disabled', false).html('<i class="fas fa-check"></i> Apply Discount');
+                            const actionText = mode === 'increase' ? 'Increase' : 'Discount';
+                            $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                             showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                         }
                     }
@@ -1846,22 +1934,17 @@
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
-                            const status = rowData.SPRICE_STATUS || null;
                             const currentPrice = parseFloat(rowData.price) || 0;
                             const sprice = parseFloat(value) || 0;
                             
                             if (!value) return '';
                             
-                            // Show blank if status is 'applied' (double tick) or 'pushed'
-                            if (status === 'applied' || status === 'pushed') {
-                                return '';
-                            }
-                            
-                            // Show blank if price and SPRICE match
+                            // ONLY condition: Show blank if price and SPRICE match
                             if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
                                 return '';
                             }
                             
+                            // Show SPRICE when it's different from current price
                             const formattedValue = `$${parseFloat(value).toFixed(2)}`;
                             
                             // If using default price (not custom), show in blue
