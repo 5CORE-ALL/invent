@@ -125,11 +125,12 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
 
             $l7_cpc = floatval($row['l7_cpc']);
+            $l1_cpc = floatval($row['l1_cpc']);
             
             if ($l7_cpc === 0.0) {
-                $row['sbid'] = 0.75;
+                $row['sbid'] = 0.50;
             } else {
-                $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
+                $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
             }
 
             $budget = floatval($row['campaignBudgetAmount']);
