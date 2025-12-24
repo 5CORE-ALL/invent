@@ -56,7 +56,7 @@ class AutoUpdateAmazonBgtKw extends Command
         }
 
         try {
-            //$result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
+            $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
             
             // Show only campaign name and new budget for valid campaigns
             $simplifiedResult = $validCampaigns->map(function ($campaign) {
@@ -68,10 +68,10 @@ class AutoUpdateAmazonBgtKw extends Command
             
             $this->info("Update Result: " . json_encode($simplifiedResult));
             
-            // if (isset($result['status']) && $result['status'] !== 200) {
-            //     $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
-            //     return 1;
-            // }
+            if (isset($result['status']) && $result['status'] !== 200) {
+                $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
+                return 1;
+            }
             
             $this->info("Successfully updated " . count($campaignIds) . " campaign budgets.");
             
