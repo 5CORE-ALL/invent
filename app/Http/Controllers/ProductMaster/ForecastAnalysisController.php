@@ -4,15 +4,11 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
-use App\Models\AmazonDatasheet;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Http;
 use App\Models\JungleScoutProductData;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
