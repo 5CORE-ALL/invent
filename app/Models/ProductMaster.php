@@ -16,6 +16,9 @@ class ProductMaster extends Model
         'parent',
         'sku',
         'group_id',
+        'category_id',
+        'group',
+        'category',
         'Values',
         'remark',
         'sales',
@@ -81,4 +84,20 @@ class ProductMaster extends Model
 
     protected $guarded = ['group_id'];
 
+    /**
+     * Get the group that the product belongs to
+     */
+    public function productGroup()
+    {
+        return $this->belongsTo(ProductGroup::class, 'group_id');
+    }
+
+    /**
+     * Get the category that the product belongs to
+     */
+    public function productCategory()
+    {
+        return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
 }
+

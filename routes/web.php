@@ -1330,6 +1330,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tag-lines-master-data-view', [CategoryController::class, 'getTagLinesMasterData'])->name('tag.lines.master.data');
     Route::get('/group-master', [CategoryController::class, 'groupMaster'])->name('group.master');
     Route::get('/group-master-data-view', [CategoryController::class, 'getGroupMasterData'])->name('group.master.data');
+    Route::get('/group-master-groups', [CategoryController::class, 'getProductGroups'])->name('group.master.groups');
+    Route::get('/group-master-categories', [CategoryController::class, 'getProductCategories'])->name('group.master.categories');
+    Route::post('/group-master-upload-excel', [CategoryController::class, 'uploadGroupMasterExcel'])->name('group.master.upload.excel');
+    Route::post('/group-master-update-field', [CategoryController::class, 'updateProductField'])->name('group.master.update.field');
+    Route::post('/group-master-store-group', [CategoryController::class, 'storeProductGroup'])->name('group.master.store.group');
+    Route::post('/group-master-store-category', [CategoryController::class, 'storeProductCategory'])->name('group.master.store.category');
     Route::get('/seo-keywords-master', [CategoryController::class, 'seoKeywordsMaster'])->name('seo.keywords.master');
     Route::get('/seo-keywords-master-data-view', [CategoryController::class, 'getSeoKeywordsMasterData'])->name('seo.keywords.master.data');
     Route::post('/category.create', [CategoryController::class, 'postCategory'])->name('category.create');

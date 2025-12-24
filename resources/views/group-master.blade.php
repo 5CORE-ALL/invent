@@ -150,6 +150,45 @@
             word-wrap: break-word;
             white-space: normal;
         }
+
+        /* Editable cell styles */
+        .editable-cell {
+            position: relative;
+            min-width: 120px;
+        }
+
+        .editable-cell:hover {
+            background-color: #f0f8ff !important;
+        }
+
+        .editable-value {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .editable-cell:hover .editable-value {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .editable-input,
+        .editable-select {
+            width: 100%;
+            min-width: 150px;
+            padding: 4px 8px;
+            border: 2px solid #1976d2;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .editable-input:focus,
+        .editable-select:focus {
+            outline: none;
+            border-color: #0d47a1;
+            box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+        }
     </style>
 @endsection
 
@@ -175,6 +214,10 @@
                             </div>
                         </div>
                         <div class="col-md-6 text-end">
+                            <input type="file" id="uploadExcel" accept=".xlsx,.xls" style="display: none;">
+                            <button type="button" class="btn btn-primary me-2" id="uploadExcelBtn">
+                                <i class="fas fa-upload me-1"></i> Upload Excel
+                            </button>
                             <button type="button" class="btn btn-success" id="downloadExcel">
                                 <i class="fas fa-file-excel me-1"></i> Download Excel
                             </button>
@@ -185,6 +228,24 @@
                         <table id="group-master-datatable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
+                                    <th>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <span>CATEGORY</span>
+                                            <button type="button" class="btn btn-sm btn-success" id="createCategoryBtn" 
+                                                style="padding: 2px 8px; font-size: 11px;" title="Create New Category">
+                                                <i class="fas fa-plus"></i>
+                                            </button>
+                                        </div>
+                                    </th>
+                                    <th>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <span>GROUPS</span>
+                                            <button type="button" class="btn btn-sm btn-success" id="createGroupBtn" 
+                                                style="padding: 2px 8px; font-size: 11px;" title="Create New Group">
+                                                <i class="fas fa-plus"></i>
+                                            </button>
+                                        </div>
+                                    </th>
                                     <th>Image</th>
                                     <th>
                                         <div style="display: flex; align-items: center; gap: 10px;">
@@ -223,6 +284,75 @@
             </div>
         </div>
     </div>
+
+    <!-- Create Group Modal -->
+    <div class="modal fade" id="createGroupModal" tabindex="-1" aria-labelledby="createGroupModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createGroupModalLabel">Create New Group</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="createGroupForm">
+                        <div class="mb-3">
+                            <label for="group_name" class="form-label">Group Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="group_name" name="group_name" 
+                                placeholder="Enter group name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="group_description" class="form-label">Description (Optional)</label>
+                            <textarea class="form-control" id="group_description" name="group_description" rows="3" 
+                                placeholder="Optional description for this group"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveGroupBtn">
+                        <i class="fas fa-save me-1"></i> Create Group
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Category Modal -->
+    <div class="modal fade" id="createCategoryModal" tabindex="-1" aria-labelledby="createCategoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createCategoryModalLabel">Create New Category</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="createCategoryForm">
+                        <div class="mb-3">
+                            <label for="category_name" class="form-label">Category Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="category_name" name="category_name" 
+                                placeholder="Enter category name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="category_code" class="form-label">Category Code (Optional)</label>
+                            <input type="text" class="form-control" id="category_code" name="category_code" 
+                                placeholder="Enter category code">
+                        </div>
+                        <div class="mb-3">
+                            <label for="category_description" class="form-label">Description (Optional)</label>
+                            <textarea class="form-control" id="category_description" name="category_description" rows="3" 
+                                placeholder="Optional description for this category"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveCategoryBtn">
+                        <i class="fas fa-save me-1"></i> Create Category
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -232,6 +362,8 @@
             // Store the loaded data globally
             let tableData = [];
             let filteredData = [];
+            let allGroups = [];
+            let allCategories = [];
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -308,12 +440,68 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No groups found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center">No groups found</td></tr>';
                     return;
                 }
 
                 data.forEach(item => {
                     const row = document.createElement('tr');
+
+                    // CATEGORY column - dropdown
+                    const categoryCell = document.createElement('td');
+                    categoryCell.className = 'editable-cell';
+                    categoryCell.dataset.field = 'category_id';
+                    categoryCell.dataset.productId = item.id;
+                    categoryCell.dataset.sku = item.SKU;
+                    const categoryId = item.category_id || '';
+                    const categoryName = escapeHtml(item.category) || '';
+                    
+                    let categoryOptions = '<option value="">-- No Category --</option>';
+                    if (allCategories && allCategories.length > 0) {
+                        allCategories.forEach(cat => {
+                            const selected = cat.id == categoryId ? 'selected' : '';
+                            categoryOptions += `<option value="${cat.id}" ${selected}>${escapeHtml(cat.category_name)}</option>`;
+                        });
+                    }
+                    
+                    categoryCell.innerHTML = `
+                        <span class="editable-value">${categoryName || '-'}</span>
+                        <select class="editable-select form-select form-select-sm" style="display:none;" 
+                            data-original="${categoryId}">
+                            ${categoryOptions}
+                        </select>
+                    `;
+                    categoryCell.style.cursor = 'pointer';
+                    categoryCell.title = 'Click to edit category';
+                    row.appendChild(categoryCell);
+
+                    // GROUPS column - dropdown
+                    const groupsCell = document.createElement('td');
+                    groupsCell.className = 'editable-cell';
+                    groupsCell.dataset.field = 'group_id';
+                    groupsCell.dataset.productId = item.id;
+                    groupsCell.dataset.sku = item.SKU;
+                    const groupId = item.group_id || '';
+                    const groupName = escapeHtml(item.group) || '';
+                    
+                    let groupOptions = '<option value="">-- No Group --</option>';
+                    if (allGroups && allGroups.length > 0) {
+                        allGroups.forEach(grp => {
+                            const selected = grp.id == groupId ? 'selected' : '';
+                            groupOptions += `<option value="${grp.id}" ${selected}>${escapeHtml(grp.group_name)}</option>`;
+                        });
+                    }
+                    
+                    groupsCell.innerHTML = `
+                        <span class="editable-value">${groupName || '-'}</span>
+                        <select class="editable-select form-select form-select-sm" style="display:none;" 
+                            data-original="${groupId}">
+                            ${groupOptions}
+                        </select>
+                    `;
+                    groupsCell.style.cursor = 'pointer';
+                    groupsCell.title = 'Click to edit group';
+                    row.appendChild(groupsCell);
 
                     // Image column
                     const imageCell = document.createElement('td');
@@ -460,24 +648,89 @@
             // Setup Excel export function
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
-                    // Columns to export (excluding Image and Action)
-                    const columns = ["Parent", "SKU", "Status", "INV"];
+                    // Use filteredData if available, otherwise use tableData
+                    const dataToExport = filteredData.length > 0 ? filteredData : tableData;
+                    
+                    if (dataToExport.length === 0) {
+                        showToast('warning', 'No data to export.');
+                        return;
+                    }
 
-                    // Column definitions with their data keys
-                    const columnDefs = {
-                        "Parent": {
-                            key: "Parent"
-                        },
-                        "SKU": {
-                            key: "SKU"
-                        },
-                        "Status": {
-                            key: "status"
-                        },
-                        "INV": {
-                            key: "shopify_inv"
+                    // Collect all unique keys from all data objects to include all parameters
+                    const allKeys = new Set();
+                    dataToExport.forEach(item => {
+                        Object.keys(item).forEach(key => {
+                            // Exclude internal/display-only fields
+                            if (key !== 'shopify_quantity') {
+                                allKeys.add(key);
+                            }
+                        });
+                    });
+
+                    // Define column order (priority columns first)
+                    const priorityColumns = [
+                        'id', 'category', 'group_id', 'image_path', 'Parent', 'SKU', 'status', 'shopify_inv',
+                        'title150', 'title100', 'title80', 'title60',
+                        'bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5',
+                        'product_description', 'feature1', 'feature2', 'feature3', 'feature4',
+                        'main_image', 'main_image_brand',
+                        'image1', 'image2', 'image3', 'image4', 'image5', 'image6',
+                        'image7', 'image8', 'image9', 'image10', 'image11', 'image12'
+                    ];
+
+                    // Sort columns: priority first, then alphabetically for the rest
+                    const sortedKeys = [];
+                    priorityColumns.forEach(key => {
+                        if (allKeys.has(key)) {
+                            sortedKeys.push(key);
+                            allKeys.delete(key);
                         }
+                    });
+                    const remainingKeys = Array.from(allKeys).sort();
+                    const columns = [...sortedKeys, ...remainingKeys];
+
+                    // Create friendly column names
+                    const columnNameMap = {
+                        'id': 'ID',
+                        'category': 'CATEGORY',
+                        'group_id': 'GROUPS',
+                        'image_path': 'Image Path',
+                        'Parent': 'Parent',
+                        'SKU': 'SKU',
+                        'status': 'Status',
+                        'shopify_inv': 'INV',
+                        'title150': 'Title150',
+                        'title100': 'Title100',
+                        'title80': 'Title80',
+                        'title60': 'Title60',
+                        'bullet1': 'Bullet1',
+                        'bullet2': 'Bullet2',
+                        'bullet3': 'Bullet3',
+                        'bullet4': 'Bullet4',
+                        'bullet5': 'Bullet5',
+                        'product_description': 'Product Description',
+                        'feature1': 'Feature1',
+                        'feature2': 'Feature2',
+                        'feature3': 'Feature3',
+                        'feature4': 'Feature4',
+                        'main_image': 'Main Image',
+                        'main_image_brand': 'Main Image Brand',
+                        'image1': 'Image1',
+                        'image2': 'Image2',
+                        'image3': 'Image3',
+                        'image4': 'Image4',
+                        'image5': 'Image5',
+                        'image6': 'Image6',
+                        'image7': 'Image7',
+                        'image8': 'Image8',
+                        'image9': 'Image9',
+                        'image10': 'Image10',
+                        'image11': 'Image11',
+                        'image12': 'Image12'
                     };
+
+                    // Create column headers
+                    const columnHeaders = columns.map(key => columnNameMap[key] || key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '));
 
                     // Show loader or indicate download is in progress
                     document.getElementById('downloadExcel').innerHTML =
@@ -487,39 +740,40 @@
                     // Use setTimeout to avoid UI freeze for large datasets
                     setTimeout(() => {
                         try {
-                            // Use filteredData if available, otherwise use tableData
-                            const dataToExport = filteredData.length > 0 ? filteredData : tableData;
-
                             // Create worksheet data array
                             const wsData = [];
 
                             // Add header row
-                            wsData.push(columns);
+                            wsData.push(columnHeaders);
 
                             // Add data rows
                             dataToExport.forEach(item => {
                                 const row = [];
-                                columns.forEach(col => {
-                                    const colDef = columnDefs[col];
-                                    if (colDef) {
-                                        const key = colDef.key;
-                                        let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
+                                columns.forEach(key => {
+                                    let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
 
-                                        // Format INV column
-                                        if (key === "shopify_inv") {
-                                            if (value === 0 || value === "0") {
-                                                value = 0;
-                                            } else if (value === null || value === undefined || value === "") {
-                                                value = '';
-                                            } else {
-                                                value = parseFloat(value) || 0;
-                                            }
+                                    // Format specific columns
+                                    if (key === "shopify_inv") {
+                                        if (value === 0 || value === "0") {
+                                            value = 0;
+                                        } else if (value === null || value === undefined || value === "") {
+                                            value = '';
+                                        } else {
+                                            value = parseFloat(value) || 0;
                                         }
-
-                                        row.push(value);
-                                    } else {
-                                        row.push('');
                                     }
+                                    
+                                    // Handle arrays and objects (convert to JSON string)
+                                    if (typeof value === 'object' && value !== null) {
+                                        value = JSON.stringify(value);
+                                    }
+                                    
+                                    // Handle null/undefined values
+                                    if (value === null || value === undefined) {
+                                        value = '';
+                                    }
+
+                                    row.push(value);
                                 });
                                 wsData.push(row);
                             });
@@ -529,14 +783,23 @@
                             const ws = XLSX.utils.aoa_to_sheet(wsData);
 
                             // Set column widths
-                            const wscols = columns.map(col => {
+                            const wscols = columnHeaders.map((header, index) => {
+                                const key = columns[index];
                                 // Adjust width based on column type
-                                if (["Parent", "SKU"].includes(col)) {
-                                    return { wch: 20 }; // Wider for text columns
-                                } else if (["Status"].includes(col)) {
-                                    return { wch: 12 };
+                                if (["Parent", "SKU", "Product Description"].includes(header)) {
+                                    return { wch: 25 };
+                                } else if (["Title150", "Title100", "Title80", "Title60"].includes(header)) {
+                                    return { wch: 30 };
+                                } else if (["Bullet1", "Bullet2", "Bullet3", "Bullet4", "Bullet5", "Feature1", "Feature2", "Feature3", "Feature4"].includes(header)) {
+                                    return { wch: 40 };
+                                } else if (header.includes("Image") || header.includes("image")) {
+                                    return { wch: 50 };
+                                } else if (["Status", "CATEGORY", "GROUPS", "INV"].includes(header)) {
+                                    return { wch: 15 };
+                                } else if (key && typeof dataToExport[0]?.[key] === 'object') {
+                                    return { wch: 50 }; // Wider for JSON fields
                                 } else {
-                                    return { wch: 10 }; // Default width for numeric columns
+                                    return { wch: 20 }; // Default width
                                 }
                             });
                             ws['!cols'] = wscols;
@@ -590,10 +853,401 @@
                 });
             }
 
+            // Setup Excel upload function
+            function setupExcelUpload() {
+                const uploadBtn = document.getElementById('uploadExcelBtn');
+                const fileInput = document.getElementById('uploadExcel');
+
+                uploadBtn.addEventListener('click', function() {
+                    fileInput.click();
+                });
+
+                fileInput.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    // Validate file type
+                    const validTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+                                      'application/vnd.ms-excel'];
+                    if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
+                        showToast('danger', 'Please upload a valid Excel file (.xlsx or .xls)');
+                        fileInput.value = '';
+                        return;
+                    }
+
+                    // Show loading state
+                    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Uploading...';
+                    uploadBtn.disabled = true;
+
+                    // Create FormData
+                    const formData = new FormData();
+                    formData.append('excel_file', file);
+                    formData.append('_token', csrfToken);
+
+                    // Upload file
+                    fetch('/group-master-upload-excel', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showToast('success', data.message || 'Excel file uploaded and data updated successfully!');
+                            // Reload data after successful upload
+                            setTimeout(() => {
+                                loadData();
+                            }, 1000);
+                        } else {
+                            showToast('danger', data.message || 'Failed to upload Excel file.');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Upload error:', error);
+                        showToast('danger', 'An error occurred while uploading the file.');
+                    })
+                    .finally(() => {
+                        // Reset button state
+                        uploadBtn.innerHTML = '<i class="fas fa-upload me-1"></i> Upload Excel';
+                        uploadBtn.disabled = false;
+                        fileInput.value = '';
+                    });
+                });
+            }
+
+            // Load groups and categories
+            function loadGroupsAndCategories() {
+                return Promise.all([
+                    // Load groups
+                    fetch('/group-master-groups')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                allGroups = data.groups || [];
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error loading groups:', error);
+                            allGroups = [];
+                        }),
+                    // Load categories
+                    fetch('/group-master-categories')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                allCategories = data.categories || [];
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error loading categories:', error);
+                            allCategories = [];
+                        })
+                ]);
+            }
+
+            // Setup inline editing for category and group columns
+            function setupInlineEditing() {
+                // Use event delegation for dynamically created rows
+                document.addEventListener('click', function(e) {
+                    const cell = e.target.closest('.editable-cell');
+                    if (!cell) return;
+                    
+                    const span = cell.querySelector('.editable-value');
+                    const select = cell.querySelector('.editable-select');
+                    
+                    if (e.target === span || e.target === cell) {
+                        // Enter edit mode
+                        span.style.display = 'none';
+                        select.style.display = 'block';
+                        select.focus();
+                    }
+                });
+
+                // Handle select change (save on change)
+                document.addEventListener('change', function(e) {
+                    const select = e.target;
+                    if (!select.classList.contains('editable-select')) return;
+                    
+                    const cell = select.closest('.editable-cell');
+                    const span = cell.querySelector('.editable-value');
+                    const field = cell.dataset.field;
+                    const productId = cell.dataset.productId;
+                    const sku = cell.dataset.sku;
+                    const newValue = select.value;
+                    const originalValue = select.dataset.original || '';
+
+                    // If value changed, save it
+                    if (newValue !== originalValue) {
+                        saveFieldValue(productId, sku, field, newValue, cell, span, select);
+                    } else {
+                        // Just exit edit mode
+                        updateDisplayValue(cell, newValue, field);
+                        span.style.display = '';
+                        select.style.display = 'none';
+                    }
+                });
+
+                // Handle blur to exit edit mode
+                document.addEventListener('blur', function(e) {
+                    const select = e.target;
+                    if (!select.classList.contains('editable-select')) return;
+                    
+                    const cell = select.closest('.editable-cell');
+                    const span = cell.querySelector('.editable-value');
+                    const originalValue = select.dataset.original || '';
+                    
+                    // Reset to original if not saved
+                    if (select.value !== originalValue && !cell.dataset.saving) {
+                        select.value = originalValue;
+                        updateDisplayValue(cell, originalValue, cell.dataset.field);
+                    }
+                    
+                    span.style.display = '';
+                    select.style.display = 'none';
+                    delete cell.dataset.saving;
+                }, true);
+
+                // Handle Escape key to cancel
+                document.addEventListener('keydown', function(e) {
+                    const select = e.target;
+                    if (!select.classList.contains('editable-select')) return;
+                    
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        const cell = select.closest('.editable-cell');
+                        const span = cell.querySelector('.editable-value');
+                        const originalValue = select.dataset.original || '';
+                        select.value = originalValue;
+                        updateDisplayValue(cell, originalValue, cell.dataset.field);
+                        span.style.display = '';
+                        select.style.display = 'none';
+                    }
+                });
+            }
+
+            // Update display value based on selected ID
+            function updateDisplayValue(cell, valueId, field) {
+                const span = cell.querySelector('.editable-value');
+                if (!valueId || valueId === '') {
+                    span.textContent = '-';
+                    return;
+                }
+                
+                if (field === 'group_id') {
+                    const group = allGroups.find(g => g.id == valueId);
+                    span.textContent = group ? group.group_name : '-';
+                } else if (field === 'category_id') {
+                    const category = allCategories.find(c => c.id == valueId);
+                    span.textContent = category ? category.category_name : '-';
+                }
+            }
+
+            // Save field value to backend
+            function saveFieldValue(productId, sku, field, value, cell, span, select) {
+                cell.dataset.saving = 'true';
+                
+                // Show loading state
+                span.textContent = 'Saving...';
+                span.style.display = '';
+                select.style.display = 'none';
+                cell.style.opacity = '0.6';
+
+                fetch('/group-master-update-field', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({
+                        product_id: productId,
+                        sku: sku,
+                        field: field,
+                        value: value ? parseInt(value) : null
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    cell.style.opacity = '1';
+                    delete cell.dataset.saving;
+                    
+                    if (data.success) {
+                        // Update display value
+                        updateDisplayValue(cell, value, field);
+                        select.value = value;
+                        select.dataset.original = value;
+                        
+                        // Update data in tableData
+                        const item = tableData.find(d => d.id == productId);
+                        if (item) {
+                            if (field === 'group_id') {
+                                item.group_id = value ? parseInt(value) : null;
+                                item.group = data.data.group_name || null;
+                            } else if (field === 'category_id') {
+                                item.category_id = value ? parseInt(value) : null;
+                                item.category = data.data.category_name || null;
+                            }
+                        }
+                        
+                        showToast('success', data.message || `${field.replace('_id', '')} updated successfully!`);
+                    } else {
+                        // Revert to original value on error
+                        const originalValue = select.dataset.original || '';
+                        select.value = originalValue;
+                        updateDisplayValue(cell, originalValue, field);
+                        showToast('danger', data.message || `Failed to update ${field}.`);
+                    }
+                })
+                .catch(error => {
+                    cell.style.opacity = '1';
+                    delete cell.dataset.saving;
+                    const originalValue = select.dataset.original || '';
+                    select.value = originalValue;
+                    updateDisplayValue(cell, originalValue, field);
+                    console.error('Error:', error);
+                    showToast('danger', `Error updating ${field}. Please try again.`);
+                });
+            }
+
+            // Setup create group functionality
+            function setupCreateGroup() {
+                const createBtn = document.getElementById('createGroupBtn');
+                const modal = new bootstrap.Modal(document.getElementById('createGroupModal'));
+                const saveBtn = document.getElementById('saveGroupBtn');
+                const form = document.getElementById('createGroupForm');
+
+                createBtn.addEventListener('click', function() {
+                    form.reset();
+                    modal.show();
+                });
+
+                saveBtn.addEventListener('click', function() {
+                    const groupName = document.getElementById('group_name').value.trim();
+                    const description = document.getElementById('group_description').value.trim();
+
+                    if (!groupName) {
+                        showToast('danger', 'Group name is required.');
+                        return;
+                    }
+
+                    saveBtn.disabled = true;
+                    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Creating...';
+
+                    fetch('/group-master-store-group', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            group_name: groupName,
+                            description: description,
+                            status: 'active'
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showToast('success', data.message || 'Group created successfully!');
+                            modal.hide();
+                            form.reset();
+                            // Reload groups and refresh table
+                            loadGroupsAndCategories();
+                            setTimeout(() => {
+                                loadData();
+                            }, 500);
+                        } else {
+                            showToast('danger', data.message || 'Failed to create group.');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        showToast('danger', 'An error occurred while creating the group.');
+                    })
+                    .finally(() => {
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = '<i class="fas fa-save me-1"></i> Create Group';
+                    });
+                });
+            }
+
+            // Setup create category functionality
+            function setupCreateCategory() {
+                const createBtn = document.getElementById('createCategoryBtn');
+                const modal = new bootstrap.Modal(document.getElementById('createCategoryModal'));
+                const saveBtn = document.getElementById('saveCategoryBtn');
+                const form = document.getElementById('createCategoryForm');
+
+                createBtn.addEventListener('click', function() {
+                    form.reset();
+                    modal.show();
+                });
+
+                saveBtn.addEventListener('click', function() {
+                    const categoryName = document.getElementById('category_name').value.trim();
+                    const code = document.getElementById('category_code').value.trim();
+                    const description = document.getElementById('category_description').value.trim();
+
+                    if (!categoryName) {
+                        showToast('danger', 'Category name is required.');
+                        return;
+                    }
+
+                    saveBtn.disabled = true;
+                    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Creating...';
+
+                    fetch('/group-master-store-category', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            category_name: categoryName,
+                            code: code || null,
+                            description: description,
+                            status: 'active'
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showToast('success', data.message || 'Category created successfully!');
+                            modal.hide();
+                            form.reset();
+                            // Reload categories and refresh table
+                            loadGroupsAndCategories();
+                            setTimeout(() => {
+                                loadData();
+                            }, 500);
+                        } else {
+                            showToast('danger', data.message || 'Failed to create category.');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        showToast('danger', 'An error occurred while creating the category.');
+                    })
+                    .finally(() => {
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = '<i class="fas fa-save me-1"></i> Create Category';
+                    });
+                });
+            }
+
             // Initialize
-            loadData();
+            loadGroupsAndCategories().then(() => {
+                loadData();
+            });
             setupExcelExport();
+            setupExcelUpload();
+            setupInlineEditing();
+            setupCreateGroup();
+            setupCreateCategory();
         });
     </script>
 @endsection
-
