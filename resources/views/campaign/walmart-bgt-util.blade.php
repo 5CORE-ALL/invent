@@ -22,6 +22,12 @@
             transition: background 0.2s;
         }
 
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+        }
+
         .tabulator .tabulator-header .tabulator-col:hover {
             background: #D8F3F3;
             color: #2563eb;
@@ -339,21 +345,29 @@
 
             // Helper function to calculate ALD BGT from ACOS
             function calculateAldBgt(acos) {
-                if (avgAcosValue > 0) {
-                    const halfAvgAcos = avgAcosValue / 2;
-                    
-                    // If ACOS > AVG ACOS then ALD BGT = 1
-                    if (acos > avgAcosValue) {
-                        return 1;
-                    } 
-                    // If AVG ACOS > ACOS > HALF OF AVG ACOS then ALD BGT = 3
-                    else if (acos > halfAvgAcos && acos <= avgAcosValue) {
-                        return 3;
-                    } 
-                    // If ACOS <= HALF OF AVG ACOS then ALD BGT = 5
-                    else if (acos <= halfAvgAcos) {
-                        return 5;
-                    }
+                // ACOS > 25% → ALD BGT = 1
+                if (acos > 25) {
+                    return 1;
+                }
+                // ACOS 20%-25% → ALD BGT = 2
+                else if (acos >= 20 && acos <= 25) {
+                    return 2;
+                }
+                // ACOS 15%-20% → ALD BGT = 4
+                else if (acos >= 15 && acos < 20) {
+                    return 4;
+                }
+                // ACOS 10%-15% → ALD BGT = 6
+                else if (acos >= 10 && acos < 15) {
+                    return 6;
+                }
+                // ACOS 5%-10% → ALD BGT = 8
+                else if (acos >= 5 && acos < 10) {
+                    return 8;
+                }
+                // ACOS 0.01%-5% → ALD BGT = 10
+                else if (acos >= 0.01 && acos < 5) {
+                    return 10;
                 }
                 return 0;
             }
@@ -474,7 +488,7 @@
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             return `
-                                <span>${value.toFixed(2) + "%"}</span>
+                                <span>${Math.round(value) + "%"}</span>
                             `;
                         },
                         visible: true,
@@ -520,7 +534,7 @@
                                 td.classList.add('red-bg');
                             }
 
-                            return ub7.toFixed(0) + "%";
+                            return Math.round(ub7) + "%";
                         }
                     },
                     {
@@ -543,7 +557,7 @@
                                 td.classList.add('red-bg');
                             }
 
-                            return ub1.toFixed(0) + "%";
+                            return Math.round(ub1) + "%";
                         }
                     },
                     {
@@ -563,7 +577,7 @@
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
                             td.style.backgroundColor = '';
                             
-                            var value = ub7.toFixed(2) + "%";
+                            var value = Math.round(ub7) + "%";
                             
                             if (ub7 >= 70 && ub7 <= 90) {
                                 td.classList.add('green-bg');
@@ -597,7 +611,7 @@
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
                             td.style.backgroundColor = '';
                             
-                            var value = ub1.toFixed(2) + "%";
+                            var value = Math.round(ub1) + "%";
                             
                             if (ub1 >= 70 && ub1 <= 90) {
                                 td.classList.add('green-bg');
@@ -705,19 +719,8 @@
                         field: "campaignStatus",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            const row = cell.getRow();
-                            const sku = row.getData().sku;
-                            const value = (cell.getValue() || '').toString().toUpperCase();
-                            const isLive = value === 'LIVE' || value === 'ENABLED' || value === 'ACTIVE' || value === 'RUNNING';
-                            return `
-                                <select class="form-select form-select-sm editable-select" 
-                                        data-sku="${sku}" 
-                                        data-field="status"
-                                        style="width: 110px;">
-                                    <option value="PAUSED" ${!isLive ? 'selected' : ''}>PAUSED</option>
-                                    <option value="LIVE" ${isLive ? 'selected' : ''}>LIVE</option>
-                                </select>
-                            `;
+                            const value = (cell.getValue() || '').toString();
+                            return `<span>${value}</span>`;
                         }
                     }
                 ],
@@ -827,18 +830,8 @@
                         const spend_l7 = parseFloat(data.spend_l7) || 0;
                         const acos = parseFloat(data.acos_l30) || 0;
                         
-                        // Calculate ALD BGT
-                        let aldBgt = 0;
-                        if (avgAcosValue > 0) {
-                            const halfAvgAcos = avgAcosValue / 2;
-                            if (acos > avgAcosValue) {
-                                aldBgt = 1;
-                            } else if (acos > halfAvgAcos && acos <= avgAcosValue) {
-                                aldBgt = 3;
-                            } else if (acos <= halfAvgAcos) {
-                                aldBgt = 5;
-                            }
-                        }
+                        // Calculate ALD BGT using new ranges
+                        let aldBgt = calculateAldBgt(acos);
                         
                         // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
                         const ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
@@ -910,18 +903,8 @@
                         const spend_l7 = parseFloat(row.spend_l7) || 0;
                         const acos = parseFloat(row.acos_l30) || 0;
                         
-                        // Calculate ALD BGT
-                        let aldBgt = 0;
-                        if (avgAcosValue > 0) {
-                            const halfAvgAcos = avgAcosValue / 2;
-                            if (acos > avgAcosValue) {
-                                aldBgt = 1;
-                            } else if (acos > halfAvgAcos && acos <= avgAcosValue) {
-                                aldBgt = 3;
-                            } else if (acos <= halfAvgAcos) {
-                                aldBgt = 5;
-                            }
-                        }
+                        // Calculate ALD BGT using new ranges
+                        let aldBgt = calculateAldBgt(acos);
                         
                         // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
                         const ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
