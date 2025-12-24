@@ -10,6 +10,7 @@ use App\Models\FbaPrice;
 use App\Models\FbaReportsMaster;
 use App\Models\FbaMonthlySale;
 use App\Models\FbaManualData;
+use App\Models\AmazonSpCampaignReport;
 
 class FBAAnalysticsController extends Controller
 {
@@ -73,10 +74,15 @@ class FBAAnalysticsController extends Controller
          return strtoupper(trim($item->sku));
       });
 
+      // Fetch Amazon SP Campaign Reports for L30 ad spend data
+      $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+         ->where('report_date_range', 'L30')
+         ->get();
+
       $matchedSkus = $fbaData->keys()->toArray();
       $unmatchedSkus = array_diff($skus, $matchedSkus);
 
-      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData');
+      return compact('productData', 'shopifyData', 'fbaData', 'fbaPriceData', 'fbaReportsData', 'matchedSkus', 'unmatchedSkus', 'fbaMonthlySales', 'fbaManualData', 'amazonSpCampaignReportsL30');
    }
 
    public function fbaPageView()
@@ -97,6 +103,7 @@ class FBAAnalysticsController extends Controller
       $shopifyData = $data['shopifyData'];
       $fbaMonthlySales = $data['fbaMonthlySales'];
       $fbaManualData = $data['fbaManualData'];
+      $amazonSpCampaignReportsL30 = $data['amazonSpCampaignReportsL30'];
       $productData = $data['productData']->keyBy(function ($p) {
          return strtoupper(trim($p->sku));
       });
@@ -113,7 +120,7 @@ class FBAAnalysticsController extends Controller
          ->unique();
 
       // Prepare table data for ALL SKUs (matched and unmatched)
-      $tableData = $allSkus->map(function ($sku) use ($fbaData, $fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData) {
+      $tableData = $allSkus->map(function ($sku) use ($fbaData, $fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $amazonSpCampaignReportsL30) {
          $fba = $fbaData->get($sku);
          $hasFbaData = !is_null($fba);
          $fbaPriceInfo = $fbaPriceData->get($sku);
@@ -129,15 +136,84 @@ class FBAAnalysticsController extends Controller
          }
 
          $PRICE = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
-         $LP = $product ? floatval($product->Values['lp'] ?? 0) : 0;
+         
+         // Use same data sources as FBA views for PFT/ROI calculations
+         $LP_FOR_PFT = $product ? floatval($product->Values['lp'] ?? 0) : 0; // Direct from product for PFT/ROI
+         $FBA_SHIP_FOR_PFT = $fbaReportsInfo ? floatval($fbaReportsInfo->fulfillment_fee ?? 0) : 0; // Simple fulfillment fee for PFT/ROI
+         
+         // Use enhanced calculations for GPFT/GROI metrics
+         $LP = \App\Services\CustomLpMappingService::getLpValue($sku, $product);
          $FBA_SHIP = $fbaReportsInfo ? floatval($fbaReportsInfo->fulfillment_fee ?? 0) : 0;
+         
          $S_PRICE = $manual ? floatval($manual->data['s_price'] ?? 0) : 0;
+         $commissionPercentage = $manual ? floatval($manual->data['commission_percentage'] ?? 0) : 0;
+         
+         // Use 15% as default commission if not set, blank, or 0
+         if (empty($commissionPercentage) || $commissionPercentage == 0) {
+            $commissionPercentage = 15;
+         }
 
-         // --- Calculate all profit & ROI metrics ---
-         $pft = ($PRICE > 0) ? (($PRICE * 0.7) - $LP - $FBA_SHIP) / $PRICE : 0;
-         $roi = ($LP > 0) ? (($PRICE * 0.7) - $LP - $FBA_SHIP) / $LP : 0;
-         $spft = ($S_PRICE > 0) ? (($S_PRICE * 0.7) - $LP - $FBA_SHIP) / $S_PRICE : 0;
-         $sroi = ($LP > 0) ? (($S_PRICE * 0.7) - $LP - $FBA_SHIP) / $LP : 0;
+         // --- Calculate all profit & ROI metrics using 0.95 - commission% formula ---
+         $marginAfterCommission = 0.95 - ($commissionPercentage / 100);
+         
+         // PFT and ROI calculations (using LP_FOR_PFT and FBA_SHIP_FOR_PFT - same as FBA views)
+         $pft = ($PRICE > 0) ? (($PRICE * $marginAfterCommission) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $PRICE : 0;
+         $roi = ($LP_FOR_PFT > 0) ? (($PRICE * $marginAfterCommission) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
+         
+         // SPFT and SROI calculations (using LP_FOR_PFT and FBA_SHIP_FOR_PFT - same as FBA views)
+         $spft = ($S_PRICE > 0) ? (($S_PRICE * $marginAfterCommission) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $S_PRICE : 0;
+         $sroi = ($LP_FOR_PFT > 0 && $S_PRICE > 0) ? (($S_PRICE * $marginAfterCommission) - $LP_FOR_PFT - $FBA_SHIP_FOR_PFT) / $LP_FOR_PFT : 0;
+
+         // GPFT and GROI calculations with enhanced LP and FBA_SHIP (same as FBA views)
+         $gpft = 0;
+         if ($PRICE > 0) {
+            $gpft = (($PRICE * $marginAfterCommission) - $LP - $FBA_SHIP) / $PRICE;
+         }
+
+         $groi = 0;
+         if ($LP > 0) {
+            $groi = (($PRICE * $marginAfterCommission) - $LP - $FBA_SHIP) / $LP;
+         }
+
+         $gpftPercentage = round($gpft * 100);
+         $groiPercentage = round($groi * 100);
+         $pftPercentage = round($pft * 100, 2);
+         $roiPercentage = round($roi * 100, 2);
+
+         // Calculate TCOS from ad spend data (KW + PT campaigns)
+         $matchedCampaignKwL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
+            $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+            $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+            return $campaignName === $cleanSku && 
+                   !str_contains(strtoupper($item->campaignName), ' PT') &&
+                   !str_contains(strtoupper($item->campaignName), ' pt');
+         });
+
+         $matchedCampaignPtL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
+            $cleanName = strtoupper(trim($item->campaignName));
+            return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'));
+         });
+
+         $kwSpend = $matchedCampaignKwL30->cost ?? 0;
+         $ptSpend = $matchedCampaignPtL30->cost ?? 0;
+         $totalSpendSum = $kwSpend + $ptSpend;
+
+         // Calculate L30 revenue for TCOS
+         $l30Units = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
+         $priceL30 = $PRICE * $l30Units;
+
+         // TCOS calculation (same logic as FBA views)
+         if ($totalSpendSum == 0) {
+            $tcosPercentage = 0;
+         } elseif ($totalSpendSum > 0 && $priceL30 == 0) {
+            $tcosPercentage = 100;
+         } else {
+            $tcosPercentage = round(($totalSpendSum / $priceL30) * 100, 2);
+         }
+
+         // TPFT (PRFT) calculation using calculated TCOS
+         $tpft = round($gpftPercentage - $tcosPercentage, 2);
+         $tpftRoi = round($roiPercentage - $tcosPercentage, 2);
 
          return [
             'Parent' => $product ? ($product->parent ?? '') : '',
@@ -150,8 +226,16 @@ class FBAAnalysticsController extends Controller
             'Current_Month_Views' => $fbaReportsInfo ? ($fbaReportsInfo->current_month_views ?? 0) : 0,
             'Listed' => $manual ? ($manual->data['listed'] ?? false) : false,
             'Live' => $manual ? ($manual->data['live'] ?? false) : false,
-            'Pft%' => round($pft * 100, 2),
-            'ROI%' => round($roi * 100, 2),
+            'Pft%' => $pftPercentage,
+            'ROI%' => $roiPercentage,
+            'GPFT%' => $gpftPercentage . '%',
+            'GROI%' => $groiPercentage . '%',
+            'TCOS_Percentage' => $tcosPercentage,
+            'KW_Spend_L30' => $kwSpend,
+            'PT_Spend_L30' => $ptSpend,
+            'Total_Spend_L30' => $totalSpendSum,
+            'TPFT' => $tpft,
+            'TROI' => $tpftRoi,
             'S_Price' => round($S_PRICE, 2),
             'SPft%' => round($spft * 100, 2),
             'SROI%' => round($sroi * 100, 2),
@@ -171,6 +255,7 @@ class FBAAnalysticsController extends Controller
             'Shipping_Amount' => $manual ? ($manual->data['shipping_amount'] ?? 0) : 0,
             'Inbound_Quantity' => $manual ? ($manual->data['inbound_quantity'] ?? 0) : 0,
             'Dimensions' => $manual ? ($manual->data['Dimensions'] ?? 0) : 0,
+            'Commission_Percentage' => $manual ? ($manual->data['commission_percentage'] ?? 0) : 0,
             'Jan' => $monthlySales ? ($monthlySales->jan ?? 0) : 0,
             'Feb' => $monthlySales ? ($monthlySales->feb ?? 0) : 0,
             'Mar' => $monthlySales ? ($monthlySales->mar ?? 0) : 0,
@@ -211,6 +296,10 @@ class FBAAnalysticsController extends Controller
             'Current_Month_Views' => $children->sum('Current_Month_Views'),
             'Listed' => false,
             'Live' => false,
+            'GPFT%' => '',
+            'GROI%' => '',
+            'TPFT' => '',
+            'TROI' => '',
             'Fulfillment_Fee' => round($children->sum('Fulfillment_Fee'), 2),
             'ASIN' => '',
             'Shopify_INV' => $children->sum('Shopify_INV'),
@@ -227,6 +316,7 @@ class FBAAnalysticsController extends Controller
             'Shipping_Amount' => $children->sum('Shipping_Amount'),
             'Inbound_Quantity' => $children->sum('Inbound_Quantity'),
             'Dimensions' => $children->sum('Dimensions'),
+            'Commission_Percentage' => '',
             'Jan' => $children->sum('Jan'),
             'Feb' => $children->sum('Feb'),
             'Mar' => $children->sum('Mar'),

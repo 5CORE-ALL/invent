@@ -850,8 +850,49 @@
                         },
 
                         {
+                            title: "PRFT<br>%",
+                            field: "TPFT",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue() || 0);
+                                let style = '';
+                                if (value < 10) {
+                                    style = 'color: red;';
+                                } else if (value >= 11 && value <= 15) {
+                                    style = 'background-color: yellow; color: black;';
+                                } else if (value >= 16 && value <= 20) {
+                                    style = 'color: blue;';
+                                } else if (value >= 21 && value <= 40) {
+                                    style = 'color: green;';
+                                } else if (value > 40) {
+                                    style = 'color: purple;';
+                                }
+                                return `<span style="${style}">${value.toFixed(0)}%</span>`;
+                            },
+                        },
+
+                        {
+                            title: "ROI%",
+                            field: "ROI%",
+                            hozAlign: "center",
+                            visible: true,
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue() || 0);
+                                let color = '';
+                                if (value >= 0 && value <= 50) {
+                                    color = 'red';
+                                } else if (value >= 51 && value <= 100) {
+                                    color = 'green';
+                                } else if (value >= 101) {
+                                    color = 'magenta';
+                                }
+                                return `<span style="color: ${color}; font-weight: bold;">${value.toFixed(0)}%</span>`;
+                            },
+                        },
+
+                        {
                             title: "Pft%",
-                            field: "Gpft",
+                            field: "Pft%",
                             hozAlign: "center",
                             formatter: function(cell) {
                                 const value = cell.getValue();
@@ -892,6 +933,55 @@
                             visible: true,
                             formatter: function(cell) {
                                 return cell.getValue();
+                            }
+                        },
+
+                        {
+                            title: "TACOS",
+                            field: "TCOS_Percentage",
+                            hozAlign: "center",
+                            editor: "input",
+                            visible: true,
+                            formatter: function(cell) {
+                                const value = parseFloat(cell.getValue() || 0);
+                                return `${value.toFixed(0)}%`;
+                            },
+                            cellEdited: function(cell) {
+                                var data = cell.getRow().getData();
+                                var sku = data.SKU;
+                                var value = parseFloat(cell.getValue());
+                                
+                                // Update TPFT and TROI after TCOS edit
+                                var gpft = parseFloat(data['GPFT%']) || 0;
+                                var roi = parseFloat(data['ROI%']) || 0;
+                                
+                                var tpft = gpft - value;
+                                var troi = roi - value;
+                                
+                                // Update cells
+                                cell.getRow().update({
+                                    'TPFT': tpft.toFixed(2),
+                                    'TROI': troi.toFixed(2)
+                                });
+                                
+                                // Save to database
+                                $.ajax({
+                                    url: '/update-fba-manual-data',
+                                    method: 'POST',
+                                    data: {
+                                        _token: '{{ csrf_token() }}',
+                                        sku: sku,
+                                        field: 'tcos_percentage',
+                                        value: value
+                                    },
+                                    success: function(response) {
+                                        console.log('TCOS updated successfully');
+                                    },
+                                    error: function(xhr) {
+                                        console.error('Error updating TCOS:', xhr.responseText);
+                                        alert('Failed to update TCOS');
+                                    }
+                                });
                             }
                         },
 
@@ -1320,6 +1410,12 @@
                             }
                         },
 
+                        {
+                            title: "Comm %",
+                            field: "Commission_Percentage",
+                            hozAlign: "center",
+                            editor: "input"
+                        },
 
                         // {
                         //     title: "Correct Cost",
@@ -1542,7 +1638,7 @@
                         field === 'Warehouse_INV_Reduction' || field ===
                         'Inbound_Quantity' || field === 'FBA_Send' || field ===
                         'FBA_Fee_Manual' || field === 'MSL' || field === 'Correct_Cost' || field ===
-                        'Approval' || field === 'Profit_is_ok' || field === 'UPC_Codes') {
+                        'Approval' || field === 'Profit_is_ok' || field === 'UPC_Codes' || field === 'Commission_Percentage') {
                         
                         // Convert field name to lowercase for backend (UPC_Codes -> upc_codes)
                         var fieldName = field.toLowerCase();
