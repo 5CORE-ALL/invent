@@ -432,14 +432,96 @@ class EbayTwoController extends Controller
 
     public function saveSpriceToDatabase(Request $request)
     {
-        // LOG::info('Saving Shopify pricing data', $request->all());
-        $sku = $request->input('sku');
-        $spriceData = $request->only(['sprice', 'spft_percent', 'sroi_percent']);
+        $sku = strtoupper($request->input('sku'));
+        $sprice = $request->input('sprice');
 
-        if (!$sku || !$spriceData['sprice']) {
+        if (!$sku || !$sprice) {
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
 
+        // Use fixed 78% for EbayTwo
+        $percentage = 0.78;
+
+        // Get ProductMaster for lp and ship
+        $pm = ProductMaster::where('sku', $sku)->first();
+        if (!$pm) {
+            return response()->json(['error' => 'SKU not found in ProductMaster.'], 404);
+        }
+
+        // Extract LP and Ship
+        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+        $lp = 0;
+        foreach ($values as $k => $v) {
+            if (strtolower($k) === "lp") {
+                $lp = floatval($v);
+                break;
+            }
+        }
+        if ($lp === 0 && isset($pm->lp)) {
+            $lp = floatval($pm->lp);
+        }
+
+        $ship = isset($values["ebay2_ship"]) ? floatval($values["ebay2_ship"]) : (isset($pm->ebay2_ship) ? floatval($pm->ebay2_ship) : 0);
+
+        // Calculate SGPFT
+        $spriceFloat = floatval($sprice);
+        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
+
+        // Get AD% the same way as regular pricing - using CURRENT eBay price, not SPRICE
+        $adPercent = 0;
+        $ebay2Metric = Ebay2Metric::where('sku', $sku)->first();
+        
+        Log::info('SPRICE Debug - SKU: ' . $sku, [
+            'ebay2_metric_found' => $ebay2Metric ? 'YES' : 'NO',
+            'item_id' => $ebay2Metric->item_id ?? 'NULL',
+            'ebay_price' => $ebay2Metric->ebay_price ?? 'NULL',
+            'ebay_l30' => $ebay2Metric->ebay_l30 ?? 'NULL'
+        ]);
+        
+        if ($ebay2Metric && $ebay2Metric->item_id) {
+            // Fetch from ebay2_general_reports (same as getViewEbayData)
+            $generalReport = Ebay2GeneralReport::where('listing_id', $ebay2Metric->item_id)
+                ->where('report_range', 'L30')
+                ->first();
+            
+            Log::info('SPRICE Debug - General Report', [
+                'general_report_found' => $generalReport ? 'YES' : 'NO',
+                'ad_fees' => $generalReport->ad_fees ?? 'NULL'
+            ]);
+            
+            if ($generalReport) {
+                $pmt_spend_l30 = $this->extractNumber($generalReport->ad_fees);
+                $currentPrice = floatval($ebay2Metric->ebay_price ?? 0); // Use current eBay price
+                $units_ordered_l30 = floatval($ebay2Metric->ebay_l30 ?? 0);
+                $totalRevenue = $currentPrice * $units_ordered_l30; // Revenue based on current price
+                $adPercent = $totalRevenue > 0 ? ($pmt_spend_l30 / $totalRevenue) * 100 : 0;
+                
+                Log::info('SPRICE Debug - AD% Calculation', [
+                    'pmt_spend_l30' => $pmt_spend_l30,
+                    'current_price' => $currentPrice,
+                    'units_l30' => $units_ordered_l30,
+                    'total_revenue' => $totalRevenue,
+                    'ad_percent' => $adPercent
+                ]);
+            }
+        }
+
+        // SPFT = SGPFT - AD%
+        $spft = round($sgpft - $adPercent, 2);
+        
+        Log::info('SPRICE Debug - Final Calculations', [
+            'sgpft' => $sgpft,
+            'ad_percent' => $adPercent,
+            'spft' => $spft,
+            'lp' => $lp,
+            'ship' => $ship
+        ]);
+
+        // SROI = ((SPRICE * 0.78 - lp - ship) / lp) * 100 (same as regular ROI formula)
+        $sroi = round(
+            $lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0,
+            2
+        );
 
         $ebayDataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
 
@@ -450,15 +532,21 @@ class EbayTwoController extends Controller
 
         // Merge new sprice data
         $merged = array_merge($existing, [
-            'SPRICE' => $spriceData['sprice'],
-            'SPFT' => $spriceData['spft_percent'],
-            'SROI' => $spriceData['sroi_percent'],
+            'SPRICE' => $spriceFloat,
+            'SPFT' => $spft,
+            'SROI' => $sroi,
+            'SGPFT' => $sgpft,
         ]);
 
         $ebayDataView->value = $merged;
         $ebayDataView->save();
 
-        return response()->json(['message' => 'Data saved successfully.']);
+        return response()->json([
+            'message' => 'Data saved successfully.',
+            'spft_percent' => $spft,
+            'sroi_percent' => $sroi,
+            'sgpft_percent' => $sgpft,
+        ]);
     }
 
     public function importEbayTwoAnalytics(Request $request)

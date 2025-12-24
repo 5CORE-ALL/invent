@@ -45,6 +45,13 @@ class FetchEbay2Orders extends Command
 
         $this->info("Fetched " . count($l30Orders) . " L30 orders and " . count($l60Orders) . " L60 orders");
 
+        // Delete old period data before inserting new
+        $deletedL30 = Ebay2Order::where('period', 'l30')->delete();
+        $this->info("🗑️  Deleted {$deletedL30} old L30 orders");
+        
+        $deletedL60 = Ebay2Order::where('period', 'l60')->delete();
+        $this->info("🗑️  Deleted {$deletedL60} old L60 orders");
+
         $this->insertOrders($l30Orders, 'l30');
         $this->insertOrders($l60Orders, 'l60');
 
@@ -57,12 +64,12 @@ class FetchEbay2Orders extends Command
 
         return [
             'l30' => [
-                'start' => $today->copy()->subDays(30),  // 30 days ago
-                'end' => $today->copy()->subDay(),       // yesterday
+                'start' => $today->copy()->subDays(29),
+                'end' => $today->copy()->subDay(),
             ],
             'l60' => [
-                'start' => $today->copy()->subDays(60),  // 60 days ago
-                'end' => $today->copy()->subDays(31),    // 31 days ago
+                'start' => $today->copy()->subDays(59),
+                'end' => $today->copy()->subDays(30),
             ],
         ];
     }

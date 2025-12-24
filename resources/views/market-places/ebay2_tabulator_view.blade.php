@@ -197,22 +197,18 @@
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
+                        <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">AVG PFT: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
                         
                         <!-- eBay Metrics -->
-                        <span class="badge bg-primary fs-6 p-2" id="total-fba-inv-badge" style="color: black; font-weight: bold;">Total eBay INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total eBay L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold Count: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
                         
                         <!-- Financial Metrics -->
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">PMT Ads Spend L30: $0.00</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
                     </div>
@@ -2394,78 +2390,23 @@
 
 
                         {
-                        title: "SPEND L30",
-                        field: "AD_Spend_L30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
-                            return `
-                                <span>$${value.toFixed(2)}</span>
-                                <i class="fa fa-info-circle text-primary toggle-spendL30-btn" 
-                                style="cursor:pointer; margin-left:8px;"></i>
-                            `;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
-                        },
-                        width: 90
-                    },
-
-                    {
-                        title: "KW SPEND L30",
-                        field: "kw_spend_L30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
-                            return `$${value.toFixed(2)}`;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
-                        },
-                        width: 100
-                    },
-
-                    {
-                        title: "KW %",
-                        field: "kw_percent",
-                        hozAlign: "center",
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
-                            const pmtSpend = parseFloat(rowData['pmt_spend_L30'] || 0);
-                            const total = kwSpend + pmtSpend;
-                            const percent = total > 0 ? (kwSpend / total) * 100 : 0;
-                            return `${percent.toFixed(1)}%`;
-                        },
-                        width: 70
-                    },
-
-                    {
-                        title: "PMT SPEND L30",
+                        title: "PMT Spend L30",
                         field: "pmt_spend_L30",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: false,
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
-                            return `$${value.toFixed(2)}`;
+                            return `<span>$${value.toFixed(2)}</span>`;
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
                             return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
                         },
-                        width: 100
+                        width: 110
                     },
+
+                  
 
                     {
                         title: "PMT %",
@@ -2536,9 +2477,9 @@
                 // Update the row data
                 row.update({nr_req: value});
                 
-                // Save to database using listing_ebay endpoint
+                // Save to database using listing_ebaytwo endpoint (saves to ebay_two_listing_status table)
                 $.ajax({
-                    url: '/listing_ebay/save-status',
+                    url: '/listing_ebaytwo/save-status',
                     method: 'POST',
                     data: {
                         _token: '{{ csrf_token() }}',
@@ -2607,10 +2548,10 @@
                     
                     saveSpriceWithRetry(data['(Child) sku'], value, row)
                         .then((response) => {
-                            showToast('SPRICE saved successfully', 'success');
+                            showToast('success', 'SPRICE saved successfully');
                         })
                         .catch((error) => {
-                            showToast('Failed to save SPRICE', 'error');
+                            showToast('error', 'Failed to save SPRICE');
                         });
                 } else if (field === 'Listed' || field === 'Live') {
                     // Save Listed/Live status
@@ -2799,7 +2740,7 @@
 
                 // Calculate total PMT ads spend from ALL data (unfiltered)
                 allTableData.forEach(row => {
-                    totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
+                    totalSpendL30 += parseFloat(row['pmt_spend_L30'] || 0);
                 });
 
                 data.forEach(row => {
@@ -2847,21 +2788,15 @@
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
                 $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-                $('#cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 
 
                 $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
                 $('#total-spend-l30-badge').text('PMT Ads Spend L30: $' + Math.round(totalSpendL30));
-                $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
-                $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
                 $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
                 const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
                 $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
-                $('#total-fba-inv-badge').text('Total eBay INV: ' + Math.round(totalFbaInv).toLocaleString());
                 $('#total-fba-l30-badge').text('Total eBay L30: ' + Math.round(totalFbaL30).toLocaleString());
                 $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
-                const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
-                $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
                 $('#total-pft-amt').text('$' + Math.round(totalPftAmt));
                 $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt').text('$' + Math.round(totalSalesAmt));
@@ -2869,6 +2804,11 @@
                 const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100).toFixed(1) : '0.0';
                 $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
                 $('#avg-gpft-summary').text(avgGpft + '%');
+                
+                // Calculate Avg PFT (GPFT - AD%)
+                const avgAdPercent = totalTcos / data.filter(row => parseFloat(row.INV) > 0).length;
+                const avgPft = avgGpft - avgAdPercent;
+                $('#avg-pft-badge').text('AVG PFT: ' + avgPft.toFixed(1) + '%');
             }
 
             // Build Column Visibility Dropdown
@@ -3019,23 +2959,8 @@
                 saveColumnVisibilityToServer();
             });
 
-            // Toggle SPEND L30 breakdown columns
+            // Toggle functionality removed - only PMT Spend L30 shown now
             document.addEventListener("click", function(e) {
-                if (e.target.classList.contains("toggle-spendL30-btn")) {
-                    let colsToToggle = ["kw_spend_L30", "kw_percent", "pmt_spend_L30", "pmt_percent"];
-
-                    colsToToggle.forEach(colField => {
-                        let col = table.getColumn(colField);
-                        if (col) {
-                            col.toggle();
-                        }
-                    });
-                    
-                    // Update column visibility in cache
-                    saveColumnVisibilityToServer();
-                    buildColumnDropdown();
-                }
-
                 // Copy SKU to clipboard
                 if (e.target.classList.contains("copy-sku-btn")) {
                     const sku = e.target.getAttribute("data-sku");

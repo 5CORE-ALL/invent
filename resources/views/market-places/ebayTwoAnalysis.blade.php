@@ -1606,7 +1606,7 @@
                         <h6 class="mb-3">All Calculations Summary</h6>
                         <div class="d-flex flex-wrap gap-2">
                             <span class="badge bg-primary fs-5 p-2" id="total-sales-summary-badge" style="color: black; font-weight: bold;">Total Sales: $0.00</span>
-                            <span class="badge bg-success fs-5 p-2" id="total-pft-summary-badge" style="color: black; font-weight: bold;">Total PFT: 0%</span>
+                            <span class="badge bg-success fs-5 p-2" id="total-pft-summary-badge" style="color: black; font-weight: bold;">Avg PFT: 0%</span>
                             <span class="badge bg-info fs-5 p-2" id="total-grpft-summary-badge" style="color: black; font-weight: bold;">Total GRPFT: 0%</span>
                             <span class="badge bg-secondary fs-5 p-2" id="total-roi-summary-badge" style="color: white; font-weight: bold;">Total ROI: 0%</span>
                             <span class="badge bg-warning fs-5 p-2" id="total-ad-spend-summary-badge" style="color: black; font-weight: bold;">Total AD Spend: $0.00</span>
@@ -1906,15 +1906,20 @@
 
 
                 $.ajax({
-                    url: "/update-ebay-sku-pricing",
+                    url: "/save-sprice-ebay",
                     type: "POST",
                     data: {
                         "_token": "{{ csrf_token() }}",
                         "sku": sku,
-                        "price": val,
+                        "sprice": val,
                     },
-                    success: function(info) {
-                        alert("Request Sent to Ebay2, Pls Wait to Reflect Everywhere");
+                    success: function(response) {
+                        alert("SPRICE saved successfully");
+                        // Optionally refresh the row to show updated calculations
+                        location.reload();
+                    },
+                    error: function(xhr) {
+                        alert("Failed to save SPRICE: " + (xhr.responseJSON?.error || xhr.responseText));
                     }
                 });
 
@@ -2938,10 +2943,10 @@
                     const ebayPercentage = {{ $ebayTwoPercentage ?? 0}};
                     const totalSalesData = eL30 * price;
                     let tacos = Number(item.TacosL30) || 0;
-                    const adPercent = Number(item['AD%'] || 0) / 100; // Convert AD% to decimal
+                    const adPercent = Number(item['AD%'] || 0); // AD% is already a percentage
 
                     // GRPFT% = ((Price * percentage - Ship - LP) / Price) * 100
-                    let grpft = ((price * (ebayPercentage / 100)) - ship - lp) / price;
+                    let grpft = price > 0 ? (((price * (ebayPercentage / 100)) - ship - lp) / price) * 100 : 0;
                     if(isNaN(grpft) || !isFinite(grpft)) {
                         grpft = 0;
                     }
@@ -2952,27 +2957,27 @@
                         pft = 0;
                     }
 
-                    // TPRFT% = GRPFT% - TacosL30 (TacosL30 is already a decimal ratio)
-                    let tprft = grpft - tacos;
+                    // TPRFT% = GRPFT% - (TacosL30 * 100) - TacosL30 needs to be converted to percentage
+                    let tprft = grpft - (tacos * 100);
                     
                     if(isNaN(tprft) || !isFinite(tprft)) {
                         tprft = 0;
                     }
 
-                    // GRPFT with color coding
+                    // GRPFT with color coding (grpft is already a percentage)
                     $row.append($('<td>').attr('data-field', 'pft').html(
                         `
-                            <span class="dil-percent-value ${getPftColor(grpft * 100)}">
-                                ${(grpft * 100).toFixed(0)}%
+                            <span class="dil-percent-value ${getPftColor(grpft)}">
+                                ${grpft.toFixed(0)}%
                             </span>
                         `
                     ));
 
-                    // PFT with color coding
+                    // PFT with color coding (pft is already a percentage)
                     $row.append($('<td>').attr('data-field', 'gpft').html(
                         `
-                            <span class="dil-percent-value ${getPftColor(pft * 100)}">
-                                ${(pft * 100).toFixed(0)}%
+                            <span class="dil-percent-value ${getPftColor(pft)}">
+                                ${pft.toFixed(0)}%
                             </span>
                         ` 
                     ));
@@ -3359,17 +3364,23 @@
                         $select.css('background-color', '#dc3545').css('color', '#ffffff');
                     }
 
-                    // Send AJAX to save NRL/REQ status
+                    // Send AJAX to save NRL/REQ status to ebay_two_listing_status table
                     $.ajax({
                         url: '/listing_ebaytwo/save-status',
-                        type: 'POST',
+                        method: 'POST',
                         data: {
+                            _token: $('meta[name="csrf-token"]').attr('content'),
                             sku: sku,
-                            nr_req: newValue,
-                            _token: $('meta[name="csrf-token"]').attr('content')
+                            nr_req: newValue
                         },
                         success: function(response) {
-                            showNotification('success', 'NRL/REQ updated successfully!');
+                            if (response.status === 'success') {
+                                console.log('NR/REQ saved successfully for', sku, 'value:', newValue);
+                                const message = newValue === 'REQ' ? 'REQ updated' : (newValue === 'NR' ? 'NR updated' : 'Status cleared');
+                                showNotification('success', message);
+                            } else {
+                                showNotification('error', response.message || 'Failed to save status');
+                            }
 
                             // Update tableData and filteredData
                             tableData.forEach(item => {
@@ -5658,20 +5669,20 @@
                         
                         if (itemPrice > 0) {
                             // GRPFT% = ((Price * percentage - Ship - LP) / Price) * 100
-                            const itemGrpft = (itemPrice * (ebayPct / 100) - itemShip - itemLp) / itemPrice;
-                            // Get AD% from item (convert from percentage to decimal)
-                            const itemAdPercent = (parseFloat(item['AD%'] || 0) / 100);
+                            const itemGrpft = ((itemPrice * (ebayPct / 100) - itemShip - itemLp) / itemPrice) * 100;
+                            // Get AD% from item (already a percentage)
+                            const itemAdPercent = parseFloat(item['AD%'] || 0);
                             // PFT% = GRPFT% - AD%
                             const itemPft = itemGrpft - itemAdPercent;
-                            // TPRFT% = GRPFT% - TacosL30 (both are decimals, so direct subtraction)
-                            const itemTprft = itemGrpft - itemTacos;
+                            // TPRFT% = GRPFT% - (TacosL30 * 100) - convert tacos to percentage
+                            const itemTprft = itemGrpft - (itemTacos * 100);
                             
                             if (!isNaN(itemPft) && isFinite(itemPft)) {
-                                metrics.pftTotal += itemPft * 100;
+                                metrics.pftTotal += itemPft;
                                 metrics.pftCount++;
                             }
                             if (!isNaN(itemGrpft) && isFinite(itemGrpft)) {
-                                metrics.grpftTotal += itemGrpft * 100;
+                                metrics.grpftTotal += itemGrpft;
                                 metrics.grpftCount++;
                                 // Calculate GRPFT amount: (price * percentage - ship - lp) * L30
                                 const itemL30 = parseFloat(item['eBay L30']) || 0;
@@ -5681,7 +5692,7 @@
                                 }
                             }
                             if (!isNaN(itemTprft) && isFinite(itemTprft)) {
-                                metrics.tprftTotal += itemTprft * 100;
+                                metrics.tprftTotal += itemTprft;
                                 metrics.tprftCount++;
                             }
                             
@@ -5784,7 +5795,7 @@
                     $('#cvr-total').text(Math.round((metrics.scvrSum / divisor) * 100) + '%');
                     
                     // Update Summary Stats badges
-                    $('#total-pft-summary-badge').text('Total PFT: ' + pftAvg.toFixed(0) + '%');
+                    $('#total-pft-summary-badge').text('Avg PFT: ' + pftAvg.toFixed(0) + '%');
                     $('#total-sales-summary-badge').text('Total Sales: $' + metrics.totalSalesTotal.toFixed(2));
                     $('#total-grpft-summary-badge').text('Total GRPFT: ' + grpftAvg.toFixed(0) + '%');
                     $('#total-roi-summary-badge').text('Total ROI: ' + roiAvg.toFixed(0) + '%');
@@ -5815,7 +5826,7 @@
                 $('#live-total').text('0');
                 
                 // Reset Summary Stats badges
-                $('#total-pft-summary-badge').text('Total PFT: 0%');
+                $('#total-pft-summary-badge').text('Avg PFT: 0%');
                 $('#total-sales-summary-badge').text('Total Sales: $0.00');
                 $('#total-grpft-summary-badge').text('Total GRPFT: 0%');
                 $('#total-roi-summary-badge').text('Total ROI: 0%');
