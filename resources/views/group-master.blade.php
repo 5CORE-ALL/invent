@@ -245,6 +245,8 @@
                                                 <i class="fas fa-plus"></i>
                                             </button>
                                         </div>
+                                        <input type="text" id="groupSearch" class="form-control-sm"
+                                            placeholder="Search Group">
                                     </th>
                                     <th>Image</th>
                                     <th>
@@ -573,36 +575,27 @@
                 // Parent search
                 const parentSearch = document.getElementById('parentSearch');
                 parentSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        return parent.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyAllFilters();
                 });
 
                 // SKU search
                 const skuSearch = document.getElementById('skuSearch');
                 skuSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const sku = (item.SKU || '').toLowerCase();
-                        return sku.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyAllFilters();
                 });
+
+                // Group search
+                const groupSearch = document.getElementById('groupSearch');
+                if (groupSearch) {
+                    groupSearch.addEventListener('input', function() {
+                        applyAllFilters();
+                    });
+                }
 
                 // Custom search
                 const customSearch = document.getElementById('customSearch');
                 customSearch.addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    filteredData = tableData.filter(item => {
-                        const parent = (item.Parent || '').toLowerCase();
-                        const sku = (item.SKU || '').toLowerCase();
-                        const status = (item.status || '').toLowerCase();
-                        return parent.includes(searchTerm) || sku.includes(searchTerm) || status.includes(searchTerm);
-                    });
-                    renderTable(filteredData);
+                    applyAllFilters();
                 });
 
                 // Clear search
@@ -610,9 +603,42 @@
                     customSearch.value = '';
                     parentSearch.value = '';
                     skuSearch.value = '';
+                    if (groupSearch) groupSearch.value = '';
                     filteredData = [...tableData];
                     renderTable(filteredData);
                 });
+            }
+
+            // Apply all filters together
+            function applyAllFilters() {
+                const parentTerm = (document.getElementById('parentSearch').value || '').toLowerCase();
+                const skuTerm = (document.getElementById('skuSearch').value || '').toLowerCase();
+                const groupSearchEl = document.getElementById('groupSearch');
+                const groupTerm = groupSearchEl ? (groupSearchEl.value || '').toLowerCase() : '';
+                const customTerm = (document.getElementById('customSearch').value || '').toLowerCase();
+
+                filteredData = tableData.filter(item => {
+                    const parent = (item.Parent || '').toLowerCase();
+                    const sku = (item.SKU || '').toLowerCase();
+                    const group = (item.group || '').toLowerCase();
+                    const status = (item.status || '').toLowerCase();
+
+                    // Apply individual column filters
+                    const matchesParent = !parentTerm || parent.includes(parentTerm);
+                    const matchesSku = !skuTerm || sku.includes(skuTerm);
+                    const matchesGroup = !groupTerm || group.includes(groupTerm);
+                    
+                    // Apply global search (searches across multiple fields)
+                    const matchesCustom = !customTerm || 
+                        parent.includes(customTerm) || 
+                        sku.includes(customTerm) || 
+                        status.includes(customTerm) ||
+                        group.includes(customTerm);
+
+                    return matchesParent && matchesSku && matchesGroup && matchesCustom;
+                });
+                
+                renderTable(filteredData);
             }
 
             // Toast notification function
@@ -1048,6 +1074,40 @@
             function saveFieldValue(productId, sku, field, value, cell, span, select) {
                 cell.dataset.saving = 'true';
                 
+                // Validate that the selected value exists in our loaded groups/categories
+                if (value && value !== '') {
+                    const valueId = parseInt(value);
+                    if (field === 'group_id') {
+                        const groupExists = allGroups.some(g => g.id == valueId);
+                        if (!groupExists) {
+                            // Group doesn't exist in our list, reload groups and show error
+                            cell.style.opacity = '1';
+                            delete cell.dataset.saving;
+                            showToast('warning', 'Group list may be outdated. Refreshing...');
+                            loadGroupsAndCategories().then(() => {
+                                // Re-render the table to update dropdowns
+                                loadData();
+                                showToast('danger', 'The selected group does not exist. Please select a valid group from the updated list.');
+                            });
+                            return;
+                        }
+                    } else if (field === 'category_id') {
+                        const categoryExists = allCategories.some(c => c.id == valueId);
+                        if (!categoryExists) {
+                            // Category doesn't exist in our list, reload categories and show error
+                            cell.style.opacity = '1';
+                            delete cell.dataset.saving;
+                            showToast('warning', 'Category list may be outdated. Refreshing...');
+                            loadGroupsAndCategories().then(() => {
+                                // Re-render the table to update dropdowns
+                                loadData();
+                                showToast('danger', 'The selected category does not exist. Please select a valid category from the updated list.');
+                            });
+                            return;
+                        }
+                    }
+                }
+                
                 // Show loading state
                 span.textContent = 'Saving...';
                 span.style.display = '';
@@ -1097,7 +1157,17 @@
                         const originalValue = select.dataset.original || '';
                         select.value = originalValue;
                         updateDisplayValue(cell, originalValue, field);
-                        showToast('danger', data.message || `Failed to update ${field}.`);
+                        
+                        // If error is about group/category not existing, reload the lists
+                        if (data.message && (data.message.includes('does not exist') || data.message.includes('not found'))) {
+                            showToast('warning', 'Refreshing groups and categories list...');
+                            loadGroupsAndCategories().then(() => {
+                                loadData();
+                                showToast('danger', data.message || `Failed to update ${field}. Please try again with a valid selection.`);
+                            });
+                        } else {
+                            showToast('danger', data.message || `Failed to update ${field}.`);
+                        }
                     }
                 })
                 .catch(error => {

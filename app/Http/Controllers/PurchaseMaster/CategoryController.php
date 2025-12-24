@@ -3945,42 +3945,77 @@ class CategoryController extends Controller
             // Validate that the group/category exists if value is provided
             if ($value !== null) {
                 if ($field === 'group_id') {
-                    $exists = ProductGroup::where('id', $value)->where('status', 'active')->exists();
-                    if (!$exists) {
+                    // Check if group exists (including soft-deleted to see if it exists at all)
+                    $group = ProductGroup::withTrashed()->find($value);
+                    if (!$group) {
                         return response()->json([
                             'success' => false,
-                            'message' => 'Selected group does not exist or is inactive.'
+                            'message' => 'Selected group does not exist. Please select a valid group.'
+                        ], 400);
+                    }
+                    if ($group->trashed() || $group->status !== 'active') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Selected group exists but is deleted or inactive. Please restore it or select a different group.'
                         ], 400);
                     }
                 } elseif ($field === 'category_id') {
-                    $exists = ProductCategory::where('id', $value)->where('status', 'active')->exists();
-                    if (!$exists) {
+                    // Check if category exists (including soft-deleted to see if it exists at all)
+                    $category = ProductCategory::withTrashed()->find($value);
+                    if (!$category) {
                         return response()->json([
                             'success' => false,
-                            'message' => 'Selected category does not exist or is inactive.'
+                            'message' => 'Selected category does not exist. Please select a valid category.'
+                        ], 400);
+                    }
+                    if ($category->trashed() || $category->status !== 'active') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Selected category exists but is deleted or inactive. Please restore it or select a different category.'
                         ], 400);
                     }
                 }
             }
 
-            // Update the field
-            $product->$field = $value;
-            $product->save();
+            // Update the field with error handling
+            try {
+                $product->$field = $value;
+                $product->save();
 
-            // Load relationship to get name
-            $product->load(['productGroup', 'productCategory']);
+                // Load relationship to get name
+                $product->load(['productGroup', 'productCategory']);
 
-            return response()->json([
-                'success' => true,
-                'message' => ucfirst(str_replace('_id', '', $field)) . ' updated successfully.',
-                'data' => [
-                    'id' => $product->id,
-                    'sku' => $product->sku,
-                    $field => $product->$field,
-                    'group_name' => $product->productGroup ? $product->productGroup->group_name : null,
-                    'category_name' => $product->productCategory ? $product->productCategory->category_name : null,
-                ]
-            ]);
+                return response()->json([
+                    'success' => true,
+                    'message' => ucfirst(str_replace('_id', '', $field)) . ' updated successfully.',
+                    'data' => [
+                        'id' => $product->id,
+                        'sku' => $product->sku,
+                        $field => $product->$field,
+                        'group_name' => $product->productGroup ? $product->productGroup->group_name : null,
+                        'category_name' => $product->productCategory ? $product->productCategory->category_name : null,
+                    ]
+                ]);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Handle foreign key constraint violations
+                if ($e->getCode() == 23000) {
+                    $errorMsg = 'Failed to update ' . str_replace('_id', '', $field) . '. ';
+                    if (strpos($e->getMessage(), 'group_id_foreign') !== false) {
+                        $errorMsg .= 'The selected group does not exist in the database.';
+                    } elseif (strpos($e->getMessage(), 'category_id_foreign') !== false) {
+                        $errorMsg .= 'The selected category does not exist in the database.';
+                    } else {
+                        $errorMsg .= 'Database constraint violation occurred.';
+                    }
+                    
+                    Log::error('Update product field foreign key error: ' . $e->getMessage());
+                    return response()->json([
+                        'success' => false,
+                        'message' => $errorMsg
+                    ], 400);
+                }
+                throw $e; // Re-throw if it's not a foreign key error
+            }
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
@@ -4003,7 +4038,9 @@ class CategoryController extends Controller
     public function getProductGroups()
     {
         try {
+            // Only get active, non-deleted groups
             $groups = ProductGroup::where('status', 'active')
+                ->whereNull('deleted_at') // Explicitly exclude soft-deleted
                 ->orderBy('group_name', 'asc')
                 ->get(['id', 'group_name', 'description']);
 
@@ -4027,7 +4064,9 @@ class CategoryController extends Controller
     public function getProductCategories()
     {
         try {
+            // Only get active, non-deleted categories
             $categories = ProductCategory::where('status', 'active')
+                ->whereNull('deleted_at') // Explicitly exclude soft-deleted
                 ->orderBy('category_name', 'asc')
                 ->get(['id', 'category_name', 'code', 'description']);
 
@@ -4337,11 +4376,17 @@ class CategoryController extends Controller
                             // Check if it's already an ID (numeric)
                             if (is_numeric($categoryValue)) {
                                 $categoryId = (int)$categoryValue;
-                                // Verify category exists
-                                if (ProductCategory::where('id', $categoryId)->where('status', 'active')->exists()) {
-                                    $updateData['category_id'] = $categoryId;
+                                // Verify category exists (including soft-deleted to check if it exists at all)
+                                $category = ProductCategory::withTrashed()->find($categoryId);
+                                if ($category) {
+                                    if ($category->trashed() || $category->status !== 'active') {
+                                        // Category exists but is deleted or inactive
+                                        $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$categoryValue}' exists but is deleted or inactive. Please restore it or use a different category.";
+                                    } else {
+                                        $updateData['category_id'] = $categoryId;
+                                    }
                                 } else {
-                                    $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$categoryValue}' not found or inactive.";
+                                    $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$categoryValue}' does not exist. Please use a valid category ID or category name.";
                                 }
                             } else {
                                 // It's a category name, look it up
@@ -4402,11 +4447,17 @@ class CategoryController extends Controller
                             // Check if it's already an ID (numeric)
                             if (is_numeric($groupValue)) {
                                 $groupId = (int)$groupValue;
-                                // Verify group exists
-                                if (ProductGroup::where('id', $groupId)->where('status', 'active')->exists()) {
-                                    $updateData['group_id'] = $groupId;
+                                // Verify group exists (including soft-deleted to check if it exists at all)
+                                $group = ProductGroup::withTrashed()->find($groupId);
+                                if ($group) {
+                                    if ($group->trashed() || $group->status !== 'active') {
+                                        // Group exists but is deleted or inactive
+                                        $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$groupValue}' exists but is deleted or inactive. Please restore it or use a different group.";
+                                    } else {
+                                        $updateData['group_id'] = $groupId;
+                                    }
                                 } else {
-                                    $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$groupValue}' not found or inactive.";
+                                    $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$groupValue}' does not exist. Please use a valid group ID or group name.";
                                 }
                             } else {
                                 // It's a group name, look it up
@@ -4478,10 +4529,48 @@ class CategoryController extends Controller
                     $updateData['Values'] = $mergedValues;
                 }
 
+                // Validate foreign keys before updating
+                if (isset($updateData['category_id']) && $updateData['category_id'] !== null) {
+                    if (!ProductCategory::where('id', $updateData['category_id'])->exists()) {
+                        $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$updateData['category_id']}' does not exist. Skipping update for SKU '{$sku}'.";
+                        $skippedCount++;
+                        continue;
+                    }
+                }
+
+                if (isset($updateData['group_id']) && $updateData['group_id'] !== null) {
+                    if (!ProductGroup::where('id', $updateData['group_id'])->exists()) {
+                        $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$updateData['group_id']}' does not exist. Skipping update for SKU '{$sku}'.";
+                        $skippedCount++;
+                        continue;
+                    }
+                }
+
                 // Update the product
                 if (!empty($updateData)) {
-                    $product->update($updateData);
-                    $updatedCount++;
+                    try {
+                        $product->update($updateData);
+                        $updatedCount++;
+                    } catch (\Illuminate\Database\QueryException $e) {
+                        // Handle foreign key constraint violations
+                        if ($e->getCode() == 23000) {
+                            $errorMsg = "Row " . ($rowIndex + 2) . ": Failed to update product '{$sku}'. ";
+                            if (strpos($e->getMessage(), 'category_id_foreign') !== false) {
+                                $errorMsg .= "Invalid category_id. The category does not exist in the database.";
+                            } elseif (strpos($e->getMessage(), 'group_id_foreign') !== false) {
+                                $errorMsg .= "Invalid group_id. The group does not exist in the database.";
+                            } else {
+                                $errorMsg .= "Database constraint violation: " . substr($e->getMessage(), 0, 100);
+                            }
+                            $errors[] = $errorMsg;
+                            $skippedCount++;
+                        } else {
+                            throw $e; // Re-throw if it's not a foreign key error
+                        }
+                    } catch (\Exception $e) {
+                        $errors[] = "Row " . ($rowIndex + 2) . ": Error updating product '{$sku}': " . $e->getMessage();
+                        $skippedCount++;
+                    }
                 } else {
                     $skippedCount++;
                 }
