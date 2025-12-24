@@ -2503,7 +2503,7 @@
                                     </li>
 
                                     <li>
-                                        <a href="{{ url('ebayTwoPricingCVR') }}">Ebay 2 Pricing - CVR</a>
+                                        <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Decrease </a>
                                     </li>
                                     <li>
                                         <a href="{{ route('ebay2.pmt.ads') }}">PMT Ads</a>
