@@ -266,19 +266,11 @@ class EbayThreeController extends Controller
             $row['percentage'] = $percentage;
             $row['ad_updates'] = $adUpdates;
 
-            // SPRICE calculation - same logic as eBay1
+            // SPRICE calculation - default to eBay Price (no CVR condition)
             $calculatedSprice = null;
             if ($price > 0) {
-                // Determine multiplier based on CVR
-                if ($cvr >= 0 && $cvr <= 1) {
-                    $spriceMultiplier = 0.99;
-                } elseif ($cvr > 1 && $cvr <= 3) {
-                    $spriceMultiplier = 0.995;
-                } else {
-                    $spriceMultiplier = 1.01;
-                }
-                
-                $calculatedSprice = round($price * $spriceMultiplier, 2);
+                // SPRICE defaults to eBay Price (CVR condition removed)
+                $calculatedSprice = round($price, 2);
                 
                 // Check for saved SPRICE
                 $savedSprice = $spriceValues[$sku] ?? null;
@@ -1088,12 +1080,13 @@ class EbayThreeController extends Controller
         $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
         Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship]);
 
-        // Calculate profit
+        // Calculate profit - Use fixed 0.80 (80%) margin for eBay3 tabulator
+        $fixedMargin = 0.80;
         $spriceFloat = floatval($sprice);
-        $profit = ($spriceFloat * $percentage - $lp - $ship);
+        $profit = ($spriceFloat * $fixedMargin - $lp - $ship);
 
-        // Calculate SGPFT first
-        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * 0.86 - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
+        // Calculate SGPFT first with 0.80 margin
+        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $fixedMargin - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
         
         // Get AD% from the product (using Ebay3Metric)
         $adPercent = 0;
@@ -1110,10 +1103,10 @@ class EbayThreeController extends Controller
         // Use provided SPFT and SROI if available, otherwise calculate
         $spft = $spft_percent !== null ? floatval($spft_percent) : round($sgpft - $adPercent, 2);
         
-        // SROI = ((SPRICE * (0.86 - AD%/100) - ship - lp) / lp) * 100
+        // SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100 - using 0.80 margin
         $adDecimal = $adPercent / 100;
         $sroi = $sroi_percent !== null ? floatval($sroi_percent) : round(
-            $lp > 0 ? (($spriceFloat * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+            $lp > 0 ? (($spriceFloat * ($fixedMargin - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
             2
         );
         
@@ -1149,5 +1142,58 @@ class EbayThreeController extends Controller
                 'sgpft' => $sgpft
             ]
         ]);
+    }
+
+    /**
+     * Clear SPRICE-related fields from EbayThreeDataView table
+     * Only removes: SPRICE, SPFT, SROI, SGPFT
+     * Keeps other data: NR, Listed, Live, Hide, NRL, etc.
+     */
+    public function clearAllSprice(Request $request)
+    {
+        try {
+            Log::info('Clearing SPRICE-related fields from EbayThreeDataView table');
+            
+            // Get all records
+            $records = EbayThreeDataView::all();
+            $clearedCount = 0;
+            
+            foreach ($records as $record) {
+                // Decode the value column
+                $value = is_array($record->value) 
+                    ? $record->value 
+                    : (json_decode($record->value, true) ?: []);
+                
+                // Check if any SPRICE-related fields exist
+                $hasSprice = isset($value['SPRICE']) || isset($value['SPFT']) || 
+                             isset($value['SROI']) || isset($value['SGPFT']);
+                
+                if ($hasSprice) {
+                    // Remove only SPRICE-related fields
+                    unset($value['SPRICE']);
+                    unset($value['SPFT']);
+                    unset($value['SROI']);
+                    unset($value['SGPFT']);
+                    
+                    // Save the updated value (keeping NR, Listed, Live, Hide, NRL, etc.)
+                    $record->value = $value;
+                    $record->save();
+                    $clearedCount++;
+                }
+            }
+            
+            Log::info('Cleared SPRICE fields from ' . $clearedCount . ' records');
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Cleared SPRICE data from ' . $clearedCount . ' records (other data preserved)'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error clearing SPRICE data: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Failed to clear SPRICE data: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

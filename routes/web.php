@@ -978,6 +978,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay3-column-visibility', [EbayThreeController::class, 'getEbay3ColumnVisibility'])->name('ebay3.column.visibility.get');
     Route::post('/ebay3-column-visibility', [EbayThreeController::class, 'setEbay3ColumnVisibility'])->name('ebay3.column.visibility.set');
     Route::post('/push-ebay3-price-tabulator', [EbayThreeController::class, 'pushEbay3Price'])->name('ebay3.push.price.tabulator');
+    Route::post('/clear-all-sprice-ebay3', [EbayThreeController::class, 'clearAllSprice'])->name('ebay3.clear.all.sprice');
 
     //walmart
     Route::get('/zero-walmart', [WalmartZeroController::class, 'walmartZeroview'])->name('zero.walmart');

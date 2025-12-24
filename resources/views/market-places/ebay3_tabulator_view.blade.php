@@ -76,13 +76,13 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'eBay3 Pricing Decrease',
-        'sub_title' => 'eBay3 Pricing Decrease (80% Margin)',
+        'sub_title' => 'eBay3 Pricing Decrease',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>eBay3 Data <span class="badge bg-secondary">80% Margin</span></h4>
+                <h4>eBay3 Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -164,36 +164,40 @@
                     <button id="increase-btn" class="btn btn-sm btn-success">
                         <i class="fas fa-arrow-up"></i> Increase Mode
                     </button>
+
+                    <button id="clear-all-sprice-btn" class="btn btn-sm btn-danger">
+                        <i class="fas fa-trash"></i> Clear All SPRICE
+                    </button>
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">All Calculations Summary (80% Margin)</h6>
+                    <h6 class="mb-3">All Calculations Summary</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <!-- Top Metrics -->
+                        <!-- Financial Metrics -->
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
+                        
+                        <!-- Averages -->
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">Avg GPFT: 0%</span>
+                        <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">Avg PFT: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
                         
                         <!-- eBay3 Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-fba-inv-badge" style="color: black; font-weight: bold;">Total eBay3 INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total eBay3 L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold Count: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         
-                        <!-- Financial Metrics -->
+                        <!-- Ad Spend -->
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-kw-spend-l30-badge" style="color: black; font-weight: bold;">KW Spend L30: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-pmt-spend-l30-badge" style="color: black; font-weight: bold;">PMT Spend L30: $0.00</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
                     </div>
                 </div>
             </div>
@@ -307,6 +311,35 @@
                 updateSelectedCount();
                 updateSelectAllCheckbox();
             }
+        });
+
+        // Clear All SPRICE button handler
+        $('#clear-all-sprice-btn').on('click', function() {
+            if (!confirm('Are you sure you want to clear ALL SPRICE data? This action cannot be undone.')) {
+                return;
+            }
+            
+            const btn = $(this);
+            btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
+            
+            $.ajax({
+                url: '/clear-all-sprice-ebay3',
+                type: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(response) {
+                    showToast('All SPRICE data cleared successfully!', 'success');
+                    // Refresh the table to show updated data
+                    table.setData('/ebay3-data-json');
+                },
+                error: function(xhr) {
+                    showToast('Failed to clear SPRICE data: ' + (xhr.responseJSON?.error || 'Unknown error'), 'error');
+                },
+                complete: function() {
+                    btn.prop('disabled', false).html('<i class="fas fa-trash"></i> Clear All SPRICE');
+                }
+            });
         });
 
         // Select all checkbox handler
@@ -1571,6 +1604,8 @@
             const data = table.getData("active");
             let totalTcos = 0;
             let totalSpendL30 = 0;
+            let totalKwSpendL30 = 0;
+            let totalPmtSpendL30 = 0;
             let totalPftAmt = 0;
             let totalSalesAmt = 0;
             let totalLpAmt = 0;
@@ -1579,16 +1614,36 @@
             let totalDilPercent = 0;
             let dilCount = 0;
             let zeroSoldCount = 0;
+            
+            // Track parents already counted for KW spend (parent-wise ads)
+            const countedParentsKw = new Set();
+            // PMT spend is per listing (item_id), so we track by item_id
+            const countedItemsPmt = new Set();
 
             data.forEach(row => {
                 if (parseFloat(row.INV) > 0) {
                     totalTcos += parseFloat(row['AD%'] || 0);
-                    totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
                     totalPftAmt += parseFloat(row['Total_pft'] || 0);
                     totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                     totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
                     totalFbaInv += parseFloat(row.INV || 0);
                     totalFbaL30 += parseFloat(row['eBay L30'] || 0);
+                    
+                    // KW Spend - count once per parent (parent-wise ads)
+                    const parent = row['Parent'] || '';
+                    const kwSpend = parseFloat(row['kw_spend_L30'] || 0);
+                    if (parent && kwSpend > 0 && !countedParentsKw.has(parent)) {
+                        totalKwSpendL30 += kwSpend;
+                        countedParentsKw.add(parent);
+                    }
+                    
+                    // PMT Spend - count once per item_id (listing-wise ads)
+                    const itemId = row['eBay_item_id'] || '';
+                    const pmtSpend = parseFloat(row['pmt_spend_L30'] || 0);
+                    if (itemId && pmtSpend > 0 && !countedItemsPmt.has(itemId)) {
+                        totalPmtSpendL30 += pmtSpend;
+                        countedItemsPmt.add(itemId);
+                    }
                     
                     const l30 = parseFloat(row['eBay L30'] || 0);
                     if (l30 === 0) {
@@ -1602,6 +1657,9 @@
                     }
                 }
             });
+            
+            // Total Spend = KW Spend + PMT Spend
+            totalSpendL30 = totalKwSpendL30 + totalPmtSpendL30;
 
             let totalWeightedPrice = 0;
             let totalL30 = 0;
@@ -1625,13 +1683,11 @@
             const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
             $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-            $('#cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
-            
 
             $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
-            $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
-            $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
-            $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+            $('#total-spend-l30-badge').text('Total Spend L30: $' + totalSpendL30.toFixed(2));
+            $('#total-kw-spend-l30-badge').text('KW Spend L30: $' + totalKwSpendL30.toFixed(2));
+            $('#total-pmt-spend-l30-badge').text('PMT Spend L30: $' + totalPmtSpendL30.toFixed(2));
             $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
             const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
             $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
@@ -1642,8 +1698,25 @@
             $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
             $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
             $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+            
+            // Calculate Avg GPFT = (Total PFT AMT / Total Sales AMT) × 100
             const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100).toFixed(1) : '0.0';
-            $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
+            $('#avg-gpft-badge').text('Avg GPFT: ' + avgGpft + '%');
+            
+            // Calculate Avg PFT = Average of individual PFT% values (same formula as row-level)
+            let totalPftPercent = 0;
+            let pftPercentCount = 0;
+            data.forEach(row => {
+                if (parseFloat(row.INV) > 0) {
+                    const pftPercent = parseFloat(row['PFT %'] || 0);
+                    if (!isNaN(pftPercent)) {
+                        totalPftPercent += pftPercent;
+                        pftPercentCount++;
+                    }
+                }
+            });
+            const avgPft = pftPercentCount > 0 ? (totalPftPercent / pftPercentCount).toFixed(1) : '0.0';
+            $('#avg-pft-badge').text('Avg PFT: ' + avgPft + '%');
         }
 
         // Build Column Visibility Dropdown
