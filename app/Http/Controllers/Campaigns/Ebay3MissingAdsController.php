@@ -29,8 +29,9 @@ class Ebay3MissingAdsController extends Controller
         try {
             $normalizeSku = fn($sku) => strtoupper(trim($sku));
 
-            $productMasters = ProductMaster::orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            // Only get parent SKUs (SKUs that contain "PARENT")
+            $productMasters = ProductMaster::where('sku', 'LIKE', 'PARENT %')
+                ->orderBy('parent', 'asc')
                 ->orderBy('sku', 'asc')
                 ->get();
 
