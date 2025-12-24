@@ -2586,8 +2586,8 @@
                 $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
                 $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
-                const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
-                $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
+                const roiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
+                $('#roi-percent-badge').text('ROI %: ' + roiPercent.toFixed(1) + '%');
                 $('#total-amazon-inv-badge').text('Total Amazon INV: ' + Math.round(totalAmazonInv).toLocaleString());
                 $('#total-amazon-l30-badge').text('Total Amazon L30: ' + Math.round(totalAmazonL30).toLocaleString());
                 const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
@@ -2596,8 +2596,8 @@
                 $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
                 
                 // AVG PFT = Profit / Sales (before ads)
-                const avgPft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
-                $('#avg-pft-badge').text('AVG PFT: ' + avgPft + '%');
+                const avgPft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
+                $('#avg-pft-badge').text('AVG PFT: ' + avgPft.toFixed(1) + '%');
                 
                 // AVG GPFT = Average of GPFT% values from each row
                 let totalGpft = 0;
@@ -2609,8 +2609,8 @@
                         gpftCount++;
                     }
                 });
-                const avgGpft = gpftCount > 0 ? Math.round(totalGpft / gpftCount) : 0;
-                $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
+                const avgGpft = gpftCount > 0 ? (totalGpft / gpftCount) : 0;
+                $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft.toFixed(1) + '%');
                 
                 // Update total SKU count badge
                 $('#total-sku-count-badge').text('Total SKUs: ' + totalSkuCount.toLocaleString()).show();
