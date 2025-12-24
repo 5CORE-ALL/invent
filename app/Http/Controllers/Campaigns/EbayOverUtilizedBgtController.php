@@ -1188,10 +1188,10 @@ class EbayOverUtilizedBgtController extends Controller
                 }
             }
             
-            // Only include campaigns with price >= 30
-            if ($price < 30) {
-                continue;
-            }
+            // // Only include campaigns with price >= 30
+            // if ($price < 30) {
+            //     continue;
+            // }
 
             $campaignMap[$campaignId] = [
                 'parent' => '',
