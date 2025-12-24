@@ -2561,6 +2561,9 @@
                                         <a href="{{ url('ebayThreePricingCVR') }}">Ebay 3 Pricing - CVR</a>
                                     </li>
                                     <li>
+                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 Pricing Decrease</a>
+                                    </li>
+                                    <li>
                                         <a data-bs-toggle="collapse" href="#ebay3AcosSubmenu"
                                             aria-expanded="false" aria-controls="ebay3AcosSubmenu">
                                             <span>Ebay 3 ACOS Control</span>

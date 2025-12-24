@@ -32,6 +32,382 @@ class EbayThreeController extends Controller
         $this->apiController = $apiController;
     }
 
+    public function ebay3TabulatorView(Request $request)
+    {
+        return view("market-places.ebay3_tabulator_view");
+    }
+
+    public function ebay3DataJson(Request $request)
+    {
+        try {
+            $response = $this->getViewEbay3DataTabulator($request);
+            $data = json_decode($response->getContent(), true);
+            
+            return response()->json($data['data'] ?? []);
+        } catch (\Exception $e) {
+            Log::error('Error fetching eBay3 data for Tabulator: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
+
+    public function getViewEbay3DataTabulator(Request $request)
+    {
+        // Use fixed margin of 0.80 (80%) as specified
+        $percentage = 0.80;
+        $adUpdates = 0;
+
+        // Fetch all product master records
+        $productMasterRows = ProductMaster::all()->keyBy('sku');
+
+        // Get all unique SKUs from product master - filter out PARENT SKUs
+        $allSkus = $productMasterRows->pluck('sku')->toArray();
+        $nonParentSkus = array_filter($allSkus, function($sku) {
+            return stripos($sku, 'PARENT') === false;
+        });
+        $skus = array_values($nonParentSkus);
+
+        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id')->whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Fetch shopify data for these SKUs
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Fetch NR values for these SKUs from EbayThreeDataView
+        $ebayDataViews = EbayThreeDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Fetch NRL (nr_req) values from EbayThreeListingStatus
+        $ebayListingStatuses = EbayThreeListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        $nrValues = [];
+        $listedValues = [];
+        $liveValues = [];
+        $spriceValues = [];
+        $spftValues = [];
+        $sroiValues = [];
+        $sgpftValues = [];
+        $nrReqValues = [];
+        $hideValues = [];
+
+        foreach ($ebayDataViews as $sku => $dataView) {
+            $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
+            $nrValues[$sku] = $value['NR'] ?? null;
+            $listedValues[$sku] = isset($value['Listed']) ? (int) $value['Listed'] : false;
+            $liveValues[$sku] = isset($value['Live']) ? (int) $value['Live'] : false;
+            $spriceValues[$sku] = isset($value['SPRICE']) ? floatval($value['SPRICE']) : null;
+            $spftValues[$sku] = isset($value['SPFT']) ? floatval($value['SPFT']) : null;
+            $sroiValues[$sku] = isset($value['SROI']) ? floatval($value['SROI']) : null;
+            $sgpftValues[$sku] = isset($value['SGPFT']) ? floatval($value['SGPFT']) : null;
+            $hideValues[$sku] = isset($value['Hide']) ? filter_var($value['Hide'], FILTER_VALIDATE_BOOLEAN) : false;
+            // Get NRL value from EbayThreeDataView
+            $nrReqValues[$sku] = isset($value['NRL']) ? $value['NRL'] : 'REQ';
+        }
+        
+        // Fallback: Fetch nr_req from EbayThreeListingStatus if not set
+        foreach ($ebayListingStatuses as $sku => $listingStatus) {
+            if (!isset($nrReqValues[$sku]) || $nrReqValues[$sku] === 'REQ') {
+                $statusValue = is_array($listingStatus->value) ? $listingStatus->value : (json_decode($listingStatus->value, true) ?: []);
+                if (isset($statusValue['nr_req'])) {
+                    $nrReqValues[$sku] = $statusValue['nr_req'];
+                }
+            }
+        }
+        
+        // Set default 'REQ' for SKUs not found
+        foreach ($skus as $sku) {
+            if (!isset($nrReqValues[$sku])) {
+                $nrReqValues[$sku] = 'REQ';
+            }
+        }
+
+        // Process data from product master and shopify tables
+        $processedData = [];
+        $slNo = 1;
+
+        foreach ($productMasterRows as $productMaster) {
+            $sku = $productMaster->sku;
+            $isParent = stripos($sku, 'PARENT') !== false;
+            
+            // Skip parent rows for tabulator
+            if ($isParent) continue;
+
+            $ebayMetric = $ebayMetrics[$sku] ?? null;
+
+            // Initialize the data structure
+            $row = [];
+            $row['Parent'] = $productMaster->parent ?? null;
+            $row['(Child) sku'] = $sku;
+
+            // Shopify data
+            if (isset($shopifyData[$sku])) {
+                $shopifyItem = $shopifyData[$sku];
+                $row['INV'] = $shopifyItem->inv ?? 0;
+                $row['L30'] = $shopifyItem->quantity ?? 0;
+            } else {
+                $row['INV'] = 0;
+                $row['L30'] = 0;
+            }
+
+            // eBay3 Metrics
+            $row['eBay L30'] = $ebayMetric->ebay_l30 ?? 0;
+            $row['eBay L60'] = $ebayMetric->ebay_l60 ?? 0;
+            $row['eBay Price'] = $ebayMetric->ebay_price ?? 0;
+            $row['views'] = $ebayMetric->views ?? 0;
+            $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
+
+            // Add values from product_master
+            $values = $productMaster->Values ?: [];
+            $lp = 0;
+            foreach ($values as $k => $v) {
+                if (strtolower($k) === "lp") {
+                    $lp = floatval($v);
+                    break;
+                }
+            }
+            if ($lp === 0 && isset($productMaster->lp)) {
+                $lp = floatval($productMaster->lp);
+            }
+            $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($productMaster->ship) ? floatval($productMaster->ship) : 0);
+
+            $row['LP_productmaster'] = $lp;
+            $row['Ship_productmaster'] = $ship;
+
+            // NR/REQ and other values
+            $row['NR'] = $nrValues[$sku] ?? null;
+            $row['nr_req'] = $nrReqValues[$sku] ?? 'REQ';
+            $row['Listed'] = $listedValues[$sku] ?? false;
+            $row['Live'] = $liveValues[$sku] ?? false;
+            $row['Hide'] = $hideValues[$sku] ?? false;
+
+            // Calculate AD% and other metrics
+            $price = floatval($row['eBay Price'] ?? 0);
+            $ebayL30 = floatval($row['eBay L30'] ?? 0);
+            $views = floatval($row['views'] ?? 0);
+            
+            // Get AD spend from reports if available
+            // NOTE: eBay3 campaigns are named by PARENT SKU, so we need to search by parent
+            $adSpendL30 = 0;
+            $kw_spend_l30 = 0;
+            $pmt_spend_l30 = 0;
+            if ($ebayMetric && $ebayMetric->item_id) {
+                // For keyword campaigns (Ebay3PriorityReport), search by PARENT SKU
+                // Campaigns in eBay3 are named after parent (e.g., "5C DS CHRM" or "PARENT 5C DS CHRM")
+                $parentSku = $row['Parent'] ?? '';
+                
+                $matchedCampaignL30 = null;
+                if (!empty($parentSku)) {
+                    // Try exact match with parent first
+                    $matchedCampaignL30 = Ebay3PriorityReport::where('report_range', 'L30')
+                        ->where(function($q) use ($parentSku) {
+                            // Try with "PARENT " prefix
+                            $q->where('campaign_name', 'LIKE', '%' . $parentSku . '%')
+                              // Also try without "PARENT " prefix if parent starts with "PARENT "
+                              ->orWhere('campaign_name', 'LIKE', '%' . str_replace('PARENT ', '', $parentSku) . '%');
+                        })
+                        ->first();
+                }
+                
+                // Fallback: try child SKU if no parent match found
+                if (!$matchedCampaignL30) {
+                    $matchedCampaignL30 = Ebay3PriorityReport::where('report_range', 'L30')
+                        ->where('campaign_name', 'LIKE', '%' . $sku . '%')
+                        ->first();
+                }
+                
+                // Try to get from Ebay3GeneralReport (promoted listings) - this uses item_id, not parent
+                $matchedGeneralL30 = Ebay3GeneralReport::where('report_range', 'L30')
+                    ->where('listing_id', $ebayMetric->item_id)
+                    ->first();
+                
+                $kw_spend_l30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
+                $pmt_spend_l30 = (float) str_replace('USD ', '', $matchedGeneralL30->ad_fees ?? 0);
+                $adSpendL30 = $kw_spend_l30 + $pmt_spend_l30;
+            }
+            
+            // Add AD_Spend_L30 to row for frontend
+            $row['AD_Spend_L30'] = round($adSpendL30, 2);
+            $row['spend_l30'] = round($adSpendL30, 2);
+            $row['kw_spend_L30'] = round($kw_spend_l30, 2);
+            $row['pmt_spend_L30'] = round($pmt_spend_l30, 2);
+            
+            // Calculate AD% = (AD Spend L30 / (Price * eBay L30)) * 100
+            $totalRevenue = $price * $ebayL30;
+            $row['AD%'] = $totalRevenue > 0 ? round(($adSpendL30 / $totalRevenue) * 100, 4) : 0;
+            
+            // Calculate Profit and Sales L30
+            $row['Total_pft'] = round(($price * $percentage - $lp - $ship) * $ebayL30, 2);
+            $row['Profit'] = $row['Total_pft'];
+            $row['T_Sale_l30'] = round($price * $ebayL30, 2);
+            $row['Sales L30'] = $row['T_Sale_l30'];
+            
+            // Calculate TacosL30 = AD Spend L30 / Total Sales L30
+            $row['TacosL30'] = $row['T_Sale_l30'] > 0 ? round($adSpendL30 / $row['T_Sale_l30'], 4) : 0;
+            
+            // Calculate GPFT% = ((Price * 0.80 - Ship - LP) / Price) * 100 (using 80% margin)
+            $gpft = $price > 0 ? (($price * $percentage - $ship - $lp) / $price) * 100 : 0;
+            $row['GPFT%'] = round($gpft, 2);
+            
+            // Calculate PFT% = GPFT% - AD%
+            $row['PFT %'] = round($gpft - $row['AD%'], 2);
+            
+            // Calculate ROI% = ((Price * percentage - LP - Ship) / LP) * 100
+            $row['ROI%'] = round(
+                $lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) * 100 : 0,
+                2
+            );
+            
+            // Calculate SCVR = (eBay L30 / views) * 100
+            $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
+            $cvr = $row['SCVR'];
+            
+            // Calculate E Dil% = (L30 / INV) if INV > 0
+            $inv = floatval($row['INV'] ?? 0);
+            $l30 = floatval($row['L30'] ?? 0);
+            $row['E Dil%'] = $inv > 0 ? round($l30 / $inv, 4) : 0;
+
+            $row['percentage'] = $percentage;
+            $row['ad_updates'] = $adUpdates;
+
+            // SPRICE calculation - same logic as eBay1
+            $calculatedSprice = null;
+            if ($price > 0) {
+                // Determine multiplier based on CVR
+                if ($cvr >= 0 && $cvr <= 1) {
+                    $spriceMultiplier = 0.99;
+                } elseif ($cvr > 1 && $cvr <= 3) {
+                    $spriceMultiplier = 0.995;
+                } else {
+                    $spriceMultiplier = 1.01;
+                }
+                
+                $calculatedSprice = round($price * $spriceMultiplier, 2);
+                
+                // Check for saved SPRICE
+                $savedSprice = $spriceValues[$sku] ?? null;
+                
+                // Use saved SPRICE if it exists and differs from calculated
+                if ($savedSprice !== null && abs($savedSprice - $calculatedSprice) > 0.01) {
+                    $row['SPRICE'] = $savedSprice;
+                    $row['has_custom_sprice'] = true;
+                } else {
+                    $row['SPRICE'] = $calculatedSprice;
+                    $row['has_custom_sprice'] = false;
+                }
+                
+                // Calculate SGPFT based on actual SPRICE being used
+                $sprice = $row['SPRICE'];
+                $sgpft = round(
+                    $sprice > 0 ? (($sprice * $percentage - $ship - $lp) / $sprice) * 100 : 0,
+                    2
+                );
+                $row['SGPFT'] = $sgpft;
+                
+                // Calculate SPFT = SGPFT - AD%
+                $row['SPFT'] = $sgpft;
+                
+                // Calculate SROI
+                $row['SROI'] = round(
+                    $lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0,
+                    2
+                );
+            } else {
+                $row['SPRICE'] = null;
+                $row['SPFT'] = null;
+                $row['SROI'] = null;
+                $row['SGPFT'] = null;
+                $row['has_custom_sprice'] = false;
+            }
+
+            // Image
+            $row['image_path'] = $shopifyData[$sku]->image_src ?? ($values['image_path'] ?? ($productMaster->image_path ?? null));
+
+            $processedData[] = (object) $row;
+        }
+
+        return response()->json([
+            'message' => 'eBay3 Data Fetched Successfully',
+            'data' => $processedData,
+            'status' => 200
+        ]);
+    }
+
+    public function getEbay3ColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "ebay3_tabulator_column_visibility_{$userId}";
+        
+        $visibility = Cache::get($key, []);
+        
+        return response()->json($visibility);
+    }
+
+    public function setEbay3ColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "ebay3_tabulator_column_visibility_{$userId}";
+        
+        $visibility = $request->input('visibility', []);
+        
+        Cache::put($key, $visibility, now()->addDays(365));
+        
+        return response()->json(['success' => true]);
+    }
+
+    public function pushEbay3Price(Request $request)
+    {
+        $sku = strtoupper(trim($request->input('sku')));
+        $price = $request->input('price');
+
+        if (empty($sku)) {
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'SKU is required.']]
+            ], 400);
+        }
+
+        // Validate price
+        $priceFloat = floatval($price);
+        if (!is_numeric($price) || $priceFloat <= 0) {
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be a positive number.']]
+            ], 400);
+        }
+
+        // Validate price range
+        if ($priceFloat < 0.01 || $priceFloat > 10000) {
+            return response()->json([
+                'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be between $0.01 and $10,000.']]
+            ], 400);
+        }
+
+        $priceFloat = round($priceFloat, 2);
+
+        try {
+            // Get item_id from Ebay3Metric
+            $ebayMetric = Ebay3Metric::where('sku', $sku)->first();
+
+            if (!$ebayMetric || !$ebayMetric->item_id) {
+                Log::error('eBay3 item_id not found', ['sku' => $sku]);
+                return response()->json([
+                    'errors' => [['code' => 'NotFound', 'message' => 'eBay3 listing not found for SKU: ' . $sku]]
+                ], 404);
+            }
+
+            // Push price to eBay using EbayThreeApiService
+            $ebayService = new \App\Services\EbayThreeApiService();
+            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat);
+
+            if (isset($result['success']) && $result['success']) {
+                Log::info('eBay3 price update successful', ['sku' => $sku, 'price' => $priceFloat, 'item_id' => $ebayMetric->item_id]);
+                return response()->json(['success' => true, 'message' => 'Price updated successfully']);
+            } else {
+                $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => 'Failed to update price']];
+                Log::error('eBay3 price update failed', ['sku' => $sku, 'price' => $priceFloat, 'errors' => $errors]);
+                return response()->json(['errors' => $errors], 400);
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception in pushEbay3Price', ['sku' => $sku, 'price' => $priceFloat, 'error' => $e->getMessage()]);
+            return response()->json(['errors' => [['code' => 'Exception', 'message' => 'An error occurred: ' . $e->getMessage()]]], 500);
+        }
+    }
+
     public function overallthreeEbay(Request $request)
     {
         $mode = $request->query('mode');

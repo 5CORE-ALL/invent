@@ -1,0 +1,1815 @@
+@extends('layouts.vertical', ['title' => 'eBay3 Pricing Decrease', 'sidenav' => 'condensed'])
+
+@section('css')
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <style>
+        .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+        
+        /* Vertical column headers */
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            transform: rotate(180deg);
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .tabulator .tabulator-header .tabulator-col {
+            height: 80px !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0px !important;
+        }
+
+        /* Custom pagination label */
+        .tabulator-paginator label {
+            margin-right: 5px;
+        }
+
+        /* Link tooltip styling */
+        .link-tooltip {
+            position: absolute;
+            background-color: #333;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .link-tooltip a {
+            text-decoration: none;
+        }
+
+        .link-tooltip a:hover {
+            text-decoration: underline;
+        }
+        
+        /* eBay3 specific styling - purple accent */
+        .badge.bg-ebay3 {
+            background-color: #6f42c1 !important;
+        }
+    </style>
+@endsection
+
+@section('script')
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+@endsection
+
+@section('content')
+    @include('layouts.shared.page-title', [
+        'page_title' => 'eBay3 Pricing Decrease',
+        'sub_title' => 'eBay3 Pricing Decrease (80% Margin)',
+    ])
+    <div class="toast-container"></div>
+    <div class="row">
+        <div class="card shadow-sm">
+            <div class="card-body py-3">
+                <h4>eBay3 Data <span class="badge bg-secondary">80% Margin</span></h4>
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <select id="inventory-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">All Inventory</option>
+                        <option value="zero">0 Inventory</option>
+                        <option value="more" selected>More than 0</option>
+                    </select>
+
+                    <select id="nrl-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">All Status</option>
+                        <option value="REQ" selected>REQ Only</option>
+                        <option value="NR">NR Only</option>
+                    </select>
+
+                    <select id="gpft-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50-60">50-60%</option>
+                        <option value="60plus">60%+</option>
+                    </select>
+
+                    <select id="cvr-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR</option>
+                        <option value="0-0">0 to 0.00%</option>
+                        <option value="0.01-1">0.01 - 1%</option>
+                        <option value="1-2">1-2%</option>
+                        <option value="2-3">2-3%</option>
+                        <option value="3-4">3-4%</option>
+                        <option value="0-4">0-4%</option>
+                        <option value="4-7">4-7%</option>
+                        <option value="7-10">7-10%</option>
+                        <option value="10plus">10%+</option>
+                    </select>
+
+                    <select id="status-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Status</option>
+                        <option value="REQ">REQ</option>
+                        <option value="NR">NR</option>
+                    </select>
+
+                    <select id="ads-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">AD%</option>
+                        <option value="0-10">Below 10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-100">30-100%</option>
+                        <option value="100plus">100%+</option>
+                    </select>
+
+                    <!-- Column Visibility Dropdown -->
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa fa-eye"></i> Columns
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
+                            style="max-height: 400px; overflow-y: auto;">
+                            <!-- Columns will be populated by JavaScript -->
+                        </ul>
+                    </div>
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
+                        <i class="fa fa-eye"></i> Show All
+                    </button>
+
+                    <button id="decrease-btn" class="btn btn-sm btn-warning">
+                        <i class="fas fa-arrow-down"></i> Decrease Mode
+                    </button>
+                    
+                    <button id="increase-btn" class="btn btn-sm btn-success">
+                        <i class="fas fa-arrow-up"></i> Increase Mode
+                    </button>
+                </div>
+
+                <!-- Summary Stats -->
+                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
+                    <h6 class="mb-3">All Calculations Summary (80% Margin)</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <!-- Top Metrics -->
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
+                        
+                        <!-- eBay3 Metrics -->
+                        <span class="badge bg-primary fs-6 p-2" id="total-fba-inv-badge" style="color: black; font-weight: bold;">Total eBay3 INV: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total eBay3 L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold Count: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
+                        
+                        <!-- Financial Metrics -->
+                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-kw-spend-l30-badge" style="color: black; font-weight: bold;">KW Spend L30: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="total-pmt-spend-l30-badge" style="color: black; font-weight: bold;">PMT Spend L30: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <!-- Discount Input Box (shown when SKUs are selected) -->
+                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="selected-skus-count" class="fw-bold"></span>
+                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
+                            <option value="percentage">Percentage</option>
+                            <option value="value">Value ($)</option>
+                        </select>
+                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
+                            placeholder="Enter %" step="0.01" style="width: 100px;">
+                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                    </div>
+                </div>
+                <div id="ebay3-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
+                    <!-- SKU Search -->
+                    <div class="p-2 bg-light border-bottom">
+                        <input type="text" id="sku-search" class="form-control" placeholder="Search SKU...">
+                    </div>
+                    <!-- Table body (scrollable section) -->
+                    <div id="ebay3-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@section('script-bottom')
+<script>
+    const COLUMN_VIS_KEY = "ebay3_tabulator_column_visibility";
+    let table = null;
+    let decreaseModeActive = false;
+    let increaseModeActive = false;
+    let selectedSkus = new Set();
+    
+    // Toast notification function
+    function showToast(message, type = 'info') {
+        const toastContainer = document.querySelector('.toast-container');
+        if (!toastContainer) return;
+        
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} border-0`;
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-live', 'assertive');
+        toast.setAttribute('aria-atomic', 'true');
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+        toastContainer.appendChild(toast);
+        const bsToast = new bootstrap.Toast(toast);
+        bsToast.show();
+        toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    }
+
+    $(document).ready(function() {
+        // Discount type dropdown change handler
+        $('#discount-type-select').on('change', function() {
+            const discountType = $(this).val();
+            const $input = $('#discount-percentage-input');
+            
+            if (discountType === 'percentage') {
+                $input.attr('placeholder', 'Enter %');
+            } else {
+                $input.attr('placeholder', 'Enter $');
+            }
+        });
+
+        // Decrease button toggle
+        $('#decrease-btn').on('click', function() {
+            decreaseModeActive = !decreaseModeActive;
+            increaseModeActive = false;
+            const selectColumn = table.getColumn('_select');
+            
+            if (decreaseModeActive) {
+                selectColumn.show();
+                $(this).removeClass('btn-warning').addClass('btn-danger');
+                $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
+                $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
+            } else {
+                selectColumn.hide();
+                $(this).removeClass('btn-danger').addClass('btn-warning');
+                $(this).html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+                selectedSkus.clear();
+                updateSelectedCount();
+                updateSelectAllCheckbox();
+            }
+        });
+        
+        // Increase Mode Toggle
+        $('#increase-btn').on('click', function() {
+            increaseModeActive = !increaseModeActive;
+            decreaseModeActive = false;
+            const selectColumn = table.getColumn('_select');
+            
+            if (increaseModeActive) {
+                selectColumn.show();
+                $(this).removeClass('btn-success').addClass('btn-danger');
+                $(this).html('<i class="fas fa-times"></i> Cancel Increase');
+                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+            } else {
+                selectColumn.hide();
+                selectedSkus.clear();
+                $(this).removeClass('btn-danger').addClass('btn-success');
+                $(this).html('<i class="fas fa-arrow-up"></i> Increase Mode');
+                updateSelectedCount();
+                updateSelectAllCheckbox();
+            }
+        });
+
+        // Select all checkbox handler
+        $(document).on('change', '#select-all-checkbox', function() {
+            const isChecked = $(this).prop('checked');
+            
+            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+            
+            filteredData.forEach(row => {
+                const sku = row['(Child) sku'];
+                if (sku) {
+                    if (isChecked) {
+                        selectedSkus.add(sku);
+                    } else {
+                        selectedSkus.delete(sku);
+                    }
+                }
+            });
+            
+            $('.sku-select-checkbox').each(function() {
+                const sku = $(this).data('sku');
+                $(this).prop('checked', selectedSkus.has(sku));
+            });
+            
+            updateSelectedCount();
+        });
+
+        // Individual checkbox handler
+        $(document).on('change', '.sku-select-checkbox', function() {
+            const sku = $(this).data('sku');
+            if ($(this).prop('checked')) {
+                selectedSkus.add(sku);
+            } else {
+                selectedSkus.delete(sku);
+            }
+            updateSelectedCount();
+            updateSelectAllCheckbox();
+        });
+
+        // Apply discount button
+        $('#apply-discount-btn').on('click', function() {
+            applyDiscount();
+        });
+
+        // Apply discount on Enter key
+        $('#discount-percentage-input').on('keypress', function(e) {
+            if (e.which === 13) {
+                applyDiscount();
+            }
+        });
+
+        // Apply All button handler
+        $(document).on('click', '#apply-all-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.applyAllSelectedPrices();
+        });
+
+        // Update selected count display
+        function updateSelectedCount() {
+            const count = selectedSkus.size;
+            $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
+            $('#discount-input-container').toggle(count > 0);
+        }
+
+        // Update select all checkbox state
+        function updateSelectAllCheckbox() {
+            if (!table) return;
+            
+            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+            
+            if (filteredData.length === 0) {
+                $('#select-all-checkbox').prop('checked', false);
+                return;
+            }
+            
+            const filteredSkus = new Set(filteredData.map(row => row['(Child) sku']).filter(sku => sku));
+            
+            const allFilteredSelected = filteredSkus.size > 0 && 
+                Array.from(filteredSkus).every(sku => selectedSkus.has(sku));
+            
+            $('#select-all-checkbox').prop('checked', allFilteredSelected);
+        }
+
+        // Retry function for saving SPRICE
+        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
+            return new Promise((resolve, reject) => {
+                if (row) {
+                    row.update({ SPRICE_STATUS: 'processing' });
+                }
+                
+                $.ajax({
+                    url: '/ebay3/save-sprice',
+                    method: 'POST',
+                    data: {
+                        sku: sku,
+                        sprice: sprice,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        if (row) {
+                            row.update({
+                                SPRICE: sprice,
+                                SPFT: response.data?.spft || response.spft_percent,
+                                SROI: response.data?.sroi || response.sroi_percent,
+                                SGPFT: response.data?.sgpft || response.sgpft_percent,
+                                SPRICE_STATUS: 'saved'
+                            });
+                        }
+                        resolve(response);
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.error || xhr.responseText || 'Failed to save SPRICE';
+                        console.error(`Attempt ${retryCount + 1} for SKU ${sku} failed:`, errorMsg);
+                        
+                        if (retryCount < 1) {
+                            console.log(`Retrying SKU ${sku} in 2 seconds...`);
+                            setTimeout(() => {
+                                saveSpriceWithRetry(sku, sprice, row, retryCount + 1)
+                                    .then(resolve)
+                                    .catch(reject);
+                            }, 2000);
+                        } else {
+                            console.error(`Max retries reached for SKU ${sku}`);
+                            if (row) {
+                                row.update({ SPRICE_STATUS: 'error' });
+                            }
+                            reject({ error: true, xhr: xhr });
+                        }
+                    }
+                });
+            });
+        }
+
+        // Apply price with retry logic
+        async function applyPriceWithRetry(sku, price, cell, retries = 0) {
+            const $btn = cell ? $(cell.getElement()).find('.apply-price-btn') : null;
+            const row = cell ? cell.getRow() : null;
+            const rowData = row ? row.getData() : null;
+
+            if (retries === 0 && cell && $btn && row) {
+                $btn.prop('disabled', true);
+                $btn.html('<i class="fas fa-spinner fa-spin"></i>');
+                $btn.attr('style', 'border: none; background: none; color: #ffc107; padding: 0;');
+                if (rowData) {
+                    rowData.SPRICE_STATUS = 'processing';
+                    row.update(rowData);
+                }
+            }
+
+            try {
+                const response = await $.ajax({
+                    url: '/push-ebay3-price-tabulator',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: { sku: sku, price: price }
+                });
+
+                if (response.errors && response.errors.length > 0) {
+                    throw new Error(response.errors[0].message || 'API error');
+                }
+
+                if (rowData) {
+                    rowData.SPRICE_STATUS = 'pushed';
+                    row.update(rowData);
+                }
+                
+                if ($btn && cell) {
+                    $btn.prop('disabled', false);
+                    $btn.html('<i class="fa-solid fa-check-double"></i>');
+                    $btn.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                }
+                
+                showToast(`Price $${price.toFixed(2)} pushed successfully for SKU: ${sku}`, 'success');
+                
+                return true;
+            } catch (xhr) {
+                const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseJSON?.message || 'Failed to apply price';
+                console.error(`Attempt ${retries + 1} for SKU ${sku} failed:`, errorMsg);
+
+                if (retries < 5) {
+                    console.log(`Retrying SKU ${sku} in 5 seconds...`);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    return applyPriceWithRetry(sku, price, cell, retries + 1);
+                } else {
+                    if (rowData) {
+                        rowData.SPRICE_STATUS = 'error';
+                        row.update(rowData);
+                    }
+                    
+                    if ($btn && cell) {
+                        $btn.prop('disabled', false);
+                        $btn.html('<i class="fa-solid fa-x"></i>');
+                        $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                    }
+                    
+                    showToast(`Failed to apply price for SKU: ${sku} after multiple retries.`, 'error');
+                    
+                    return false;
+                }
+            }
+        }
+
+        // Apply all selected prices
+        window.applyAllSelectedPrices = function() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select at least one SKU to apply prices', 'error');
+                return;
+            }
+            
+            const $btn = $('#apply-all-btn');
+            if ($btn.length === 0 || $btn.prop('disabled')) {
+                return;
+            }
+            
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true);
+            $btn.html('<i class="fas fa-spinner fa-spin" style="color: #ffc107;"></i>');
+            
+            const tableData = table.getData('all');
+            const skusToProcess = [];
+            
+            selectedSkus.forEach(sku => {
+                const row = tableData.find(r => r['(Child) sku'] === sku);
+                if (row) {
+                    const sprice = parseFloat(row.SPRICE) || 0;
+                    if (sprice > 0) {
+                        skusToProcess.push({ sku: sku, price: sprice });
+                    }
+                }
+            });
+            
+            if (skusToProcess.length === 0) {
+                $btn.prop('disabled', false);
+                $btn.html(originalHtml);
+                showToast('No valid prices found for selected SKUs', 'error');
+                return;
+            }
+            
+            let successCount = 0;
+            let errorCount = 0;
+            let currentIndex = 0;
+            
+            function processNextSku() {
+                if (currentIndex >= skusToProcess.length) {
+                    $btn.prop('disabled', false);
+                    
+                    if (errorCount === 0) {
+                        $btn.html(`<i class="fas fa-check-double" style="color: #28a745;"></i>`);
+                        showToast(`Successfully applied prices to ${successCount} SKU${successCount > 1 ? 's' : ''}`, 'success');
+                        
+                        setTimeout(() => {
+                            $btn.html(originalHtml);
+                        }, 3000);
+                    } else {
+                        $btn.html(originalHtml);
+                        showToast(`Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`, 'error');
+                    }
+                    return;
+                }
+                
+                const { sku, price } = skusToProcess[currentIndex];
+                
+                const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
+                if (row) {
+                    const acceptCell = row.getCell('_accept');
+                    if (acceptCell) {
+                        const $cellElement = $(acceptCell.getElement());
+                        const $btnInCell = $cellElement.find('.apply-price-btn');
+                        if ($btnInCell.length) {
+                            $btnInCell.prop('disabled', true);
+                            $btnInCell.html('<i class="fas fa-spinner fa-spin"></i>');
+                            $btnInCell.attr('style', 'border: none; background: none; color: #ffc107; padding: 0;');
+                        }
+                    }
+                }
+                
+                $.ajax({
+                    url: '/ebay3/save-sprice',
+                    method: 'POST',
+                    data: {
+                        sku: sku,
+                        sprice: price,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(saveResponse) {
+                        if (saveResponse.error) {
+                            errorCount++;
+                            if (row) {
+                                const rowData = row.getData();
+                                rowData.SPRICE_STATUS = 'error';
+                                row.update(rowData);
+                            }
+                            currentIndex++;
+                            setTimeout(processNextSku, 2000);
+                            return;
+                        }
+                        
+                        $.ajax({
+                            url: '/push-ebay3-price-tabulator',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: { sku: sku, price: price }
+                        }).then(function(result) {
+                            if (result.errors && result.errors.length > 0) {
+                                throw new Error(result.errors[0].message);
+                            }
+                            successCount++;
+                            if (row) {
+                                const rowData = row.getData();
+                                rowData.SPRICE_STATUS = 'pushed';
+                                row.update(rowData);
+                                
+                                const acceptCell = row.getCell('_accept');
+                                if (acceptCell) {
+                                    const $cellElement = $(acceptCell.getElement());
+                                    const $btnInCell = $cellElement.find('.apply-price-btn');
+                                    if ($btnInCell.length) {
+                                        $btnInCell.prop('disabled', false);
+                                        $btnInCell.html('<i class="fa-solid fa-check-double"></i>');
+                                        $btnInCell.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                                    }
+                                }
+                            }
+                            currentIndex++;
+                            setTimeout(processNextSku, 2000);
+                        }).catch(function(error) {
+                            errorCount++;
+                            if (row) {
+                                const rowData = row.getData();
+                                rowData.SPRICE_STATUS = 'error';
+                                row.update(rowData);
+                            }
+                            currentIndex++;
+                            setTimeout(processNextSku, 2000);
+                        });
+                    },
+                    error: function(xhr) {
+                        errorCount++;
+                        if (row) {
+                            const rowData = row.getData();
+                            rowData.SPRICE_STATUS = 'error';
+                            row.update(rowData);
+                        }
+                        currentIndex++;
+                        setTimeout(processNextSku, 2000);
+                    }
+                });
+            }
+            
+            processNextSku();
+        };
+
+        // Apply discount to selected SKUs
+        function applyDiscount() {
+            const discountValue = parseFloat($('#discount-percentage-input').val());
+            const discountType = $('#discount-type-select').val();
+            
+            if (isNaN(discountValue) || discountValue <= 0) {
+                showToast('Please enter a valid discount value', 'error');
+                return;
+            }
+
+            if (selectedSkus.size === 0) {
+                showToast('Please select at least one SKU', 'error');
+                return;
+            }
+
+            const allData = table.getData('all');
+            let updatedCount = 0;
+            let errorCount = 0;
+            const totalSkus = selectedSkus.size;
+
+            allData.forEach(row => {
+                const isParent = row.Parent && row.Parent.startsWith('PARENT');
+                if (isParent) return;
+                
+                const sku = row['(Child) sku'];
+                if (selectedSkus.has(sku)) {
+                    const currentPrice = parseFloat(row['eBay Price']) || 0;
+                    if (currentPrice > 0) {
+                        let newSPrice;
+                        
+                        if (discountType === 'percentage') {
+                            if (increaseModeActive) {
+                                newSPrice = currentPrice * (1 + discountValue / 100);
+                            } else {
+                                newSPrice = currentPrice * (1 - discountValue / 100);
+                            }
+                        } else {
+                            if (increaseModeActive) {
+                                newSPrice = currentPrice + discountValue;
+                            } else {
+                                newSPrice = currentPrice - discountValue;
+                            }
+                        }
+                        
+                        newSPrice = Math.max(0.01, newSPrice);
+                        
+                        const originalSPrice = parseFloat(row['SPRICE']) || 0;
+                        
+                        const tableRow = table.getRows().find(r => {
+                            const rowData = r.getData();
+                            return rowData['(Child) sku'] === sku;
+                        });
+                        
+                        if (tableRow) {
+                            tableRow.update({ 
+                                SPRICE: newSPrice,
+                                SPRICE_STATUS: 'processing'
+                            });
+                        }
+                        
+                        saveSpriceWithRetry(sku, newSPrice, tableRow)
+                            .then((response) => {
+                                updatedCount++;
+                                if (updatedCount + errorCount === totalSkus) {
+                                    if (errorCount === 0) {
+                                        showToast(`Discount applied to ${updatedCount} SKU(s)`, 'success');
+                                    } else {
+                                        showToast(`Discount applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                                    }
+                                }
+                            })
+                            .catch((error) => {
+                                errorCount++;
+                                if (tableRow) {
+                                    tableRow.update({ SPRICE: originalSPrice });
+                                }
+                                if (updatedCount + errorCount === totalSkus) {
+                                    showToast(`Discount applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                                }
+                            });
+                    }
+                }
+            });
+        }
+
+        // Initialize Tabulator
+        table = new Tabulator("#ebay3-table", {
+            ajaxURL: "/ebay3-data-json",
+            ajaxSorting: false,
+            layout: "fitDataStretch",
+            pagination: true,
+            paginationSize: 100,
+            paginationSizeSelector: [10, 25, 50, 100, 200],
+            paginationCounter: "rows",
+            columnCalcs: "both",
+            langs: {
+                "default": {
+                    "pagination": {
+                        "page_size": "SKU Count"
+                    }
+                }
+            },
+            initialSort: [{
+                column: "SCVR",
+                dir: "asc"
+            }],
+            rowFormatter: function(row) {
+                if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
+                    row.getElement().style.backgroundColor = "rgba(111, 66, 193, 0.1)";
+                }
+            },
+            columns: [
+                {
+                    title: "Parent",
+                    field: "Parent",
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search Parent...",
+                    cssClass: "text-primary",
+                    tooltip: true,
+                    frozen: true,
+                    width: 150,
+                    visible: false
+                },
+                {
+                    title: "Image",
+                    field: "image_path",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value) {
+                            return `<img src="${value}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;">`;
+                        }
+                        return '';
+                    },
+                    headerSort: false,
+                    width: 80
+                },
+                {
+                    title: "SKU",
+                    field: "(Child) sku",
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search SKU...",
+                    cssClass: "text-primary fw-bold",
+                    tooltip: true,
+                    frozen: true,
+                    width: 250,
+                    formatter: function(cell) {
+                        const sku = cell.getValue();
+                        
+                        let html = `<span>${sku}</span>`;
+                        
+                        html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
+                                   style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
+                                   data-sku="${sku}"
+                                   title="Copy SKU"></i>`;
+                        
+                        return html;
+                    }
+                },
+                {
+                    title: "INV",
+                    field: "INV",
+                    hozAlign: "center",
+                    width: 50,
+                    sorter: "number"
+                },
+                {
+                    title: "OV L30",
+                    field: "L30",
+                    hozAlign: "center",
+                    width: 50,
+                    sorter: "number"
+                },
+                {
+                    title: "Dil",
+                    field: "E Dil%",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const INV = parseFloat(rowData.INV) || 0;
+                        const OVL30 = parseFloat(rowData['L30']) || 0;
+                        
+                        if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
+                        
+                        const dil = (OVL30 / INV) * 100;
+                        let color = '';
+                        
+                        if (dil < 16.66) color = '#a00211';
+                        else if (dil >= 16.66 && dil < 25) color = '#ffc107';
+                        else if (dil >= 25 && dil < 50) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "E L30",
+                    field: "eBay L30",
+                    hozAlign: "center",
+                    width: 30,
+                    sorter: "number"
+                },
+                {
+                    title: "S CVR",
+                    field: "SCVR",
+                    hozAlign: "center",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aData = aRow.getData();
+                        const bData = bRow.getData();
+                        
+                        const aViews = parseFloat(aData.views || 0);
+                        const bViews = parseFloat(bData.views || 0);
+                        const aL30 = parseFloat(aData['eBay L30'] || 0);
+                        const bL30 = parseFloat(bData['eBay L30'] || 0);
+                        
+                        const aValue = aViews === 0 ? 0 : (aL30 / aViews) * 100;
+                        const bValue = bViews === 0 ? 0 : (bL30 / bViews) * 100;
+                        
+                        return aValue - bValue;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const views = parseFloat(rowData.views || 0);
+                        const l30 = parseFloat(rowData['eBay L30'] || 0);
+                        
+                        if (views === 0) {
+                            return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
+                        }
+                        
+                        const scvrValue = (l30 / views) * 100;
+                        let color = '';
+                        
+                        if (scvrValue <= 4) color = '#a00211';
+                        else if (scvrValue > 4 && scvrValue <= 7) color = '#ffc107';
+                        else if (scvrValue > 7 && scvrValue <= 10) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${scvrValue.toFixed(1)}%</span>`;
+                    },
+                    width: 60
+                },
+                {
+                    title: "View",
+                    field: "views",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        let color = '';
+                        
+                        if (value >= 30) color = '#28a745';
+                        else color = '#a00211';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "NR/REQ",
+                    field: "nr_req",
+                    hozAlign: "center",
+                    headerSort: false,
+                    formatter: function(cell) {
+                        let value = cell.getValue();
+                        if (value === null || value === undefined || value === '' || value.trim() === '') {
+                            value = 'REQ';
+                        }
+                        
+                        return `<select class="form-select form-select-sm nr-req-dropdown" 
+                            style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px;">
+                            <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                            <option value="NR" ${value === 'NR' ? 'selected' : ''}>🔴</option>
+                        </select>`;
+                    },
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                    },
+                    width: 60
+                },
+                {
+                    title: "Prc",
+                    field: "eBay Price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        
+                        if (value === 0) {
+                            return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
+                        }
+                        
+                        return `$${value.toFixed(2)}`;
+                    },
+                    width: 70
+                },
+                {
+                    title: "GPFT %",
+                    field: "GPFT%",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+                        
+                        if (percent < 10) color = '#a00211';
+                        else if (percent >= 10 && percent < 15) color = '#ffc107';
+                        else if (percent >= 15 && percent < 20) color = '#3591dc';
+                        else if (percent >= 20 && percent <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "AD%",
+                    field: "AD%",
+                    hozAlign: "center",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aData = aRow.getData();
+                        const bData = bRow.getData();
+                        
+                        const aKwSpend = parseFloat(aData['kw_spend_L30'] || 0);
+                        const bKwSpend = parseFloat(bData['kw_spend_L30'] || 0);
+                        
+                        let aVal = parseFloat(a || 0);
+                        let bVal = parseFloat(b || 0);
+                        
+                        if (aKwSpend > 0 && aVal === 0) aVal = 100;
+                        if (bKwSpend > 0 && bVal === 0) bVal = 100;
+                        
+                        return aVal - bVal;
+                    },
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        
+                        const rowData = cell.getRow().getData();
+                        const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
+                        const adPercent = parseFloat(value || 0);
+                        
+                        if (kwSpend > 0 && adPercent === 0) {
+                            return `<span style="color: #dc3545; font-weight: 600;">100%</span>`;
+                        }
+                        
+                        return `${parseFloat(value).toFixed(0)}%`;
+                    },
+                    width: 55
+                },
+                {
+                    title: "PFT %",
+                    field: "PFT %",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const gpft = parseFloat(rowData['GPFT%'] || 0);
+                        const ad = parseFloat(rowData['AD%'] || 0);
+                        
+                        const percent = gpft - ad;
+                        let color = '';
+                        
+                        if (percent < 10) color = '#a00211';
+                        else if (percent >= 10 && percent < 15) color = '#ffc107';
+                        else if (percent >= 15 && percent < 20) color = '#3591dc';
+                        else if (percent >= 20 && percent <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    bottomCalc: "avg",
+                    bottomCalcFormatter: function(cell) {
+                        const value = cell.getValue();
+                        return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "ROI%",
+                    field: "ROI%",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+                        
+                        if (percent < 50) color = '#a00211';
+                        else if (percent >= 50 && percent < 75) color = '#ffc107';
+                        else if (percent >= 75 && percent <= 125) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    bottomCalc: "avg",
+                    bottomCalcFormatter: function(cell) {
+                        const value = cell.getValue();
+                        return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
+                    },
+                    width: 65
+                },
+                {
+                    field: "_select",
+                    hozAlign: "center",
+                    headerSort: false,
+                    visible: false,
+                    titleFormatter: function(column) {
+                        return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                            <span>Select</span>
+                            <input type="checkbox" id="select-all-checkbox" style="cursor: pointer;" title="Select All Filtered SKUs">
+                        </div>`;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData['(Child) sku'];
+                        const isSelected = selectedSkus.has(sku);
+                        
+                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isSelected ? 'checked' : ''} style="cursor: pointer;">`;
+                    }
+                },
+                {
+                    title: "S PRC",
+                    field: "SPRICE",
+                    hozAlign: "center",
+                    editor: "input",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const hasCustomSprice = rowData.has_custom_sprice;
+                        const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+                        const sprice = parseFloat(value) || 0;
+                        
+                        if (!value) return '';
+                        
+                        if (sprice === ebayPrice) {
+                            return '<span style="color: #999; font-style: italic;">-</span>';
+                        }
+                        
+                        const formattedValue = `$${parseFloat(value).toFixed(2)}`;
+                        
+                        if (hasCustomSprice === false) {
+                            return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
+                        }
+                        
+                        return formattedValue;
+                    },
+                    width: 80
+                },
+                {
+                    field: "_accept",
+                    hozAlign: "center",
+                    headerSort: false,
+                    titleFormatter: function(column) {
+                        return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
+                            <span>Accept</span>
+                            <button type="button" class="btn btn-sm" id="apply-all-btn" title="Apply All Selected Prices to eBay3" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;">
+                                <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
+                            </button>
+                        </div>`;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData['(Child) sku'];
+                        const sprice = parseFloat(rowData.SPRICE) || 0;
+                        const status = rowData.SPRICE_STATUS || null;
+
+                        if (!sprice || sprice === 0) {
+                            return '<span style="color: #999;">N/A</span>';
+                        }
+
+                        let icon = '<i class="fas fa-check"></i>';
+                        let iconColor = '#28a745';
+                        let titleText = 'Apply Price to eBay3';
+
+                        if (status === 'processing') {
+                            icon = '<i class="fas fa-spinner fa-spin"></i>';
+                            iconColor = '#ffc107';
+                            titleText = 'Price pushing in progress...';
+                        } else if (status === 'pushed') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            iconColor = '#28a745';
+                            titleText = 'Price pushed to eBay3';
+                        } else if (status === 'saved') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            iconColor = '#28a745';
+                            titleText = 'SPRICE saved (Click to push to eBay3)';
+                        } else if (status === 'error') {
+                            icon = '<i class="fa-solid fa-x"></i>';
+                            iconColor = '#dc3545';
+                            titleText = 'Error applying price to eBay3';
+                        }
+
+                        return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${sku}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
+                            ${icon}
+                        </button>`;
+                    },
+                    cellClick: function(e, cell) {
+                        const $target = $(e.target);
+                        
+                        if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
+                            e.stopPropagation();
+                            const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
+                            const sku = $btn.attr('data-sku') || $btn.data('sku');
+                            const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
+                            const currentStatus = $btn.attr('data-status') || '';
+                            
+                            if (!sku || !price || price <= 0 || isNaN(price)) {
+                                showToast('Invalid SKU or price', 'error');
+                                return;
+                            }
+                            
+                            if (currentStatus === 'saved' || !currentStatus) {
+                                const row = cell.getRow();
+                                row.update({ SPRICE_STATUS: 'processing' });
+                                
+                                saveSpriceWithRetry(sku, price, row)
+                                    .then((response) => {
+                                        applyPriceWithRetry(sku, price, cell, 0);
+                                    })
+                                    .catch((error) => {
+                                        row.update({ SPRICE_STATUS: 'error' });
+                                        showToast('Failed to save SPRICE', 'error');
+                                    });
+                            } else {
+                                applyPriceWithRetry(sku, price, cell, 0);
+                            }
+                        }
+                    }
+                },
+                {
+                    title: "S GPFT",
+                    field: "SGPFT",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        if (isNaN(percent)) return '';
+                        
+                        let color = '';
+                        if (percent < 10) color = '#a00211';
+                        else if (percent >= 10 && percent < 15) color = '#ffc107';
+                        else if (percent >= 15 && percent < 20) color = '#3591dc';
+                        else if (percent >= 20 && percent <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 80
+                },
+                {
+                    title: "S PFT",
+                    field: "SPFT",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sgpft = parseFloat(rowData.SGPFT || 0);
+                        const ad = parseFloat(rowData['AD%'] || 0);
+                        
+                        const percent = sgpft - ad;
+                        if (isNaN(percent)) return '';
+                        
+                        let color = '';
+                        if (percent < 10) color = '#a00211';
+                        else if (percent >= 10 && percent < 15) color = '#ffc107';
+                        else if (percent >= 15 && percent < 20) color = '#3591dc';
+                        else if (percent >= 20 && percent <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 80
+                },
+                {
+                    title: "SROI",
+                    field: "SROI",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        if (isNaN(percent)) return '';
+                        
+                        let color = '';
+                        if (percent < 50) color = '#a00211';
+                        else if (percent >= 50 && percent < 75) color = '#ffc107';
+                        else if (percent >= 75 && percent <= 125) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 80
+                },
+                {
+                    title: "SPEND L30",
+                    field: "AD_Spend_L30",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return `
+                            <span>$${value.toFixed(2)}</span>
+                            <i class="fa fa-info-circle text-primary toggle-spendL30-btn" 
+                            style="cursor:pointer; margin-left:8px;"></i>
+                        `;
+                    },
+                    bottomCalc: "sum",
+                    bottomCalcFormatter: function(cell) {
+                        const value = cell.getValue();
+                        return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                    },
+                    width: 90
+                },
+                {
+                    title: "KW SPEND L30",
+                    field: "kw_spend_L30",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return `$${value.toFixed(2)}`;
+                    },
+                    bottomCalc: "sum",
+                    bottomCalcFormatter: function(cell) {
+                        const value = cell.getValue();
+                        return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                    },
+                    width: 100
+                },
+                {
+                    title: "KW %",
+                    field: "kw_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
+                        const pmtSpend = parseFloat(rowData['pmt_spend_L30'] || 0);
+                        const total = kwSpend + pmtSpend;
+                        const percent = total > 0 ? (kwSpend / total) * 100 : 0;
+                        return `${percent.toFixed(1)}%`;
+                    },
+                    width: 70
+                },
+                {
+                    title: "PMT SPEND L30",
+                    field: "pmt_spend_L30",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return `$${value.toFixed(2)}`;
+                    },
+                    bottomCalc: "sum",
+                    bottomCalcFormatter: function(cell) {
+                        const value = cell.getValue();
+                        return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                    },
+                    width: 100
+                },
+                {
+                    title: "PMT %",
+                    field: "pmt_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
+                        const pmtSpend = parseFloat(rowData['pmt_spend_L30'] || 0);
+                        const total = kwSpend + pmtSpend;
+                        const percent = total > 0 ? (pmtSpend / total) * 100 : 0;
+                        return `${percent.toFixed(1)}%`;
+                    },
+                    width: 70
+                }
+            ]
+        });
+
+        // SKU Search functionality
+        $('#sku-search').on('keyup', function() {
+            const value = $(this).val();
+            table.setFilter("(Child) sku", "like", value);
+        });
+
+        // NR/REQ dropdown change handler
+        $(document).on('change', '.nr-req-dropdown', function() {
+            const $select = $(this);
+            const value = $select.val();
+            
+            const $cell = $select.closest('.tabulator-cell');
+            const row = table.getRow($cell.closest('.tabulator-row')[0]);
+            
+            if (!row) {
+                console.error('Could not find row');
+                return;
+            }
+            
+            const sku = row.getData()['(Child) sku'];
+            
+            row.update({nr_req: value});
+            
+            $.ajax({
+                url: '/listing_ebaythree/save-status',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    sku: sku,
+                    nr_req: value
+                },
+                success: function(response) {
+                    if (response.status === 'success') {
+                        console.log('NR/REQ saved successfully for', sku, 'value:', value);
+                        const message = value === 'REQ' ? 'REQ updated' : (value === 'NR' ? 'NR updated' : 'Status cleared');
+                        showToast(message, 'success');
+                    } else {
+                        showToast(response.message || 'Failed to save status', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Failed to save NR/REQ for', sku, 'Error:', xhr.responseText);
+                    showToast(`Failed to save NR/REQ for ${sku}`, 'error');
+                }
+            });
+        });
+
+        table.on('cellEdited', function(cell) {
+            var row = cell.getRow();
+            var data = row.getData();
+            var field = cell.getColumn().getField();
+            var value = cell.getValue();
+
+            if (field === 'SPRICE') {
+                row.update({ SPRICE_STATUS: 'processing' });
+                
+                saveSpriceWithRetry(data['(Child) sku'], value, row)
+                    .then((response) => {
+                        showToast('SPRICE saved successfully', 'success');
+                    })
+                    .catch((error) => {
+                        showToast('Failed to save SPRICE', 'error');
+                    });
+            } else if (field === 'Listed' || field === 'Live') {
+                $.ajax({
+                    url: '/ebay3/update-listed-live',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        sku: data['(Child) sku'],
+                        field: field,
+                        value: value
+                    },
+                    success: function(response) {
+                        showToast(field + ' status updated successfully', 'success');
+                    },
+                    error: function(error) {
+                        showToast('Failed to update ' + field + ' status', 'error');
+                    }
+                });
+            }
+        });
+
+        // Apply filters
+        function applyFilters() {
+            const inventoryFilter = $('#inventory-filter').val();
+            const nrlFilter = $('#nrl-filter').val();
+            const gpftFilter = $('#gpft-filter').val();
+            const cvrFilter = $('#cvr-filter').val();
+            const statusFilter = $('#status-filter').val();
+            const adsFilter = $('#ads-filter').val();
+
+            table.clearFilter(true);
+
+            if (inventoryFilter === 'zero') {
+                table.addFilter('INV', '=', 0);
+            } else if (inventoryFilter === 'more') {
+                table.addFilter('INV', '>', 0);
+            }
+
+            if (nrlFilter !== 'all') {
+                table.addFilter(function(data) {
+                    if (nrlFilter === 'REQ') {
+                        return data.nr_req === 'REQ';
+                    } else if (nrlFilter === 'NR') {
+                        return data.nr_req === 'NR';
+                    }
+                    return true;
+                });
+            }
+
+            if (gpftFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const gpft = parseFloat(data['GPFT%']) || 0;
+                    
+                    if (gpftFilter === 'negative') return gpft < 0;
+                    if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
+                    if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
+                    if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
+                    if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
+                    if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
+                    if (gpftFilter === '50-60') return gpft >= 50 && gpft < 60;
+                    if (gpftFilter === '60plus') return gpft >= 60;
+                    return true;
+                });
+            }
+
+            if (cvrFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const scvrValue = parseFloat(data['SCVR'] || 0);
+                    const views = parseFloat(data.views || 0);
+                    const l30 = parseFloat(data['eBay L30'] || 0);
+                    const cvr = views > 0 ? (l30 / views) * 100 : 0;
+                    
+                    const cvrRounded = Math.round(cvr * 100) / 100;
+                    
+                    if (cvrFilter === '0-0') return cvrRounded === 0;
+                    if (cvrFilter === '0.01-1') return cvrRounded >= 0.01 && cvrRounded <= 1;
+                    if (cvrFilter === '1-2') return cvrRounded > 1 && cvrRounded <= 2;
+                    if (cvrFilter === '2-3') return cvrRounded > 2 && cvrRounded <= 3;
+                    if (cvrFilter === '3-4') return cvrRounded > 3 && cvrRounded <= 4;
+                    if (cvrFilter === '0-4') return cvrRounded >= 0 && cvrRounded <= 4;
+                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '7-10') return cvrRounded > 7 && cvrRounded <= 10;
+                    if (cvrFilter === '10plus') return cvrRounded > 10;
+                    return true;
+                });
+            }
+
+            if (statusFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const status = data.nr_req || '';
+                    
+                    if (statusFilter === 'REQ') {
+                        return status === 'REQ';
+                    } else if (statusFilter === 'NR') {
+                        return status === 'NR';
+                    }
+                    return true;
+                });
+            }
+
+            if (adsFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const adValue = data['AD%'];
+                    const kwSpend = parseFloat(data['kw_spend_L30'] || 0);
+                    
+                    let adPercent;
+                    if (kwSpend > 0 && (adValue === null || adValue === undefined || adValue === '' || parseFloat(adValue) === 0)) {
+                        adPercent = 100;
+                    } else if (adValue === null || adValue === undefined || adValue === '' || isNaN(parseFloat(adValue))) {
+                        return false;
+                    } else {
+                        adPercent = parseFloat(adValue);
+                    }
+                    
+                    if (adsFilter === '0-10') return adPercent >= 0 && adPercent < 10;
+                    if (adsFilter === '10-20') return adPercent >= 10 && adPercent < 20;
+                    if (adsFilter === '20-30') return adPercent >= 20 && adPercent < 30;
+                    if (adsFilter === '30-100') return adPercent >= 30 && adPercent <= 100;
+                    if (adsFilter === '100plus') return adPercent > 100;
+                    return true;
+                });
+            }
+            
+            updateCalcValues();
+            updateSummary();
+            setTimeout(function() {
+                updateSelectAllCheckbox();
+            }, 100);
+        }
+
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
+            applyFilters();
+        });
+        
+        // Update calc values
+        function updateCalcValues() {
+            const data = table.getData("active");
+            let totalSales = 0;
+            let totalProfit = 0;
+            let sumLp = 0;
+            
+            data.forEach(row => {
+                const profit = parseFloat(row['Total_pft']) || 0;
+                const salesL30 = parseFloat(row['T_Sale_l30']) || 0;
+                if (profit > 0 && salesL30 > 0) {
+                    totalProfit += profit;
+                    totalSales += salesL30;
+                }
+                sumLp += parseFloat(row['LP_productmaster']) || 0;
+            });
+        }
+
+        // Update summary badges
+        function updateSummary() {
+            const data = table.getData("active");
+            let totalTcos = 0;
+            let totalSpendL30 = 0;
+            let totalPftAmt = 0;
+            let totalSalesAmt = 0;
+            let totalLpAmt = 0;
+            let totalFbaInv = 0;
+            let totalFbaL30 = 0;
+            let totalDilPercent = 0;
+            let dilCount = 0;
+            let zeroSoldCount = 0;
+
+            data.forEach(row => {
+                if (parseFloat(row.INV) > 0) {
+                    totalTcos += parseFloat(row['AD%'] || 0);
+                    totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
+                    totalPftAmt += parseFloat(row['Total_pft'] || 0);
+                    totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
+                    totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
+                    totalFbaInv += parseFloat(row.INV || 0);
+                    totalFbaL30 += parseFloat(row['eBay L30'] || 0);
+                    
+                    const l30 = parseFloat(row['eBay L30'] || 0);
+                    if (l30 === 0) {
+                        zeroSoldCount++;
+                    }
+                    
+                    const dil = parseFloat(row['E Dil%'] || 0);
+                    if (!isNaN(dil)) {
+                        totalDilPercent += dil;
+                        dilCount++;
+                    }
+                }
+            });
+
+            let totalWeightedPrice = 0;
+            let totalL30 = 0;
+            data.forEach(row => {
+                if (parseFloat(row.INV) > 0) {
+                    const price = parseFloat(row['eBay Price'] || 0);
+                    const l30 = parseFloat(row['eBay L30'] || 0);
+                    totalWeightedPrice += price * l30;
+                    totalL30 += l30;
+                }
+            });
+            const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
+            $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice));
+
+            let totalViews = 0;
+            data.forEach(row => {
+                if (parseFloat(row.INV) > 0) {
+                    totalViews += parseFloat(row.views || 0);
+                }
+            });
+            const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+            $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
+            $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+            $('#cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
+            
+
+            $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
+            $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
+            $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
+            $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+            $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
+            const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
+            $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
+            $('#total-fba-inv-badge').text('Total eBay3 INV: ' + Math.round(totalFbaInv).toLocaleString());
+            $('#total-fba-l30-badge').text('Total eBay3 L30: ' + Math.round(totalFbaL30).toLocaleString());
+            $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
+            const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
+            $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
+            $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
+            $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+            const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100).toFixed(1) : '0.0';
+            $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
+        }
+
+        // Build Column Visibility Dropdown
+        function buildColumnDropdown() {
+            const menu = document.getElementById("column-dropdown-menu");
+            menu.innerHTML = '';
+
+            fetch('/ebay3-column-visibility', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                })
+                .then(response => response.json())
+                .then(savedVisibility => {
+                    table.getColumns().forEach(col => {
+                        const def = col.getDefinition();
+                        if (!def.field) return;
+
+                        const li = document.createElement("li");
+                        const label = document.createElement("label");
+                        label.style.display = "block";
+                        label.style.padding = "5px 10px";
+                        label.style.cursor = "pointer";
+
+                        const checkbox = document.createElement("input");
+                        checkbox.type = "checkbox";
+                        checkbox.value = def.field;
+                        checkbox.checked = savedVisibility[def.field] !== false;
+                        checkbox.style.marginRight = "8px";
+
+                        label.appendChild(checkbox);
+                        label.appendChild(document.createTextNode(def.title));
+                        li.appendChild(label);
+                        menu.appendChild(li);
+                    });
+                });
+        }
+
+        function saveColumnVisibilityToServer() {
+            const visibility = {};
+            table.getColumns().forEach(col => {
+                const def = col.getDefinition();
+                if (def.field) {
+                    visibility[def.field] = col.isVisible();
+                }
+            });
+
+            fetch('/ebay3-column-visibility', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({
+                    visibility: visibility
+                })
+            });
+        }
+
+        function applyColumnVisibilityFromServer() {
+            fetch('/ebay3-column-visibility', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                })
+                .then(response => response.json())
+                .then(savedVisibility => {
+                    table.getColumns().forEach(col => {
+                        const def = col.getDefinition();
+                        if (def.field && savedVisibility[def.field] === false) {
+                            col.hide();
+                        }
+                    });
+                });
+        }
+
+        // Wait for table to be built
+        table.on('tableBuilt', function() {
+            applyColumnVisibilityFromServer();
+            buildColumnDropdown();
+            applyFilters();
+        });
+
+        table.on('dataLoaded', function() {
+            updateCalcValues();
+            updateSummary();
+            setTimeout(function() {
+                $('.sku-select-checkbox').each(function() {
+                    const sku = $(this).data('sku');
+                    $(this).prop('checked', selectedSkus.has(sku));
+                });
+                updateSelectAllCheckbox();
+            }, 100);
+        });
+
+        table.on('renderComplete', function() {
+            setTimeout(function() {
+                $('.sku-select-checkbox').each(function() {
+                    const sku = $(this).data('sku');
+                    $(this).prop('checked', selectedSkus.has(sku));
+                });
+                updateSelectAllCheckbox();
+            }, 100);
+        });
+
+        // Toggle column from dropdown
+        document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
+            if (e.target.type === 'checkbox') {
+                const field = e.target.value;
+                const col = table.getColumn(field);
+                if (e.target.checked) {
+                    col.show();
+                } else {
+                    col.hide();
+                }
+                saveColumnVisibilityToServer();
+            }
+        });
+
+        // Show All Columns button
+        document.getElementById("show-all-columns-btn").addEventListener("click", function() {
+            table.getColumns().forEach(col => {
+                col.show();
+            });
+            buildColumnDropdown();
+            saveColumnVisibilityToServer();
+        });
+
+        // Toggle SPEND L30 breakdown columns
+        document.addEventListener("click", function(e) {
+            if (e.target.classList.contains("toggle-spendL30-btn")) {
+                let colsToToggle = ["kw_spend_L30", "kw_percent", "pmt_spend_L30", "pmt_percent"];
+
+                colsToToggle.forEach(colField => {
+                    let col = table.getColumn(colField);
+                    if (col) {
+                        col.toggle();
+                    }
+                });
+                
+                saveColumnVisibilityToServer();
+                buildColumnDropdown();
+            }
+
+            // Copy SKU to clipboard
+            if (e.target.classList.contains("copy-sku-btn")) {
+                const sku = e.target.getAttribute("data-sku");
+                
+                navigator.clipboard.writeText(sku).then(function() {
+                    showToast(`SKU "${sku}" copied to clipboard!`, 'success');
+                }).catch(function(err) {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = sku;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    showToast(`SKU "${sku}" copied to clipboard!`, 'success');
+                });
+            }
+        });
+    });
+</script>
+@endsection
+
