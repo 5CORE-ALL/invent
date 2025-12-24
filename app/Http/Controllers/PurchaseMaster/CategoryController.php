@@ -4,6 +4,8 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\ProductGroup;
+use App\Models\ProductCategory;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\EbayMetric;
@@ -3831,6 +3833,10 @@ class CategoryController extends Controller
                 'id' => $product->id,
                 'Parent' => $product->parent,
                 'SKU' => $product->sku,
+                'group_id' => $product->group_id,
+                'group' => $product->productGroup ? $product->productGroup->group_name : ($product->group ?? null),
+                'category_id' => $product->category_id,
+                'category' => $product->productCategory ? $product->productCategory->category_name : ($product->category ?? null),
                 'title150' => $product->title150,
                 'title100' => $product->title100,
                 'title80' => $product->title80,
@@ -3905,6 +3911,701 @@ class CategoryController extends Controller
             'status' => 200
         ]);
     }
+
+    public function updateProductField(Request $request)
+    {
+        try {
+            $request->validate([
+                'product_id' => 'required|integer',
+                'sku' => 'required|string',
+                'field' => 'required|string|in:group_id,category_id',
+                'value' => 'nullable|integer'
+            ]);
+
+            $product = ProductMaster::find($request->product_id);
+            
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found.'
+                ], 404);
+            }
+
+            // Verify SKU matches
+            if ($product->sku !== $request->sku) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU mismatch.'
+                ], 400);
+            }
+
+            $field = $request->field;
+            $value = $request->value ? (int)$request->value : null;
+
+            // Validate that the group/category exists if value is provided
+            if ($value !== null) {
+                if ($field === 'group_id') {
+                    // Check if group exists (including soft-deleted to see if it exists at all)
+                    $group = ProductGroup::withTrashed()->find($value);
+                    if (!$group) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Selected group does not exist. Please select a valid group.'
+                        ], 400);
+                    }
+                    if ($group->trashed() || $group->status !== 'active') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Selected group exists but is deleted or inactive. Please restore it or select a different group.'
+                        ], 400);
+                    }
+                } elseif ($field === 'category_id') {
+                    // Check if category exists (including soft-deleted to see if it exists at all)
+                    $category = ProductCategory::withTrashed()->find($value);
+                    if (!$category) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Selected category does not exist. Please select a valid category.'
+                        ], 400);
+                    }
+                    if ($category->trashed() || $category->status !== 'active') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Selected category exists but is deleted or inactive. Please restore it or select a different category.'
+                        ], 400);
+                    }
+                }
+            }
+
+            // Update the field with error handling
+            try {
+                $product->$field = $value;
+                $product->save();
+
+                // Load relationship to get name
+                $product->load(['productGroup', 'productCategory']);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => ucfirst(str_replace('_id', '', $field)) . ' updated successfully.',
+                    'data' => [
+                        'id' => $product->id,
+                        'sku' => $product->sku,
+                        $field => $product->$field,
+                        'group_name' => $product->productGroup ? $product->productGroup->group_name : null,
+                        'category_name' => $product->productCategory ? $product->productCategory->category_name : null,
+                    ]
+                ]);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Handle foreign key constraint violations
+                if ($e->getCode() == 23000) {
+                    $errorMsg = 'Failed to update ' . str_replace('_id', '', $field) . '. ';
+                    if (strpos($e->getMessage(), 'group_id_foreign') !== false) {
+                        $errorMsg .= 'The selected group does not exist in the database.';
+                    } elseif (strpos($e->getMessage(), 'category_id_foreign') !== false) {
+                        $errorMsg .= 'The selected category does not exist in the database.';
+                    } else {
+                        $errorMsg .= 'Database constraint violation occurred.';
+                    }
+                    
+                    Log::error('Update product field foreign key error: ' . $e->getMessage());
+                    return response()->json([
+                        'success' => false,
+                        'message' => $errorMsg
+                    ], 400);
+                }
+                throw $e; // Re-throw if it's not a foreign key error
+            }
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Update product field error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update field: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get all product groups
+     */
+    public function getProductGroups()
+    {
+        try {
+            // Only get active, non-deleted groups
+            $groups = ProductGroup::where('status', 'active')
+                ->whereNull('deleted_at') // Explicitly exclude soft-deleted
+                ->orderBy('group_name', 'asc')
+                ->get(['id', 'group_name', 'description']);
+
+            return response()->json([
+                'success' => true,
+                'groups' => $groups
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Get product groups error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch groups',
+                'groups' => []
+            ], 500);
+        }
+    }
+
+    /**
+     * Get all product categories
+     */
+    public function getProductCategories()
+    {
+        try {
+            // Only get active, non-deleted categories
+            $categories = ProductCategory::where('status', 'active')
+                ->whereNull('deleted_at') // Explicitly exclude soft-deleted
+                ->orderBy('category_name', 'asc')
+                ->get(['id', 'category_name', 'code', 'description']);
+
+            return response()->json([
+                'success' => true,
+                'categories' => $categories
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Get product categories error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch categories',
+                'categories' => []
+            ], 500);
+        }
+    }
+
+    /**
+     * Store a new product group
+     */
+    public function storeProductGroup(Request $request)
+    {
+        try {
+            $request->validate([
+                'group_name' => 'required|string|max:191|unique:product_groups,group_name',
+                'description' => 'nullable|string',
+                'status' => 'nullable|string|in:active,inactive'
+            ]);
+
+            $group = ProductGroup::create([
+                'group_name' => trim($request->group_name),
+                'description' => $request->description,
+                'status' => $request->status ?? 'active'
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Group created successfully',
+                'group' => $group
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Store product group error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create group: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Store a new product category
+     */
+    public function storeProductCategory(Request $request)
+    {
+        try {
+            $request->validate([
+                'category_name' => 'required|string|max:191|unique:product_categories,category_name',
+                'code' => 'nullable|string|max:191|unique:product_categories,code',
+                'description' => 'nullable|string',
+                'status' => 'nullable|string|in:active,inactive'
+            ]);
+
+            $category = ProductCategory::create([
+                'category_name' => trim($request->category_name),
+                'code' => $request->code ? trim($request->code) : null,
+                'description' => $request->description,
+                'status' => $request->status ?? 'active'
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Category created successfully',
+                'category' => $category
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Store product category error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create category: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function uploadGroupMasterExcel(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls|max:10240' // Max 10MB
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            $spreadsheet = IOFactory::load($file->getPathName());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (empty($rows) || count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows.'
+                ], 400);
+            }
+
+            // Get headers from first row
+            $headers = array_map('trim', $rows[0]);
+            unset($rows[0]);
+
+            // Map Excel column names to database fields
+            $columnMapping = [
+                'ID' => 'id',
+                'id' => 'id',
+                'CATEGORY' => 'category',
+                'category' => 'category',
+                'category_id' => 'category_id',
+                'GROUPS' => 'group',
+                'group' => 'group',
+                'group_id' => 'group_id',
+                'groups' => 'group',
+                'Image Path' => 'image_path',
+                'image_path' => 'image_path',
+                'Parent' => 'parent',
+                'parent' => 'parent',
+                'SKU' => 'sku',
+                'sku' => 'sku',
+                'Status' => 'status',
+                'status' => 'status',
+                'INV' => 'shopify_inv',
+                'shopify_inv' => 'shopify_inv',
+                'Title150' => 'title150',
+                'title150' => 'title150',
+                'Title100' => 'title100',
+                'title100' => 'title100',
+                'Title80' => 'title80',
+                'title80' => 'title80',
+                'Title60' => 'title60',
+                'title60' => 'title60',
+                'Bullet1' => 'bullet1',
+                'bullet1' => 'bullet1',
+                'Bullet2' => 'bullet2',
+                'bullet2' => 'bullet2',
+                'Bullet3' => 'bullet3',
+                'bullet3' => 'bullet3',
+                'Bullet4' => 'bullet4',
+                'bullet4' => 'bullet4',
+                'Bullet5' => 'bullet5',
+                'bullet5' => 'bullet5',
+                'Product Description' => 'product_description',
+                'product_description' => 'product_description',
+                'Feature1' => 'feature1',
+                'feature1' => 'feature1',
+                'Feature2' => 'feature2',
+                'feature2' => 'feature2',
+                'Feature3' => 'feature3',
+                'feature3' => 'feature3',
+                'Feature4' => 'feature4',
+                'feature4' => 'feature4',
+                'Main Image' => 'main_image',
+                'main_image' => 'main_image',
+                'Main Image Brand' => 'main_image_brand',
+                'main_image_brand' => 'main_image_brand',
+                'Image1' => 'image1',
+                'image1' => 'image1',
+                'Image2' => 'image2',
+                'image2' => 'image2',
+                'Image3' => 'image3',
+                'image3' => 'image3',
+                'Image4' => 'image4',
+                'image4' => 'image4',
+                'Image5' => 'image5',
+                'image5' => 'image5',
+                'Image6' => 'image6',
+                'image6' => 'image6',
+                'Image7' => 'image7',
+                'image7' => 'image7',
+                'Image8' => 'image8',
+                'image8' => 'image8',
+                'Image9' => 'image9',
+                'image9' => 'image9',
+                'Image10' => 'image10',
+                'image10' => 'image10',
+                'Image11' => 'image11',
+                'image11' => 'image11',
+                'Image12' => 'image12',
+                'image12' => 'image12',
+            ];
+
+            // Create header index map
+            $headerIndexMap = [];
+            foreach ($headers as $index => $header) {
+                $normalizedHeader = trim($header);
+                if (isset($columnMapping[$normalizedHeader])) {
+                    $headerIndexMap[$columnMapping[$normalizedHeader]] = $index;
+                }
+            }
+
+            // Check if SKU column exists (required)
+            if (!isset($headerIndexMap['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column is required in the Excel file.'
+                ], 400);
+            }
+
+            $updatedCount = 0;
+            $skippedCount = 0;
+            $errors = [];
+
+            // Pre-load all groups and categories for lookup (including inactive for checking duplicates)
+            $allGroups = ProductGroup::pluck('id', 'group_name')->mapWithKeys(function ($id, $name) {
+                return [strtolower(trim($name)) => $id];
+            });
+            
+            $allCategories = ProductCategory::pluck('id', 'category_name')->mapWithKeys(function ($id, $name) {
+                return [strtolower(trim($name)) => $id];
+            });
+            
+            // Active groups/categories for validation
+            $groupsMap = ProductGroup::where('status', 'active')
+                ->pluck('id', 'group_name')
+                ->mapWithKeys(function ($id, $name) {
+                    return [strtolower(trim($name)) => $id];
+                });
+
+            $categoriesMap = ProductCategory::where('status', 'active')
+                ->pluck('id', 'category_name')
+                ->mapWithKeys(function ($id, $name) {
+                    return [strtolower(trim($name)) => $id];
+                });
+
+            DB::beginTransaction();
+
+            foreach ($rows as $rowIndex => $row) {
+                // Skip empty rows
+                if (empty(array_filter($row))) {
+                    continue;
+                }
+
+                // Get SKU from row
+                $skuIndex = $headerIndexMap['sku'];
+                $sku = isset($row[$skuIndex]) ? trim($row[$skuIndex]) : null;
+
+                if (empty($sku)) {
+                    $skippedCount++;
+                    continue;
+                }
+
+                // Find product by SKU
+                $product = ProductMaster::where('sku', $sku)->first();
+
+                if (!$product) {
+                    $skippedCount++;
+                    $errors[] = "Row " . ($rowIndex + 2) . ": SKU '{$sku}' not found in database.";
+                    continue;
+                }
+
+                // Prepare update data
+                $updateData = [];
+                $valuesToUpdate = [];
+
+                // Fields that go directly to product_master table (excluding group and category which are handled separately)
+                $directFields = [
+                    'parent', 'title150', 'title100', 'title80', 'title60',
+                    'bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5',
+                    'product_description', 'feature1', 'feature2', 'feature3', 'feature4',
+                    'main_image', 'main_image_brand',
+                    'image1', 'image2', 'image3', 'image4', 'image5', 'image6',
+                    'image7', 'image8', 'image9', 'image10', 'image11', 'image12'
+                ];
+
+                foreach ($directFields as $field) {
+                    if (isset($headerIndexMap[$field])) {
+                        $value = isset($row[$headerIndexMap[$field]]) ? trim($row[$headerIndexMap[$field]]) : null;
+                        if ($value !== null && $value !== '') {
+                            $updateData[$field] = $value;
+                        }
+                    }
+                }
+
+                // Handle status field
+                if (isset($headerIndexMap['status'])) {
+                    $statusValue = isset($row[$headerIndexMap['status']]) ? trim($row[$headerIndexMap['status']]) : null;
+                    if ($statusValue !== null && $statusValue !== '') {
+                        $validStatuses = ['Active', 'DC', '2BDC', 'Sourcing', 'In Transit', 'To Order', 'MFRG'];
+                        if (in_array($statusValue, $validStatuses)) {
+                            $updateData['status'] = $statusValue;
+                        }
+                    }
+                }
+
+                // Handle category - lookup category_id from category name
+                if (isset($headerIndexMap['category']) || isset($headerIndexMap['category_id'])) {
+                    $categoryIndex = $headerIndexMap['category'] ?? $headerIndexMap['category_id'] ?? null;
+                    if ($categoryIndex !== null) {
+                        $categoryValue = isset($row[$categoryIndex]) ? trim($row[$categoryIndex]) : null;
+                        if ($categoryValue !== null && $categoryValue !== '') {
+                            // Check if it's already an ID (numeric)
+                            if (is_numeric($categoryValue)) {
+                                $categoryId = (int)$categoryValue;
+                                // Verify category exists (including soft-deleted to check if it exists at all)
+                                $category = ProductCategory::withTrashed()->find($categoryId);
+                                if ($category) {
+                                    if ($category->trashed() || $category->status !== 'active') {
+                                        // Category exists but is deleted or inactive
+                                        $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$categoryValue}' exists but is deleted or inactive. Please restore it or use a different category.";
+                                    } else {
+                                        $updateData['category_id'] = $categoryId;
+                                    }
+                                } else {
+                                    $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$categoryValue}' does not exist. Please use a valid category ID or category name.";
+                                }
+                            } else {
+                                // It's a category name, look it up
+                                $categoryNameLower = strtolower($categoryValue);
+                                if (isset($categoriesMap[$categoryNameLower])) {
+                                    $updateData['category_id'] = $categoriesMap[$categoryNameLower];
+                                } else {
+                                    // Category doesn't exist, check if it was created in this transaction or exists but inactive
+                                    if (isset($allCategories[$categoryNameLower])) {
+                                        // Category exists but might be inactive, use it anyway
+                                        $updateData['category_id'] = $allCategories[$categoryNameLower];
+                                        $categoriesMap[$categoryNameLower] = $allCategories[$categoryNameLower];
+                                    } else {
+                                        // Category doesn't exist, create it automatically
+                                        try {
+                                            $newCategory = ProductCategory::create([
+                                                'category_name' => trim($categoryValue),
+                                                'status' => 'active'
+                                            ]);
+                                            $updateData['category_id'] = $newCategory->id;
+                                            
+                                            // Add to maps for subsequent rows
+                                            $categoriesMap[$categoryNameLower] = $newCategory->id;
+                                            $allCategories[$categoryNameLower] = $newCategory->id;
+                                        } catch (\Illuminate\Database\QueryException $e) {
+                                            // If duplicate (created in same transaction), look it up
+                                            if ($e->getCode() == 23000) {
+                                                $existingCategory = ProductCategory::where('category_name', trim($categoryValue))->first();
+                                                if ($existingCategory) {
+                                                    $updateData['category_id'] = $existingCategory->id;
+                                                    $categoriesMap[$categoryNameLower] = $existingCategory->id;
+                                                    $allCategories[$categoryNameLower] = $existingCategory->id;
+                                                } else {
+                                                    $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create category '{$categoryValue}'.";
+                                                }
+                                            } else {
+                                                $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create category '{$categoryValue}': " . $e->getMessage();
+                                            }
+                                        } catch (\Exception $e) {
+                                            $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create category '{$categoryValue}': " . $e->getMessage();
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Empty value means remove category
+                            $updateData['category_id'] = null;
+                        }
+                    }
+                }
+                
+                // Handle group - lookup group_id from group name
+                if (isset($headerIndexMap['group']) || isset($headerIndexMap['group_id'])) {
+                    $groupIndex = $headerIndexMap['group'] ?? $headerIndexMap['group_id'] ?? null;
+                    if ($groupIndex !== null) {
+                        $groupValue = isset($row[$groupIndex]) ? trim($row[$groupIndex]) : null;
+                        if ($groupValue !== null && $groupValue !== '') {
+                            // Check if it's already an ID (numeric)
+                            if (is_numeric($groupValue)) {
+                                $groupId = (int)$groupValue;
+                                // Verify group exists (including soft-deleted to check if it exists at all)
+                                $group = ProductGroup::withTrashed()->find($groupId);
+                                if ($group) {
+                                    if ($group->trashed() || $group->status !== 'active') {
+                                        // Group exists but is deleted or inactive
+                                        $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$groupValue}' exists but is deleted or inactive. Please restore it or use a different group.";
+                                    } else {
+                                        $updateData['group_id'] = $groupId;
+                                    }
+                                } else {
+                                    $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$groupValue}' does not exist. Please use a valid group ID or group name.";
+                                }
+                            } else {
+                                // It's a group name, look it up
+                                $groupNameLower = strtolower($groupValue);
+                                if (isset($groupsMap[$groupNameLower])) {
+                                    $updateData['group_id'] = $groupsMap[$groupNameLower];
+                                } else {
+                                    // Group doesn't exist, check if it was created in this transaction or exists but inactive
+                                    if (isset($allGroups[$groupNameLower])) {
+                                        // Group exists but might be inactive, use it anyway
+                                        $updateData['group_id'] = $allGroups[$groupNameLower];
+                                        $groupsMap[$groupNameLower] = $allGroups[$groupNameLower];
+                                    } else {
+                                        // Group doesn't exist, create it automatically
+                                        try {
+                                            $newGroup = ProductGroup::create([
+                                                'group_name' => trim($groupValue),
+                                                'status' => 'active'
+                                            ]);
+                                            $updateData['group_id'] = $newGroup->id;
+                                            
+                                            // Add to maps for subsequent rows
+                                            $groupsMap[$groupNameLower] = $newGroup->id;
+                                            $allGroups[$groupNameLower] = $newGroup->id;
+                                        } catch (\Illuminate\Database\QueryException $e) {
+                                            // If duplicate (created in same transaction), look it up
+                                            if ($e->getCode() == 23000) {
+                                                $existingGroup = ProductGroup::where('group_name', trim($groupValue))->first();
+                                                if ($existingGroup) {
+                                                    $updateData['group_id'] = $existingGroup->id;
+                                                    $groupsMap[$groupNameLower] = $existingGroup->id;
+                                                    $allGroups[$groupNameLower] = $existingGroup->id;
+                                                } else {
+                                                    $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create group '{$groupValue}'.";
+                                                }
+                                            } else {
+                                                $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create group '{$groupValue}': " . $e->getMessage();
+                                            }
+                                        } catch (\Exception $e) {
+                                            $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create group '{$groupValue}': " . $e->getMessage();
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Empty value means remove group
+                            $updateData['group_id'] = null;
+                        }
+                    }
+                }
+                
+                // Handle image_path (goes into Values JSON)
+
+                if (isset($headerIndexMap['image_path'])) {
+                    $imagePathValue = isset($row[$headerIndexMap['image_path']]) ? trim($row[$headerIndexMap['image_path']]) : null;
+                    if ($imagePathValue !== null && $imagePathValue !== '') {
+                        $valuesToUpdate['image_path'] = $imagePathValue;
+                    }
+                }
+
+                // Update Values JSON if needed
+                if (!empty($valuesToUpdate)) {
+                    $currentValues = is_array($product->Values) ? $product->Values : 
+                                    (is_string($product->Values) ? json_decode($product->Values, true) : []);
+                    if (!is_array($currentValues)) {
+                        $currentValues = [];
+                    }
+                    $mergedValues = array_merge($currentValues, $valuesToUpdate);
+                    $updateData['Values'] = $mergedValues;
+                }
+
+                // Validate foreign keys before updating
+                if (isset($updateData['category_id']) && $updateData['category_id'] !== null) {
+                    if (!ProductCategory::where('id', $updateData['category_id'])->exists()) {
+                        $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$updateData['category_id']}' does not exist. Skipping update for SKU '{$sku}'.";
+                        $skippedCount++;
+                        continue;
+                    }
+                }
+
+                if (isset($updateData['group_id']) && $updateData['group_id'] !== null) {
+                    if (!ProductGroup::where('id', $updateData['group_id'])->exists()) {
+                        $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$updateData['group_id']}' does not exist. Skipping update for SKU '{$sku}'.";
+                        $skippedCount++;
+                        continue;
+                    }
+                }
+
+                // Update the product
+                if (!empty($updateData)) {
+                    try {
+                        $product->update($updateData);
+                        $updatedCount++;
+                    } catch (\Illuminate\Database\QueryException $e) {
+                        // Handle foreign key constraint violations
+                        if ($e->getCode() == 23000) {
+                            $errorMsg = "Row " . ($rowIndex + 2) . ": Failed to update product '{$sku}'. ";
+                            if (strpos($e->getMessage(), 'category_id_foreign') !== false) {
+                                $errorMsg .= "Invalid category_id. The category does not exist in the database.";
+                            } elseif (strpos($e->getMessage(), 'group_id_foreign') !== false) {
+                                $errorMsg .= "Invalid group_id. The group does not exist in the database.";
+                            } else {
+                                $errorMsg .= "Database constraint violation: " . substr($e->getMessage(), 0, 100);
+                            }
+                            $errors[] = $errorMsg;
+                            $skippedCount++;
+                        } else {
+                            throw $e; // Re-throw if it's not a foreign key error
+                        }
+                    } catch (\Exception $e) {
+                        $errors[] = "Row " . ($rowIndex + 2) . ": Error updating product '{$sku}': " . $e->getMessage();
+                        $skippedCount++;
+                    }
+                } else {
+                    $skippedCount++;
+                }
+            }
+
+            DB::commit();
+
+            $message = "Excel file processed successfully. Updated: {$updatedCount} records";
+            if ($skippedCount > 0) {
+                $message .= ", Skipped: {$skippedCount} records";
+            }
+            if (!empty($errors) && count($errors) <= 10) {
+                $message .= ". Errors: " . implode('; ', $errors);
+            } elseif (!empty($errors)) {
+                $message .= ". " . count($errors) . " errors occurred (showing first 10): " . implode('; ', array_slice($errors, 0, 10));
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'updated' => $updatedCount,
+                'skipped' => $skippedCount,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Excel upload error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to process Excel file: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
 
     public function seoKeywordsMaster()
     {

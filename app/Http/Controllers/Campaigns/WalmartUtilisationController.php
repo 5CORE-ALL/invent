@@ -203,17 +203,31 @@ class WalmartUtilisationController extends Controller
             $spend_l7 = (float)($row->spend_l7 ?? 0);
             $acos = (float)($row->acos_l30 ?? 0);
             
-            // Calculate ALD BGT
+            // Calculate ALD BGT using new ranges
             $aldBgt = 0;
-            if ($avgAcos > 0) {
-                $halfAvgAcos = $avgAcos / 2;
-                if ($acos > $avgAcos) {
-                    $aldBgt = 1;
-                } elseif ($acos > $halfAvgAcos && $acos <= $avgAcos) {
-                    $aldBgt = 3;
-                } elseif ($acos <= $halfAvgAcos) {
-                    $aldBgt = 5;
-                }
+            // ACOS > 25% → ALD BGT = 1
+            if ($acos > 25) {
+                $aldBgt = 1;
+            }
+            // ACOS 20%-25% → ALD BGT = 2
+            elseif ($acos >= 20 && $acos <= 25) {
+                $aldBgt = 2;
+            }
+            // ACOS 15%-20% → ALD BGT = 4
+            elseif ($acos >= 15 && $acos < 20) {
+                $aldBgt = 4;
+            }
+            // ACOS 10%-15% → ALD BGT = 6
+            elseif ($acos >= 10 && $acos < 15) {
+                $aldBgt = 6;
+            }
+            // ACOS 5%-10% → ALD BGT = 8
+            elseif ($acos >= 5 && $acos < 10) {
+                $aldBgt = 8;
+            }
+            // ACOS 0.01%-5% → ALD BGT = 10
+            elseif ($acos >= 0.01 && $acos < 5) {
+                $aldBgt = 10;
             }
             
             // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
