@@ -4152,9 +4152,11 @@ class CategoryController extends Controller
                 'id' => 'id',
                 'CATEGORY' => 'category',
                 'category' => 'category',
-                'GROUPS' => 'group_id',
+                'category_id' => 'category_id',
+                'GROUPS' => 'group',
+                'group' => 'group',
                 'group_id' => 'group_id',
-                'groups' => 'group_id',
+                'groups' => 'group',
                 'Image Path' => 'image_path',
                 'image_path' => 'image_path',
                 'Parent' => 'parent',
@@ -4244,6 +4246,28 @@ class CategoryController extends Controller
             $skippedCount = 0;
             $errors = [];
 
+            // Pre-load all groups and categories for lookup (including inactive for checking duplicates)
+            $allGroups = ProductGroup::pluck('id', 'group_name')->mapWithKeys(function ($id, $name) {
+                return [strtolower(trim($name)) => $id];
+            });
+            
+            $allCategories = ProductCategory::pluck('id', 'category_name')->mapWithKeys(function ($id, $name) {
+                return [strtolower(trim($name)) => $id];
+            });
+            
+            // Active groups/categories for validation
+            $groupsMap = ProductGroup::where('status', 'active')
+                ->pluck('id', 'group_name')
+                ->mapWithKeys(function ($id, $name) {
+                    return [strtolower(trim($name)) => $id];
+                });
+
+            $categoriesMap = ProductCategory::where('status', 'active')
+                ->pluck('id', 'category_name')
+                ->mapWithKeys(function ($id, $name) {
+                    return [strtolower(trim($name)) => $id];
+                });
+
             DB::beginTransaction();
 
             foreach ($rows as $rowIndex => $row) {
@@ -4274,9 +4298,9 @@ class CategoryController extends Controller
                 $updateData = [];
                 $valuesToUpdate = [];
 
-                // Fields that go directly to product_master table
+                // Fields that go directly to product_master table (excluding group and category which are handled separately)
                 $directFields = [
-                    'parent', 'group_id', 'group', 'category', 'title150', 'title100', 'title80', 'title60',
+                    'parent', 'title150', 'title100', 'title80', 'title60',
                     'bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5',
                     'product_description', 'feature1', 'feature2', 'feature3', 'feature4',
                     'main_image', 'main_image_brand',
@@ -4304,19 +4328,133 @@ class CategoryController extends Controller
                     }
                 }
 
-                // Handle category - store in category column (not Values JSON)
-                if (isset($headerIndexMap['category'])) {
-                    $categoryValue = isset($row[$headerIndexMap['category']]) ? trim($row[$headerIndexMap['category']]) : null;
-                    if ($categoryValue !== null && $categoryValue !== '') {
-                        $updateData['category'] = $categoryValue;
+                // Handle category - lookup category_id from category name
+                if (isset($headerIndexMap['category']) || isset($headerIndexMap['category_id'])) {
+                    $categoryIndex = $headerIndexMap['category'] ?? $headerIndexMap['category_id'] ?? null;
+                    if ($categoryIndex !== null) {
+                        $categoryValue = isset($row[$categoryIndex]) ? trim($row[$categoryIndex]) : null;
+                        if ($categoryValue !== null && $categoryValue !== '') {
+                            // Check if it's already an ID (numeric)
+                            if (is_numeric($categoryValue)) {
+                                $categoryId = (int)$categoryValue;
+                                // Verify category exists
+                                if (ProductCategory::where('id', $categoryId)->where('status', 'active')->exists()) {
+                                    $updateData['category_id'] = $categoryId;
+                                } else {
+                                    $errors[] = "Row " . ($rowIndex + 2) . ": Category ID '{$categoryValue}' not found or inactive.";
+                                }
+                            } else {
+                                // It's a category name, look it up
+                                $categoryNameLower = strtolower($categoryValue);
+                                if (isset($categoriesMap[$categoryNameLower])) {
+                                    $updateData['category_id'] = $categoriesMap[$categoryNameLower];
+                                } else {
+                                    // Category doesn't exist, check if it was created in this transaction or exists but inactive
+                                    if (isset($allCategories[$categoryNameLower])) {
+                                        // Category exists but might be inactive, use it anyway
+                                        $updateData['category_id'] = $allCategories[$categoryNameLower];
+                                        $categoriesMap[$categoryNameLower] = $allCategories[$categoryNameLower];
+                                    } else {
+                                        // Category doesn't exist, create it automatically
+                                        try {
+                                            $newCategory = ProductCategory::create([
+                                                'category_name' => trim($categoryValue),
+                                                'status' => 'active'
+                                            ]);
+                                            $updateData['category_id'] = $newCategory->id;
+                                            
+                                            // Add to maps for subsequent rows
+                                            $categoriesMap[$categoryNameLower] = $newCategory->id;
+                                            $allCategories[$categoryNameLower] = $newCategory->id;
+                                        } catch (\Illuminate\Database\QueryException $e) {
+                                            // If duplicate (created in same transaction), look it up
+                                            if ($e->getCode() == 23000) {
+                                                $existingCategory = ProductCategory::where('category_name', trim($categoryValue))->first();
+                                                if ($existingCategory) {
+                                                    $updateData['category_id'] = $existingCategory->id;
+                                                    $categoriesMap[$categoryNameLower] = $existingCategory->id;
+                                                    $allCategories[$categoryNameLower] = $existingCategory->id;
+                                                } else {
+                                                    $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create category '{$categoryValue}'.";
+                                                }
+                                            } else {
+                                                $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create category '{$categoryValue}': " . $e->getMessage();
+                                            }
+                                        } catch (\Exception $e) {
+                                            $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create category '{$categoryValue}': " . $e->getMessage();
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Empty value means remove category
+                            $updateData['category_id'] = null;
+                        }
                     }
                 }
                 
-                // Handle group - store in group column
-                if (isset($headerIndexMap['group'])) {
-                    $groupValue = isset($row[$headerIndexMap['group']]) ? trim($row[$headerIndexMap['group']]) : null;
-                    if ($groupValue !== null && $groupValue !== '') {
-                        $updateData['group'] = $groupValue;
+                // Handle group - lookup group_id from group name
+                if (isset($headerIndexMap['group']) || isset($headerIndexMap['group_id'])) {
+                    $groupIndex = $headerIndexMap['group'] ?? $headerIndexMap['group_id'] ?? null;
+                    if ($groupIndex !== null) {
+                        $groupValue = isset($row[$groupIndex]) ? trim($row[$groupIndex]) : null;
+                        if ($groupValue !== null && $groupValue !== '') {
+                            // Check if it's already an ID (numeric)
+                            if (is_numeric($groupValue)) {
+                                $groupId = (int)$groupValue;
+                                // Verify group exists
+                                if (ProductGroup::where('id', $groupId)->where('status', 'active')->exists()) {
+                                    $updateData['group_id'] = $groupId;
+                                } else {
+                                    $errors[] = "Row " . ($rowIndex + 2) . ": Group ID '{$groupValue}' not found or inactive.";
+                                }
+                            } else {
+                                // It's a group name, look it up
+                                $groupNameLower = strtolower($groupValue);
+                                if (isset($groupsMap[$groupNameLower])) {
+                                    $updateData['group_id'] = $groupsMap[$groupNameLower];
+                                } else {
+                                    // Group doesn't exist, check if it was created in this transaction or exists but inactive
+                                    if (isset($allGroups[$groupNameLower])) {
+                                        // Group exists but might be inactive, use it anyway
+                                        $updateData['group_id'] = $allGroups[$groupNameLower];
+                                        $groupsMap[$groupNameLower] = $allGroups[$groupNameLower];
+                                    } else {
+                                        // Group doesn't exist, create it automatically
+                                        try {
+                                            $newGroup = ProductGroup::create([
+                                                'group_name' => trim($groupValue),
+                                                'status' => 'active'
+                                            ]);
+                                            $updateData['group_id'] = $newGroup->id;
+                                            
+                                            // Add to maps for subsequent rows
+                                            $groupsMap[$groupNameLower] = $newGroup->id;
+                                            $allGroups[$groupNameLower] = $newGroup->id;
+                                        } catch (\Illuminate\Database\QueryException $e) {
+                                            // If duplicate (created in same transaction), look it up
+                                            if ($e->getCode() == 23000) {
+                                                $existingGroup = ProductGroup::where('group_name', trim($groupValue))->first();
+                                                if ($existingGroup) {
+                                                    $updateData['group_id'] = $existingGroup->id;
+                                                    $groupsMap[$groupNameLower] = $existingGroup->id;
+                                                    $allGroups[$groupNameLower] = $existingGroup->id;
+                                                } else {
+                                                    $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create group '{$groupValue}'.";
+                                                }
+                                            } else {
+                                                $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create group '{$groupValue}': " . $e->getMessage();
+                                            }
+                                        } catch (\Exception $e) {
+                                            $errors[] = "Row " . ($rowIndex + 2) . ": Failed to create group '{$groupValue}': " . $e->getMessage();
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Empty value means remove group
+                            $updateData['group_id'] = null;
+                        }
                     }
                 }
                 
