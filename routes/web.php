@@ -1265,6 +1265,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/dim-wt-master/push-data', [CategoryController::class, 'pushDimWtDataToPlatforms'])->name('dim.wt.master.push');
     Route::get('/shipping-master', [CategoryController::class, 'shippingMaster'])->name('shipping.master');
     Route::get('/shipping-master-data-view', [CategoryController::class, 'getShippingMasterData'])->name('shipping.master.data');
+    Route::get('/shipping-master/skus', [CategoryController::class, 'getSkusForShippingMaster'])->name('shipping.master.skus');
+    Route::post('/shipping-master/store', [CategoryController::class, 'storeShippingMaster'])->name('shipping.master.store');
+    Route::post('/shipping-master/update', [CategoryController::class, 'updateShippingMaster'])->name('shipping.master.update');
     Route::post('/shipping-master/import', [CategoryController::class, 'importShippingMaster'])->name('shipping.master.import');
     Route::get('/general-specific-master', [CategoryController::class, 'generalSpecificMaster'])->name('general.specific.master');
     Route::get('/general-specific-master-data-view', [CategoryController::class, 'getGeneralSpecificMasterData'])->name('general.specific.master.data');
@@ -1419,6 +1422,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     //data save routes
     Route::post('/product_master/store', [ProductMasterController::class, 'store'])->name('product_master.store');
     Route::post('/product_master/update-field', [ProductMasterController::class, 'updateField'])->name('product_master.update-field');
+    Route::post('/product_master/update-verified', [ProductMasterController::class, 'updateVerified'])->name('product_master.update-verified');
     Route::post('/product-master/import', [ProductMasterController::class, 'import'])->name('product_master.import');
     Route::post('/product-master/batch-update', [ProductMasterController::class, 'batchUpdate']);
     Route::post('/channel_master/store', [ChannelMasterController::class, 'store'])->name('channel_master.store');

@@ -352,36 +352,43 @@
                                     <th>Status</th>
                                     <th>INV</th>
                                     <th>
-                                        <div style="font-size: 9px;">WT ACT <span id="wtActMissingCount" class="text-danger" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                        <div style="font-size: 9px;">WT ACT <span id="wtActMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
                                         <select id="filterWtAct" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th>
-                                        <div style="font-size: 9px;">WT DECL <span id="wtDeclMissingCount" class="text-danger" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                        <div style="font-size: 9px;">WT DECL <span id="wtDeclMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
                                         <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th>
-                                        <div style="font-size: 9px;">L <span id="lMissingCount" class="text-danger" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                        <div style="font-size: 9px;">L <span id="lMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
                                         <select id="filterL" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th>
-                                        <div style="font-size: 9px;">W <span id="wMissingCount" class="text-danger" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                        <div style="font-size: 9px;">W <span id="wMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
                                         <select id="filterW" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th>
-                                        <div style="font-size: 9px;">H <span id="hMissingCount" class="text-danger" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                        <div style="font-size: 9px;">H <span id="hMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
                                         <select id="filterH" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div style="font-size: 9px;">CBM <span id="cbmMissingCount" class="text-white" style="font-weight: bold; font-size: 8px;">(0)</span></div>
+                                        <select id="filterCbm" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
@@ -456,6 +463,13 @@
                             <div class="col-md-4">
                                 <label for="addH" class="form-label">H</label>
                                 <input type="number" step="0.01" class="form-control" id="addH" name="h" placeholder="Enter H">
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="addCbm" class="form-label">CBM</label>
+                                <input type="number" step="0.000001" class="form-control" id="addCbm" name="cbm" placeholder="Enter CBM">
                             </div>
                         </div>
                         
@@ -553,6 +567,13 @@
                         
                         <div class="row mb-3">
                             <div class="col-md-4">
+                                <label for="editCbm" class="form-label">CBM</label>
+                                <input type="number" step="0.000001" class="form-control" id="editCbm" name="cbm" placeholder="Enter CBM">
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-4">
                                 <label for="editCtnL" class="form-label">CTN (L)</label>
                                 <input type="number" step="0.01" class="form-control" id="editCtnL" name="ctn_l" placeholder="Enter CTN (L)">
                             </div>
@@ -619,7 +640,7 @@
                         <strong>Instructions:</strong>
                         <ol class="mb-0 mt-2">
                             <li>Download the sample file below</li>
-                            <li>Fill in the dim & wt data (WT ACT, WT DECL, L, W, H, CTN L, CTN W, CTN H, CTN QTY, CBM E, CTN GWT)</li>
+                            <li>Fill in the dim & wt data (WT ACT, WT DECL, L, W, H, CBM, CTN L, CTN W, CTN H, CTN QTY, CBM E, CTN GWT)</li>
                             <li>Upload the completed file</li>
                         </ol>
                     </div>
@@ -647,6 +668,30 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="importBtn" disabled>
                         <i class="fas fa-upload me-2"></i>Import
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Push Data Success Modal -->
+    <div class="modal fade" id="pushDataSuccessModal" tabindex="-1" aria-labelledby="pushDataSuccessModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+                    <h5 class="modal-title" id="pushDataSuccessModalLabel">
+                        <i class="fas fa-check-circle me-2"></i>Push Data Success
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="pushDataSuccessMessage" style="font-size: 15px; line-height: 1.6;">
+                        <!-- Message will be inserted here -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-success" id="pushDataOkBtn" data-bs-dismiss="modal">
+                        <i class="fas fa-check me-2"></i>OK
                     </button>
                 </div>
             </div>
@@ -738,7 +783,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="20" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="21" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -826,6 +871,12 @@
                     hCell.textContent = formatNumber(item.h || 0, 2);
                     row.appendChild(hCell);
 
+                    // CBM column
+                    const cbmCell = document.createElement('td');
+                    cbmCell.className = 'text-center';
+                    cbmCell.textContent = formatNumber(item.cbm || 0, 6);
+                    row.appendChild(cbmCell);
+
                     // CTN (L) column
                     const ctnLCell = document.createElement('td');
                     ctnLCell.className = 'text-center';
@@ -912,18 +963,26 @@
                 let lMissingCount = 0;
                 let wMissingCount = 0;
                 let hMissingCount = 0;
+                let cbmMissingCount = 0;
 
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
                     
-                    // Count missing data for each column
+                    // Skip parent SKUs when counting missing data
+                    const isParentSku = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                    if (isParentSku) {
+                        return; // Skip parent SKUs
+                    }
+                    
+                    // Count missing data for each column (only for child SKUs)
                     if (isMissing(item.wt_act)) wtActMissingCount++;
                     if (isMissing(item.wt_decl)) wtDeclMissingCount++;
                     if (isMissing(item.l)) lMissingCount++;
                     if (isMissing(item.w)) wMissingCount++;
                     if (isMissing(item.h)) hMissingCount++;
+                    if (isMissing(item.cbm)) cbmMissingCount++;
                 });
                 
                 document.getElementById('parentCount').textContent = `(${parentSet.size})`;
@@ -933,6 +992,7 @@
                 document.getElementById('lMissingCount').textContent = `(${lMissingCount})`;
                 document.getElementById('wMissingCount').textContent = `(${wMissingCount})`;
                 document.getElementById('hMissingCount').textContent = `(${hMissingCount})`;
+                document.getElementById('cbmMissingCount').textContent = `(${cbmMissingCount})`;
             }
 
             // Check if value is missing (null, undefined, empty, or 0)
@@ -942,7 +1002,26 @@
 
             // Apply all filters
             function applyFilters() {
+                // Check if any missing data filter is active
+                const filterWtAct = document.getElementById('filterWtAct').value;
+                const filterWtDecl = document.getElementById('filterWtDecl').value;
+                const filterL = document.getElementById('filterL').value;
+                const filterW = document.getElementById('filterW').value;
+                const filterH = document.getElementById('filterH').value;
+                const filterCbm = document.getElementById('filterCbm').value;
+                const hasMissingDataFilter = filterWtAct === 'missing' || filterWtDecl === 'missing' || 
+                                            filterL === 'missing' || filterW === 'missing' || 
+                                            filterH === 'missing' || filterCbm === 'missing';
+
                 filteredData = tableData.filter(item => {
+                    // Exclude parent SKUs when any missing data filter is active
+                    if (hasMissingDataFilter) {
+                        const isParentSku = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                        if (isParentSku) {
+                            return false;
+                        }
+                    }
+
                     // Parent search filter
                     const parentSearch = document.getElementById('parentSearch').value.toLowerCase();
                     if (parentSearch && !(item.Parent || '').toLowerCase().includes(parentSearch)) {
@@ -967,32 +1046,32 @@
                     }
 
                     // WT ACT filter
-                    const filterWtAct = document.getElementById('filterWtAct').value;
                     if (filterWtAct === 'missing' && !isMissing(item.wt_act)) {
                         return false;
                     }
 
                     // WT DECL filter
-                    const filterWtDecl = document.getElementById('filterWtDecl').value;
                     if (filterWtDecl === 'missing' && !isMissing(item.wt_decl)) {
                         return false;
                     }
 
                     // L filter
-                    const filterL = document.getElementById('filterL').value;
                     if (filterL === 'missing' && !isMissing(item.l)) {
                         return false;
                     }
 
                     // W filter
-                    const filterW = document.getElementById('filterW').value;
                     if (filterW === 'missing' && !isMissing(item.w)) {
                         return false;
                     }
 
                     // H filter
-                    const filterH = document.getElementById('filterH').value;
                     if (filterH === 'missing' && !isMissing(item.h)) {
+                        return false;
+                    }
+
+                    // CBM filter
+                    if (filterCbm === 'missing' && !isMissing(item.cbm)) {
                         return false;
                     }
 
@@ -1032,6 +1111,7 @@
                     document.getElementById('filterL').value = 'all';
                     document.getElementById('filterW').value = 'all';
                     document.getElementById('filterH').value = 'all';
+                    document.getElementById('filterCbm').value = 'all';
                     applyFilters();
                 });
 
@@ -1053,6 +1133,10 @@
                 });
 
                 document.getElementById('filterH').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterCbm').addEventListener('change', function() {
                     applyFilters();
                 });
             }
@@ -1090,14 +1174,11 @@
             // Setup Excel export function
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
-                    // Columns to export (excluding Image and Action)
-                    const columns = ["Parent", "SKU", "Status", "INV", "WT ACT", "WT DECL", "L", "W", "H", "CTN (L)", "CTN (W)", "CTN (H)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "CBM (E)", "CTN GWT"];
+                    // Columns to export (excluding Image, Action, and Parent)
+                    const columns = ["SKU", "Status", "INV", "WT ACT", "WT DECL", "L", "W", "H", "CBM", "CTN (L)", "CTN (W)", "CTN (H)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "CBM (E)", "CTN GWT"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
-                        "Parent": {
-                            key: "Parent"
-                        },
                         "SKU": {
                             key: "SKU"
                         },
@@ -1121,6 +1202,9 @@
                         },
                         "H": {
                             key: "h"
+                        },
+                        "CBM": {
+                            key: "cbm"
                         },
                         "CTN (L)": {
                             key: "ctn_l"
@@ -1165,8 +1249,13 @@
                             // Add header row
                             wsData.push(columns);
 
-                            // Add data rows
+                            // Add data rows - exclude parent SKUs
                             dataToExport.forEach(item => {
+                                // Skip parent SKUs (SKU contains "PARENT")
+                                if (item.SKU && String(item.SKU).toUpperCase().includes('PARENT')) {
+                                    return;
+                                }
+                                
                                 const row = [];
                                 columns.forEach(col => {
                                     const colDef = columnDefs[col];
@@ -1184,8 +1273,8 @@
                                                 value = parseFloat(value) || 0;
                                             }
                                         }
-                                        // Format numeric columns (WT ACT, WT DECL, L, W, H, CTN fields, etc.)
-                                        else if (["wt_act", "wt_decl", "l", "w", "h", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each", "cbm_e", "ctn_gwt"].includes(key)) {
+                                        // Format numeric columns (WT ACT, WT DECL, L, W, H, CBM, CTN fields, etc.)
+                                        else if (["wt_act", "wt_decl", "l", "w", "h", "cbm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each", "cbm_e", "ctn_gwt"].includes(key)) {
                                             value = parseFloat(value) || 0;
                                         }
 
@@ -1204,11 +1293,11 @@
                             // Set column widths
                             const wscols = columns.map(col => {
                                 // Adjust width based on column type
-                                if (["Parent", "SKU"].includes(col)) {
+                                if (["SKU"].includes(col)) {
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["WT ACT", "WT DECL", "CTN (CBM)", "CTN (CBM/Each)", "CBM (E)"].includes(col)) {
+                                } else if (["WT ACT", "WT DECL", "CBM", "CTN (CBM)", "CTN (CBM/Each)", "CBM (E)"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -1300,10 +1389,10 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data with all columns
                     const sampleData = [
-                        ['SKU', 'WT ACT', 'WT DECL', 'L', 'W', 'H', 'CTN (L)', 'CTN (W)', 'CTN (H)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)', 'CBM (E)', 'CTN GWT'],
-                        ['SKU001', '1.5', '1.2', '10.5', '8.3', '5.2', '30', '25', '20', '0.015', '12', '0.00125', '0.0005', '15.5'],
-                        ['SKU002', '2.0', '1.8', '12.0', '9.0', '6.0', '35', '28', '22', '0.0216', '15', '0.00144', '0.0006', '18.0'],
-                        ['SKU003', '1.2', '1.0', '9.5', '7.5', '4.5', '28', '24', '18', '0.0121', '10', '0.00121', '0.0004', '12.5']
+                        ['SKU', 'WT ACT', 'WT DECL', 'L', 'W', 'H', 'CBM', 'CTN (L)', 'CTN (W)', 'CTN (H)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)', 'CBM (E)', 'CTN GWT'],
+                        ['SKU001', '1.5', '1.2', '10.5', '8.3', '5.2', '0.000455', '30', '25', '20', '0.015', '12', '0.00125', '0.0005', '15.5'],
+                        ['SKU002', '2.0', '1.8', '12.0', '9.0', '6.0', '0.000648', '35', '28', '22', '0.0216', '15', '0.00144', '0.0006', '18.0'],
+                        ['SKU003', '1.2', '1.0', '9.5', '7.5', '4.5', '0.000321', '28', '24', '18', '0.0121', '10', '0.00121', '0.0004', '12.5']
                     ];
 
                     // Create workbook
@@ -1318,6 +1407,7 @@
                         { wch: 10 }, // L
                         { wch: 10 }, // W
                         { wch: 10 }, // H
+                        { wch: 15 }, // CBM
                         { wch: 12 }, // CTN (L)
                         { wch: 12 }, // CTN (W)
                         { wch: 12 }, // CTN (H)
@@ -1496,7 +1586,8 @@
                                     wt_decl: item.wt_decl || null,
                                     l: item.l || null,
                                     w: item.w || null,
-                                    h: item.h || null
+                                    h: item.h || null,
+                                    cbm: item.cbm || null
                                 });
                             }
                         }
@@ -1507,8 +1598,17 @@
                         return;
                     }
 
-                    // Confirm action
-                    if (!confirm(`Are you sure you want to push dimensions & weight data for ${selectedSkus.length} SKU(s) to all platforms?`)) {
+                    // Confirm action with details
+                    const skuList = selectedSkus.map(s => s.sku).join(', ');
+                    const confirmMessage = `Are you sure you want to push dimensions & weight data for ${selectedSkus.length} SKU(s) to ALL marketplaces?\n\n` +
+                        `Selected SKUs: ${skuList.substring(0, 100)}${skuList.length > 100 ? '...' : ''}\n\n` +
+                        `Data to be updated:\n` +
+                        `- Weight (WT ACT, WT DECL)\n` +
+                        `- Dimensions (L, W, H)\n` +
+                        `- CBM\n\n` +
+                        `This will update the data in: Amazon, eBay, Shopify, Walmart, Doba, Temu, and all other connected marketplaces.`;
+                    
+                    if (!confirm(confirmMessage)) {
                         return;
                     }
 
@@ -1529,20 +1629,81 @@
                             throw new Error(data.message || 'Failed to push data');
                         }
 
-                        // Show detailed results
-                        let message = `Successfully pushed data for ${data.total_success || 0} SKU(s).`;
-                        if (data.total_failed > 0) {
-                            message += ` ${data.total_failed} failed.`;
-                        }
+                        // Build detailed success message
+                        let messageHtml = `<div class="mb-3">`;
+                        messageHtml += `<p class="mb-2"><strong><i class="fas fa-database text-info me-2"></i>Data saved to database for ${selectedSkus.length} SKU(s).</strong></p>`;
                         
                         if (data.results) {
-                            const platformResults = Object.entries(data.results)
-                                .map(([platform, result]) => `${platform}: ${result.success} success, ${result.failed} failed`)
-                                .join('\n');
-                            message += '\n\nPlatform Results:\n' + platformResults;
+                            const implementedPlatforms = ['amazon', 'shopify', 'ebay', 'ebay2', 'ebay3', 'walmart'];
+                            const hasSuccess = Object.values(data.results).some(r => r.success > 0);
+                            const hasFailures = Object.values(data.results).some(r => r.failed > 0);
+                            
+                            messageHtml += `<div class="mt-3">`;
+                            messageHtml += `<p class="mb-2"><strong>Platform Update Results:</strong></p>`;
+                            messageHtml += `<ul class="list-unstyled mb-0">`;
+                            
+                            Object.entries(data.results).forEach(([platform, result]) => {
+                                const platformName = platform.charAt(0).toUpperCase() + platform.slice(1).replace(/_/g, ' ');
+                                const isImplemented = implementedPlatforms.includes(platform.toLowerCase());
+                                
+                                if (result.success > 0) {
+                                    messageHtml += `<li class="mb-1">`;
+                                    messageHtml += `<i class="fas fa-check-circle text-success me-2"></i>`;
+                                    messageHtml += `<strong>${platformName}:</strong> `;
+                                    messageHtml += `<span class="text-success">${result.success} updated successfully</span>`;
+                                    if (result.failed > 0) {
+                                        messageHtml += `, <span class="text-danger">${result.failed} failed</span>`;
+                                    }
+                                    messageHtml += `</li>`;
+                                } else if (result.failed > 0) {
+                                    messageHtml += `<li class="mb-1">`;
+                                    messageHtml += `<i class="fas fa-times-circle text-danger me-2"></i>`;
+                                    messageHtml += `<strong>${platformName}:</strong> `;
+                                    messageHtml += `<span class="text-danger">${result.failed} failed</span>`;
+                                    messageHtml += `</li>`;
+                                } else if (!isImplemented) {
+                                    messageHtml += `<li class="mb-1 text-muted">`;
+                                    messageHtml += `<i class="fas fa-clock me-2"></i>`;
+                                    messageHtml += `<strong>${platformName}:</strong> API integration pending`;
+                                    messageHtml += `</li>`;
+                                }
+                            });
+                            
+                            messageHtml += `</ul>`;
+                            
+                            if (hasSuccess) {
+                                messageHtml += `<div class="alert alert-success mt-3 mb-0">`;
+                                messageHtml += `<i class="fas fa-check-circle me-2"></i>`;
+                                messageHtml += `<strong>Success!</strong> Dimensions and weight data have been updated on the marketplace platforms above.`;
+                                messageHtml += `</div>`;
+                            }
+                            
+                            if (data.errors && data.errors.length > 0) {
+                                messageHtml += `<div class="alert alert-warning mt-2 mb-0">`;
+                                messageHtml += `<i class="fas fa-exclamation-triangle me-2"></i>`;
+                                messageHtml += `<strong>Some errors occurred:</strong>`;
+                                messageHtml += `<ul class="mb-0 mt-2 small">`;
+                                data.errors.slice(0, 5).forEach(error => {
+                                    messageHtml += `<li>${error}</li>`;
+                                });
+                                if (data.errors.length > 5) {
+                                    messageHtml += `<li><em>... and ${data.errors.length - 5} more errors</em></li>`;
+                                }
+                                messageHtml += `</ul>`;
+                                messageHtml += `</div>`;
+                            }
+                            
+                            messageHtml += `</div>`;
                         }
+                        messageHtml += `</div>`;
 
-                        showToast('success', message);
+                        // Show success modal
+                        const successModal = document.getElementById('pushDataSuccessModal');
+                        const messageDiv = document.getElementById('pushDataSuccessMessage');
+                        messageDiv.innerHTML = messageHtml;
+                        
+                        const modal = new bootstrap.Modal(successModal);
+                        modal.show();
                         
                         // Uncheck all checkboxes
                         document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
@@ -1792,6 +1953,7 @@
                         l: document.getElementById('addL').value.trim() || null,
                         w: document.getElementById('addW').value.trim() || null,
                         h: document.getElementById('addH').value.trim() || null,
+                        cbm: document.getElementById('addCbm').value.trim() || null,
                         ctn_l: document.getElementById('addCtnL').value.trim() || null,
                         ctn_w: document.getElementById('addCtnW').value.trim() || null,
                         ctn_h: document.getElementById('addCtnH').value.trim() || null,
@@ -1847,6 +2009,7 @@
                 document.getElementById('editL').value = product.l || '';
                 document.getElementById('editW').value = product.w || '';
                 document.getElementById('editH').value = product.h || '';
+                document.getElementById('editCbm').value = product.cbm || '';
                 document.getElementById('editCtnL').value = product.ctn_l || '';
                 document.getElementById('editCtnW').value = product.ctn_w || '';
                 document.getElementById('editCtnH').value = product.ctn_h || '';
@@ -1910,6 +2073,7 @@
                         l: document.getElementById('editL').value.trim() || null,
                         w: document.getElementById('editW').value.trim() || null,
                         h: document.getElementById('editH').value.trim() || null,
+                        cbm: document.getElementById('editCbm').value.trim() || null,
                         ctn_l: document.getElementById('editCtnL').value.trim() || null,
                         ctn_w: document.getElementById('editCtnW').value.trim() || null,
                         ctn_h: document.getElementById('editCtnH').value.trim() || null,

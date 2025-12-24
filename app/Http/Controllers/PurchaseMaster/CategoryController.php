@@ -6,14 +6,25 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Models\EbayMetric;
+use App\Models\Ebay2Metric;
+use App\Models\Ebay3Metric;
+use App\Models\AmazonDatasheet;
+use App\Services\ShopifyApiService;
+use App\Services\AmazonSpApiService;
+use App\Services\EbayApiService;
+use App\Services\WalmartApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use SimpleXMLElement;
 
 class CategoryController extends Controller
 {
@@ -453,11 +464,12 @@ class CategoryController extends Controller
                 'l' => 'nullable|numeric',
                 'w' => 'nullable|numeric',
                 'h' => 'nullable|numeric',
+                'cbm' => 'nullable|numeric',
                 'ctn_l' => 'nullable|numeric',
                 'ctn_w' => 'nullable|numeric',
                 'ctn_h' => 'nullable|numeric',
                 'ctn_cbm' => 'nullable|numeric',
-                'ctn_qty' => 'nullable|numeric',
+                'ctn_qty' => 'nullable|numeric',            
                 'ctn_cbm_each' => 'nullable|numeric',
                 'cbm_e' => 'nullable|numeric',
                 'ctn_gwt' => 'nullable|numeric',
@@ -490,6 +502,9 @@ class CategoryController extends Controller
             }
             if (isset($validated['h']) && $validated['h'] !== null) {
                 $values['h'] = $validated['h'];
+            }
+            if (isset($validated['cbm']) && $validated['cbm'] !== null) {
+                $values['cbm'] = $validated['cbm'];
             }
             if (isset($validated['ctn_l']) && $validated['ctn_l'] !== null) {
                 $values['ctn_l'] = $validated['ctn_l'];
@@ -571,6 +586,7 @@ class CategoryController extends Controller
                 'l' => 'nullable|numeric',
                 'w' => 'nullable|numeric',
                 'h' => 'nullable|numeric',
+                'cbm' => 'nullable|numeric',
                 'ctn_l' => 'nullable|numeric',
                 'ctn_w' => 'nullable|numeric',
                 'ctn_h' => 'nullable|numeric',
@@ -614,6 +630,9 @@ class CategoryController extends Controller
             }
             if (isset($validated['h'])) {
                 $values['h'] = $validated['h'];
+            }
+            if (isset($validated['cbm'])) {
+                $values['cbm'] = $validated['cbm'];
             }
             if (isset($validated['ctn_l'])) {
                 $values['ctn_l'] = $validated['ctn_l'];
@@ -760,6 +779,165 @@ class CategoryController extends Controller
         ]);
     }
 
+    public function updateShippingMaster(Request $request)
+    {
+        $request->headers->set('Accept', 'application/json');
+
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'ship' => 'nullable|numeric',
+            'temu_ship' => 'nullable|numeric',
+            'ebay2_ship' => 'nullable|numeric',
+            'label_qty' => 'nullable|integer'
+        ]);
+
+        try {
+            $product = ProductMaster::where('sku', $validated['sku'])->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found'
+                ], 404);
+            }
+
+            // Get current Values
+            $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            // Update shipping fields
+            if (isset($validated['ship'])) {
+                $values['ship'] = $validated['ship'] !== null && $validated['ship'] !== '' ? (float)$validated['ship'] : null;
+            }
+            if (isset($validated['temu_ship'])) {
+                $values['temu_ship'] = $validated['temu_ship'] !== null && $validated['temu_ship'] !== '' ? (float)$validated['temu_ship'] : null;
+            }
+            if (isset($validated['ebay2_ship'])) {
+                $values['ebay2_ship'] = $validated['ebay2_ship'] !== null && $validated['ebay2_ship'] !== '' ? (float)$validated['ebay2_ship'] : null;
+            }
+            if (isset($validated['label_qty'])) {
+                $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int)$validated['label_qty'] : null;
+            }
+
+            // Save updated Values
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Shipping data updated successfully',
+                'data' => [
+                    'sku' => $product->sku,
+                    'ship' => $values['ship'] ?? null,
+                    'temu_ship' => $values['temu_ship'] ?? null,
+                    'ebay2_ship' => $values['ebay2_ship'] ?? null,
+                    'label_qty' => $values['label_qty'] ?? null
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error updating shipping data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating shipping data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getSkusForShippingMaster(Request $request)
+    {
+        try {
+            // Get all SKUs that are not parent SKUs
+            $skus = ProductMaster::whereNotNull('sku')
+                ->where('sku', 'not like', 'PARENT %')
+                ->orderBy('sku', 'asc')
+                ->get(['sku'])
+                ->map(function($item) {
+                    return ['sku' => $item->sku];
+                });
+
+            return response()->json([
+                'success' => true,
+                'data' => $skus
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching SKUs for shipping master: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching SKUs: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function storeShippingMaster(Request $request)
+    {
+        $request->headers->set('Accept', 'application/json');
+
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'ship' => 'nullable|numeric',
+            'temu_ship' => 'nullable|numeric',
+            'ebay2_ship' => 'nullable|numeric',
+            'label_qty' => 'nullable|integer'
+        ]);
+
+        try {
+            $product = ProductMaster::where('sku', $validated['sku'])->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found'
+                ], 404);
+            }
+
+            // Get current Values
+            $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            // Update shipping fields
+            if (isset($validated['ship'])) {
+                $values['ship'] = $validated['ship'] !== null && $validated['ship'] !== '' ? (float)$validated['ship'] : null;
+            }
+            if (isset($validated['temu_ship'])) {
+                $values['temu_ship'] = $validated['temu_ship'] !== null && $validated['temu_ship'] !== '' ? (float)$validated['temu_ship'] : null;
+            }
+            if (isset($validated['ebay2_ship'])) {
+                $values['ebay2_ship'] = $validated['ebay2_ship'] !== null && $validated['ebay2_ship'] !== '' ? (float)$validated['ebay2_ship'] : null;
+            }
+            if (isset($validated['label_qty'])) {
+                $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int)$validated['label_qty'] : null;
+            }
+
+            // Save updated Values
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Shipping data saved successfully',
+                'data' => [
+                    'sku' => $product->sku,
+                    'ship' => $values['ship'] ?? null,
+                    'temu_ship' => $values['temu_ship'] ?? null,
+                    'ebay2_ship' => $values['ebay2_ship'] ?? null,
+                    'label_qty' => $values['label_qty'] ?? null
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error saving shipping data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error saving shipping data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function importShippingMaster(Request $request)
     {
         $request->validate([
@@ -796,7 +974,8 @@ class CategoryController extends Controller
                 'sku' => 'sku',
                 'ship' => 'ship',
                 'temu_ship' => 'temu_ship',
-                'ebay2_ship' => 'ebay2_ship'
+                'ebay2_ship' => 'ebay2_ship',
+                'label_qty' => 'label_qty'
             ];
 
             // Find column indices
@@ -868,6 +1047,16 @@ class CategoryController extends Controller
                     $ebay2ShipValue = trim($row[$columnIndices['ebay2_ship']]);
                     if ($ebay2ShipValue !== '') {
                         $values['ebay2_ship'] = $ebay2ShipValue;
+                        $hasChanges = true;
+                    }
+                }
+
+                // Update Label QTY if column exists and has value
+                if (isset($columnIndices['label_qty']) && isset($row[$columnIndices['label_qty']])) {
+                    $labelQtyValue = trim($row[$columnIndices['label_qty']]);
+                    if ($labelQtyValue !== '') {
+                        // Convert to numeric if it's a number
+                        $values['label_qty'] = is_numeric($labelQtyValue) ? (int)$labelQtyValue : $labelQtyValue;
                         $hasChanges = true;
                     }
                 }
@@ -3856,6 +4045,7 @@ class CategoryController extends Controller
                 'l' => 'l',
                 'w' => 'w',
                 'h' => 'h',
+                'cbm' => 'cbm',
                 'ctn_l' => 'ctn_l',
                 'ctn_w' => 'ctn_w',
                 'ctn_h' => 'ctn_h',
@@ -3920,7 +4110,7 @@ class CategoryController extends Controller
                         $value = trim($row[$colIndex]);
                         if ($value !== '') {
                             // Convert to float for numeric fields
-                            if (in_array($field, ['wt_act', 'wt_decl', 'l', 'w', 'h', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt'])) {
+                            if (in_array($field, ['wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt'])) {
                                 $value = is_numeric($value) ? (float)$value : null;
                             }
                             if ($value !== null) {
@@ -4045,6 +4235,10 @@ class CategoryController extends Controller
                 }
                 if (isset($skuData['h']) && $skuData['h'] !== null) {
                     $values['h'] = (float)$skuData['h'];
+                    $hasChanges = true;
+                }
+                if (isset($skuData['cbm']) && $skuData['cbm'] !== null) {
+                    $values['cbm'] = (float)$skuData['cbm'];
                     $hasChanges = true;
                 }
 
@@ -4191,145 +4385,514 @@ class CategoryController extends Controller
     
     private function pushToAmazon($sku, $data)
     {
-        // TODO: Implement Amazon API call to update dimensions/weight
-        // Example: Use AmazonSpApiService to update product dimensions
-        Log::info("Pushing dim/wt to Amazon for SKU: {$sku}");
-        return true; // Placeholder - implement actual API call
+        try {
+            // Get ASIN from AmazonDatasheet
+            $amazonData = AmazonDatasheet::where('sku', $sku)->first();
+            
+            if (!$amazonData || !$amazonData->asin) {
+                Log::warning("Amazon ASIN not found for SKU: {$sku}");
+                return false;
+            }
+
+            $asin = $amazonData->asin;
+            $amazonService = new AmazonSpApiService();
+            $accessToken = $amazonService->getAccessToken();
+
+            if (!$accessToken) {
+                Log::error('Failed to get Amazon access token');
+                return false;
+            }
+
+            $sellerId = env('AMAZON_SELLER_ID');
+            $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
+
+            if (!$sellerId) {
+                Log::error('Amazon seller ID not configured');
+                return false;
+            }
+
+            // Build payload for Amazon SP API
+            // Amazon expects dimensions in inches and weight in pounds
+            $patches = [];
+
+            // Package dimensions
+            if (isset($data['l']) && $data['l'] !== null) {
+                $patches[] = [
+                    "op" => "replace",
+                    "path" => "/attributes/item_package_dimensions/item_package_length",
+                    "value" => [
+                        [
+                            "value" => (float)$data['l'],
+                            "unit" => "inches"
+                        ]
+                    ]
+                ];
+            }
+            if (isset($data['w']) && $data['w'] !== null) {
+                $patches[] = [
+                    "op" => "replace",
+                    "path" => "/attributes/item_package_dimensions/item_package_width",
+                    "value" => [
+                        [
+                            "value" => (float)$data['w'],
+                            "unit" => "inches"
+                        ]
+                    ]
+                ];
+            }
+            if (isset($data['h']) && $data['h'] !== null) {
+                $patches[] = [
+                    "op" => "replace",
+                    "path" => "/attributes/item_package_dimensions/item_package_height",
+                    "value" => [
+                        [
+                            "value" => (float)$data['h'],
+                            "unit" => "inches"
+                        ]
+                    ]
+                ];
+            }
+
+            // Package weight
+            if (isset($data['wt_act']) && $data['wt_act'] !== null) {
+                $patches[] = [
+                    "op" => "replace",
+                    "path" => "/attributes/item_package_weight",
+                    "value" => [
+                        [
+                            "value" => (float)$data['wt_act'],
+                            "unit" => "pounds"
+                        ]
+                    ]
+                ];
+            }
+
+            if (empty($patches)) {
+                Log::warning("No dimension/weight data to update for Amazon SKU: {$sku}");
+                return false;
+            }
+
+            // Get product type (required for Amazon SP API)
+            $productType = 'PRODUCT'; // Default, can be enhanced to get actual product type
+
+            $encodedSku = urlencode($asin);
+            $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds={$marketplaceId}";
+
+            $body = [
+                "productType" => $productType,
+                "patches" => $patches
+            ];
+
+            $response = Http::withToken($accessToken)
+                ->withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'content-type' => 'application/json',
+                    'accept' => 'application/json',
+                ])
+                ->timeout(30)
+                ->patch($endpoint, $body);
+
+            $responseData = $response->json();
+
+            // Amazon returns 202 (Accepted) for successful updates
+            if ($response->status() === 202 || $response->successful()) {
+                Log::info("Successfully updated Amazon dimensions/weight for SKU: {$sku}");
+                return true;
+            } else {
+                Log::error("Failed to update Amazon dimensions/weight for SKU: {$sku}", [
+                    'status' => $response->status(),
+                    'response' => $responseData
+                ]);
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("Error pushing dim/wt to Amazon for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
     }
 
     private function pushToEbay($platform, $sku, $data)
     {
-        // TODO: Implement eBay API call based on platform (ebay, ebay2, ebay3)
-        // Example: Use EbayApiService, EbayTwoApiService, or EbayThreeApiService
-        Log::info("Pushing dim/wt to {$platform} for SKU: {$sku}");
-        return true; // Placeholder - implement actual API call
+        try {
+            // Get item_id based on platform
+            $itemId = null;
+            switch (strtolower($platform)) {
+                case 'ebay':
+                    $ebayMetric = EbayMetric::where('sku', $sku)->first();
+                    $itemId = $ebayMetric ? $ebayMetric->item_id : null;
+                    break;
+                case 'ebay2':
+                    $ebayMetric = Ebay2Metric::where('sku', $sku)->first();
+                    $itemId = $ebayMetric ? $ebayMetric->item_id : null;
+                    break;
+                case 'ebay3':
+                    $ebayMetric = Ebay3Metric::where('sku', $sku)->first();
+                    $itemId = $ebayMetric ? $ebayMetric->item_id : null;
+                    break;
+            }
+
+            if (!$itemId) {
+                Log::warning("eBay item_id not found for SKU: {$sku} on platform: {$platform}");
+                return false;
+            }
+
+            $ebayService = new EbayApiService();
+            
+            // Get item details first to ensure we have all required fields
+            $itemDetails = $ebayService->getItem($itemId);
+            
+            if (!$itemDetails) {
+                Log::error("Failed to get eBay item details for item_id: {$itemId}");
+                return false;
+            }
+
+            // Build XML for ReviseItem with dimensions and weight
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            
+            $authToken = $ebayService->generateBearerToken();
+            $credentials->addChild('eBayAuthToken', $authToken ?? '');
+
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+            $xml->addChild('DetailLevel', 'ReturnAll');
+
+            $item = $xml->addChild('Item');
+            $item->addChild('ItemID', $itemId);
+
+            // Add SKU if available
+            if (isset($itemDetails['Item']['SKU']) && !empty($itemDetails['Item']['SKU'])) {
+                $item->addChild('SKU', $itemDetails['Item']['SKU']);
+            }
+
+            // Add ShippingPackageDetails with dimensions and weight
+            $shippingPackageDetails = $item->addChild('ShippingPackageDetails');
+            
+            // Weight (eBay expects weight in pounds)
+            if (isset($data['wt_act']) && $data['wt_act'] !== null) {
+                $shippingPackageDetails->addChild('WeightMajor', (int)$data['wt_act']); // Whole pounds
+                $shippingPackageDetails->addChild('WeightMinor', (int)(($data['wt_act'] - (int)$data['wt_act']) * 16)); // Ounces
+            }
+
+            // Dimensions (eBay expects dimensions in inches)
+            if (isset($data['l']) && $data['l'] !== null) {
+                $shippingPackageDetails->addChild('PackageDepth', (float)$data['l']);
+            }
+            if (isset($data['w']) && $data['w'] !== null) {
+                $shippingPackageDetails->addChild('PackageWidth', (float)$data['w']);
+            }
+            if (isset($data['h']) && $data['h'] !== null) {
+                $shippingPackageDetails->addChild('PackageHeight', (float)$data['h']);
+            }
+
+            $xmlBody = $xml->asXML();
+            
+            $endpoint = env('EBAY_TRADING_API_ENDPOINT', 'https://api.ebay.com/ws/api.dll');
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => env('EBAY_COMPAT_LEVEL', '1189'),
+                'X-EBAY-API-DEV-NAME' => env('EBAY_DEV_ID'),
+                'X-EBAY-API-APP-NAME' => env('EBAY_APP_ID'),
+                'X-EBAY-API-CERT-NAME' => env('EBAY_CERT_ID'),
+                'X-EBAY-API-CALL-NAME' => 'ReviseItem',
+                'X-EBAY-API-SITEID' => env('EBAY_SITE_ID', 0),
+                'Content-Type' => 'text/xml',
+            ];
+            
+            $response = Http::withHeaders($headers)
+                ->withBody($xmlBody, 'text/xml')
+                ->post($endpoint);
+            
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            
+            if ($xmlResp === false) {
+                Log::error("Failed to parse eBay ReviseItem response for SKU: {$sku}", ['body' => $body]);
+                return false;
+            }
+            
+            $responseArray = json_decode(json_encode($xmlResp), true);
+            $ack = $responseArray['Ack'] ?? 'Failure';
+            
+            if ($ack === 'Success' || $ack === 'Warning') {
+                Log::info("Successfully updated eBay dimensions/weight for SKU: {$sku} on platform: {$platform}");
+                return true;
+            } else {
+                $errors = $responseArray['Errors'] ?? [];
+                $errorMsg = is_array($errors) && isset($errors['LongMessage']) ? $errors['LongMessage'] : 'Unknown error';
+                Log::error("Failed to update eBay dimensions/weight for SKU: {$sku}", [
+                    'ack' => $ack,
+                    'errors' => $errors
+                ]);
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("Error pushing dim/wt to eBay ({$platform}) for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
     }
 
     private function pushToShopify($sku, $data)
     {
-        // TODO: Implement Shopify API call to update variant dimensions/weight
-        // Example: Use ShopifyApiService to update product variant
-        Log::info("Pushing dim/wt to Shopify for SKU: {$sku}");
-        return true; // Placeholder - implement actual API call
+        try {
+            // Get variant_id from ShopifySku
+            $shopifySku = ShopifySku::where('sku', $sku)->first();
+            
+            if (!$shopifySku || !$shopifySku->variant_id) {
+                Log::warning("Shopify variant_id not found for SKU: {$sku}");
+                return false;
+            }
+
+            $variantId = $shopifySku->variant_id;
+            $storeUrl = "https://" . env('SHOPIFY_STORE_URL');
+            $apiVersion = "2025-01";
+            $accessToken = env('SHOPIFY_PASSWORD');
+
+            if (!$storeUrl || !$accessToken) {
+                Log::error('Shopify credentials missing');
+                return false;
+            }
+
+            // Build payload with weight and dimensions
+            $payload = [
+                "variant" => [
+                    "id" => $variantId
+                ]
+            ];
+
+            // Add weight (in grams) - Shopify expects weight in grams
+            if (isset($data['wt_act']) && $data['wt_act'] !== null) {
+                $payload["variant"]["weight"] = (float)$data['wt_act'] * 453.592; // Convert lbs to grams
+                $payload["variant"]["weight_unit"] = "g";
+            }
+
+            // Add dimensions (in cm) - Shopify expects dimensions in cm
+            if (isset($data['l']) && $data['l'] !== null) {
+                $payload["variant"]["length"] = (float)$data['l'] * 2.54; // Convert inches to cm
+            }
+            if (isset($data['w']) && $data['w'] !== null) {
+                $payload["variant"]["width"] = (float)$data['w'] * 2.54; // Convert inches to cm
+            }
+            if (isset($data['h']) && $data['h'] !== null) {
+                $payload["variant"]["height"] = (float)$data['h'] * 2.54; // Convert inches to cm
+            }
+
+            // Rate limiting: 2 calls per second
+            $rateLimitKey = 'shopify_api_rate_limit';
+            $now = now();
+            $windowStart = $now->copy()->startOfSecond();
+            $recentCalls = Cache::get($rateLimitKey, []);
+            $recentCalls = array_filter($recentCalls, function($timestamp) use ($windowStart) {
+                return $timestamp >= $windowStart->timestamp;
+            });
+
+            if (count($recentCalls) >= 2) {
+                $waitTime = 1000000 - ($now->micro);
+                usleep($waitTime + 100000);
+                $recentCalls = [];
+            }
+
+            $recentCalls[] = now()->timestamp;
+            Cache::put($rateLimitKey, $recentCalls, 2);
+
+            $url = "{$storeUrl}/admin/api/{$apiVersion}/variants/{$variantId}.json";
+
+            $response = Http::withHeaders([
+                "X-Shopify-Access-Token" => $accessToken,
+                "Content-Type" => "application/json",
+            ])->put($url, $payload);
+
+            if ($response->successful()) {
+                Log::info("Successfully updated Shopify dimensions/weight for SKU: {$sku}");
+                return true;
+            } else {
+                Log::error("Failed to update Shopify dimensions/weight for SKU: {$sku}", [
+                    'status' => $response->status(),
+                    'response' => $response->json()
+                ]);
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("Error pushing dim/wt to Shopify for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
     }
 
     private function pushToWalmart($sku, $data)
     {
-        // TODO: Implement Walmart API call
-        Log::info("Pushing dim/wt to Walmart for SKU: {$sku}");
-        return true; // Placeholder
+        try {
+            $walmartService = new WalmartApiService();
+            $accessToken = $walmartService->getAccessToken();
+
+            if (!$accessToken) {
+                Log::error('Failed to get Walmart access token');
+                return false;
+            }
+
+            $baseUrl = env('WALMART_API_ENDPOINT', 'https://marketplace.walmartapis.com');
+            
+            // Build payload for Walmart item update
+            $payload = [
+                'sku' => $sku,
+            ];
+
+            // Walmart expects dimensions in inches and weight in pounds
+            if (isset($data['l']) || isset($data['w']) || isset($data['h']) || isset($data['wt_act'])) {
+                $payload['product'] = [];
+                
+                if (isset($data['l']) && $data['l'] !== null) {
+                    $payload['product']['shelfLength'] = (float)$data['l'];
+                }
+                if (isset($data['w']) && $data['w'] !== null) {
+                    $payload['product']['shelfWidth'] = (float)$data['w'];
+                }
+                if (isset($data['h']) && $data['h'] !== null) {
+                    $payload['product']['shelfHeight'] = (float)$data['h'];
+                }
+                if (isset($data['wt_act']) && $data['wt_act'] !== null) {
+                    $payload['product']['productWeight'] = [
+                        'value' => (float)$data['wt_act'],
+                        'unit' => 'LB'
+                    ];
+                }
+            }
+
+            $endpoint = $baseUrl . "/v3/items/{$sku}";
+
+            $response = Http::withHeaders([
+                'WM_SEC.ACCESS_TOKEN' => $accessToken,
+                'WM_QOS.CORRELATION_ID' => uniqid(),
+                'WM_SVC.NAME' => 'Walmart Marketplace',
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])->put($endpoint, $payload);
+
+            if ($response->successful()) {
+                Log::info("Successfully updated Walmart dimensions/weight for SKU: {$sku}");
+                return true;
+            } else {
+                Log::error("Failed to update Walmart dimensions/weight for SKU: {$sku}", [
+                    'status' => $response->status(),
+                    'response' => $response->json()
+                ]);
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("Error pushing dim/wt to Walmart for SKU {$sku}: " . $e->getMessage());
+            return false;
+        }
     }
 
     private function pushToDoba($sku, $data)
     {
-        // TODO: Implement Doba API call
-        Log::info("Pushing dim/wt to Doba for SKU: {$sku}");
-        return true; // Placeholder
+        // Doba API not yet implemented
+        Log::info("Pushing dim/wt to Doba for SKU: {$sku} - API not implemented");
+        return false; // Return false to indicate not implemented
     }
 
     private function pushToTemu($sku, $data)
     {
-        // TODO: Implement Temu API call
-        Log::info("Pushing dim/wt to Temu for SKU: {$sku}");
-        return true; // Placeholder
+        // Temu API not yet implemented
+        Log::info("Pushing dim/wt to Temu for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToShein($sku, $data)
     {
-        // TODO: Implement Shein API call
-        Log::info("Pushing dim/wt to Shein for SKU: {$sku}");
-        return true; // Placeholder
+        // Shein API not yet implemented
+        Log::info("Pushing dim/wt to Shein for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToBestBuy($sku, $data)
     {
-        // TODO: Implement BestBuy API call
-        Log::info("Pushing dim/wt to BestBuy for SKU: {$sku}");
-        return true; // Placeholder
+        // BestBuy API not yet implemented
+        Log::info("Pushing dim/wt to BestBuy for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToTiendamia($sku, $data)
     {
-        // TODO: Implement Tiendamia API call
-        Log::info("Pushing dim/wt to Tiendamia for SKU: {$sku}");
-        return true; // Placeholder
+        // Tiendamia API not yet implemented
+        Log::info("Pushing dim/wt to Tiendamia for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToMacy($sku, $data)
     {
-        // TODO: Implement Macy's API call
-        Log::info("Pushing dim/wt to Macy for SKU: {$sku}");
-        return true; // Placeholder
+        // Macy's API not yet implemented
+        Log::info("Pushing dim/wt to Macy for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToReverb($sku, $data)
     {
-        // TODO: Implement Reverb API call
-        Log::info("Pushing dim/wt to Reverb for SKU: {$sku}");
-        return true; // Placeholder
+        // Reverb API not yet implemented
+        Log::info("Pushing dim/wt to Reverb for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToWayfair($sku, $data)
     {
-        // TODO: Implement Wayfair API call
-        Log::info("Pushing dim/wt to Wayfair for SKU: {$sku}");
-        return true; // Placeholder
+        // Wayfair API not yet implemented
+        Log::info("Pushing dim/wt to Wayfair for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToFaire($sku, $data)
     {
-        // TODO: Implement Faire API call
-        Log::info("Pushing dim/wt to Faire for SKU: {$sku}");
-        return true; // Placeholder
+        // Faire API not yet implemented
+        Log::info("Pushing dim/wt to Faire for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToAliExpress($sku, $data)
     {
-        // TODO: Implement AliExpress API call
-        Log::info("Pushing dim/wt to AliExpress for SKU: {$sku}");
-        return true; // Placeholder
+        // AliExpress API not yet implemented
+        Log::info("Pushing dim/wt to AliExpress for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToMercari($sku, $data)
     {
-        // TODO: Implement Mercari API call
-        Log::info("Pushing dim/wt to Mercari for SKU: {$sku}");
-        return true; // Placeholder
+        // Mercari API not yet implemented
+        Log::info("Pushing dim/wt to Mercari for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToFbMarketplace($sku, $data)
     {
-        // TODO: Implement Facebook Marketplace API call
-        Log::info("Pushing dim/wt to FB Marketplace for SKU: {$sku}");
-        return true; // Placeholder
+        // Facebook Marketplace API not yet implemented
+        Log::info("Pushing dim/wt to FB Marketplace for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToTikTokShop($sku, $data)
     {
-        // TODO: Implement TikTok Shop API call
-        Log::info("Pushing dim/wt to TikTok Shop for SKU: {$sku}");
-        return true; // Placeholder
+        // TikTok Shop API not yet implemented
+        Log::info("Pushing dim/wt to TikTok Shop for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToFbShop($sku, $data)
     {
-        // TODO: Implement Facebook Shop API call
-        Log::info("Pushing dim/wt to FB Shop for SKU: {$sku}");
-        return true; // Placeholder
+        // Facebook Shop API not yet implemented
+        Log::info("Pushing dim/wt to FB Shop for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToInstaShop($sku, $data)
     {
-        // TODO: Implement Instagram Shop API call
-        Log::info("Pushing dim/wt to Instagram Shop for SKU: {$sku}");
-        return true; // Placeholder
+        // Instagram Shop API not yet implemented
+        Log::info("Pushing dim/wt to Instagram Shop for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     private function pushToPls($sku, $data)
     {
-        // TODO: Implement PLS API call
-        Log::info("Pushing dim/wt to PLS for SKU: {$sku}");
-        return true; // Placeholder
+        // PLS API not yet implemented
+        Log::info("Pushing dim/wt to PLS for SKU: {$sku} - API not implemented");
+        return false;
     }
 
     public function packageIncludesMaster()

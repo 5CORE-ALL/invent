@@ -5,6 +5,8 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 
     <style>
         .table-responsive {
@@ -175,7 +177,10 @@
                             </div>
                         </div>
                         <div class="col-md-6 text-end">
-                            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+                            <button type="button" class="btn btn-primary" id="addShippingBtn">
+                                <i class="fas fa-plus me-1"></i> Add Shipping Data
+                            </button>
+                            <button type="button" class="btn btn-info ms-2" data-bs-toggle="modal" data-bs-target="#importModal">
                                 <i class="fas fa-upload me-1"></i> Import Excel
                             </button>
                             <button type="button" class="btn btn-success ms-2" id="downloadExcel">
@@ -200,7 +205,7 @@
                                         <strong>Instructions:</strong>
                                         <ol class="mb-0 mt-2">
                                             <li>Download the sample file below</li>
-                                            <li>Fill in the shipping data (SHIP, TEMU SHIP, EBAY2 SHIP)</li>
+                                            <li>Fill in the shipping data (SHIP, TEMU SHIP, EBAY2 SHIP, Label QTY)</li>
                                             <li>Upload the completed file</li>
                                         </ol>
                                     </div>
@@ -234,6 +239,106 @@
                         </div>
                     </div>
 
+                    <!-- Edit Shipping Modal -->
+                    <div class="modal fade" id="editShippingModal" tabindex="-1" aria-labelledby="editShippingModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                                    <h5 class="modal-title" id="editShippingModalLabel">
+                                        <i class="fas fa-edit me-2"></i>Edit Shipping Data
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div id="editFormErrors" class="alert alert-danger" style="display: none;"></div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">SKU:</label>
+                                        <p class="form-control-plaintext" id="editSku"></p>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="editShip" class="form-label fw-bold">SHIP</label>
+                                        <input type="number" step="0.01" class="form-control" id="editShip" placeholder="Enter SHIP value">
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="editTemuShip" class="form-label fw-bold">TEMU SHIP</label>
+                                        <input type="number" step="0.01" class="form-control" id="editTemuShip" placeholder="Enter TEMU SHIP value">
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="editEbay2Ship" class="form-label fw-bold">EBAY2 SHIP</label>
+                                        <input type="number" step="0.01" class="form-control" id="editEbay2Ship" placeholder="Enter EBAY2 SHIP value">
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="editLabelQty" class="form-label fw-bold">Label QTY</label>
+                                        <input type="number" step="1" class="form-control" id="editLabelQty" placeholder="Enter Label QTY value">
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="saveShippingBtn">
+                                        <i class="fas fa-save me-1"></i>Save Changes
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Add Shipping Master Modal -->
+                    <div class="modal fade" id="addShippingModal" tabindex="-1" aria-labelledby="addShippingModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
+                                    <h5 class="modal-title" id="addShippingModalLabel">
+                                        <i class="fas fa-plus me-2"></i>Add Shipping Data
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <form id="addShippingForm">
+                                        <div id="addFormErrors" class="alert alert-danger" style="display: none;"></div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="addSku" class="form-label fw-bold">SKU <span class="text-danger">*</span></label>
+                                            <select class="form-control" id="addSku" name="sku" required>
+                                                <option value="">Select SKU</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="addShip" class="form-label fw-bold">SHIP</label>
+                                            <input type="number" step="0.01" class="form-control" id="addShip" name="ship" placeholder="Enter SHIP value">
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="addTemuShip" class="form-label fw-bold">TEMU SHIP</label>
+                                            <input type="number" step="0.01" class="form-control" id="addTemuShip" name="temu_ship" placeholder="Enter TEMU SHIP value">
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="addEbay2Ship" class="form-label fw-bold">EBAY2 SHIP</label>
+                                            <input type="number" step="0.01" class="form-control" id="addEbay2Ship" name="ebay2_ship" placeholder="Enter EBAY2 SHIP value">
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="addLabelQty" class="form-label fw-bold">Label QTY</label>
+                                            <input type="number" step="1" class="form-control" id="addLabelQty" name="label_qty" placeholder="Enter Label QTY value">
+                                        </div>
+                                    </form>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="saveAddShippingBtn">
+                                        <i class="fas fa-save me-1"></i>Save
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="table-responsive">
                         <table id="shipping-master-datatable" class="table dt-responsive nowrap w-100">
                             <thead>
@@ -258,22 +363,29 @@
                                     <th>Status</th>
                                     <th>INV</th>
                                     <th>
-                                        <div>SHIP <span id="shipMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div>SHIP <span id="shipMissingCount" class="text-white" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterShip" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
                                         </select>
                                     </th>
                                     <th>
-                                        <div>TEMU SHIP <span id="temuShipMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div>TEMU SHIP <span id="temuShipMissingCount" class="text-white" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterTemuShip" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
                                         </select>
                                     </th>
                                     <th>
-                                        <div>EBAY2 SHIP <span id="ebay2ShipMissingCount" class="text-danger" style="font-weight: bold;">(0)</span></div>
+                                        <div>EBAY2 SHIP <span id="ebay2ShipMissingCount" class="text-white" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterEbay2Ship" class="form-control form-control-sm mt-1" style="font-size: 11px;">
+                                            <option value="all">All Data</option>
+                                            <option value="missing">Missing Data</option>
+                                        </select>
+                                    </th>
+                                    <th>
+                                        <div>Label QTY <span id="labelQtyMissingCount" class="text-white" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterLabelQty" class="form-control form-control-sm mt-1" style="font-size: 11px;">
                                             <option value="all">All Data</option>
                                             <option value="missing">Missing Data</option>
                                         </select>
@@ -301,6 +413,7 @@
 
 @section('script')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // Store the loaded data globally
@@ -382,7 +495,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -437,6 +550,11 @@
                     ebay2ShipCell.textContent = escapeHtml(item.ebay2_ship) || '-';
                     row.appendChild(ebay2ShipCell);
 
+                    // Label QTY column
+                    const labelQtyCell = document.createElement('td');
+                    labelQtyCell.textContent = escapeHtml(item.label_qty) || '-';
+                    row.appendChild(labelQtyCell);
+
                     // Action column
                     const actionCell = document.createElement('td');
                     actionCell.className = 'text-center';
@@ -456,6 +574,94 @@
                 });
             }
 
+            // Setup edit buttons using event delegation
+            function setupEditButtons() {
+                // Use event delegation to handle dynamically created buttons
+                document.addEventListener('click', function(e) {
+                    if (e.target && (e.target.classList.contains('edit-btn') || e.target.closest('.edit-btn'))) {
+                        const btn = e.target.classList.contains('edit-btn') ? e.target : e.target.closest('.edit-btn');
+                        const sku = btn.getAttribute('data-sku');
+                        const item = tableData.find(p => p.SKU === sku);
+                        if (item) {
+                            editShipping(item);
+                        }
+                    }
+                });
+            }
+
+            // Edit shipping data
+            function editShipping(item) {
+                const modal = new bootstrap.Modal(document.getElementById('editShippingModal'));
+                
+                // Populate form fields
+                document.getElementById('editSku').textContent = item.SKU || '';
+                document.getElementById('editShip').value = item.ship || '';
+                document.getElementById('editTemuShip').value = item.temu_ship || '';
+                document.getElementById('editEbay2Ship').value = item.ebay2_ship || '';
+                document.getElementById('editLabelQty').value = item.label_qty || '';
+                
+                // Clear any previous errors
+                document.getElementById('editFormErrors').style.display = 'none';
+                
+                // Store current SKU for saving
+                const saveBtn = document.getElementById('saveShippingBtn');
+                saveBtn.setAttribute('data-sku', item.SKU);
+                
+                // Remove any existing event listeners by cloning the button
+                const newSaveBtn = saveBtn.cloneNode(true);
+                saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+                
+                // Add new event listener
+                newSaveBtn.addEventListener('click', async function() {
+                    const sku = this.getAttribute('data-sku');
+                    const ship = document.getElementById('editShip').value.trim();
+                    const temuShip = document.getElementById('editTemuShip').value.trim();
+                    const ebay2Ship = document.getElementById('editEbay2Ship').value.trim();
+                    const labelQty = document.getElementById('editLabelQty').value.trim();
+                    const errorDiv = document.getElementById('editFormErrors');
+                    
+                    // Disable button and show loading
+                    this.disabled = true;
+                    this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving...';
+                    
+                    try {
+                        // Prepare update data
+                        const updateData = {
+                            sku: sku,
+                            ship: ship || null,
+                            temu_ship: temuShip || null,
+                            ebay2_ship: ebay2Ship || null,
+                            label_qty: labelQty || null
+                        };
+                        
+                        const response = await makeRequest('/shipping-master/update', 'POST', updateData);
+                        const data = await response.json();
+                        
+                        if (!response.ok || !data.success) {
+                            throw new Error(data.message || 'Failed to update shipping data');
+                        }
+                        
+                        // Show success message
+                        showToast('success', 'Shipping data updated successfully!');
+                        
+                        // Close modal
+                        modal.hide();
+                        
+                        // Reload data
+                        loadData();
+                        
+                    } catch (error) {
+                        errorDiv.textContent = error.message || 'Failed to update shipping data';
+                        errorDiv.style.display = 'block';
+                    } finally {
+                        this.disabled = false;
+                        this.innerHTML = '<i class="fas fa-save me-1"></i>Save Changes';
+                    }
+                });
+                
+                modal.show();
+            }
+
             // Check if value is missing (null, undefined, empty, or 0)
             function isMissing(value) {
                 return value === null || value === undefined || value === '' || value === 0 || parseFloat(value) === 0;
@@ -468,16 +674,24 @@
                 let shipMissingCount = 0;
                 let temuShipMissingCount = 0;
                 let ebay2ShipMissingCount = 0;
+                let labelQtyMissingCount = 0;
 
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
                     
-                    // Count missing data for each column
+                    // Skip parent SKUs when counting missing data
+                    const isParentSku = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                    if (isParentSku) {
+                        return; // Skip parent SKUs
+                    }
+                    
+                    // Count missing data for each column (only for child SKUs)
                     if (isMissing(item.ship)) shipMissingCount++;
                     if (isMissing(item.temu_ship)) temuShipMissingCount++;
                     if (isMissing(item.ebay2_ship)) ebay2ShipMissingCount++;
+                    if (isMissing(item.label_qty)) labelQtyMissingCount++;
                 });
                 
                 document.getElementById('parentCount').textContent = `(${parentSet.size})`;
@@ -485,11 +699,28 @@
                 document.getElementById('shipMissingCount').textContent = `(${shipMissingCount})`;
                 document.getElementById('temuShipMissingCount').textContent = `(${temuShipMissingCount})`;
                 document.getElementById('ebay2ShipMissingCount').textContent = `(${ebay2ShipMissingCount})`;
+                document.getElementById('labelQtyMissingCount').textContent = `(${labelQtyMissingCount})`;
             }
 
             // Apply all filters
             function applyFilters() {
+                // Check if any missing data filter is active
+                const filterShip = document.getElementById('filterShip').value;
+                const filterTemuShip = document.getElementById('filterTemuShip').value;
+                const filterEbay2Ship = document.getElementById('filterEbay2Ship').value;
+                const filterLabelQty = document.getElementById('filterLabelQty').value;
+                const hasMissingDataFilter = filterShip === 'missing' || filterTemuShip === 'missing' || 
+                                            filterEbay2Ship === 'missing' || filterLabelQty === 'missing';
+
                 filteredData = tableData.filter(item => {
+                    // Exclude parent SKUs when any missing data filter is active
+                    if (hasMissingDataFilter) {
+                        const isParentSku = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                        if (isParentSku) {
+                            return false;
+                        }
+                    }
+
                     // Parent search filter
                     const parentSearch = document.getElementById('parentSearch').value.toLowerCase();
                     if (parentSearch && !(item.Parent || '').toLowerCase().includes(parentSearch)) {
@@ -514,20 +745,22 @@
                     }
 
                     // SHIP filter
-                    const filterShip = document.getElementById('filterShip').value;
                     if (filterShip === 'missing' && !isMissing(item.ship)) {
                         return false;
                     }
 
                     // TEMU SHIP filter
-                    const filterTemuShip = document.getElementById('filterTemuShip').value;
                     if (filterTemuShip === 'missing' && !isMissing(item.temu_ship)) {
                         return false;
                     }
 
                     // EBAY2 SHIP filter
-                    const filterEbay2Ship = document.getElementById('filterEbay2Ship').value;
                     if (filterEbay2Ship === 'missing' && !isMissing(item.ebay2_ship)) {
+                        return false;
+                    }
+
+                    // Label QTY filter
+                    if (filterLabelQty === 'missing' && !isMissing(item.label_qty)) {
                         return false;
                     }
 
@@ -565,6 +798,7 @@
                     document.getElementById('filterShip').value = 'all';
                     document.getElementById('filterTemuShip').value = 'all';
                     document.getElementById('filterEbay2Ship').value = 'all';
+                    document.getElementById('filterLabelQty').value = 'all';
                     applyFilters();
                 });
 
@@ -578,6 +812,10 @@
                 });
 
                 document.getElementById('filterEbay2Ship').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterLabelQty').addEventListener('change', function() {
                     applyFilters();
                 });
             }
@@ -615,14 +853,11 @@
             // Setup Excel export function
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
-                    // Columns to export (excluding Image and Action)
-                    const columns = ["Parent", "SKU", "Status", "INV", "SHIP", "TEMU SHIP", "EBAY2 SHIP"];
+                    // Columns to export (excluding Image, Action, and Parent)
+                    const columns = ["SKU", "Status", "INV", "SHIP", "TEMU SHIP", "EBAY2 SHIP", "Label QTY"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
-                        "Parent": {
-                            key: "Parent"
-                        },
                         "SKU": {
                             key: "SKU"
                         },
@@ -640,6 +875,9 @@
                         },
                         "EBAY2 SHIP": {
                             key: "ebay2_ship"
+                        },
+                        "Label QTY": {
+                            key: "label_qty"
                         }
                     };
 
@@ -660,8 +898,13 @@
                             // Add header row
                             wsData.push(columns);
 
-                            // Add data rows
+                            // Add data rows - exclude parent SKUs
                             dataToExport.forEach(item => {
+                                // Skip parent SKUs (SKU contains "PARENT")
+                                if (item.SKU && String(item.SKU).toUpperCase().includes('PARENT')) {
+                                    return;
+                                }
+                                
                                 const row = [];
                                 columns.forEach(col => {
                                     const colDef = columnDefs[col];
@@ -695,9 +938,9 @@
                             // Set column widths
                             const wscols = columns.map(col => {
                                 // Adjust width based on column type
-                                if (["Parent", "SKU"].includes(col)) {
+                                if (["SKU"].includes(col)) {
                                     return { wch: 20 }; // Wider for text columns
-                                } else if (["Status", "SHIP", "TEMU SHIP", "EBAY2 SHIP"].includes(col)) {
+                                } else if (["Status", "SHIP", "TEMU SHIP", "EBAY2 SHIP", "Label QTY"].includes(col)) {
                                     return { wch: 12 };
                                 } else {
                                     return { wch: 10 }; // Default width for numeric columns
@@ -789,10 +1032,10 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data
                     const sampleData = [
-                        ['SKU', 'SHIP', 'TEMU SHIP', 'EBAY2 SHIP'],
-                        ['SKU001', '10.50', '12.00', '11.50'],
-                        ['SKU002', '15.75', '18.00', '16.25'],
-                        ['SKU003', '8.25', '9.50', '8.75']
+                        ['SKU', 'SHIP', 'TEMU SHIP', 'EBAY2 SHIP', 'Label QTY'],
+                        ['SKU001', '10.50', '12.00', '11.50', '5'],
+                        ['SKU002', '15.75', '18.00', '16.25', '10'],
+                        ['SKU003', '8.25', '9.50', '8.75', '3']
                     ];
 
                     // Create workbook
@@ -804,7 +1047,8 @@
                         { wch: 15 }, // SKU
                         { wch: 12 }, // SHIP
                         { wch: 15 }, // TEMU SHIP
-                        { wch: 15 }  // EBAY2 SHIP
+                        { wch: 15 }, // EBAY2 SHIP
+                        { wch: 12 }  // Label QTY
                     ];
 
                     // Style header row
@@ -924,10 +1168,201 @@
                 });
             }
 
+            // Setup add button handler
+            function setupAddButton() {
+                const addBtn = document.getElementById('addShippingBtn');
+                if (addBtn) {
+                    // Remove any existing event listeners by cloning
+                    const newBtn = addBtn.cloneNode(true);
+                    addBtn.parentNode.replaceChild(newBtn, addBtn);
+                    
+                    newBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openAddShippingModal();
+                    });
+                } else {
+                    console.error('Add Shipping button not found');
+                }
+            }
+
+            // Open Add Shipping Modal
+            async function openAddShippingModal() {
+                const modalElement = document.getElementById('addShippingModal');
+                const modal = new bootstrap.Modal(modalElement);
+                
+                // Reset form
+                document.getElementById('addShippingForm').reset();
+                document.getElementById('addFormErrors').style.display = 'none';
+                
+                // Destroy Select2 if already initialized
+                const skuSelect = document.getElementById('addSku');
+                if (skuSelect && typeof $ !== 'undefined' && typeof $.fn.select2 !== 'undefined') {
+                    if ($(skuSelect).hasClass('select2-hidden-accessible')) {
+                        $(skuSelect).select2('destroy');
+                    }
+                }
+                
+                // Load SKUs into dropdown
+                await loadSkusIntoDropdown();
+                
+                // Setup save button handler
+                const saveBtn = document.getElementById('saveAddShippingBtn');
+                const newSaveBtn = saveBtn.cloneNode(true);
+                saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+                
+                newSaveBtn.addEventListener('click', async function() {
+                    await saveAddShipping();
+                });
+                
+                // Clean up Select2 when modal is hidden
+                modalElement.addEventListener('hidden.bs.modal', function() {
+                    if (skuSelect && typeof $ !== 'undefined' && typeof $.fn.select2 !== 'undefined') {
+                        if ($(skuSelect).hasClass('select2-hidden-accessible')) {
+                            $(skuSelect).select2('destroy');
+                        }
+                    }
+                }, { once: true });
+                
+                modal.show();
+            }
+
+            // Load SKUs into dropdown
+            async function loadSkusIntoDropdown() {
+                try {
+                    const response = await fetch('/shipping-master/skus', {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success && data.data) {
+                        const skuSelect = document.getElementById('addSku');
+                        
+                        if (!skuSelect) {
+                            console.error('SKU select element not found');
+                            return;
+                        }
+                        
+                        // Check if jQuery and Select2 are available
+                        if (typeof $ === 'undefined' || typeof $.fn.select2 === 'undefined') {
+                            console.warn('jQuery or Select2 not available, using native select');
+                            // Fallback to native select
+                            skuSelect.innerHTML = '<option value="">Select SKU</option>';
+                            data.data.forEach(item => {
+                                const option = document.createElement('option');
+                                option.value = item.sku;
+                                option.textContent = item.sku;
+                                skuSelect.appendChild(option);
+                            });
+                            return;
+                        }
+                        
+                        // Destroy Select2 if already initialized
+                        if ($(skuSelect).hasClass('select2-hidden-accessible')) {
+                            $(skuSelect).select2('destroy');
+                        }
+                        
+                        // Clear existing options except the first one
+                        skuSelect.innerHTML = '<option value="">Select SKU</option>';
+                        
+                        // Add SKU options
+                        data.data.forEach(item => {
+                            const option = document.createElement('option');
+                            option.value = item.sku;
+                            option.textContent = item.sku;
+                            skuSelect.appendChild(option);
+                        });
+                        
+                        // Initialize Select2 with searchable dropdown
+                        $(skuSelect).select2({
+                            theme: 'bootstrap-5',
+                            placeholder: 'Select SKU',
+                            allowClear: true,
+                            width: '100%',
+                            dropdownParent: $('#addShippingModal')
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error loading SKUs:', error);
+                    showToast('warning', 'Failed to load SKUs. Please refresh the page.');
+                }
+            }
+
+            // Save Add Shipping Master
+            async function saveAddShipping() {
+                const saveBtn = document.getElementById('saveAddShippingBtn');
+                const originalText = saveBtn.innerHTML;
+                const errorDiv = document.getElementById('addFormErrors');
+                
+                // Validate required fields
+                const skuSelect = document.getElementById('addSku');
+                let sku = '';
+                if (typeof $ !== 'undefined' && typeof $.fn.select2 !== 'undefined' && $(skuSelect).hasClass('select2-hidden-accessible')) {
+                    sku = $(skuSelect).val() ? $(skuSelect).val().trim() : '';
+                } else {
+                    sku = skuSelect ? skuSelect.value.trim() : '';
+                }
+                
+                if (!sku) {
+                    errorDiv.textContent = 'Please select SKU';
+                    errorDiv.style.display = 'block';
+                    if (typeof $ !== 'undefined' && typeof $.fn.select2 !== 'undefined' && $(skuSelect).hasClass('select2-hidden-accessible')) {
+                        $(skuSelect).select2('open');
+                    } else {
+                        skuSelect.focus();
+                    }
+                    return;
+                }
+                
+                try {
+                    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving...';
+                    saveBtn.disabled = true;
+                    errorDiv.style.display = 'none';
+                    
+                    const formData = {
+                        sku: sku,
+                        ship: document.getElementById('addShip').value.trim() || null,
+                        temu_ship: document.getElementById('addTemuShip').value.trim() || null,
+                        ebay2_ship: document.getElementById('addEbay2Ship').value.trim() || null,
+                        label_qty: document.getElementById('addLabelQty').value.trim() || null
+                    };
+                    
+                    const response = await makeRequest('/shipping-master/store', 'POST', formData);
+                    const data = await response.json();
+                    
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.message || 'Failed to save shipping data');
+                    }
+                    
+                    showToast('success', 'Shipping data added successfully!');
+                    
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('addShippingModal'));
+                    modal.hide();
+                    
+                    // Reload data
+                    loadData();
+                } catch (error) {
+                    console.error('Error saving:', error);
+                    errorDiv.textContent = error.message || 'Failed to save shipping data';
+                    errorDiv.style.display = 'block';
+                } finally {
+                    saveBtn.innerHTML = originalText;
+                    saveBtn.disabled = false;
+                }
+            }
+
             // Initialize
             loadData();
             setupExcelExport();
             setupImport();
+            setupEditButtons();
+            setupAddButton();
         });
     </script>
 @endsection
