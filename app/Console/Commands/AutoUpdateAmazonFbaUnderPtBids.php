@@ -124,7 +124,7 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
             // New SBID rule
             if($row['campaignName'] != '' && ($ub7 < 70 && $ub1 < 70)) {
                 if ($ub7 < 10 || $l7_cpc == 0) {
-                    $row['sbid'] = 0.75;
+                    $row['sbid'] = 0.50;
                 } else if ($l7_cpc > 0 && $l7_cpc < 0.30) {
                     $row['sbid'] = round($l7_cpc + 0.20, 2);
                 } else {

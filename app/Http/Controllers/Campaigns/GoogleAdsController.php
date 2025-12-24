@@ -275,6 +275,59 @@ class GoogleAdsController extends Controller
         ]);
     }
 
+    public function googleShoppingUtilizedView(){
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
+        $today = \Carbon\Carbon::now()->format('Y-m-d');
+
+        // Get all SHOPPING campaigns for combined view (no filtering by utilization)
+        $googleCampaigns = DB::table('google_ads_campaigns')
+            ->selectRaw('
+                date,
+                SUM(metrics_clicks) as clicks, 
+                SUM(metrics_cost_micros) / 1000000 as spend, 
+                SUM(ga4_sold_units) as orders, 
+                SUM(ga4_ad_sales) as sales
+            ')
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->whereDate('date', '>=', $thirtyDaysAgo)
+            ->groupBy('date')
+            ->orderBy('date', 'asc')
+            ->get()
+            ->keyBy('date');
+
+        // Fill in missing dates with zeros
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $orders = [];
+        $sales = [];
+
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+            $dates[] = $date;
+            
+            if (isset($googleCampaigns[$date])) {
+                $clicks[] = (int) $googleCampaigns[$date]->clicks;
+                $spend[] = (float) $googleCampaigns[$date]->spend;
+                $orders[] = (int) $googleCampaigns[$date]->orders;
+                $sales[] = (float) $googleCampaigns[$date]->sales;
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0.0;
+                $orders[] = 0;
+                $sales[] = 0.0;
+            }
+        }
+
+        return view('campaign.google-shopping-utilized', [
+            'dates' => $dates,
+            'clicks' => collect($clicks),
+            'spend' => collect($spend),
+            'orders' => collect($orders),
+            'sales' => collect($sales)
+        ]);
+    }
+
     public function googleShoppingAdsReport(){
         $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
         $today = \Carbon\Carbon::now()->format('Y-m-d');
@@ -1634,5 +1687,221 @@ class GoogleAdsController extends Controller
         }
 
         return array_unique($filteredCampaignIds);
+    }
+
+    public function getGoogleShoppingUtilizationCounts(Request $request)
+    {
+        try {
+            $today = now()->format('Y-m-d');
+            $skuKey = 'GOOGLE_SHOPPING_UTILIZATION_' . $today;
+            
+            $record = GoogleDataView::where('sku', $skuKey)->first();
+            
+            // Check if record exists and has valid data (not blank/zero data)
+            $isValidRecord = false;
+            if ($record) {
+                $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
+                // Check if any count is greater than 0 (valid data)
+                $totalCount = ($value['over_utilized_7ub'] ?? 0) + 
+                             ($value['under_utilized_7ub'] ?? 0) +
+                             ($value['over_utilized_7ub_1ub'] ?? 0) + 
+                             ($value['under_utilized_7ub_1ub'] ?? 0);
+                $isValidRecord = $totalCount > 0;
+            }
+            
+            // If valid record exists, return stored data
+            if ($isValidRecord && $record) {
+                $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
+                return response()->json([
+                    'over_utilized_7ub' => $value['over_utilized_7ub'] ?? 0,
+                    'under_utilized_7ub' => $value['under_utilized_7ub'] ?? 0,
+                    'over_utilized_7ub_1ub' => $value['over_utilized_7ub_1ub'] ?? 0,
+                    'under_utilized_7ub_1ub' => $value['under_utilized_7ub_1ub'] ?? 0,
+                    'status' => 200,
+                ]);
+            }
+            
+            // If no valid data, calculate from current data (same logic as command)
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get();
+
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+            $dateRanges = $this->calculateDateRanges();
+            
+            $googleCampaigns = DB::table('google_ads_campaigns')
+                ->select(
+                    'campaign_id',
+                    'campaign_name',
+                    'campaign_status',
+                    'budget_amount_micros',
+                    'date',
+                    'metrics_cost_micros',
+                    'metrics_clicks'
+                )
+                ->where('advertising_channel_type', 'SHOPPING')
+                ->whereBetween('date', [$dateRanges['L30']['start'], $dateRanges['L30']['end']])
+                ->get();
+
+            $result = [];
+            $uniqueCampaignIds = $googleCampaigns->pluck('campaign_id')->unique();
+            $campaignMap = $googleCampaigns->groupBy('campaign_id')->map(function ($campaigns) {
+                return $campaigns->first();
+            });
+
+            foreach ($uniqueCampaignIds as $campaignId) {
+                $campaign = $campaignMap[$campaignId];
+                $campaignName = $campaign->campaign_name;
+
+                $matchedPm = null;
+                foreach ($productMasters as $pm) {
+                    $sku = strtoupper(trim($pm->sku));
+                    $campaignUpper = strtoupper(trim($campaignName));
+                    $campaignUpperCleaned = rtrim($campaignUpper, '.');
+
+                    $parts = array_map(function($part) { return rtrim(trim($part), '.'); }, explode(',', $campaignUpperCleaned));
+                    $skuTrimmed = strtoupper(trim($sku));
+                    $exactMatch = in_array($skuTrimmed, $parts);
+
+                    if (!$exactMatch) {
+                        $exactMatch = $campaignUpperCleaned === $skuTrimmed;
+                    }
+
+                    if ($exactMatch) {
+                        $matchedPm = $pm;
+                        break;
+                    }
+                }
+
+                $inv = 0;
+                if ($matchedPm) {
+                    $shopify = $shopifyData[$matchedPm->sku] ?? null;
+                    $inv = $shopify->inv ?? 0;
+                }
+
+                if (floatval($inv) <= 0) {
+                    continue;
+                }
+
+                $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)
+                    ->sortByDesc('date')
+                    ->first();
+                $budget = $latestCampaign && $latestCampaign->budget_amount_micros
+                    ? $latestCampaign->budget_amount_micros / 1000000
+                    : 0;
+
+                $spend_L7 = $googleCampaigns
+                    ->where('campaign_id', $campaignId)
+                    ->whereBetween('date', [$dateRanges['L7']['start'], $dateRanges['L7']['end']])
+                    ->where('campaign_status', 'ENABLED')
+                    ->sum('metrics_cost_micros') / 1000000;
+
+                $spend_L1 = $googleCampaigns
+                    ->where('campaign_id', $campaignId)
+                    ->whereBetween('date', [$dateRanges['L1']['start'], $dateRanges['L1']['end']])
+                    ->where('campaign_status', 'ENABLED')
+                    ->sum('metrics_cost_micros') / 1000000;
+
+                $ub7 = $budget > 0 ? ($spend_L7 / ($budget * 7)) * 100 : 0;
+                $ub1 = $budget > 0 ? ($spend_L1 / ($budget * 1)) * 100 : 0;
+
+                if (!isset($result[$campaignId])) {
+                    $result[$campaignId] = [
+                        'ub7' => $ub7,
+                        'ub1' => $ub1,
+                    ];
+                }
+            }
+
+            $overUtilizedCount7ub = 0;
+            $underUtilizedCount7ub = 0;
+            $overUtilizedCount7ub1ub = 0;
+            $underUtilizedCount7ub1ub = 0;
+
+            foreach ($result as $campaignData) {
+                $ub7 = $campaignData['ub7'];
+                $ub1 = $campaignData['ub1'];
+                
+                if ($ub7 > 90) {
+                    $overUtilizedCount7ub++;
+                } elseif ($ub7 < 70) {
+                    $underUtilizedCount7ub++;
+                }
+                
+                if ($ub7 > 90 && $ub1 > 90) {
+                    $overUtilizedCount7ub1ub++;
+                } elseif ($ub7 < 70 && $ub1 < 70) {
+                    $underUtilizedCount7ub1ub++;
+                }
+            }
+
+            return response()->json([
+                'over_utilized_7ub' => $overUtilizedCount7ub,
+                'under_utilized_7ub' => $underUtilizedCount7ub,
+                'over_utilized_7ub_1ub' => $overUtilizedCount7ub1ub,
+                'under_utilized_7ub_1ub' => $underUtilizedCount7ub1ub,
+                'status' => 200,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in getGoogleShoppingUtilizationCounts: ' . $e->getMessage());
+            return response()->json([
+                'over_utilized_7ub' => 0,
+                'under_utilized_7ub' => 0,
+                'over_utilized_7ub_1ub' => 0,
+                'under_utilized_7ub_1ub' => 0,
+                'status' => 500,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getGoogleShoppingUtilizationChartData(Request $request)
+    {
+        try {
+            $condition = $request->get('condition', '7ub'); // Default to 7ub, can be '7ub-1ub'
+            
+            $data = GoogleDataView::where('sku', 'LIKE', 'GOOGLE_SHOPPING_UTILIZATION_%')
+                ->orderBy('sku', 'desc')
+                ->limit(30)
+                ->get();
+            
+            $data = $data->map(function ($item) use ($condition) {
+                $value = is_array($item->value) ? $item->value : json_decode($item->value, true);
+                
+                $date = str_replace('GOOGLE_SHOPPING_UTILIZATION_', '', $item->sku);
+                
+                if ($condition === '7ub') {
+                    return [
+                        'date' => $date,
+                        'over_utilized_7ub' => $value['over_utilized_7ub'] ?? 0,
+                        'under_utilized_7ub' => $value['under_utilized_7ub'] ?? 0,
+                    ];
+                } else {
+                    return [
+                        'date' => $date,
+                        'over_utilized_7ub_1ub' => $value['over_utilized_7ub_1ub'] ?? 0,
+                        'under_utilized_7ub_1ub' => $value['under_utilized_7ub_1ub'] ?? 0,
+                    ];
+                }
+            })
+            ->reverse()
+            ->values();
+
+            return response()->json([
+                'message' => 'Data fetched successfully',
+                'data' => $data,
+                'status' => 200,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in getGoogleShoppingUtilizationChartData: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Error fetching chart data: ' . $e->getMessage(),
+                'data' => [],
+                'status' => 500,
+            ], 500);
+        }
     }
 }
