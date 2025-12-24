@@ -153,7 +153,11 @@
                     </button>
 
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-percent"></i> Decrease
+                        <i class="fas fa-arrow-down"></i> Decrease Mode
+                    </button>
+                    
+                    <button id="increase-btn" class="btn btn-sm btn-success">
+                        <i class="fas fa-arrow-up"></i> Increase Mode
                     </button>
 
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">
@@ -224,14 +228,14 @@
                 <!-- Discount Input Box (shown when SKUs are selected) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
                     <div class="d-flex align-items-center gap-2">
-                        <label class="mb-0 fw-bold">Discount %:</label>
+                        <span id="selected-skus-count" class="fw-bold"></span>
+                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
+                            <option value="percentage">Percentage</option>
+                            <option value="value">Value ($)</option>
+                        </select>
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="Enter discount %" step="0.1" min="0" max="100" 
-                            style="width: 150px; display: inline-block;">
-                        <button id="apply-discount-btn" class="btn btn-sm btn-primary">
-                            <i class="fas fa-check"></i> Apply Discount
-                        </button>
-                        <span id="selected-skus-count" class="text-muted ms-2"></span>
+                            placeholder="Enter %" step="0.01" style="width: 100px;">
+                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                     </div>
                 </div>
                 <div id="ebay-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -357,6 +361,7 @@
         let currentSku = null;
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
+        let increaseModeActive = false; // Track increase mode state
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         
         // Toast notification function
@@ -801,20 +806,55 @@
             // Show chart button by default on first load
             $('#toggle-chart-btn').show();
 
+            // Discount type dropdown change handler
+            $('#discount-type-select').on('change', function() {
+                const discountType = $(this).val();
+                const $input = $('#discount-percentage-input');
+                
+                if (discountType === 'percentage') {
+                    $input.attr('placeholder', 'Enter %');
+                } else {
+                    $input.attr('placeholder', 'Enter $');
+                }
+            });
+
             // Decrease button toggle
             $('#decrease-btn').on('click', function() {
                 decreaseModeActive = !decreaseModeActive;
+                increaseModeActive = false; // Disable increase mode
                 const selectColumn = table.getColumn('_select');
                 
                 if (decreaseModeActive) {
                     selectColumn.show();
                     $(this).removeClass('btn-warning').addClass('btn-danger');
                     $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
+                    $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
                 } else {
                     selectColumn.hide();
                     $(this).removeClass('btn-danger').addClass('btn-warning');
-                    $(this).html('<i class="fas fa-percent"></i> Decrease');
+                    $(this).html('<i class="fas fa-arrow-down"></i> Decrease Mode');
                     selectedSkus.clear();
+                    updateSelectedCount();
+                    updateSelectAllCheckbox();
+                }
+            });
+            
+            // Increase Mode Toggle
+            $('#increase-btn').on('click', function() {
+                increaseModeActive = !increaseModeActive;
+                decreaseModeActive = false; // Disable decrease mode
+                const selectColumn = table.getColumn('_select');
+                
+                if (increaseModeActive) {
+                    selectColumn.show();
+                    $(this).removeClass('btn-success').addClass('btn-danger');
+                    $(this).html('<i class="fas fa-times"></i> Cancel Increase');
+                    $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+                } else {
+                    selectColumn.hide();
+                    selectedSkus.clear();
+                    $(this).removeClass('btn-danger').addClass('btn-success');
+                    $(this).html('<i class="fas fa-arrow-up"></i> Increase Mode');
                     updateSelectedCount();
                     updateSelectAllCheckbox();
                 }
@@ -1053,7 +1093,7 @@
                     }
                     
                     $.ajax({
-                        url: '/save-sprice-ebay',
+                        url: '/ebay-one/save-sprice',
                         method: 'POST',
                         data: {
                             sku: sku,
@@ -1532,10 +1572,11 @@
 
             // Apply discount to selected SKUs
             function applyDiscount() {
-                const discountPercent = parseFloat($('#discount-percentage-input').val());
+                const discountValue = parseFloat($('#discount-percentage-input').val());
+                const discountType = $('#discount-type-select').val();
                 
-                if (isNaN(discountPercent) || discountPercent < 0 || discountPercent > 100) {
-                    showToast('Please enter a valid discount percentage (0-100)', 'error');
+                if (isNaN(discountValue) || discountValue <= 0) {
+                    showToast('Please enter a valid discount value', 'error');
                     return;
                 }
 
@@ -1557,8 +1598,23 @@
                     if (selectedSkus.has(sku)) {
                         const currentPrice = parseFloat(row['eBay Price']) || 0;
                         if (currentPrice > 0) {
-                            const discountedPrice = currentPrice * (1 - discountPercent / 100);
-                            const newSPrice = Math.max(0.01, discountedPrice);
+                            let newSPrice;
+                            
+                            if (discountType === 'percentage') {
+                                if (increaseModeActive) {
+                                    newSPrice = currentPrice * (1 + discountValue / 100);
+                                } else {
+                                    newSPrice = currentPrice * (1 - discountValue / 100);
+                                }
+                            } else { // value
+                                if (increaseModeActive) {
+                                    newSPrice = currentPrice + discountValue;
+                                } else {
+                                    newSPrice = currentPrice - discountValue;
+                                }
+                            }
+                            
+                            newSPrice = Math.max(0.01, newSPrice);
                             
                             // Store original SPRICE value for potential revert
                             const originalSPrice = parseFloat(row['SPRICE']) || 0;
@@ -2180,8 +2236,15 @@
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
+                            const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+                            const sprice = parseFloat(value) || 0;
                             
                             if (!value) return '';
+                            
+                            // If SPRICE matches eBay Price, show blank
+                            if (sprice === ebayPrice) {
+                                return '<span style="color: #999; font-style: italic;">-</span>';
+                            }
                             
                             const formattedValue = `$${parseFloat(value).toFixed(2)}`;
                             

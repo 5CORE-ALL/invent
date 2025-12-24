@@ -2502,11 +2502,9 @@
                                         <a href="{{ route('listing.ebayTwo') }}">Listing Ebay 2</a>
                                     </li>
 
-                                    <li>
-                                        <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Decrease </a>
-                                    </li>
+                                 
 
-                                   <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Decresase</a></li>
+                                   <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Pricing Decresase</a></li>
                                     <li>
                                         <a href="{{ route('ebay2.pmt.ads') }}">PMT Ads</a>
                                     </li>

@@ -838,8 +838,8 @@ class EbayController extends Controller
         $spriceFloat = floatval($sprice);
         $profit = ($spriceFloat * $percentage - $lp - $ship);
 
-        // Calculate SGPFT first
-        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * 0.86 - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
+        // Calculate SGPFT first - use marketplace percentage instead of hardcoded 0.86
+        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
         
         // Get AD% from the product
         $adPercent = 0;
@@ -871,10 +871,10 @@ class EbayController extends Controller
         
         // SPFT = SGPFT - AD%
         $spft = round($sgpft - $adPercent, 2);
-        // SROI = ((SPRICE * (0.86 - AD%/100) - ship - lp) / lp) * 100
+        // SROI = ((SPRICE * (percentage - AD%/100) - ship - lp) / lp) * 100
         $adDecimal = $adPercent / 100;
         $sroi = round(
-            $lp > 0 ? (($spriceFloat * (0.86 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+            $lp > 0 ? (($spriceFloat * ($percentage - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
             2
         );
         Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);

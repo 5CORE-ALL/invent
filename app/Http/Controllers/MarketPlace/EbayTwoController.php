@@ -292,6 +292,7 @@ class EbayTwoController extends Controller
             // NR & Hide
             $row['NR'] = "";
             $row['SPRICE'] = null;
+            $row['SGPFT'] = null;
             $row['SPFT'] = null;
             $row['SROI'] = null;
             $row['Listed'] = null;
@@ -305,6 +306,7 @@ class EbayTwoController extends Controller
                 if (is_array($raw)) {
                     $row['NR'] = $raw['NR'] ?? null;
                     $row['SPRICE'] = $raw['SPRICE'] ?? null;
+                    $row['SGPFT'] = $raw['SGPFT'] ?? null;
                     $row['SPFT'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;

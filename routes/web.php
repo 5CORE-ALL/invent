@@ -1065,7 +1065,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-pricing-decrease', [EbayController::class, 'ebayPricingIncreaseDecrease'])->name('ebay.pricing.decrease');
     Route::get('/ebay-pricing-increase', action: [EbayController::class, 'ebayPricingIncrease'])->name('ebay.pricing.inc');
     Route::post('/save-nr-ebay', [EbayController::class, 'saveNrToDatabase'])->name('ebay.save.nr');
-    Route::post('/save-sprice-ebay', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay.save.sprice');
+    Route::post('/save-sprice-ebay', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save.sprice');
     Route::post('/push-ebay-price-tabulator', [EbayController::class, 'pushEbayPrice'])->name('ebay.push.price.tabulator');
     Route::post('/update-ebay-sprice-status', [EbayController::class, 'updateEbaySpriceStatus'])->name('ebay.update.sprice.status');
     Route::post('/update-listed-live-ebay', [EbayController::class, 'updateListedLive'])->name('ebay.update.listed.live');
@@ -1074,7 +1074,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-low-visibility-view', action: [EbayLowVisibilityController::class, 'ebayLowVisibility'])->name('ebay.low.visibility.view');
     Route::get('/ebay2-low-visibility-view', action: [Ebay2LowVisibilityController::class, 'ebay2LowVisibility'])->name('ebay2.low.visibility.view');
     Route::get('/ebay3-low-visibility-view', action: [Ebay3LowVisibilityController::class, 'ebay3LowVisibility'])->name('ebay3.low.visibility.view');
-Route::post('/save-sprice-ebay', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save.sprice');
     //Listing Audit ebay2
     Route::get('/ebay2-tabulator-view', [EbayTwoController::class, 'ebay2TabulatorView'])->name('ebay2.tabulator.view');
     Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
