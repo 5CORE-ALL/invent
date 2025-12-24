@@ -27,7 +27,12 @@ return new class extends Migration
         Schema::table('product_master', function (Blueprint $table) {
             // Add category_id column if it doesn't exist
             if (!Schema::hasColumn('product_master', 'category_id')) {
-                $table->unsignedBigInteger('category_id')->nullable()->after('category');
+                // Determine position - after 'category' if it exists, otherwise after 'sku'
+                if (Schema::hasColumn('product_master', 'category')) {
+                    $table->unsignedBigInteger('category_id')->nullable()->after('category');
+                } else {
+                    $table->unsignedBigInteger('category_id')->nullable()->after('sku');
+                }
             }
             
             // Add foreign key for category_id (check if it doesn't already exist)
@@ -63,19 +68,28 @@ return new class extends Migration
                     $fkName = $existingFk[0]->CONSTRAINT_NAME;
                     if ($existingFk[0]->REFERENCED_TABLE_NAME !== 'product_groups') {
                         $table->dropForeign([$fkName]);
-                    } else {
-                        // Foreign key already points to product_groups, skip
-                        return;
+                        // Add new foreign key after dropping old one
+                        $table->foreign('group_id')
+                            ->references('id')
+                            ->on('product_groups')
+                            ->onDelete('set null');
                     }
+                    // If foreign key already points to product_groups, do nothing (skip)
+                } else {
+                    // No foreign key exists, add new one
+                    $table->foreign('group_id')
+                        ->references('id')
+                        ->on('product_groups')
+                        ->onDelete('set null');
                 }
-                // Add new foreign key
-                $table->foreign('group_id')
-                    ->references('id')
-                    ->on('product_groups')
-                    ->onDelete('set null');
             } else {
                 // Add group_id as foreign key if it doesn't exist
-                $table->unsignedBigInteger('group_id')->nullable()->after('group');
+                // Determine position - after 'group' if it exists, otherwise after 'sku'
+                if (Schema::hasColumn('product_master', 'group')) {
+                    $table->unsignedBigInteger('group_id')->nullable()->after('group');
+                } else {
+                    $table->unsignedBigInteger('group_id')->nullable()->after('sku');
+                }
                 $table->foreign('group_id')
                     ->references('id')
                     ->on('product_groups')
