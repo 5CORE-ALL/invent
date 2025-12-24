@@ -1075,6 +1075,26 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay2-low-visibility-view', action: [Ebay2LowVisibilityController::class, 'ebay2LowVisibility'])->name('ebay2.low.visibility.view');
     Route::get('/ebay3-low-visibility-view', action: [Ebay3LowVisibilityController::class, 'ebay3LowVisibility'])->name('ebay3.low.visibility.view');
 
+    //Listing Audit ebay2
+    Route::get('/ebay2-tabulator-view', [EbayTwoController::class, 'ebay2TabulatorView'])->name('ebay2.tabulator.view');
+    Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
+    Route::get('/ebay2-metrics-history', [EbayTwoController::class, 'getMetricsHistory'])->name('ebay2.metrics.history');
+    Route::get('/ebay2-ads-spend', [EbayTwoController::class, 'getEbay2AdsSpend'])->name('ebay2.ads.spend');
+    Route::get('/get-ebay2-column-visibility', [EbayTwoController::class, 'getEbay2ColumnVisibility'])->name('ebay2.column.visibility.get');
+    Route::post('/set-ebay2-column-visibility', [EbayTwoController::class, 'setEbay2ColumnVisibility'])->name('ebay2.column.visibility.set');
+    Route::get('/export-ebay2-pricing-data', [EbayTwoController::class, 'exportEbay2PricingData'])->name('ebay2.export');
+    Route::post('/save-ebay2-nr', [EbayTwoController::class, 'saveNrToDatabase'])->name('ebay2.save.nr');
+    Route::post('/save-ebay2-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay2.save.sprice');
+    Route::post('/push-ebay2-price', [EbayTwoController::class, 'pushEbay2Price'])->name('ebay2.push.price');
+    Route::post('/update-ebay2-sprice-status', [EbayTwoController::class, 'updateEbay2SpriceStatus'])->name('ebay2.update.sprice.status');
+    Route::post('/update-listed-live-ebay2', [EbayTwoController::class, 'updateListedLive'])->name('ebay2.update.listed.live');
+    Route::get('/ebay2/total-sales/save-data', [EbayTwoController::class, 'getEbay2TotsalSaleDataSave'])->name('ebay2.total-sales.save-data');
+    Route::post('/ebay2-analytics/import', [EbayTwoController::class, 'importEbayTwoAnalytics'])->name('ebay2.analytics.import');
+    Route::get('/ebay2-analytics/export', [EbayTwoController::class, 'exportEbayTwoAnalytics'])->name('ebay2.analytics.export');
+    Route::get('/ebay2-analytics/sample', [EbayTwoController::class, 'downloadSample'])->name('ebay2.analytics.sample');
+    Route::get('/ebay2-pricing-cvr', [EbayTwoController::class, 'EbayTwoPricingCVR'])->name('ebay2.pricing.cvr');
+    Route::get('/ebay2', [EbayTwoController::class, 'overallEbay'])->name('ebay2');
+
 
     //Listing Audit Macy
     Route::get('/listing-macys', [ListingMacysController::class, 'listingMacys'])->name('listing.macys');
