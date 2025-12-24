@@ -148,6 +148,7 @@ return [
     ['value' => 'listing_audit_doba', 'text' => 'Listing Audit Doba', 'group' => 'Marketplace'],
 
     ['value' => 'ebayTwo', 'text' => 'Ebay 2', 'group' => 'Marketplace'],
+    ['value' => 'ebay2_tabulator_view', 'text' => 'Ebay 2 Pricing', 'group' => 'Marketplace'],
     ['value' => 'listing_ebayTwo', 'text' => 'Listing Ebay 2', 'group' => 'Marketplace'],
 
     ['value' => 'ebayThree', 'text' => 'Ebay 3', 'group' => 'Marketplace'],
