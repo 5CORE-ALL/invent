@@ -568,6 +568,79 @@
         .missing-data-cell {
             position: relative;
         }
+
+        /* Verified Data Dropdown Styling */
+        .verified-data-dropdown {
+            min-width: 140px;
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 2px solid;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            outline: none;
+        }
+
+        /* Not Verified state - Red (default) */
+        .verified-data-dropdown.not-verified {
+            border-color: #dc3545;
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .verified-data-dropdown.not-verified:hover {
+            background-color: #c82333;
+            border-color: #c82333;
+        }
+
+        .verified-data-dropdown.not-verified:focus {
+            box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25);
+        }
+
+        /* Verified state - Green */
+        .verified-data-dropdown.verified {
+            border-color: #28a745;
+            background-color: #28a745;
+            color: white;
+        }
+
+        .verified-data-dropdown.verified:hover {
+            background-color: #218838;
+            border-color: #218838;
+        }
+
+        .verified-data-dropdown.verified:focus {
+            box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.25);
+        }
+
+        /* Dropdown options styling */
+        .verified-data-dropdown option {
+            padding: 8px;
+            background-color: white;
+            color: #333;
+        }
+
+        .verified-data-dropdown option[value="0"] {
+            color: #dc3545;
+            font-weight: 500;
+        }
+
+        .verified-data-dropdown option[value="1"] {
+            color: #28a745;
+            font-weight: 500;
+        }
+
+        /* Add green background to the cell when verified */
+        td:has(.verified-data-dropdown.verified) {
+            background-color: rgba(40, 167, 69, 0.1) !important;
+        }
+
+        /* Add red background to the cell when not verified */
+        td:has(.verified-data-dropdown.not-verified) {
+            background-color: rgba(220, 53, 69, 0.05) !important;
+        }
     </style>
 @endsection
 
@@ -1023,7 +1096,7 @@
                                                     <label for="w" class="form-label fw-bold"
                                                         style="color: #4A5568;">W</label>
                                                     <input type="text" class="form-control" id="w"
-                                                        placeholder="Enter W"
+                                                        placeholder="Enter W (inches)"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                     <div class="invalid-feedback"></div>
                                                 </div>
@@ -1033,7 +1106,7 @@
                                                     <label for="l" class="form-label fw-bold"
                                                         style="color: #4A5568;">L</label>
                                                     <input type="text" class="form-control" id="l"
-                                                        placeholder="Enter L"
+                                                        placeholder="Enter L (inches)"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                     <div class="invalid-feedback"></div>
                                                 </div>
@@ -1047,7 +1120,7 @@
                                                     <label for="h" class="form-label fw-bold"
                                                         style="color: #4A5568;">H</label>
                                                     <input type="text" class="form-control" id="h"
-                                                        placeholder="Enter H"
+                                                        placeholder="Enter H (inches)"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                     <div class="invalid-feedback"></div>
                                                 </div>
@@ -1777,7 +1850,7 @@
                 const allColumns = [
                     "Image", "Parent", "SKU", "UPC", "Status", "INV", "OV L30", "Unit", "LP", "CP$",
                     "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
-                    "CBM", "L(2)", "Action"
+                    "CBM", "L(2)", "Verified Data", "Action"
                 ];
 
                 // Filter to get visible columns
@@ -1927,6 +2000,10 @@
                                     cell.innerHTML = item.l2_url ?
                                         `<a href="${escapeHtml(item.l2_url)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` :
                                         '-';
+                                    break;
+                                case "Verified Data":
+                                    cell.className = 'text-center';
+                                    cell.textContent = '-';
                                     break;
                                 case "Action":
                                     cell.className = 'text-center';
@@ -2254,6 +2331,19 @@
                                     cell.innerHTML = `<a href="${escapeHtml(item.l2_url)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>`;
                                 }
                                 break;
+                            case "Verified Data":
+                                cell.className = 'text-center';
+                                const isVerified = item.verified_data === 1 || item.verified_data === true || (item.Values && item.Values.verified_data === 1) || (item.Values && item.Values.verified_data === true);
+                                const verifiedClass = isVerified ? 'verified' : 'not-verified';
+                                const verifiedValue = isVerified ? '1' : '0';
+                                cell.innerHTML = `
+                                    <select class="verified-data-dropdown ${verifiedClass}" 
+                                        data-sku="${escapeHtml(item.SKU)}">
+                                        <option value="0" ${!isVerified ? 'selected' : ''}>Not Verified</option>
+                                        <option value="1" ${isVerified ? 'selected' : ''}>Verified</option>
+                                    </select>
+                                `;
+                                break;
                             case "Action":
                                 cell.className = 'text-center';
                                 cell.innerHTML = `
@@ -2288,7 +2378,8 @@
                     setupDeleteButtons();
                 }
 
-
+                // Setup verified data checkboxes
+                setupVerifiedDataCheckboxes();
 
                 // bindRowCheckboxes();
                 bindSelectAllCheckbox();
@@ -2904,7 +2995,7 @@
                 const allColumns = [
                     "Images", "Parent", "SKU", "UPC","STATUS", "INV", "OV L30", "Unit", "LP", "CP$",
                     "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
-                    "CBM", "L(2)", "Action"
+                    "CBM", "L(2)", "Verified Data", "Action"
                 ];
 
                 // Add only columns that are not in the hidden list
@@ -2920,7 +3011,7 @@
                     </div>
                     <input type="text" id="${colName.toLowerCase()}Search" class="form-control-sm" placeholder="Search ${colName}">
                 `;
-                        } else if (colName === "Action") {
+                        } else if (colName === "Action" || colName === "Verified Data") {
                             th.textContent = colName;
                         } else {
                             // Add filter dropdown for missing data
@@ -3029,18 +3120,10 @@
 
             // Setup missing data filter event listeners
             function setupMissingDataFilters() {
-                // Remove existing event listeners by cloning elements
+                // Apply styling to all existing filters
                 document.querySelectorAll('.missing-data-filter').forEach(filter => {
-                    const newFilter = filter.cloneNode(true);
-                    filter.parentNode.replaceChild(newFilter, filter);
-                    
                     // Apply initial styling
-                    updateFilterStyling(newFilter);
-                    
-                    newFilter.addEventListener('change', function() {
-                        updateFilterStyling(this);
-                        applyFilters();
-                    });
+                    updateFilterStyling(filter);
                 });
             }
 
@@ -3310,112 +3393,106 @@
                 });
             }
             
-            function setupSearch() {
-                // Centralized filter logic that reads current values from DOM and filters tableData
-                function applyFilters() {
-                    const parentValue = (document.getElementById('parentSearch')?.value || '').toLowerCase().trim();
-                    const skuValue = (document.getElementById('skuSearch')?.value || '').toLowerCase().trim();
-                    const globalValue = (document.getElementById('customSearch')?.value || '').toLowerCase().trim();
+            // Global applyFilters function that can be called from anywhere
+            function applyFilters() {
+                const parentValue = (document.getElementById('parentSearch')?.value || '').toLowerCase().trim();
+                const skuValue = (document.getElementById('skuSearch')?.value || '').toLowerCase().trim();
+                const globalValue = (document.getElementById('customSearch')?.value || '').toLowerCase().trim();
 
-                    let filteredData = [...tableData];
+                let filteredData = [...tableData];
 
-                    if (parentValue) {
-                        filteredData = filteredData.filter(item =>
-                            ((item.Parent || item.parent || '') + '').toLowerCase().includes(parentValue)
-                        );
+                if (parentValue) {
+                    filteredData = filteredData.filter(item =>
+                        ((item.Parent || item.parent || '') + '').toLowerCase().includes(parentValue)
+                    );
+                }
+
+                if (skuValue) {
+                    filteredData = filteredData.filter(item =>
+                        ((item.SKU || item.sku || '') + '').toLowerCase().includes(skuValue)
+                    );
+                }
+
+                if (globalValue) {
+                    filteredData = filteredData.filter(item =>
+                        Object.values(item).some(value =>
+                            String(value || '').toLowerCase().includes(globalValue)
+                        )
+                    );
+                }
+
+                // Check if any missing data filter is active
+                let hasMissingDataFilter = false;
+                document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                    if (filter.value === 'missing') {
+                        hasMissingDataFilter = true;
                     }
+                });
 
-                    if (skuValue) {
-                        filteredData = filteredData.filter(item =>
-                            ((item.SKU || item.sku || '') + '').toLowerCase().includes(skuValue)
-                        );
-                    }
-
-                    if (globalValue) {
-                        filteredData = filteredData.filter(item =>
-                            Object.values(item).some(value =>
-                                String(value || '').toLowerCase().includes(globalValue)
-                            )
-                        );
-                    }
-
-                    // Check if any missing data filter is active
-                    let hasMissingDataFilter = false;
-                    document.querySelectorAll('.missing-data-filter').forEach(filter => {
-                        if (filter.value === 'missing') {
-                            hasMissingDataFilter = true;
-                        }
+                // Exclude parent rows when any missing data filter is active
+                if (hasMissingDataFilter) {
+                    filteredData = filteredData.filter(item => {
+                        // Exclude parent rows (SKU contains 'PARENT')
+                        return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
                     });
+                }
 
-                    // Exclude parent rows when any missing data filter is active
-                    if (hasMissingDataFilter) {
+                // Apply missing data filters for each column
+                document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                    const filterValue = filter.value;
+                    if (filterValue === 'missing') {
+                        const columnName = filter.getAttribute('data-column');
+                        if (!columnName) return; // Skip if no column name
+                        const fieldName = getFieldNameFromColumn(columnName);
+                        
                         filteredData = filteredData.filter(item => {
-                            // Exclude parent rows (SKU contains 'PARENT')
-                            return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
-                        });
-                    }
-
-                    // Apply missing data filters for each column
-                    document.querySelectorAll('.missing-data-filter').forEach(filter => {
-                        const filterValue = filter.value;
-                        if (filterValue === 'missing') {
-                            const columnName = filter.getAttribute('data-column');
-                            const fieldName = getFieldNameFromColumn(columnName);
+                            let value = null;
                             
-                            filteredData = filteredData.filter(item => {
-                                let value = null;
-                                
-                                // Get value based on field name
-                                if (fieldName === 'image_path') {
-                                    value = item.image_path;
-                                } else if (fieldName === 'status') {
-                                    value = item.status;
-                                } else if (fieldName === 'unit') {
-                                    value = item.unit;
-                                } else if (fieldName === 'Parent') {
-                                    value = item.Parent;
-                                } else if (fieldName === 'SKU') {
-                                    value = item.SKU;
-                                } else if (fieldName === 'shopify_inv') {
-                                    value = item.shopify_inv;
-                                } else if (fieldName === 'shopify_quantity') {
-                                    value = item.shopify_quantity;
-                                } else {
-                                    // Get from Values array
-                                    let values = {};
-                                    if (item.Values) {
-                                        if (Array.isArray(item.Values)) {
-                                            values = item.Values;
-                                        } else if (typeof item.Values === 'string') {
-                                            try {
-                                                values = JSON.parse(item.Values);
-                                            } catch (e) {
-                                                values = {};
-                                            }
-                                        } else {
-                                            values = item.Values;
+                            // First, try to get value directly from item object
+                            if (item[fieldName] !== undefined && item[fieldName] !== null) {
+                                value = item[fieldName];
+                            } else {
+                                // Get from Values JSON if available
+                                let values = {};
+                                if (item.Values) {
+                                    if (Array.isArray(item.Values)) {
+                                        values = item.Values;
+                                    } else if (typeof item.Values === 'string') {
+                                        try {
+                                            values = JSON.parse(item.Values);
+                                        } catch (e) {
+                                            values = {};
                                         }
+                                    } else {
+                                        values = item.Values;
                                     }
+                                }
+                                
+                                // Try to get from Values JSON
+                                if (values[fieldName] !== undefined && values[fieldName] !== null) {
                                     value = values[fieldName];
                                 }
-                                
-                                // Determine if numeric based on column
-                                const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'L', 'W', 'H', 'CBM', 'UPC', 'INV', 'OV L30'];
-                                const isNumeric = numericColumns.includes(columnName);
-                                
-                                // Special handling for dimensions and weights - treat 0 as missing
-                                if (isNumeric && ['l', 'w', 'h', 'wt_act', 'wt_decl', 'label_qty', 'moq'].includes(fieldName)) {
-                                    const num = parseFloat(value);
-                                    return isDataMissing(value, true) || (num === 0 || num === '0');
-                                }
-                                
-                                return isDataMissing(value, isNumeric);
-                            });
-                        }
-                    });
+                            }
+                            
+                            // Determine if numeric based on column
+                            const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'L', 'W', 'H', 'CBM', 'UPC', 'INV', 'OV L30'];
+                            const isNumeric = numericColumns.includes(columnName);
+                            
+                            // Special handling for dimensions and weights - treat 0 as missing
+                            if (isNumeric && ['l', 'w', 'h', 'wt_act', 'wt_decl', 'label_qty', 'moq'].includes(fieldName)) {
+                                const num = parseFloat(value);
+                                return isDataMissing(value, true) || (num === 0 || num === '0');
+                            }
+                            
+                            return isDataMissing(value, isNumeric);
+                        });
+                    }
+                });
 
-                    renderTable(filteredData);
-                }
+                renderTable(filteredData);
+            }
+
+            function setupSearch() {
 
                 // Use event delegation so listeners survive header re-rendering
                 document.addEventListener('input', debounce(function (e) {
@@ -3429,6 +3506,7 @@
                 // Listen for missing data filter changes
                 document.addEventListener('change', function (e) {
                     if (e.target && e.target.classList.contains('missing-data-filter')) {
+                        updateFilterStyling(e.target);
                         applyFilters();
                     }
                 });
@@ -3462,11 +3540,16 @@
 
             // Function to get columns to hide for current user
             function getUserHiddenColumns() {
+                // Always hide these columns
+                const alwaysHiddenColumns = ['WT ACT', 'WT DECL', 'W', 'H', 'L', 'Label QTY', 'CBM', 'SHIP', 'TEMU SHIP', 'EBAY2 SHIP'];
+                
                 // Default columns to hide if user has no specific permissions
-                const defaultHiddenColumns = [];
+                const defaultHiddenColumns = [...alwaysHiddenColumns];
 
                 if (currentUserEmail && emailColumnMap[currentUserEmail]) {
-                    return emailColumnMap[currentUserEmail];
+                    // Merge user-specific hidden columns with always hidden columns
+                    const userHiddenColumns = emailColumnMap[currentUserEmail];
+                    return [...new Set([...alwaysHiddenColumns, ...userHiddenColumns])];
                 }
 
                 return defaultHiddenColumns;
@@ -3477,9 +3560,9 @@
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     const hiddenColumns = getUserHiddenColumns();
                     const allColumns = [
-                        "Parent", "SKU", "UPC", "INV", "OV L30", "STATUS", "Unit", "LP", "CP$",
+                        "SKU", "UPC", "INV", "OV L30", "STATUS", "Unit", "LP", "CP$",
                         "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "INITIAL QUANTITY", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
-                        "CBM", "Image", "L(2)", "DC", "Pcs/Box", "L1", "B", "H1", "Weight", "MSRP", "MAP", "UPC"
+                        "CBM", "Image", "L(2)", "Verified Data", "DC", "Pcs/Box", "L1", "B", "H1", "Weight", "MSRP", "MAP", "UPC"
                     ];
 
                     // Filter out hidden columns
@@ -3487,9 +3570,6 @@
 
                     // Column definitions with their data keys
                     const columnDefs = {
-                        "Parent": {
-                            key: "Parent"
-                        },
                         "SKU": {
                             key: "SKU"
                         },
@@ -3559,6 +3639,9 @@
                         "L(2)": {
                             key: "l2_url"
                         },
+                        "Verified Data": {
+                            key: "verified_data"
+                        },
                         "DC": {
                             key: "dc"
                         },
@@ -3602,8 +3685,13 @@
                             // Add header row
                             wsData.push(visibleColumns);
 
-                            // Add data rows
+                            // Add data rows - exclude parent SKUs
                             tableData.forEach(item => {
+                                // Skip parent SKUs (SKU contains "PARENT")
+                                if (item.SKU && String(item.SKU).toUpperCase().includes('PARENT')) {
+                                    return;
+                                }
+                                
                                 const row = [];
                                 visibleColumns.forEach(col => {
                                     const colDef = columnDefs[col];
@@ -3611,9 +3699,12 @@
                                         const key = colDef.key;
                                         let value = '';
                                         
-                                        // Special handling for image_path - check both direct property and Values
+                                        // Special handling for image_path and verified_data - check both direct property and Values
                                         if (key === "image_path") {
                                             value = item.image_path || (item.Values && item.Values.image_path) || '';
+                                        } else if (key === "verified_data") {
+                                            const verified = item.verified_data !== undefined ? item.verified_data : (item.Values && item.Values.verified_data);
+                                            value = verified === 1 || verified === true ? 'Yes' : 'No';
                                         } else {
                                             value = item[key] !== undefined && item[key] !== null ? item[key] : '';
                                         }
@@ -3644,7 +3735,7 @@
                             // Set column widths
                             const wscols = visibleColumns.map(col => {
                                 // Adjust width based on column type
-                                if (["Parent", "SKU"].includes(col)) {
+                                if (["SKU"].includes(col)) {
                                     return {
                                         wch: 20
                                     }; // Wider for text columns
@@ -4841,28 +4932,17 @@
                     const filterValue = filter.value;
                     if (filterValue === 'missing') {
                         const columnName = filter.getAttribute('data-column');
+                        if (!columnName) return; // Skip if no column name
                         const fieldName = getFieldNameFromColumn(columnName);
                         
                         filteredData = filteredData.filter(item => {
                             let value = null;
                             
-                            // Get value based on field name
-                            if (fieldName === 'image_path') {
-                                value = item.image_path;
-                            } else if (fieldName === 'status') {
-                                value = item.status;
-                            } else if (fieldName === 'unit') {
-                                value = item.unit;
-                            } else if (fieldName === 'Parent') {
-                                value = item.Parent;
-                            } else if (fieldName === 'SKU') {
-                                value = item.SKU;
-                            } else if (fieldName === 'shopify_inv') {
-                                value = item.shopify_inv;
-                            } else if (fieldName === 'shopify_quantity') {
-                                value = item.shopify_quantity;
+                            // First, try to get value directly from item object
+                            if (item[fieldName] !== undefined && item[fieldName] !== null) {
+                                value = item[fieldName];
                             } else {
-                                // Get from Values array
+                                // Get from Values JSON if available
                                 let values = {};
                                 if (item.Values) {
                                     if (Array.isArray(item.Values)) {
@@ -4877,7 +4957,11 @@
                                         values = item.Values;
                                     }
                                 }
-                                value = values[fieldName];
+                                
+                                // Try to get from Values JSON
+                                if (values[fieldName] !== undefined && values[fieldName] !== null) {
+                                    value = values[fieldName];
+                                }
                             }
                             
                             // Determine if numeric based on column
@@ -5809,6 +5893,92 @@
                                 confirmModal.remove(), 500));
                         });
                     });
+                });
+            }
+
+            // Setup verified data dropdowns
+            function setupVerifiedDataCheckboxes() {
+                // Use event delegation for dynamically created dropdowns
+                document.addEventListener('change', function(e) {
+                    if (e.target && e.target.classList.contains('verified-data-dropdown')) {
+                        const dropdown = e.target;
+                        const sku = dropdown.getAttribute('data-sku');
+                        const isVerified = parseInt(dropdown.value) === 1;
+                        const verifiedValue = isVerified ? 1 : 0;
+
+                        // Update class immediately for visual feedback
+                        if (isVerified) {
+                            dropdown.classList.remove('not-verified');
+                            dropdown.classList.add('verified');
+                        } else {
+                            dropdown.classList.remove('verified');
+                            dropdown.classList.add('not-verified');
+                        }
+
+                        // Disable dropdown while saving
+                        dropdown.disabled = true;
+
+                        // Send update request
+                        makeRequest('/product_master/update-verified', 'POST', {
+                            sku: sku,
+                            verified_data: verifiedValue
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                // Update local data
+                                const product = productMap.get(sku);
+                                if (product) {
+                                    if (product.Values && typeof product.Values === 'object') {
+                                        product.Values.verified_data = verifiedValue;
+                                    } else {
+                                        if (!product.Values) product.Values = {};
+                                        product.Values.verified_data = verifiedValue;
+                                    }
+                                    product.verified_data = verifiedValue;
+                                }
+                                
+                                // Update tableData
+                                const tableItem = tableData.find(item => item.SKU === sku);
+                                if (tableItem) {
+                                    if (tableItem.Values && typeof tableItem.Values === 'object') {
+                                        tableItem.Values.verified_data = verifiedValue;
+                                    } else {
+                                        if (!tableItem.Values) tableItem.Values = {};
+                                        tableItem.Values.verified_data = verifiedValue;
+                                    }
+                                    tableItem.verified_data = verifiedValue;
+                                }
+                            } else {
+                                // Revert dropdown state on error
+                                dropdown.value = isVerified ? '0' : '1';
+                                if (isVerified) {
+                                    dropdown.classList.remove('verified');
+                                    dropdown.classList.add('not-verified');
+                                } else {
+                                    dropdown.classList.remove('not-verified');
+                                    dropdown.classList.add('verified');
+                                }
+                                showToast('danger', data.message || 'Failed to update verified status');
+                            }
+                        })
+                        .catch(error => {
+                            // Revert dropdown state on error
+                            dropdown.value = isVerified ? '0' : '1';
+                            if (isVerified) {
+                                dropdown.classList.remove('verified');
+                                dropdown.classList.add('not-verified');
+                            } else {
+                                dropdown.classList.remove('not-verified');
+                                dropdown.classList.add('verified');
+                            }
+                            showToast('danger', 'Failed to update verified status');
+                            console.error('Error updating verified data:', error);
+                        })
+                        .finally(() => {
+                            dropdown.disabled = false;
+                        });
+                    }
                 });
             }
 

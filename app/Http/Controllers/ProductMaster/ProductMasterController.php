@@ -596,6 +596,59 @@ class ProductMasterController extends Controller
     }
 
     /**
+     * Update verified data status for a product
+     */
+    public function updateVerified(Request $request)
+    {
+        $request->headers->set('Accept', 'application/json');
+
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'verified_data' => 'required|integer|in:0,1'
+        ]);
+
+        try {
+            $product = ProductMaster::where('sku', $validated['sku'])->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found'
+                ], 404);
+            }
+
+            // Get current Values
+            $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            // Update verified_data in Values array
+            $values['verified_data'] = $validated['verified_data'];
+
+            // Save updated Values
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Verified status updated successfully',
+                'data' => [
+                    'sku' => $product->sku,
+                    'verified_data' => $validated['verified_data']
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error updating verified data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating verified status: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Check if a value is considered missing
      */
     private function isDataMissing($value, $isNumeric = false, $field = null)
