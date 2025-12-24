@@ -17,9 +17,11 @@ use App\Models\ADVMastersData;
 use App\Models\Ebay2Metric;
 use App\Models\EbayTwoListingStatus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Carbon\Carbon;
 
 class EbayTwoController extends Controller
 {
@@ -59,6 +61,11 @@ class EbayTwoController extends Controller
             'demo' => $demo,
             'ebayTwoPercentage' => $percentage
         ]);
+    }
+
+    public function ebay2TabulatorView(Request $request)
+    {
+        return view("market-places.ebay2_tabulator_view");
     }
 
     public function getEbay2TotsalSaleDataSave(Request $request)
@@ -155,10 +162,9 @@ class EbayTwoController extends Controller
                 ($adMetricsBySku[$sku][$range]['Sls'] ?? 0) + (int) $report->sales;
         }
 
-        // 5. Get percentage and ad_updates from MarketplacePercentage
-        $marketplaceData = MarketplacePercentage::where("marketplace", "EbayTwo")->first();
-        $percentage = ($marketplaceData->percentage ?? 100) / 100;
-        $adUpdates = $marketplaceData->ad_updates ?? 0;
+        // 5. Use fixed percentage of 0.78 (78%) for eBay2
+        $percentage = 0.78;
+        $pmtAds = 0; // No PMT ads updates tracking for eBay2
 
         // 6. Build Result
         $result = [];
@@ -279,7 +285,7 @@ class EbayTwoController extends Controller
             $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
             
             $row["percentage"] = $percentage;
-            $row["ad_updates"] = $adUpdates;
+            $row["pmt_ads"] = $pmtAds;
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
 
@@ -648,5 +654,342 @@ class EbayTwoController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    public function getEbay2ColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "ebay2_tabulator_column_visibility_{$userId}";
+        
+        $visibility = Cache::get($key, []);
+        
+        return response()->json($visibility);
+    }
+
+    public function setEbay2ColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "ebay2_tabulator_column_visibility_{$userId}";
+        
+        $visibility = $request->input('visibility', []);
+        
+        Cache::put($key, $visibility, now()->addDays(365));
+        
+        return response()->json(['success' => true]);
+    }
+
+    public function exportEbay2PricingData(Request $request)
+    {
+        try {
+            $response = $this->getViewEbayData($request);
+            $data = json_decode($response->getContent(), true);
+            $ebayData = $data['data'] ?? [];
+
+            // Get selected columns from request
+            $selectedColumns = [];
+            if ($request->has('columns')) {
+                $columnsJson = $request->input('columns');
+                $selectedColumns = json_decode($columnsJson, true) ?: [];
+            }
+
+            // Column mapping: field => [header_name, data_extractor]
+            $columnMap = [
+                'Parent' => ['Parent', function($item) { return $item['Parent'] ?? ''; }],
+                '(Child) sku' => ['SKU', function($item) { return $item['(Child) sku'] ?? ''; }],
+                'INV' => ['INV', function($item) { return $item['INV'] ?? 0; }],
+                'L30' => ['L30', function($item) { return $item['L30'] ?? 0; }],
+                'E Dil%' => ['Dil%', function($item) { 
+                    return ($item['INV'] > 0) ? round(($item['L30'] / $item['INV']) * 100, 2) : 0; 
+                }],
+                'eBay L30' => ['eBay L30', function($item) { return $item['eBay L30'] ?? 0; }],
+                'eBay L60' => ['eBay L60', function($item) { return $item['eBay L60'] ?? 0; }],
+                'eBay Price' => ['eBay Price', function($item) { return number_format($item['eBay Price'] ?? 0, 2); }],
+                'AD_Spend_L30' => ['AD Spend L30', function($item) { return number_format($item['AD_Spend_L30'] ?? 0, 2); }],
+                'AD_Sales_L30' => ['AD Sales L30', function($item) { return number_format($item['AD_Sales_L30'] ?? 0, 2); }],
+                'AD_Units_L30' => ['AD Units L30', function($item) { return $item['AD_Units_L30'] ?? 0; }],
+                'AD%' => ['AD%', function($item) { return number_format(($item['AD%'] ?? 0) * 100, 2); }],
+                'TacosL30' => ['TACOS L30', function($item) { return number_format(($item['TacosL30'] ?? 0) * 100, 2); }],
+                'T_Sale_l30' => ['Total Sales L30', function($item) { return number_format($item['T_Sale_l30'] ?? 0, 2); }],
+                'Total_pft' => ['Total Profit', function($item) { return number_format($item['Total_pft'] ?? 0, 2); }],
+                'PFT %' => ['PFT %', function($item) { return number_format($item['PFT %'] ?? 0, 0); }],
+                'ROI%' => ['ROI%', function($item) { return number_format($item['ROI%'] ?? 0, 0); }],
+                'GPFT%' => ['GPFT%', function($item) { return number_format($item['GPFT%'] ?? 0, 0); }],
+                'views' => ['Views', function($item) { return $item['views'] ?? 0; }],
+                'nr_req' => ['NR/REQ', function($item) { return $item['nr_req'] ?? ''; }],
+                'SPRICE' => ['SPRICE', function($item) { return $item['SPRICE'] ? number_format($item['SPRICE'], 2) : ''; }],
+                'SPFT' => ['SPFT', function($item) { return $item['SPFT'] ? number_format($item['SPFT'], 0) : ''; }],
+                'SROI' => ['SROI', function($item) { return $item['SROI'] ? number_format($item['SROI'], 0) : ''; }],
+                'SCVR' => ['SCVR', function($item) { return number_format($item['SCVR'] ?? 0, 1); }],
+                'pmt_spend_L30' => ['PMT Spend L30', function($item) { return number_format($item['pmt_spend_L30'] ?? 0, 2); }],
+            ];
+
+            // If no columns selected, export all
+            if (empty($selectedColumns)) {
+                $selectedColumns = array_keys($columnMap);
+            }
+
+            // Filter column map to only selected columns
+            $selectedColumnMap = array_intersect_key($columnMap, array_flip($selectedColumns));
+
+            // Set headers for CSV download
+            $fileName = 'eBay2_Pricing_Data_' . date('Y-m-d_H-i-s') . '.csv';
+            
+            header('Content-Type: text/csv');
+            header('Content-Disposition: attachment;filename="' . $fileName . '"');
+            header('Cache-Control: max-age=0');
+
+            // Open output stream
+            $output = fopen('php://output', 'w');
+
+            // Add BOM for UTF-8
+            fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+
+            // Header Row (only selected columns)
+            $headers = array_column($selectedColumnMap, 0);
+            fputcsv($output, $headers);
+
+            // Data Rows
+            foreach ($ebayData as $item) {
+                $item = (array) $item;
+                $row = [];
+                
+                foreach ($selectedColumnMap as $extractor) {
+                    $row[] = $extractor[1]($item);
+                }
+                
+                fputcsv($output, $row);
+            }
+
+            fclose($output);
+            exit;
+        } catch (\Exception $e) {
+            return back()->with('error', 'Failed to export data: ' . $e->getMessage());
+        }
+    }
+
+    public function getMetricsHistory(Request $request)
+    {
+        $days = $request->input('days', 30);
+        $sku = $request->input('sku');
+        
+        $minDays = 7;
+        if ($days < $minDays) {
+            $days = $minDays;
+        }
+        
+        $californiaToday = \Carbon\Carbon::now('America/Los_Angeles')->startOfDay();
+        $endDate = $californiaToday;
+        $startDate = $endDate->copy()->subDays($days - 1);
+        
+        $chartData = [];
+        $dataByDate = [];
+        
+        try {
+            // Get data from ebay2_metrics table
+            if ($sku) {
+                $metric = Ebay2Metric::where('sku', $sku)->first();
+                
+                if ($metric) {
+                    // Create data points for the date range using the current metric data
+                    $currentDate = \Carbon\Carbon::parse($startDate);
+                    while ($currentDate->lte($endDate)) {
+                        $dateStr = $currentDate->format('Y-m-d');
+                        
+                        // Distribute the L30 and L60 data across the date range
+                        $dataByDate[$dateStr] = [
+                            'date' => $dateStr,
+                            'units' => 0,
+                            'revenue' => 0,
+                            'views' => (int)($metric->views ?? 0) / $days
+                        ];
+                        
+                        $currentDate->addDay();
+                    }
+                    
+                    // Add recent data points
+                    $today = $californiaToday->format('Y-m-d');
+                    if (isset($dataByDate[$today])) {
+                        $dataByDate[$today]['units'] = (int)($metric->ebay_l30 ?? 0);
+                        $dataByDate[$today]['revenue'] = (float)(($metric->ebay_price ?? 0) * ($metric->ebay_l30 ?? 0));
+                        $dataByDate[$today]['views'] = (int)($metric->views ?? 0);
+                    }
+                }
+            } else {
+                // If no specific SKU, aggregate from all metrics
+                $metrics = Ebay2Metric::all();
+                
+                $totalUnits = $metrics->sum('ebay_l30');
+                $totalViews = $metrics->sum('views');
+                $totalRevenue = $metrics->sum(function($m) {
+                    return ($m->ebay_price ?? 0) * ($m->ebay_l30 ?? 0);
+                });
+                
+                $currentDate = \Carbon\Carbon::parse($startDate);
+                while ($currentDate->lte($endDate)) {
+                    $dateStr = $currentDate->format('Y-m-d');
+                    
+                    $dataByDate[$dateStr] = [
+                        'date' => $dateStr,
+                        'units' => 0,
+                        'revenue' => 0,
+                        'views' => (int)($totalViews / $days)
+                    ];
+                    
+                    $currentDate->addDay();
+                }
+                
+                // Add recent data to today
+                $today = $californiaToday->format('Y-m-d');
+                if (isset($dataByDate[$today])) {
+                    $dataByDate[$today]['units'] = (int)$totalUnits;
+                    $dataByDate[$today]['revenue'] = (float)$totalRevenue;
+                    $dataByDate[$today]['views'] = (int)$totalViews;
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::error('Error fetching eBay2 metrics history: ' . $e->getMessage());
+        }
+
+        // Fill in missing dates with zero values
+        $currentDate = \Carbon\Carbon::parse($startDate);
+        
+        while ($currentDate->lte($endDate)) {
+            $dateStr = $currentDate->format('Y-m-d');
+            
+            if (!isset($dataByDate[$dateStr])) {
+                $dataByDate[$dateStr] = [
+                    'date' => $dateStr,
+                    'units' => 0,
+                    'revenue' => 0,
+                    'views' => 0
+                ];
+            }
+            
+            $currentDate->addDay();
+        }
+        
+        ksort($dataByDate);
+        $chartData = array_values($dataByDate);
+
+        return response()->json($chartData);
+    }
+
+    public function pushEbay2Price(Request $request)
+    {
+        $sku = strtoupper(trim($request->input('sku')));
+        $price = $request->input('price');
+
+        if (empty($sku)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'SKU is required'
+            ], 400);
+        }
+
+        $priceFloat = floatval($price);
+        if (!is_numeric($price) || $priceFloat <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid price value'
+            ], 400);
+        }
+
+        try {
+            $ebayMetric = Ebay2Metric::where('sku', $sku)->first();
+            
+            if (!$ebayMetric || !$ebayMetric->item_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Item ID not found for SKU: ' . $sku
+                ], 404);
+            }
+
+            $service = new Ebay2ApiService();
+            $response = $service->reviseFixedPriceItem(
+                itemId: $ebayMetric->item_id,
+                price: $priceFloat
+            );
+
+            if (isset($response['Ack']) && ($response['Ack'] === 'Success' || $response['Ack'] === 'Warning')) {
+                $ebayMetric->ebay_price = $priceFloat;
+                $ebayMetric->save();
+
+                $this->saveSpriceStatus($sku, 'success');
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Price updated successfully on eBay2',
+                    'new_price' => $priceFloat
+                ]);
+            } else {
+                $errorMessage = $response['Errors'][0]['LongMessage'] ?? 'Unknown error from eBay2 API';
+                
+                $this->saveSpriceStatus($sku, 'failed');
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $errorMessage
+                ], 400);
+            }
+        } catch (\Exception $e) {
+            $this->saveSpriceStatus($sku, 'failed');
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    private function saveSpriceStatus($sku, $status)
+    {
+        try {
+            $ebayDataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
+            
+            $value = is_array($ebayDataView->value)
+                ? $ebayDataView->value
+                : (is_string($ebayDataView->value) ? json_decode($ebayDataView->value, true) : []);
+            
+            $value['sprice_push_status'] = $status;
+            $value['sprice_push_time'] = now()->toDateTimeString();
+            
+            $ebayDataView->value = $value;
+            $ebayDataView->save();
+        } catch (\Exception $e) {
+            \Log::error('Error saving eBay2 sprice status: ' . $e->getMessage());
+        }
+    }
+
+    public function updateEbay2SpriceStatus(Request $request)
+    {
+        $sku = $request->input('sku');
+        $status = $request->input('status');
+
+        $this->saveSpriceStatus($sku, $status);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function getEbay2AdsSpend()
+    {
+        try {
+            // Get ad spend from ebay2_general_reports for L30
+            $generalReports = Ebay2GeneralReport::where('report_range', 'L30')->get();
+            
+            $adsSpend = 0;
+            foreach ($generalReports as $report) {
+                $adsSpend += $this->extractNumber($report->ad_fees);
+            }
+
+            return response()->json([
+                'success' => true,
+                'ads_spend' => round($adsSpend, 2)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 }
