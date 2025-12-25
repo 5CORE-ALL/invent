@@ -1477,6 +1477,9 @@ class TemuController extends Controller
                     $temuShip = $productMaster->temu_ship ?? 0;
                 }
                 
+                // Get image_path (like eBay does)
+                $imagePath = $shopify->image_src ?? ($productMaster ? ($productMaster->Values['image_path'] ?? ($productMaster->image_path ?? null)) : null);
+                
                 // Get inventory from ShopifySku (like eBay does)
                 $inventory = $shopify->inv ?? 0;
                 $l30 = $shopify->quantity ?? 0;
@@ -1539,6 +1542,7 @@ class TemuController extends Controller
                 
                 return [
                     'sku' => $sku,
+                    'image_path' => $imagePath,
                     'product_name' => $item->product_name,
                     'category' => $item->category,
                     'variation' => $item->variation,

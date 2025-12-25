@@ -479,6 +479,20 @@
                         e.stopPropagation();
                     }
                 },
+               
+                {
+                    title: "Image",
+                    field: "image_path",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value) {
+                            return `<img src="${value}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;">`;
+                        }
+                        return '';
+                    },
+                    headerSort: false,
+                    width: 80
+                },
                 {
                     title: "SKU",
                     field: "sku",
