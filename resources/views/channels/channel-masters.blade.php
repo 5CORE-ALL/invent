@@ -805,6 +805,13 @@
                                 </small><br>
                                 N ROI
                             </th>
+                            <th class="text-center align-middle">
+                                <small id="totalAdSpendBadge" class="badge bg-dark text-white mb-1"
+                                    style="font-size: 13px;">
+                                    $0
+                                </small><br>
+                                Ad Spend
+                            </th>
                             {{-- <th>Red Margin</th> --}}
                             <th class="text-center align-middle">
                                 <small id="achievedTotalBadge" class="badge bg-dark text-white mb-1"
@@ -1275,12 +1282,24 @@
             // Calculate total Ads% from all rows
             let totalAdsPercent = 0;
             let totalAdsAmount = 0;
+            let totalAdSpend = 0;
             data.forEach(function(row) {
                 const l30Sales = parseNumber(row['L30 Sales'] || 0);
                 const adsPercent = parseNumber(row['Ads%'] || 0);
                 totalAdsAmount += (adsPercent / 100) * l30Sales;
+                
+                // Sum up actual ad spend (KW + PMT)
+                const kwSpent = parseNumber(row['KW Spent'] || 0);
+                const pmtSpent = parseNumber(row['PMT Spent'] || 0);
+                totalAdSpend += kwSpent + pmtSpent;
             });
             let avgAdsPercent = totalL30Sales !== 0 ? (totalAdsAmount / totalL30Sales) * 100 : 0;
+            
+            // Update Total Ad Spend badge
+            const totalAdSpendBadge = document.getElementById('totalAdSpendBadge');
+            if (totalAdSpendBadge) {
+                totalAdSpendBadge.textContent = '$' + Math.round(totalAdSpend).toLocaleString('en-US');
+            }
             
             // N PFT = G PFT - Ads%
             let nPft = gProfit !== null ? gProfit - avgAdsPercent : null;
@@ -1843,6 +1862,33 @@
                             return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(nRoi)}%</span>`;
                         }
                     },
+                    // Total Ad Spend column with select dropdown
+                    {
+                        data: null,
+                        render: function (v, type, row) {
+                            const kwSpent = toNum(pick(row, ['KW Spent', 'kw_spent', 'kwSpent'], 0));
+                            const pmtSpent = toNum(pick(row, ['PMT Spent', 'pmt_spent', 'pmtSpent'], 0));
+                            const totalSpent = kwSpent + pmtSpent;
+                            
+                            if (type === 'sort' || type === 'type') return totalSpent;
+                            
+                            // Create a select element with color styling to show breakdown
+                            return `
+                                <select class="form-select form-select-sm ad-spend-select" 
+                                        style="min-width: 120px; 
+                                               font-size: 11px; 
+                                               padding: 4px 8px; 
+                                               background-color: #91e1ff; 
+                                               color: black; 
+                                               border: 1px solid #91e1ff;
+                                               font-weight: bold;">
+                                    <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
+                                    <option value="kw" style="background-color: #198754; color: white; font-weight: bold;">KW: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
+                                    <option value="pmt" style="background-color: #ffc107; color: black; font-weight: bold;">PMT: $${pmtSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
+                                </select>
+                            `;
+                        }
+                    },
                     { 
                         data: 'Achieved', 
                         render: function (v, type) {
@@ -1969,6 +2015,11 @@
                                 let nPft = pctFix(pick(item, ['N PFT', 'n_pft', 'nPft'], 0));
                                 let nRoi = pctFix(pick(item, ['N ROI', 'n_roi', 'nRoi'], 0));
                                 let adsPercentage = pctFix(pick(item, ['Ads%', 'ads_percentage', 'adsPercentage'], 0));
+                                
+                                // Ad Spend data
+                                let kwSpent = toNum(pick(item, ['KW Spent', 'kw_spent', 'kwSpent'], 0), 0);
+                                let pmtSpent = toNum(pick(item, ['PMT Spent', 'pmt_spent', 'pmtSpent'], 0), 0);
+                                let totalAdSpend = toNum(pick(item, ['Total Ad Spend', 'total_spent', 'totalAdSpend'], 0), 0);
 
                                 return {
                                     'Channel': pick(item, ['channel', 'Channel', 'Channel '], ''),
@@ -1987,6 +2038,9 @@
                                     'N PFT': nPft,
                                     'N ROI': nRoi,
                                     'Ads%': adsPercentage,
+                                    'KW Spent': kwSpent,
+                                    'PMT Spent': pmtSpent,
+                                    'Total Ad Spend': totalAdSpend,
                                     'Red Margin': toNum(pick(item, ['red_margin', 'Total_pft', 'total_pft'], 0), 0),
                                     'NR': toNum(pick(item, ['nr','NR'], 0), 0),
                                     'type': pick(item, ['type'], ''),
@@ -2021,6 +2075,17 @@
                         } catch (err) {
                             console.warn('Could not set default order:', err);
                         }
+                    },
+
+                    // Re-initialize select dropdowns after each draw
+                    drawCallback: function() {
+                        // Add event listener to reset select to total after viewing breakdown
+                        jq('.ad-spend-select').on('change', function() {
+                            const self = this;
+                            setTimeout(function() {
+                                jq(self).val('total');
+                            }, 2000); // Reset to total after 2 seconds
+                        });
                     },
 
                     language: {
