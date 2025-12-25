@@ -117,75 +117,6 @@
     </div>
 </div>
 
-<!-- Create Group Modal -->
-<div class="modal fade" id="createGroupModal" tabindex="-1" aria-labelledby="createGroupModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="createGroupModalLabel">Create New Group</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="createGroupForm">
-                    <div class="mb-3">
-                        <label for="group_name" class="form-label">Group Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="group_name" name="group_name" 
-                            placeholder="Enter group name" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="group_description" class="form-label">Description (Optional)</label>
-                        <textarea class="form-control" id="group_description" name="group_description" rows="3" 
-                            placeholder="Optional description for this group"></textarea>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="saveGroupBtn">
-                    <i class="fas fa-save me-1"></i> Create Group
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Create Category Modal -->
-<div class="modal fade" id="createCategoryModal" tabindex="-1" aria-labelledby="createCategoryModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="createCategoryModalLabel">Create New Category</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="createCategoryForm">
-                    <div class="mb-3">
-                        <label for="category_name" class="form-label">Category Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="category_name" name="category_name" 
-                            placeholder="Enter category name" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="category_code" class="form-label">Category Code (Optional)</label>
-                        <input type="text" class="form-control" id="category_code" name="category_code" 
-                            placeholder="Enter category code">
-                    </div>
-                    <div class="mb-3">
-                        <label for="category_description" class="form-label">Description (Optional)</label>
-                        <textarea class="form-control" id="category_description" name="category_description" rows="3" 
-                            placeholder="Optional description for this category"></textarea>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="saveCategoryBtn">
-                    <i class="fas fa-save me-1"></i> Create Category
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
 @endsection
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
@@ -268,12 +199,8 @@
                     headerFilterPlaceholder: "Search category.",
                     headerFilterFunc: "like",
                     titleFormatter: function() {
-                        return `<div style="display: flex; align-items: center; gap: 10px;">
+                        return `<div>
                             <span>Category</span>
-                            <button type="button" class="btn btn-sm btn-success" id="createCategoryBtn" 
-                                style="padding: 2px 8px; font-size: 11px;" title="Create New Category">
-                                <i class="fas fa-plus"></i>
-                            </button>
                         </div>`;
                     },
                     formatter: function(cell) {
@@ -323,12 +250,8 @@
                     headerFilterPlaceholder: "Search group.",
                     headerFilterFunc: "like",
                     titleFormatter: function() {
-                        return `<div style="display: flex; align-items: center; gap: 10px;">
+                        return `<div>
                             <span>Group</span>
-                            <button type="button" class="btn btn-sm btn-success" id="createGroupBtn" 
-                                style="padding: 2px 8px; font-size: 11px;" title="Create New Group">
-                                <i class="fas fa-plus"></i>
-                            </button>
                         </div>`;
                     },
                     formatter: function(cell) {
@@ -846,10 +769,10 @@
         window.allGroups = [];
         window.allCategories = [];
 
-        // Load groups and categories
+        // Load groups and categories from Group Master
         function loadGroupsAndCategories() {
             return Promise.all([
-                fetch('/facebook-video-ads-groups')
+                fetch('/group-master-groups')
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
@@ -860,7 +783,7 @@
                         console.error('Error loading groups:', error);
                         window.allGroups = [];
                     }),
-                fetch('/facebook-video-ads-categories')
+                fetch('/group-master-categories')
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
@@ -994,129 +917,8 @@
             });
         }
 
-        // Setup create group
-        function setupCreateGroup() {
-            const createBtn = document.getElementById('createGroupBtn');
-            if (!createBtn) return;
-            
-            createBtn.addEventListener('click', function() {
-                const modal = new bootstrap.Modal(document.getElementById('createGroupModal'));
-                document.getElementById('createGroupForm').reset();
-                modal.show();
-            });
-
-            document.getElementById('saveGroupBtn').addEventListener('click', function() {
-                const groupName = document.getElementById('group_name').value.trim();
-                const description = document.getElementById('group_description').value.trim();
-
-                if (!groupName) {
-                    alert('Group name is required.');
-                    return;
-                }
-
-                const saveBtn = document.getElementById('saveGroupBtn');
-                saveBtn.disabled = true;
-                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Creating...';
-
-                fetch('/facebook-video-ads-store-group', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                    },
-                    body: JSON.stringify({
-                        group_name: groupName,
-                        description: description,
-                        status: 'active'
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert(data.message || 'Group created successfully!');
-                        bootstrap.Modal.getInstance(document.getElementById('createGroupModal')).hide();
-                        document.getElementById('createGroupForm').reset();
-                        loadGroupsAndCategories().then(() => {
-                            table.redraw();
-                        });
-                    } else {
-                        alert(data.message || 'Failed to create group.');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('An error occurred while creating the group.');
-                })
-                .finally(() => {
-                    saveBtn.disabled = false;
-                    saveBtn.innerHTML = '<i class="fas fa-save me-1"></i> Create Group';
-                });
-            });
-        }
-
-        // Setup create category
-        function setupCreateCategory() {
-            const createBtn = document.getElementById('createCategoryBtn');
-            if (!createBtn) return;
-            
-            createBtn.addEventListener('click', function() {
-                const modal = new bootstrap.Modal(document.getElementById('createCategoryModal'));
-                document.getElementById('createCategoryForm').reset();
-                modal.show();
-            });
-
-            document.getElementById('saveCategoryBtn').addEventListener('click', function() {
-                const categoryName = document.getElementById('category_name').value.trim();
-                const code = document.getElementById('category_code').value.trim();
-                const description = document.getElementById('category_description').value.trim();
-
-                if (!categoryName) {
-                    alert('Category name is required.');
-                    return;
-                }
-
-                const saveBtn = document.getElementById('saveCategoryBtn');
-                saveBtn.disabled = true;
-                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Creating...';
-
-                fetch('/facebook-video-ads-store-category', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                    },
-                    body: JSON.stringify({
-                        category_name: categoryName,
-                        code: code || null,
-                        description: description,
-                        status: 'active'
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert(data.message || 'Category created successfully!');
-                        bootstrap.Modal.getInstance(document.getElementById('createCategoryModal')).hide();
-                        document.getElementById('createCategoryForm').reset();
-                        loadGroupsAndCategories().then(() => {
-                            table.redraw();
-                        });
-                    } else {
-                        alert(data.message || 'Failed to create category.');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('An error occurred while creating the category.');
-                })
-                .finally(() => {
-                    saveBtn.disabled = false;
-                    saveBtn.innerHTML = '<i class="fas fa-save me-1"></i> Create Category';
-                });
-            });
-        }
+        // Note: Groups and Categories are managed in Group Master page
+        // They will automatically sync here when created there
 
         // Setup Excel download
         function setupExcelDownload() {
@@ -1191,8 +993,6 @@
         // Initialize everything
         loadGroupsAndCategories().then(() => {
             setupGroupCategoryEditing();
-            setupCreateGroup();
-            setupCreateCategory();
             setupExcelDownload();
             setupExcelUpload();
         });

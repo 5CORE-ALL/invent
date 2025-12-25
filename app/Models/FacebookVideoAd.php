@@ -14,18 +14,18 @@ class FacebookVideoAd extends Model
     ];
 
     /**
-     * Get the group that this Facebook video ad belongs to
+     * Get the group that this Facebook video ad belongs to (from Group Master)
      */
     public function group()
     {
-        return $this->belongsTo(FacebookVideoAdGroup::class, 'group_id');
+        return $this->belongsTo(\App\Models\ProductGroup::class, 'group_id');
     }
 
     /**
-     * Get the category that this Facebook video ad belongs to
+     * Get the category that this Facebook video ad belongs to (from Group Master)
      */
     public function category()
     {
-        return $this->belongsTo(FacebookVideoAdCategory::class, 'category_id');
+        return $this->belongsTo(\App\Models\ProductCategory::class, 'category_id');
     }
 }

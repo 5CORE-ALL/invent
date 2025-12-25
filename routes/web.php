@@ -2188,11 +2188,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/facebook-video-ads', 'getFacebookVideoAdsData');
         Route::post('/facebook-video-ads/save', 'saveFacebookVideoAds')->name('facebook_video_ads.save');
         
-        // Facebook Video Ads Groups and Categories
-        Route::get('/facebook-video-ads-groups', 'getFacebookVideoAdGroups')->name('facebook.video.ads.groups');
-        Route::get('/facebook-video-ads-categories', 'getFacebookVideoAdCategories')->name('facebook.video.ads.categories');
-        Route::post('/facebook-video-ads-store-group', 'storeFacebookVideoAdGroup')->name('facebook.video.ads.store.group');
-        Route::post('/facebook-video-ads-store-category', 'storeFacebookVideoAdCategory')->name('facebook.video.ads.store.category');
+        // Facebook Video Ads Groups and Categories (using Group Master's groups/categories)
         Route::post('/facebook-video-ads-update-field', 'updateFacebookVideoAdField')->name('facebook.video.ads.update.field');
         Route::post('/facebook-video-ads-upload-excel', 'uploadFacebookVideoAdsExcel')->name('facebook.video.ads.upload.excel');
         Route::get('/facebook-video-ads-download-excel', 'downloadFacebookVideoAdsExcel')->name('facebook.video.ads.download.excel');

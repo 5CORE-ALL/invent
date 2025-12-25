@@ -14,31 +14,13 @@ return new class extends Migration
         Schema::table('facebook_video_ads', function (Blueprint $table) {
             if (!Schema::hasColumn('facebook_video_ads', 'group_id')) {
                 $table->unsignedBigInteger('group_id')->nullable()->after('sku');
+                $table->index('group_id');
             }
             if (!Schema::hasColumn('facebook_video_ads', 'category_id')) {
                 $table->unsignedBigInteger('category_id')->nullable()->after('group_id');
+                $table->index('category_id');
             }
         });
-
-        // Add indexes (foreign keys will be handled at application level for now)
-        if (Schema::hasColumn('facebook_video_ads', 'group_id')) {
-            try {
-                Schema::table('facebook_video_ads', function (Blueprint $table) {
-                    $table->index('group_id');
-                });
-            } catch (\Exception $e) {
-                // Index might already exist
-            }
-        }
-        if (Schema::hasColumn('facebook_video_ads', 'category_id')) {
-            try {
-                Schema::table('facebook_video_ads', function (Blueprint $table) {
-                    $table->index('category_id');
-                });
-            } catch (\Exception $e) {
-                // Index might already exist
-            }
-        }
     }
 
     /**
@@ -47,11 +29,22 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('facebook_video_ads', function (Blueprint $table) {
-            $table->dropForeign(['group_id']);
-            $table->dropForeign(['category_id']);
-            $table->dropIndex(['group_id']);
-            $table->dropIndex(['category_id']);
-            $table->dropColumn(['group_id', 'category_id']);
+            if (Schema::hasColumn('facebook_video_ads', 'group_id')) {
+                try {
+                    $table->dropIndex(['group_id']);
+                } catch (\Exception $e) {
+                    // Index might not exist
+                }
+                $table->dropColumn('group_id');
+            }
+            if (Schema::hasColumn('facebook_video_ads', 'category_id')) {
+                try {
+                    $table->dropIndex(['category_id']);
+                } catch (\Exception $e) {
+                    // Index might not exist
+                }
+                $table->dropColumn('category_id');
+            }
         });
     }
 };

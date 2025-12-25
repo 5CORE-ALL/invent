@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\FacebookFeedAd;
 use App\Models\FacebookReelAd;
 use App\Models\FacebookVideoAd;
-use App\Models\FacebookVideoAdGroup;
-use App\Models\FacebookVideoAdCategory;
+use App\Models\ProductGroup;
+use App\Models\ProductCategory;
 use App\Models\InstagramFeedAd;
 use App\Models\InstagramReelAd;
 use App\Models\InstagramVideoAd;
@@ -205,123 +205,7 @@ class VideoAdsMasterController extends Controller
         ]);
     }
 
-    // Facebook Video Ads Groups and Categories Management
-    public function getFacebookVideoAdGroups()
-    {
-        try {
-            $groups = FacebookVideoAdGroup::where('status', 'active')
-                ->whereNull('deleted_at')
-                ->orderBy('group_name', 'asc')
-                ->get(['id', 'group_name', 'description']);
-
-            return response()->json([
-                'success' => true,
-                'groups' => $groups
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Get Facebook video ad groups error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch groups',
-                'groups' => []
-            ], 500);
-        }
-    }
-
-    public function getFacebookVideoAdCategories()
-    {
-        try {
-            $categories = FacebookVideoAdCategory::where('status', 'active')
-                ->whereNull('deleted_at')
-                ->orderBy('category_name', 'asc')
-                ->get(['id', 'category_name', 'code', 'description']);
-
-            return response()->json([
-                'success' => true,
-                'categories' => $categories
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Get Facebook video ad categories error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch categories',
-                'categories' => []
-            ], 500);
-        }
-    }
-
-    public function storeFacebookVideoAdGroup(Request $request)
-    {
-        try {
-            $request->validate([
-                'group_name' => 'required|string|max:191|unique:facebook_video_ad_groups,group_name',
-                'description' => 'nullable|string',
-                'status' => 'nullable|string|in:active,inactive'
-            ]);
-
-            $group = FacebookVideoAdGroup::create([
-                'group_name' => trim($request->group_name),
-                'description' => $request->description,
-                'status' => $request->status ?? 'active'
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Group created successfully',
-                'group' => $group
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Exception $e) {
-            Log::error('Store Facebook video ad group error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create group: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    public function storeFacebookVideoAdCategory(Request $request)
-    {
-        try {
-            $request->validate([
-                'category_name' => 'required|string|max:191|unique:facebook_video_ad_categories,category_name',
-                'code' => 'nullable|string|max:191|unique:facebook_video_ad_categories,code',
-                'description' => 'nullable|string',
-                'status' => 'nullable|string|in:active,inactive'
-            ]);
-
-            $category = FacebookVideoAdCategory::create([
-                'category_name' => trim($request->category_name),
-                'code' => $request->code ? trim($request->code) : null,
-                'description' => $request->description,
-                'status' => $request->status ?? 'active'
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Category created successfully',
-                'category' => $category
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Exception $e) {
-            Log::error('Store Facebook video ad category error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create category: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
+    // Facebook Video Ads Groups and Categories Management (using Group Master's groups/categories)
     public function updateFacebookVideoAdField(Request $request)
     {
         try {
@@ -353,7 +237,7 @@ class VideoAdsMasterController extends Controller
 
             if ($value !== null) {
                 if ($field === 'group_id') {
-                    $group = FacebookVideoAdGroup::withTrashed()->find($value);
+                    $group = ProductGroup::withTrashed()->find($value);
                     if (!$group || $group->trashed() || $group->status !== 'active') {
                         return response()->json([
                             'success' => false,
@@ -361,7 +245,7 @@ class VideoAdsMasterController extends Controller
                         ], 400);
                     }
                 } elseif ($field === 'category_id') {
-                    $category = FacebookVideoAdCategory::withTrashed()->find($value);
+                    $category = ProductCategory::withTrashed()->find($value);
                     if (!$category || $category->trashed() || $category->status !== 'active') {
                         return response()->json([
                             'success' => false,
@@ -455,11 +339,11 @@ class VideoAdsMasterController extends Controller
                     $value = [];
                 }
 
-                // Update group_id if provided
+                // Update group_id if provided (using Group Master's groups)
                 if (isset($columnIndices['group_id']) && isset($row[$columnIndices['group_id']])) {
                     $groupValue = trim($row[$columnIndices['group_id']]);
                     if ($groupValue !== '') {
-                        $group = FacebookVideoAdGroup::where('group_name', $groupValue)
+                        $group = ProductGroup::where('group_name', $groupValue)
                             ->orWhere('id', $groupValue)
                             ->first();
                         if ($group) {
@@ -470,11 +354,11 @@ class VideoAdsMasterController extends Controller
                     }
                 }
 
-                // Update category_id if provided
+                // Update category_id if provided (using Group Master's categories)
                 if (isset($columnIndices['category_id']) && isset($row[$columnIndices['category_id']])) {
                     $categoryValue = trim($row[$columnIndices['category_id']]);
                     if ($categoryValue !== '') {
-                        $category = FacebookVideoAdCategory::where('category_name', $categoryValue)
+                        $category = ProductCategory::where('category_name', $categoryValue)
                             ->orWhere('id', $categoryValue)
                             ->first();
                         if ($category) {
