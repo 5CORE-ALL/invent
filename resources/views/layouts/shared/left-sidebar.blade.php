@@ -2761,7 +2761,7 @@
                                                     <a href="{{ route('facebook.image.ads') }}">FB Image Ads</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('facebook.video.ads') }}">FB Video Ads</a>
+                                                    <a href="{{ route('facebook.ads.master') }}">FB Video Ads</a>
                                                 </li>
                                             </ul>
                                         </div>
