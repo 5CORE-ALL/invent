@@ -13,6 +13,9 @@ use App\Models\MarketplacePercentage;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
 use App\Models\TemuDailyData;
+use App\Models\TemuPricing;
+use App\Models\TemuViewData;
+use App\Models\TemuAdData;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -1098,8 +1101,8 @@ class TemuController extends Controller
                 // Calculate FB Price (if total < 27, add 2.99)
                 $fbPrice = $total < 27 ? ($basePrice + 2.99) : $basePrice;
                 
-                // Calculate PFT = (FB Prc * 0.87 - LP - Temu Ship) * Quantity
-                $pft = ($fbPrice * 0.87 - $lp - $temuShip) * $quantity;
+                // Calculate PFT = (FB Prc * 0.91 - LP - Temu Ship) * Quantity
+                $pft = ($fbPrice * 0.91 - $lp - $temuShip) * $quantity;
 
                 $row = [
                     'Parent' => $parent,
@@ -1186,4 +1189,791 @@ class TemuController extends Controller
             return response()->json([], 500);
         }
     }
+
+    /**
+     * Upload Temu Pricing Data
+     */
+    public function uploadTemuPricing(Request $request)
+    {
+        try {
+            $request->validate([
+                'pricing_file' => 'required|file|mimes:xlsx,xls,csv'
+            ]);
+
+            $file = $request->file('pricing_file');
+            $spreadsheet = IOFactory::load($file->getPathName());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            // Get headers from first row
+            $headers = $rows[0];
+            unset($rows[0]);
+
+            $imported = 0;
+            $errors = [];
+
+            DB::beginTransaction();
+            try {
+                // Truncate table before inserting new data
+                TemuPricing::truncate();
+                
+                foreach ($rows as $index => $row) {
+                    if (empty(array_filter($row))) {
+                        continue; // Skip empty rows
+                    }
+
+                    $rowData = array_combine($headers, $row);
+                    
+                    // Extract SKU
+                    $sku = $rowData['SKU'] ?? $rowData['Contribution Goods'] ?? null;
+                    
+                    if (empty($sku)) {
+                        $errors[] = "Row " . ($index + 2) . ": Missing SKU";
+                        continue;
+                    }
+
+                    // Parse date created
+                    $dateCreated = null;
+                    if (!empty($rowData['Date created'])) {
+                        try {
+                            $dateCreated = Carbon::parse($rowData['Date created']);
+                        } catch (\Exception $e) {
+                            // Try parsing as d/m/Y H:i:s
+                            try {
+                                $dateCreated = Carbon::createFromFormat('d/m/Y H:i:s', $rowData['Date created']);
+                            } catch (\Exception $e2) {
+                                Log::warning("Could not parse date: " . $rowData['Date created']);
+                            }
+                        }
+                    }
+
+                    $pricingData = [
+                        'category' => $rowData['Category'] ?? null,
+                        'category_id' => $rowData['Category id'] ?? null,
+                        'product_name' => $rowData['Product name'] ?? null,
+                        'contribution_goods' => $rowData['Contribution Goods'] ?? null,
+                        'goods_id' => $rowData['Goods ID'] ?? null,
+                        'sku_id' => $rowData['SKU ID'] ?? null,
+                        'variation' => $rowData['Variation'] ?? null,
+                        'quantity' => !empty($rowData['Quantity']) ? (int)$rowData['Quantity'] : 0,
+                        'base_price' => !empty($rowData['Base price']) ? (float)$rowData['Base price'] : null,
+                        'external_product_id_type' => $rowData['External Product ID Type'] ?? null,
+                        'external_product_id' => $rowData['External product ID'] ?? null,
+                        'status' => $rowData['Status'] ?? null,
+                        'detail_status' => $rowData['Detail status'] ?? null,
+                        'date_created' => $dateCreated,
+                        'incomplete_product_information' => $rowData['Incomplete product information'] ?? null,
+                    ];
+
+                    // Create new record (table already truncated)
+                    TemuPricing::create(array_merge(['sku' => $sku], $pricingData));
+                    $imported++;
+                }
+
+                DB::commit();
+
+                return back()->with('success', "Successfully imported $imported records! (All previous data was cleared)");
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu pricing: ' . $e->getMessage());
+            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download Temu Pricing Sample File
+     */
+    public function downloadTemuPricingSample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Header Row
+        $headers = [
+            'Category',
+            'Category id',
+            'Product name',
+            'Contribution Goods',
+            'SKU',
+            'Goods ID',
+            'SKU ID',
+            'Variation',
+            'Quantity',
+            'Base price',
+            'External Product ID Type',
+            'External product ID',
+            'Status',
+            'Detail status',
+            'Date created',
+            'Incomplete product information'
+        ];
+        
+        $sheet->fromArray($headers, NULL, 'A1');
+
+        // Sample Data
+        $sampleData = [
+            [
+                'Musical Instruments/Electronic Music',
+                '18434',
+                '5Core Speaker Stand 2Pc Heavy Duty',
+                'SS SQ WH',
+                'SS SQ WH',
+                '603239688828956',
+                '47514283725096',
+                'White',
+                '100',
+                '249.99',
+                '',
+                '',
+                'Active',
+                'Active',
+                '24/12/2025 03:44:26',
+                ''
+            ],
+            [
+                'Musical Instruments/Electronic Music',
+                '18434',
+                '5Core Speaker Stand 2Pc Heavy Duty',
+                'SS SQ BLK',
+                'SS SQ BLK',
+                '603239688833129',
+                '43116237163596',
+                'Black',
+                '200',
+                '249.99',
+                '',
+                '',
+                'Active',
+                'Active',
+                '24/12/2025 03:33:55',
+                ''
+            ]
+        ];
+
+        $sheet->fromArray($sampleData, NULL, 'A2');
+
+        // Set column widths
+        foreach (range('A', 'P') as $col) {
+            $sheet->getColumnDimension($col)->setWidth(20);
+        }
+
+        // Style header row
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
+        ];
+        $sheet->getStyle('A1:P1')->applyFromArray($headerStyle);
+
+        // Output Download
+        $fileName = 'Temu_Pricing_Sample_' . date('Y-m-d') . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    /**
+     * Show Temu Decrease View
+     */
+    public function temuDecreaseView()
+    {
+        return view('market-places.temu_decrease');
+    }
+
+    /**
+     * Get Temu Decrease Data (JSON)
+     */
+    public function getTemuDecreaseData()
+    {
+        try {
+            // Get Temu channel percentage
+            $marketplaceData = ChannelMaster::where('channel', 'Temu')->first();
+            $percentage = $marketplaceData ? ($marketplaceData->channel_percentage / 100) : 1;
+            
+            $pricingData = TemuPricing::select([
+                'sku',
+                'product_name',
+                'category',
+                'variation',
+                'quantity',
+                'base_price',
+                'status',
+                'detail_status',
+                'goods_id',
+                'sku_id',
+                'date_created'
+            ])
+            ->orderBy('sku', 'asc')
+            ->get();
+
+            // Fetch all product master records
+            $productMasterRows = ProductMaster::all()->keyBy('sku');
+            
+            // Get all SKUs
+            $skus = $pricingData->pluck('sku')->filter()->unique()->values()->all();
+            
+            // Fetch shopify data for inventory
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+            // Fetch Temu L30 (sales count from temu_daily_data - all available data)
+            $temuSalesData = TemuDailyData::whereIn('contribution_sku', $skus)
+                ->selectRaw('contribution_sku as sku, SUM(quantity_purchased) as temu_l30')
+                ->groupBy('contribution_sku')
+                ->get()
+                ->keyBy('sku');
+
+            // Fetch last 30 days view data from temu_view_data
+            $thirtyDaysAgo = Carbon::now()->subDays(30)->format('Y-m-d');
+            $viewData = TemuViewData::where('date', '>=', $thirtyDaysAgo)
+                ->selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
+                ->groupBy('goods_id')
+                ->get()
+                ->keyBy('goods_id');
+
+            // Fetch ad data (spend) - no date filter as it always has 30 days data
+            $adData = TemuAdData::select('goods_id', 'spend')
+                ->get()
+                ->keyBy('goods_id');
+
+            // Process data with product master info
+            $processedData = $pricingData->map(function($item) use ($productMasterRows, $shopifyData, $temuSalesData, $viewData, $adData, $percentage) {
+                $sku = $item->sku;
+                $productMaster = $productMasterRows->get($sku);
+                $shopify = $shopifyData->get($sku);
+                $temuSales = $temuSalesData->get($sku);
+                
+                // Get values from product master - check Values JSON first, then direct properties
+                $lp = 0;
+                $temuShip = 0;
+                
+                if ($productMaster) {
+                    // Check Values JSON first (like eBay does)
+                    $values = is_array($productMaster->Values) 
+                        ? $productMaster->Values 
+                        : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                    
+                    // Get LP from Values or direct property
+                    foreach ($values as $k => $v) {
+                        if (strtolower($k) === "lp") {
+                            $lp = floatval($v);
+                            break;
+                        }
+                    }
+                    if ($lp === 0 && isset($productMaster->lp)) {
+                        $lp = floatval($productMaster->lp);
+                    }
+                    if ($lp === 0 && isset($productMaster->LP)) {
+                        $lp = floatval($productMaster->LP);
+                    }
+                    
+                    // Get temu_ship
+                    $temuShip = $productMaster->temu_ship ?? 0;
+                }
+                
+                // Get inventory from ShopifySku (like eBay does)
+                $inventory = $shopify->inv ?? 0;
+                $l30 = $shopify->quantity ?? 0;
+                
+                // Get Temu L30 (last 30 days sales from Temu)
+                $temuL30 = $temuSales->temu_l30 ?? 0;
+                
+                // Get view data by goods_id (last 30 days)
+                $goodsId = $item->goods_id;
+                $viewDataItem = $viewData->get($goodsId);
+                $productClicks = $viewDataItem->product_clicks ?? 0;
+                $ctr = $viewDataItem->ctr ?? 0;
+                
+                // Get ad data by goods_id (spend)
+                $adDataItem = $adData->get($goodsId);
+                $spend = $adDataItem->spend ?? 0;
+                
+                // Calculate OVL30 and Dil%
+                $ovl30 = $l30;
+                $dilPercent = ($l30 && $inventory > 0) ? round(($l30 / $inventory) * 100, 2) : 0;
+                
+                // Calculate profit
+                $basePrice = $item->base_price ?? 0;
+                
+                // Calculate Temu Price (Base Price + 2.99 if below 26.99)
+                $temuPrice = $basePrice < 26.99 ? $basePrice + 2.99 : $basePrice;
+                
+                // Apply percentage like eBay does
+                $profit = $temuPrice * $percentage - $lp - $temuShip;
+                $profitPercent = $temuPrice > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $temuPrice) * 100 : 0;
+                $roiPercent = $lp > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
+                
+                // Calculate CVR% (Conversion Rate: Temu L30 / Product Clicks * 100)
+                $cvrPercent = $productClicks > 0 ? ($temuL30 / $productClicks) * 100 : 0;
+                
+                // Calculate ADS% (Advertising Cost of Sale: Spend / Revenue * 100)
+                // If spend > 0 but no sales (temuL30 = 0), show 100%
+                $revenue = $temuPrice * $temuL30;
+                if ($spend > 0 && $temuL30 == 0) {
+                    $adsPercent = 100;
+                } else {
+                    $adsPercent = $revenue > 0 ? ($spend / $revenue) * 100 : 0;
+                }
+                
+                // Calculate NPFT% (Net Profit: GPRFT% - ADS%)
+                // If ADS% is 100% (spent but no sales), don't subtract it
+                if ($adsPercent == 100) {
+                    $npftPercent = $profitPercent;
+                } else {
+                    $npftPercent = $profitPercent - $adsPercent;
+                }
+                
+                // Calculate NROI% (Net ROI: GROI% - ADS%)
+                // If ADS% is 100%, don't subtract it
+                if ($adsPercent == 100) {
+                    $nroiPercent = $roiPercent;
+                } else {
+                    $nroiPercent = $roiPercent - $adsPercent;
+                }
+                
+                return [
+                    'sku' => $sku,
+                    'product_name' => $item->product_name,
+                    'category' => $item->category,
+                    'variation' => $item->variation,
+                    'quantity' => $item->quantity,
+                    'base_price' => $basePrice,
+                    'status' => $item->status,
+                    'detail_status' => $item->detail_status,
+                    'goods_id' => $item->goods_id,
+                    'sku_id' => $item->sku_id,
+                    'date_created' => $item->date_created,
+                    'lp' => $lp,
+                    'inventory' => $inventory,
+                    'ovl30' => $ovl30,
+                    'temu_l30' => $temuL30,
+                    'dil_percent' => $dilPercent,
+                    'temu_ship' => $temuShip,
+                    'temu_price' => round($temuPrice, 2),
+                    'profit' => round($profit, 2),
+                    'profit_percent' => round($profitPercent, 2),
+                    'roi_percent' => round($roiPercent, 2),
+                    'product_clicks' => (int)$productClicks,
+                    'ctr' => round($ctr, 2),
+                    'cvr_percent' => round($cvrPercent, 2),
+                    'spend' => round($spend, 2),
+                    'ads_percent' => round($adsPercent, 2),
+                    'npft_percent' => round($npftPercent, 2),
+                    'nroi_percent' => round($nroiPercent, 2)
+                ];
+            });
+
+            return response()->json($processedData);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Temu decrease data: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
+
+    /**
+     * Update Temu Pricing (Base Price)
+     */
+    public function updateTemuPrice(Request $request)
+    {
+        try {
+            $request->validate([
+                'sku' => 'required|string',
+                'base_price' => 'required|numeric|min:0'
+            ]);
+
+            $pricing = TemuPricing::where('sku', $request->sku)->first();
+
+            if (!$pricing) {
+                return response()->json(['error' => 'SKU not found'], 404);
+            }
+
+            $pricing->base_price = $request->base_price;
+            $pricing->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Price updated successfully',
+                'data' => $pricing
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error updating Temu price: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to update price'], 500);
+        }
+    }
+
+    /**
+     * Save Temu Decrease column visibility preferences
+     */
+    public function saveTemuDecreaseColumnVisibility(Request $request)
+    {
+        try {
+            $userId = auth()->id() ?? 'guest';
+            $key = "temu_decrease_column_visibility_{$userId}";
+            
+            $visibility = $request->input('visibility', []);
+            Cache::put($key, $visibility, now()->addDays(30));
+            
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Error saving Temu Decrease column visibility: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to save preferences'], 500);
+        }
+    }
+
+    /**
+     * Get Temu Decrease column visibility preferences
+     */
+    public function getTemuDecreaseColumnVisibility()
+    {
+        try {
+            $userId = auth()->id() ?? 'guest';
+            $key = "temu_decrease_column_visibility_{$userId}";
+            
+            $visibility = Cache::get($key, []);
+            return response()->json($visibility);
+        } catch (\Exception $e) {
+            Log::error('Error getting Temu Decrease column visibility: ' . $e->getMessage());
+            return response()->json([], 500);
+        }
+    }
+
+    /**
+     * Upload Temu View Data (INSERT only, no truncate)
+     */
+    public function uploadTemuViewData(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $spreadsheet = IOFactory::load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            // Get header row
+            $headers = array_shift($rows);
+            
+            $imported = 0;
+            $skipped = 0;
+
+            DB::beginTransaction();
+            try {
+                foreach ($rows as $row) {
+                    if (empty($row[0]) || empty($row[1])) {
+                        $skipped++;
+                        continue; // Skip empty rows
+                    }
+
+                    $rowData = array_combine($headers, $row);
+                    
+                    // Parse date
+                    $date = null;
+                    if (!empty($rowData['Date'])) {
+                        try {
+                            $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
+                        } catch (\Exception $e) {
+                            Log::warning("Could not parse date: " . $rowData['Date']);
+                        }
+                    }
+
+                    // Parse CTR percentage (remove % sign if present)
+                    $ctr = 0;
+                    if (!empty($rowData['CTR'])) {
+                        $ctrValue = str_replace('%', '', $rowData['CTR']);
+                        $ctr = (float)$ctrValue;
+                    }
+
+                    $viewData = [
+                        'date' => $date,
+                        'goods_id' => $rowData['Goods ID'] ?? null,
+                        'goods_name' => $rowData['Goods Name'] ?? null,
+                        'product_impressions' => !empty($rowData['Product impressions']) ? (int)$rowData['Product impressions'] : 0,
+                        'visitor_impressions' => !empty($rowData['Number of visitor impressions of the product']) ? (int)$rowData['Number of visitor impressions of the product'] : 0,
+                        'product_clicks' => !empty($rowData['Product clicks']) ? (int)$rowData['Product clicks'] : 0,
+                        'visitor_clicks' => !empty($rowData['Number of visitor clicks on the product']) ? (int)$rowData['Number of visitor clicks on the product'] : 0,
+                        'ctr' => $ctr,
+                    ];
+
+                    // Insert new record (no update or truncate)
+                    TemuViewData::create($viewData);
+                    $imported++;
+                }
+
+                DB::commit();
+
+                return back()->with('success', "Successfully imported $imported records! ($skipped skipped)");
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu view data: ' . $e->getMessage());
+            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download Temu View Data Sample File
+     */
+    public function downloadTemuViewDataSample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Header Row
+        $headers = [
+            'Date',
+            'Goods ID',
+            'Goods Name',
+            'Product impressions',
+            'Number of visitor impressions of the product',
+            'Product clicks',
+            'Number of visitor clicks on the product',
+            'CTR'
+        ];
+        
+        $sheet->fromArray($headers, NULL, 'A1');
+
+        // Sample Data
+        $sampleData = [
+            [
+                '2025-11-01',
+                '603163444796046',
+                '5Core 6.5 Inch Midrange Car Door Speaker',
+                '98493',
+                '71393',
+                '3188',
+                '2825',
+                '3.24%'
+            ],
+            [
+                '2025-11-01',
+                '603258940684269',
+                'Adjustable Heavy Duty Guitar Stand',
+                '79303',
+                '56745',
+                '496',
+                '439',
+                '0.63%'
+            ]
+        ];
+
+        $sheet->fromArray($sampleData, NULL, 'A2');
+
+        // Set column widths
+        foreach (range('A', 'H') as $col) {
+            $sheet->getColumnDimension($col)->setWidth(25);
+        }
+
+        // Style header row
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
+        ];
+        $sheet->getStyle('A1:H1')->applyFromArray($headerStyle);
+
+        // Output Download
+        $fileName = 'Temu_View_Data_Sample_' . date('Y-m-d') . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    /**
+     * Upload Temu Ad Data (Truncate then Insert)
+     */
+    public function uploadTemuAdData(Request $request)
+    {
+        try {
+            $request->validate([
+                'ad_data_file' => 'required|file|mimes:xlsx,xls,csv'
+            ]);
+
+            $file = $request->file('ad_data_file');
+            $spreadsheet = IOFactory::load($file->getPathName());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            // Get headers from first row
+            $headers = $rows[0];
+            unset($rows[0]); // Remove header row
+            // Skip second row if it's "Total..." row
+            if (!empty($rows[1]) && strpos($rows[1][0], 'Total') !== false) {
+                unset($rows[1]);
+            }
+
+            $imported = 0;
+
+            DB::beginTransaction();
+            try {
+                // Truncate table before inserting new data
+                TemuAdData::truncate();
+                
+                foreach ($rows as $index => $row) {
+                    if (empty(array_filter($row))) {
+                        continue; // Skip empty rows
+                    }
+
+                    $rowData = array_combine($headers, $row);
+                    
+                    // Helper function to parse currency values
+                    $parseCurrency = function($value) {
+                        if (empty($value) || $value === '∞') return null;
+                        return floatval(str_replace(['$', ','], '', $value));
+                    };
+                    
+                    // Helper function to parse percentage values
+                    $parsePercent = function($value) {
+                        if (empty($value) || $value === '∞') return null;
+                        return floatval(str_replace('%', '', $value));
+                    };
+
+                    $adData = [
+                        'goods_name' => $rowData['Goods name'] ?? null,
+                        'goods_id' => $rowData['Goods ID'] ?? null,
+                        'spend' => $parseCurrency($rowData['Spend'] ?? null),
+                        'base_price_sales' => $parseCurrency($rowData['Base price sales'] ?? null),
+                        'roas' => floatval($rowData['ROAS'] ?? 0),
+                        'acos_ad' => $parsePercent($rowData['ACOS(AD)'] ?? null),
+                        'cost_per_transaction' => $parseCurrency($rowData['Cost per transaction'] ?? null),
+                        'sub_orders' => !empty($rowData['Sub-Orders']) ? (int)$rowData['Sub-Orders'] : 0,
+                        'items' => !empty($rowData['Items']) ? (int)$rowData['Items'] : 0,
+                        'net_total_cost' => $parseCurrency($rowData['Net total cost'] ?? null),
+                        'net_declared_sales' => $parseCurrency($rowData['Net declared sales'] ?? null),
+                        'net_roas' => floatval($rowData['Net advertising return on investment (ROAS)'] ?? 0),
+                        'net_acos_ad' => $parsePercent($rowData['Net advertising cost ratio (advertising)'] ?? null),
+                        'net_cost_per_transaction' => $parseCurrency($rowData['Net cost per transaction'] ?? null),
+                        'net_orders' => !empty($rowData['Net Orders']) ? (int)$rowData['Net Orders'] : 0,
+                        'net_number_pieces' => !empty($rowData['Net number of pieces']) ? (int)$rowData['Net number of pieces'] : 0,
+                        'impressions' => !empty($rowData['Impressions']) ? (int)str_replace(',', '', $rowData['Impressions']) : 0,
+                        'clicks' => !empty($rowData['Clicks']) ? (int)str_replace(',', '', $rowData['Clicks']) : 0,
+                        'ctr' => $parsePercent($rowData['CTR'] ?? null),
+                        'cvr' => $parsePercent($rowData['Conversion Rate (CVR)'] ?? null),
+                        'add_to_cart_number' => !empty($rowData['Add-to-cart number']) ? (int)str_replace(',', '', $rowData['Add-to-cart number']) : 0,
+                        'weekly_roas' => floatval($rowData['Weekly ROAS'] ?? 0),
+                        'target' => floatval($rowData['Target'] ?? 0),
+                    ];
+
+                    TemuAdData::create($adData);
+                    $imported++;
+                }
+
+                DB::commit();
+
+                return back()->with('success', "Successfully imported $imported ad records! (All previous data was cleared)");
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu ad data: ' . $e->getMessage());
+            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download Temu Ad Data Sample File
+     */
+    public function downloadTemuAdDataSample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Header Row - matches Temu export format
+        $headers = [
+            'Goods name',
+            'Goods ID',
+            'Spend',
+            'Base price sales',
+            'ROAS',
+            'ACOS(AD)',
+            'Cost per transaction',
+            'Sub-Orders',
+            'Items',
+            'Net total cost',
+            'Net declared sales',
+            'Net advertising return on investment (ROAS)',
+            'Net advertising cost ratio (advertising)',
+            'Net cost per transaction',
+            'Net Orders',
+            'Net number of pieces',
+            'Impressions',
+            'Clicks',
+            'CTR',
+            'Conversion Rate (CVR)',
+            'Add-to-cart number',
+            'Weekly ROAS',
+            'Target'
+        ];
+        
+        $sheet->fromArray($headers, NULL, 'A1');
+
+        // Sample Data
+        $sampleData = [
+            [
+                '5Core 12" Subwoofer 1200W PA DJ',
+                '603186094008569',
+                '$78.01',
+                '$954.55',
+                '12.24',
+                '8.17%',
+                '$3.13',
+                '25',
+                '25',
+                '$74.74',
+                '$842.98',
+                '11.28',
+                '8.86%',
+                '$3.40',
+                '22',
+                '22',
+                '48283',
+                '1452',
+                '3.00%',
+                '1.72%',
+                '164',
+                '0.00',
+                '0.00'
+            ]
+        ];
+
+        $sheet->fromArray($sampleData, NULL, 'A2');
+
+        // Set column widths
+        foreach (range('A', 'W') as $col) {
+            $sheet->getColumnDimension($col)->setWidth(20);
+        }
+
+        // Style header row
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
+        ];
+        $sheet->getStyle('A1:W1')->applyFromArray($headerStyle);
+
+        // Output Download
+        $fileName = 'Temu_Ad_Data_Sample_' . date('Y-m-d') . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
 }
+
