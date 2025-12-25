@@ -1393,9 +1393,9 @@ class TemuController extends Controller
     public function getTemuDecreaseData()
     {
         try {
-            // Get Temu channel percentage
-            $marketplaceData = ChannelMaster::where('channel', 'Temu')->first();
-            $percentage = $marketplaceData ? ($marketplaceData->channel_percentage / 100) : 1;
+            // Get Temu marketplace percentage from marketplace_percentages table
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.91;
             
             $pricingData = TemuPricing::select([
                 'sku',
