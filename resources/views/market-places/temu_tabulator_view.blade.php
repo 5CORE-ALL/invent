@@ -99,6 +99,14 @@
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
                         <i class="fa fa-upload"></i> Upload Daily Data
                     </button>
+                    <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
+                        <i class="fa fa-dollar-sign"></i> Upload Pricing
+                    </button>                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
+                        <i class="fa fa-eye"></i> Upload View Data
+                    </button>
+                    <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
+                        <i class="fa fa-chart-line"></i> Upload Ad Data
+                    </button>
                 </div>
 
                 <!-- Summary Stats -->
@@ -169,6 +177,167 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="startUploadBtn">
                         <i class="fa fa-upload me-1"></i>Start Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Upload Pricing Modal -->
+    <div class="modal fade" id="uploadPricingModal" tabindex="-1" aria-labelledby="uploadPricingModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadPricingModalLabel">
+                        <i class="fa fa-dollar-sign me-2"></i>Upload Temu Pricing Data
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadPricingForm" method="POST" action="{{ route('temu.pricing.upload') }}" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="pricingFile" class="form-label">Select Excel File</label>
+                            <input type="file" class="form-control" name="pricing_file" id="pricingFile" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                Supported formats: Excel (.xlsx, .xls) or CSV
+                                <br>
+                                <a href="{{ route('temu.pricing.sample') }}" class="text-primary">
+                                    <i class="fa fa-download me-1"></i>Download Sample Excel Template
+                                </a>
+                            </div>
+                        </div>
+                        
+                        @if(session('success'))
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                {{ session('success') }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        @endif
+                        
+                        @if(session('error'))
+                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                {{ session('error') }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        @endif
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadPricingForm" class="btn btn-primary">
+                        <i class="fa fa-upload me-1"></i>Upload Pricing
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload View Data Modal -->
+    <div class="modal fade" id="uploadViewDataModal" tabindex="-1" aria-labelledby="uploadViewDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="uploadViewDataModalLabel">
+                        <i class="fa fa-eye me-2"></i>Upload Temu View Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    
+                    <form id="uploadViewDataForm" action="{{ route('temu.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="viewDataFile" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                            </label>
+                            <input type="file" class="form-control" id="viewDataFile" name="file" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
+                            </div>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fa fa-lightbulb me-2"></i>
+                            <strong>Note:</strong> This will INSERT new records only (no truncate/update).
+                            <a href="{{ route('temu.viewdata.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadViewDataForm" class="btn btn-success">
+                        <i class="fa fa-upload me-1"></i>Upload View Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Ad Data Modal -->
+    <div class="modal fade" id="uploadAdDataModal" tabindex="-1" aria-labelledby="uploadAdDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="uploadAdDataModalLabel">
+                        <i class="fa fa-chart-line me-2"></i>Upload Temu Ad Data
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    
+                    <form id="uploadAdDataForm" action="{{ route('temu.addata.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="adDataFile" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                            </label>
+                            <input type="file" class="form-control" id="adDataFile" name="ad_data_file" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
+                            </div>
+                        </div>
+                        <div class="alert alert-warning">
+                            <i class="fa fa-exclamation-triangle me-2"></i>
+                            <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
+                            <br>
+                            <a href="{{ route('temu.addata.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadAdDataForm" class="btn btn-warning">
+                        <i class="fa fa-upload me-1"></i>Upload Ad Data
                     </button>
                 </div>
             </div>
@@ -458,8 +627,8 @@
                         const lp = parseFloat(data.lp) || 0;
                         const temuShip = parseFloat(data.temu_ship) || 0;
                         
-                        // PFT = (FB Prc * 0.87 - LP - Temu Ship) * Quantity
-                        const pft = (calculatedFbPrice * 0.87 - lp - temuShip) * quantity;
+                        // PFT = (FB Prc * 0.91 - LP - Temu Ship) * Quantity
+                        const pft = (calculatedFbPrice * 0.91 - lp - temuShip) * quantity;
                         return pft.toFixed(2);
                     }
                 },
@@ -591,10 +760,10 @@
                     calculatedFbPrice = basePrice;
                 }
                 
-                // Calculate PFT Total: (FB Prc * 0.87 - LP - Temu Ship) * Quantity
+                // Calculate PFT Total: (FB Prc * 0.91 - LP - Temu Ship) * Quantity
                 const lp = parseFloat(row.lp) || 0;
                 const temuShip = parseFloat(row.temu_ship) || 0;
-                const pft = (calculatedFbPrice * 0.87 - lp - temuShip) * quantity;
+                const pft = (calculatedFbPrice * 0.91 - lp - temuShip) * quantity;
                 totalPft += pft;
                 
                 // Calculate L30 Sales: Quantity * FB Prc

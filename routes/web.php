@@ -1198,6 +1198,25 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');
     Route::post('/temu-column-visibility', [TemuController::class, 'saveTemuColumnVisibility']);
     Route::get('/temu-column-visibility', [TemuController::class, 'getTemuColumnVisibility']);
+    
+    // Temu Pricing Upload
+    Route::post('/temu-pricing/upload', [TemuController::class, 'uploadTemuPricing'])->name('temu.pricing.upload');
+    Route::get('/temu-pricing/sample', [TemuController::class, 'downloadTemuPricingSample'])->name('temu.pricing.sample');
+    
+    // Temu View Data Upload
+    Route::post('/temu-view-data/upload', [TemuController::class, 'uploadTemuViewData'])->name('temu.viewdata.upload');
+    Route::get('/temu-view-data/sample', [TemuController::class, 'downloadTemuViewDataSample'])->name('temu.viewdata.sample');
+    
+    // Temu Ad Data Upload
+    Route::post('/temu-ad-data/upload', [TemuController::class, 'uploadTemuAdData'])->name('temu.addata.upload');
+    Route::get('/temu-ad-data/sample', [TemuController::class, 'downloadTemuAdDataSample'])->name('temu.addata.sample');
+    
+    // Temu Decrease Page
+    Route::get('/temu-decrease', [TemuController::class, 'temuDecreaseView'])->name('temu.decrease');
+    Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
+    Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);
+    Route::post('/temu-decrease-column-visibility', [TemuController::class, 'saveTemuDecreaseColumnVisibility']);
+    Route::get('/temu-decrease-column-visibility', [TemuController::class, 'getTemuDecreaseColumnVisibility']);
 
 
     // Advertisement Master view routes

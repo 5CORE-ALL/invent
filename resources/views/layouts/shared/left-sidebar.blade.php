@@ -2406,7 +2406,11 @@
                                     <li>
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>
                                     </li>
+                                      <li>
+                                        <a href="{{ url('temu-decrease') }}">Temu Pricing CVR </a>
+                                    </li>
 
+                                    
                                     <li>
                                         <a href="{{ route('listing.audit.temu') }}">Listing Audit Temu</a>
                                     </li>

@@ -2845,7 +2845,6 @@
             // Update summary badges for INV > 0
             function updateSummary() {
                 const data = table.getData("active");
-                let totalTcos = 0;
                 let totalSpendL30 = 0;
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
@@ -2858,7 +2857,6 @@
 
                 data.forEach(row => {
                     if (parseFloat(row.INV) > 0) {
-                        totalTcos += parseFloat(row['AD%'] || 0);
                         totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
@@ -2904,8 +2902,9 @@
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 
-
-                $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
+                // Calculate TCOS: (Total Ad Spend / Total Sales) × 100
+                const totalTcos = totalSalesAmt > 0 ? Math.round((totalSpendL30 / totalSalesAmt) * 100) : 0;
+                $('#total-tcos-badge').text('Total TCOS: ' + totalTcos + '%');
                 $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
                 $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
