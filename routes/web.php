@@ -2187,6 +2187,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/facebook-video-ad', 'facebookVideoAdView')->name('facebook.ads.master');
         Route::get('/facebook-video-ads', 'getFacebookVideoAdsData');
         Route::post('/facebook-video-ads/save', 'saveFacebookVideoAds')->name('facebook_video_ads.save');
+        
+        // Facebook Video Ads Groups and Categories (using Group Master's groups/categories)
+        Route::post('/facebook-video-ads-update-field', 'updateFacebookVideoAdField')->name('facebook.video.ads.update.field');
+        Route::post('/facebook-video-ads-upload-excel', 'uploadFacebookVideoAdsExcel')->name('facebook.video.ads.upload.excel');
+        Route::get('/facebook-video-ads-download-excel', 'downloadFacebookVideoAdsExcel')->name('facebook.video.ads.download.excel');
 
         Route::get('/facebook-feed-ad', 'facebookFeedAdView')->name('facebook.feed.ads.master');
         Route::get('/facebook-feed-ads', 'getFacebookFeedAdsData');
@@ -2754,7 +2759,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/facebook-image-ads', [FacebookAdsController::class, 'facebookImageAds'])->name('facebook.image.ads');
     Route::get('/facebook-image-ads-data', [FacebookAdsController::class, 'facebookImageAdsData'])->name('facebook.image.ads.data');
-    Route::get('/facebook-video-ads', [FacebookAdsController::class, 'facebookVideoAds'])->name('facebook.video.ads');
+    // Removed duplicate route - using /facebook-video-ad (singular) from VideoAdsMasterController instead
+    // Route::get('/facebook-video-ads', [FacebookAdsController::class, 'facebookVideoAds'])->name('facebook.video.ads');
     Route::get('/facebook-video-ads-data', [FacebookAdsController::class, 'facebookVideoAdsData'])->name('facebook.video.ads.data');
 
     Route::controller(FbaDataController::class)->group(function () {

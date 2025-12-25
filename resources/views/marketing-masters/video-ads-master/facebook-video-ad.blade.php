@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Facebook Ads'])
+@extends('layouts.vertical', ['title' => 'Facebook Video Ads'])
 
 @section('css')
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -33,7 +33,7 @@
 @endsection
 
 @section('content')
-@include('layouts.shared.page-title', ['page_title' => 'Facebook Ads', 'sub_title' => 'Facebook Ads'])
+@include('layouts.shared.page-title', ['page_title' => 'Facebook Video Ads', 'sub_title' => 'Facebook Video Ads'])
 
 <div class="row">
     <div class="col-12">
@@ -101,6 +101,15 @@
                         Show All
                     </button>
 
+                    <!-- Download/Upload Excel -->
+                    <input type="file" id="uploadExcel" accept=".xlsx,.xls" style="display: none;">
+                    <button type="button" class="btn btn-primary" id="uploadExcelBtn">
+                        <i class="fas fa-upload me-1"></i> Upload Excel
+                    </button>
+                    <button type="button" class="btn btn-success" id="downloadExcel">
+                        <i class="fas fa-file-excel me-1"></i> Download Excel
+                    </button>
+
                 </div>
                 <div id="facebook-video-ads"></div>
             </div>
@@ -143,7 +152,13 @@
         const table = new Tabulator("#facebook-video-ads", {
             index: "Sku",
             ajaxURL: "/facebook-video-ads",
-            ajaxConfig: "GET",
+            ajaxConfig: {
+                method: "GET",
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                }
+            },
             layout: "fitColumns",
             pagination: true,
             paginationSize: 50,
@@ -175,6 +190,108 @@
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search sku.",
                     headerFilterFunc: "like",
+                },
+                {
+                    title: "Category",
+                    field: "category",
+                    minWidth: 150,
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search category.",
+                    headerFilterFunc: "like",
+                    titleFormatter: function() {
+                        return `<div>
+                            <span>Category</span>
+                        </div>`;
+                    },
+                    formatter: function(cell) {
+                        const row = cell.getRow();
+                        const rowData = row.getData();
+                        const categoryId = rowData.category_id || '';
+                        const categoryName = rowData.category || '';
+                        const rowId = rowData.id;
+                        const sku = rowData.Sku;
+                        
+                        let categoryOptions = '<option value="">-- No Category --</option>';
+                        if (window.allCategories && window.allCategories.length > 0) {
+                            window.allCategories.forEach(cat => {
+                                const selected = cat.id == categoryId ? 'selected' : '';
+                                categoryOptions += `<option value="${cat.id}" ${selected}>${cat.category_name}</option>`;
+                            });
+                        }
+                        
+                        return `
+                            <div class="editable-cell" data-field="category_id" data-row-id="${rowId}" data-sku="${sku}">
+                                <span class="editable-value">${categoryName || '-'}</span>
+                                <select class="editable-select form-select form-select-sm" style="display:none;" data-original="${categoryId}">
+                                    ${categoryOptions}
+                                </select>
+                            </div>
+                        `;
+                    },
+                    cellClick: function(e, cell) {
+                        const cellEl = cell.getElement();
+                        const editableCell = cellEl.querySelector('.editable-cell');
+                        if (editableCell) {
+                            const span = editableCell.querySelector('.editable-value');
+                            const select = editableCell.querySelector('.editable-select');
+                            if (span && select) {
+                                span.style.display = 'none';
+                                select.style.display = 'block';
+                                select.focus();
+                            }
+                        }
+                    }
+                },
+                {
+                    title: "Group",
+                    field: "group",
+                    minWidth: 150,
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search group.",
+                    headerFilterFunc: "like",
+                    titleFormatter: function() {
+                        return `<div>
+                            <span>Group</span>
+                        </div>`;
+                    },
+                    formatter: function(cell) {
+                        const row = cell.getRow();
+                        const rowData = row.getData();
+                        const groupId = rowData.group_id || '';
+                        const groupName = rowData.group || '';
+                        const rowId = rowData.id;
+                        const sku = rowData.Sku;
+                        
+                        let groupOptions = '<option value="">-- No Group --</option>';
+                        if (window.allGroups && window.allGroups.length > 0) {
+                            window.allGroups.forEach(grp => {
+                                const selected = grp.id == groupId ? 'selected' : '';
+                                groupOptions += `<option value="${grp.id}" ${selected}>${grp.group_name}</option>`;
+                            });
+                        }
+                        
+                        return `
+                            <div class="editable-cell" data-field="group_id" data-row-id="${rowId}" data-sku="${sku}">
+                                <span class="editable-value">${groupName || '-'}</span>
+                                <select class="editable-select form-select form-select-sm" style="display:none;" data-original="${groupId}">
+                                    ${groupOptions}
+                                </select>
+                            </div>
+                        `;
+                    },
+                    cellClick: function(e, cell) {
+                        const cellEl = cell.getElement();
+                        const editableCell = cellEl.querySelector('.editable-cell');
+                        if (editableCell) {
+                            const span = editableCell.querySelector('.editable-value');
+                            const select = editableCell.querySelector('.editable-select');
+                            if (span && select) {
+                                span.style.display = 'none';
+                                select.style.display = 'block';
+                                select.focus();
+                            }
+                        }
+                    }
                 },
                 {
                     title: "INV",
@@ -310,7 +427,21 @@
                 },
             ],
             ajaxResponse: function (url, params, response) {
-                const rows = response.data;
+                // Handle different response formats
+                let rows = [];
+                
+                if (Array.isArray(response)) {
+                    // If response is already an array
+                    rows = response;
+                } else if (response && response.data && Array.isArray(response.data)) {
+                    // If response has a data property with array
+                    rows = response.data;
+                } else if (response && Array.isArray(response)) {
+                    rows = response;
+                } else {
+                    console.error("Unexpected response format:", response);
+                    return [];
+                }
 
                 rows.forEach(row => {
                     const inv = parseFloat(row.INV);
@@ -323,6 +454,28 @@
                 });
 
                 return rows;
+            },
+            ajaxError: function(error) {
+                console.error("Error loading Facebook video ads data:", error);
+                let errorMessage = "Error loading data. ";
+                
+                if (error && error.responseText) {
+                    // Check if response is HTML (error page)
+                    if (error.responseText.trim().startsWith('<!DOCTYPE') || error.responseText.trim().startsWith('<html')) {
+                        errorMessage += "Server returned an HTML page instead of JSON. This might be a routing or authentication issue.";
+                    } else {
+                        try {
+                            const errorData = JSON.parse(error.responseText);
+                            errorMessage += errorData.message || "Please refresh the page and try again.";
+                        } catch (e) {
+                            errorMessage += "Please refresh the page and try again.";
+                        }
+                    }
+                } else {
+                    errorMessage += "Please refresh the page and try again.";
+                }
+                
+                alert(errorMessage);
             },
         });
         table.on("dataProcessed", function() {
@@ -611,6 +764,238 @@
         });
 
         // document.body.style.zoom = "90%";
+
+        // Initialize groups and categories
+        window.allGroups = [];
+        window.allCategories = [];
+
+        // Load groups and categories from Group Master
+        function loadGroupsAndCategories() {
+            return Promise.all([
+                fetch('/group-master-groups')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.allGroups = data.groups || [];
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading groups:', error);
+                        window.allGroups = [];
+                    }),
+                fetch('/group-master-categories')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.allCategories = data.categories || [];
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading categories:', error);
+                        window.allCategories = [];
+                    })
+            ]);
+        }
+
+        // Setup group/category editing
+        function setupGroupCategoryEditing() {
+            document.addEventListener('change', function(e) {
+                const select = e.target;
+                if (!select.classList.contains('editable-select') || !select.closest('.editable-cell')) return;
+                
+                const cell = select.closest('.editable-cell');
+                const span = cell.querySelector('.editable-value');
+                const field = cell.dataset.field;
+                const rowId = cell.dataset.rowId;
+                const sku = cell.dataset.sku;
+                const newValue = select.value;
+                const originalValue = select.dataset.original || '';
+
+                if (newValue !== originalValue) {
+                    saveGroupCategoryField(rowId, sku, field, newValue, cell, span, select);
+                } else {
+                    span.style.display = '';
+                    select.style.display = 'none';
+                }
+            });
+
+            document.addEventListener('blur', function(e) {
+                const select = e.target;
+                if (!select.classList.contains('editable-select') || !select.closest('.editable-cell')) return;
+                
+                const cell = select.closest('.editable-cell');
+                const span = cell.querySelector('.editable-value');
+                const originalValue = select.dataset.original || '';
+                
+                if (select.value !== originalValue && !cell.dataset.saving) {
+                    select.value = originalValue;
+                    updateDisplayValue(cell, originalValue, cell.dataset.field);
+                }
+                
+                span.style.display = '';
+                select.style.display = 'none';
+                delete cell.dataset.saving;
+            }, true);
+        }
+
+        function updateDisplayValue(cell, valueId, field) {
+            const span = cell.querySelector('.editable-value');
+            if (!valueId || valueId === '') {
+                span.textContent = '-';
+                return;
+            }
+            
+            if (field === 'group_id') {
+                const group = window.allGroups.find(g => g.id == valueId);
+                span.textContent = group ? group.group_name : '-';
+            } else if (field === 'category_id') {
+                const category = window.allCategories.find(c => c.id == valueId);
+                span.textContent = category ? category.category_name : '-';
+            }
+        }
+
+        function saveGroupCategoryField(rowId, sku, field, value, cell, span, select) {
+            cell.dataset.saving = 'true';
+            span.textContent = 'Saving...';
+            span.style.display = '';
+            select.style.display = 'none';
+            cell.style.opacity = '0.6';
+
+            fetch('/facebook-video-ads-update-field', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({
+                    id: rowId,
+                    sku: sku,
+                    field: field,
+                    value: value ? parseInt(value) : null
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                cell.style.opacity = '1';
+                delete cell.dataset.saving;
+                
+                if (data.success) {
+                    updateDisplayValue(cell, value, field);
+                    select.value = value;
+                    select.dataset.original = value;
+                    
+                    // Update table data
+                    const tableData = table.getData();
+                    const item = tableData.find(d => d.id == rowId);
+                    if (item) {
+                        if (field === 'group_id') {
+                            item.group_id = value ? parseInt(value) : null;
+                            item.group = data.data.group_name || null;
+                        } else if (field === 'category_id') {
+                            item.category_id = value ? parseInt(value) : null;
+                            item.category = data.data.category_name || null;
+                        }
+                    }
+                    
+                    alert(data.message || `${field.replace('_id', '')} updated successfully!`);
+                } else {
+                    const originalValue = select.dataset.original || '';
+                    select.value = originalValue;
+                    updateDisplayValue(cell, originalValue, field);
+                    alert(data.message || `Failed to update ${field}.`);
+                }
+            })
+            .catch(error => {
+                cell.style.opacity = '1';
+                delete cell.dataset.saving;
+                const originalValue = select.dataset.original || '';
+                select.value = originalValue;
+                updateDisplayValue(cell, originalValue, field);
+                console.error('Error:', error);
+                alert(`Error updating ${field}. Please try again.`);
+            });
+        }
+
+        // Note: Groups and Categories are managed in Group Master page
+        // They will automatically sync here when created there
+
+        // Setup Excel download
+        function setupExcelDownload() {
+            document.getElementById('downloadExcel').addEventListener('click', function() {
+                window.location.href = '/facebook-video-ads-download-excel';
+            });
+        }
+
+        // Setup Excel upload
+        function setupExcelUpload() {
+            const uploadBtn = document.getElementById('uploadExcelBtn');
+            const fileInput = document.getElementById('uploadExcel');
+
+            uploadBtn.addEventListener('click', function() {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const validTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+                                  'application/vnd.ms-excel'];
+                if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
+                    alert('Please upload a valid Excel file (.xlsx or .xls)');
+                    fileInput.value = '';
+                    return;
+                }
+
+                uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Uploading...';
+                uploadBtn.disabled = true;
+
+                const formData = new FormData();
+                formData.append('excel_file', file);
+                formData.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+
+                fetch('/facebook-video-ads-upload-excel', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message || 'Excel file uploaded and data updated successfully!');
+                        setTimeout(() => {
+                            table.replaceData();
+                        }, 1000);
+                    } else {
+                        alert(data.message || 'Failed to upload Excel file.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Upload error:', error);
+                    alert('An error occurred while uploading the file.');
+                })
+                .finally(() => {
+                    uploadBtn.innerHTML = '<i class="fas fa-upload me-1"></i> Upload Excel';
+                    uploadBtn.disabled = false;
+                    fileInput.value = '';
+                });
+            });
+        }
+
+        // Add create buttons to column headers
+        function addCreateButtonsToHeaders() {
+            // This will be handled by updating the column definitions
+        }
+
+        // Initialize everything
+        loadGroupsAndCategories().then(() => {
+            setupGroupCategoryEditing();
+            setupExcelDownload();
+            setupExcelUpload();
+        });
     });
 
     </script>
