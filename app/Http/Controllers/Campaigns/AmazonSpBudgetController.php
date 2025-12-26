@@ -1596,11 +1596,14 @@ class AmazonSpBudgetController extends Controller
             ->get();
 
         // Count total SKUs
-        // For HL: count only parent SKUs (SKU LIKE 'PARENT %')
+        // For HL: count unique parent values (not SKUs starting with PARENT) to match product-master page
         // For KW/PT: count non-parent SKUs (SKU NOT LIKE 'PARENT %')
         if ($campaignType === 'HL') {
+            // Use pluck->filter->unique to match product-master page logic exactly
             $totalSkuCount = ProductMaster::whereNull('deleted_at')
-                ->where('sku', 'LIKE', 'PARENT %')
+                ->pluck('parent')
+                ->filter()
+                ->unique()
                 ->count();
         } else {
             $totalSkuCount = ProductMaster::whereNull('deleted_at')
@@ -2741,6 +2744,160 @@ class AmazonSpBudgetController extends Controller
             }
         }
 
+        // For HL campaigns, add unmatched campaigns (similar to KW)
+        if ($campaignType === 'HL') {
+            $matchedCampaignIds = array_unique(array_filter(array_column($result, 'campaign_id')));
+            
+            // Get ALL HL campaigns (not filtered by SKU) to find truly unmatched ones
+            $allHLCampaignsL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', 'L30')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
+                
+            $allHLCampaignsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', 'L7')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
+                
+            $allHLCampaignsL1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', 'L1')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
+                
+            $allHLCampaignsL15 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', 'L15')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
+            
+            $allUniqueCampaigns = $allHLCampaignsL30->unique('campaign_id')
+                ->merge($allHLCampaignsL7->unique('campaign_id'))
+                ->merge($allHLCampaignsL1->unique('campaign_id'))
+                ->unique('campaign_id'); // Add unique AFTER merge to remove duplicates across periods
+            
+            foreach ($allUniqueCampaigns as $campaign) {
+                $campaignId = $campaign->campaign_id ?? '';
+                
+                // Skip if already matched with a SKU or already added
+                if (empty($campaignId)) {
+                    continue;
+                }
+                
+                if (in_array($campaignId, $matchedCampaignIds)) {
+                    continue;
+                }
+
+                $campaignName = $campaign->campaignName ?? '';
+                if (empty($campaignName)) {
+                    continue;
+                }
+
+                // Normalize campaign name
+                $normalizedCampaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $campaignName);
+                $normalizedCampaignName = preg_replace('/\s+/', ' ', $normalizedCampaignName);
+                $cleanCampaignName = strtoupper(trim($normalizedCampaignName));
+
+                // Check if this campaign name matches any parent SKU or parent SKU + " HEAD"
+                $matchedSku = null;
+                foreach ($skus as $sku) {
+                    $normalizedSku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku);
+                    $normalizedSku = preg_replace('/\s+/', ' ', $normalizedSku);
+                    $cleanSku = strtoupper(trim($normalizedSku));
+                    
+                    if ($cleanCampaignName === $cleanSku || $cleanCampaignName === $cleanSku . ' HEAD') {
+                        $matchedSku = $sku;
+                        break;
+                    }
+                }
+
+                // If no SKU match found, add as unmatched campaign
+                if (!$matchedSku) {
+                    $matchedCampaignL30 = $allHLCampaignsL30->first(function ($item) use ($campaignId) {
+                        return ($item->campaign_id ?? '') === $campaignId;
+                    });
+
+                    $matchedCampaignL7 = $allHLCampaignsL7->first(function ($item) use ($campaignId) {
+                        return ($item->campaign_id ?? '') === $campaignId;
+                    });
+
+                    $matchedCampaignL1 = $allHLCampaignsL1->first(function ($item) use ($campaignId) {
+                        return ($item->campaign_id ?? '') === $campaignId;
+                    });
+
+                    $matchedCampaignL15 = $allHLCampaignsL15->first(function ($item) use ($campaignId) {
+                        return ($item->campaign_id ?? '') === $campaignId;
+                    });
+
+                    // Extract SKU from campaign name by removing " HEAD" suffix if present
+                    $extractedSku = $cleanCampaignName;
+                    if (substr($cleanCampaignName, -5) === ' HEAD') {
+                        $extractedSku = substr($cleanCampaignName, 0, -5);
+                    }
+                    
+                    // Ensure it's treated as a parent SKU for frontend filtering
+                    if (stripos($extractedSku, 'PARENT') === false) {
+                        $extractedSku = 'PARENT ' . $extractedSku;
+                    }
+
+                    $row = [];
+                    $row['parent'] = $extractedSku;
+                    $row['sku'] = $extractedSku;
+                    $row['campaign_id'] = $campaignId;
+                    $row['campaignName'] = $campaign->campaignName ?? '';
+                    $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
+                    $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
+                    $row['INV'] = 0;
+                    $row['FBA_INV'] = 0;
+                    $row['L30'] = 0;
+                    $row['A_L30'] = 0;
+                    $row['l7_spend'] = $matchedCampaignL7->cost ?? 0;
+                    $row['l7_cpc'] = ($matchedCampaignL7 && $matchedCampaignL7->clicks > 0) ? ($matchedCampaignL7->cost / $matchedCampaignL7->clicks) : 0;
+                    $row['l1_spend'] = $matchedCampaignL1->cost ?? 0;
+                    $row['l1_cpc'] = ($matchedCampaignL1 && $matchedCampaignL1->clicks > 0) ? ($matchedCampaignL1->cost / $matchedCampaignL1->clicks) : 0;
+                    $row['acos'] = 0;
+                    $row['acos_L30'] = 0;
+                    $row['acos_L15'] = 0;
+                    $row['acos_L7'] = 0;
+                    $row['NRA'] = '';
+                    $row['TPFT'] = null;
+                    $row['hasCampaign'] = true;
+
+                    if (isset($matchedCampaignL30) && $matchedCampaignL30) {
+                        $sales30 = $matchedCampaignL30->sales30d ?? 0;
+                        $spend30 = $matchedCampaignL30->cost ?? 0;
+                        if ($sales30 > 0) {
+                            $row['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
+                        } elseif ($spend30 > 0) {
+                            $row['acos_L30'] = 100;
+                        }
+                        $row['acos'] = $row['acos_L30'];
+                    }
+
+                    if (isset($matchedCampaignL15) && isset($matchedCampaignL1) && $matchedCampaignL15 && $matchedCampaignL1) {
+                        $sales15 = ($matchedCampaignL15->sales14d ?? 0) + ($matchedCampaignL1->sales1d ?? 0);
+                        $spend15 = $matchedCampaignL15->cost ?? 0;
+                        if ($sales15 > 0) {
+                            $row['acos_L15'] = round(($spend15 / $sales15) * 100, 2);
+                        } elseif ($spend15 > 0) {
+                            $row['acos_L15'] = 100;
+                        }
+                    }
+
+                    if (isset($matchedCampaignL7) && $matchedCampaignL7) {
+                        $sales7 = $matchedCampaignL7->sales7d ?? 0;
+                        $spend7 = $matchedCampaignL7->cost ?? 0;
+                        if ($sales7 > 0) {
+                            $row['acos_L7'] = round(($spend7 / $sales7) * 100, 2);
+                        } elseif ($spend7 > 0) {
+                            $row['acos_L7'] = 100;
+                        }
+                    }
+
+                    $result[] = (object) $row;
+                    $matchedCampaignIds[] = $campaignId;
+                }
+            }
+        }
+        
         // For KW campaigns, add unmatched campaigns (similar to ACOS control)
         if ($campaignType === 'KW') {
             $matchedCampaignIds = array_unique(array_column($result, 'campaign_id'));
