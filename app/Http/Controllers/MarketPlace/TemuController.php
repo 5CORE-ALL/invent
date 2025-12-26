@@ -16,6 +16,7 @@ use App\Models\TemuDailyData;
 use App\Models\TemuPricing;
 use App\Models\TemuViewData;
 use App\Models\TemuAdData;
+use App\Models\TemuRPricing;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -1393,10 +1394,29 @@ class TemuController extends Controller
     public function getTemuDecreaseData()
     {
         try {
-            // Get Temu channel percentage
-            $marketplaceData = ChannelMaster::where('channel', 'Temu')->first();
-            $percentage = $marketplaceData ? ($marketplaceData->channel_percentage / 100) : 1;
+            // Get Temu marketplace percentage from marketplace_percentages table
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.91;
             
+            // 1. Start from ProductMaster (like eBay does)
+            $productMasters = ProductMaster::orderBy("parent", "asc")
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy("sku", "asc")
+                ->get();
+
+            // Filter out parent SKUs
+            $productMasters = $productMasters->filter(function ($item) {
+                return stripos($item->sku, 'PARENT') === false;
+            })->values();
+
+            // 2. Get all SKUs from product master
+            $skus = $productMasters->pluck("sku")
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            // 3. Fetch Temu pricing data for matching SKUs
             $pricingData = TemuPricing::select([
                 'sku',
                 'product_name',
@@ -1410,14 +1430,9 @@ class TemuController extends Controller
                 'sku_id',
                 'date_created'
             ])
-            ->orderBy('sku', 'asc')
-            ->get();
-
-            // Fetch all product master records
-            $productMasterRows = ProductMaster::all()->keyBy('sku');
-            
-            // Get all SKUs
-            $skus = $pricingData->pluck('sku')->filter()->unique()->values()->all();
+            ->whereIn('sku', $skus)
+            ->get()
+            ->keyBy('sku');
             
             // Fetch shopify data for inventory
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -1442,10 +1457,24 @@ class TemuController extends Controller
                 ->get()
                 ->keyBy('goods_id');
 
-            // Process data with product master info
-            $processedData = $pricingData->map(function($item) use ($productMasterRows, $shopifyData, $temuSalesData, $viewData, $adData, $percentage) {
-                $sku = $item->sku;
-                $productMaster = $productMasterRows->get($sku);
+            // Fetch saved SPRICE values from TemuDataView
+            $temuDataViewData = TemuDataView::whereIn('sku', $skus)
+                ->select('sku', 'value')
+                ->get()
+                ->keyBy('sku');
+
+            // Fetch R Pricing data (recommended_base_price) by goods_id
+            $rPricingData = TemuRPricing::select('goods_id', 'recommended_base_price')
+                ->whereNotNull('goods_id')
+                ->get()
+                ->keyBy('goods_id');
+
+            // 4. Process data - iterate through ALL product masters
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $rPricingData, $percentage) {
+                $sku = $productMaster->sku;
+                
+                // Get related data (may be null if not in Temu)
+                $item = $pricingData->get($sku);
                 $shopify = $shopifyData->get($sku);
                 $temuSales = $temuSalesData->get($sku);
                 
@@ -1473,36 +1502,43 @@ class TemuController extends Controller
                         $lp = floatval($productMaster->LP);
                     }
                     
-                    // Get temu_ship
-                    $temuShip = $productMaster->temu_ship ?? 0;
+                    // Get temu_ship - only from 'temu_ship' key, default to 0 if not exists
+                    $temuShip = floatval($values['temu_ship'] ?? 0);
                 }
+                
+                // Get image_path (like eBay does)
+                $imagePath = $shopify->image_src ?? ($productMaster ? ($productMaster->Values['image_path'] ?? ($productMaster->image_path ?? null)) : null);
                 
                 // Get inventory from ShopifySku (like eBay does)
                 $inventory = $shopify->inv ?? 0;
                 $l30 = $shopify->quantity ?? 0;
                 
                 // Get Temu L30 (last 30 days sales from Temu)
-                $temuL30 = $temuSales->temu_l30 ?? 0;
+                $temuL30 = $temuSales ? $temuSales->temu_l30 : 0;
                 
-                // Get view data by goods_id (last 30 days)
-                $goodsId = $item->goods_id;
-                $viewDataItem = $viewData->get($goodsId);
-                $productClicks = $viewDataItem->product_clicks ?? 0;
-                $ctr = $viewDataItem->ctr ?? 0;
+                // Get view data by goods_id (last 30 days) - only if item exists in Temu
+                $goodsId = $item ? $item->goods_id : null;
+                $viewDataItem = $goodsId ? $viewData->get($goodsId) : null;
+                $productClicks = $viewDataItem ? $viewDataItem->product_clicks : 0;
+                $ctr = $viewDataItem ? $viewDataItem->ctr : 0;
                 
-                // Get ad data by goods_id (spend)
-                $adDataItem = $adData->get($goodsId);
-                $spend = $adDataItem->spend ?? 0;
+                // Get ad data by goods_id (spend) - only if item exists in Temu
+                $adDataItem = $goodsId ? $adData->get($goodsId) : null;
+                $spend = $adDataItem ? $adDataItem->spend : 0;
                 
                 // Calculate OVL30 and Dil%
                 $ovl30 = $l30;
                 $dilPercent = ($l30 && $inventory > 0) ? round(($l30 / $inventory) * 100, 2) : 0;
                 
-                // Calculate profit
-                $basePrice = $item->base_price ?? 0;
+                // Calculate profit - only if item exists in Temu
+                $basePrice = $item ? ($item->base_price ?? 0) : 0;
                 
-                // Calculate Temu Price (Base Price + 2.99 if below 26.99)
-                $temuPrice = $basePrice < 26.99 ? $basePrice + 2.99 : $basePrice;
+                // Calculate Temu Price (Base Price + 2.99 if <= 26.99) - only if item exists in Temu
+                if ($item && $basePrice > 0) {
+                    $temuPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
+                } else {
+                    $temuPrice = 0;
+                }
                 
                 // Apply percentage like eBay does
                 $profit = $temuPrice * $percentage - $lp - $temuShip;
@@ -1537,18 +1573,34 @@ class TemuController extends Controller
                     $nroiPercent = $roiPercent - $adsPercent;
                 }
                 
+                // Get saved SPRICE from TemuDataView
+                $temuDataViewItem = $temuDataViewData->get($sku);
+                $temuDataViewValue = null;
+                if ($temuDataViewItem) {
+                    $temuDataViewValue = is_array($temuDataViewItem->value) 
+                        ? $temuDataViewItem->value 
+                        : (is_string($temuDataViewItem->value) ? json_decode($temuDataViewItem->value, true) : []);
+                }
+                $sprice = $temuDataViewValue['sprice'] ?? null;
+                
+                // Get recommended_base_price from R Pricing by goods_id
+                $rPricingItem = $goodsId ? $rPricingData->get($goodsId) : null;
+                $recommendedBasePrice = $rPricingItem ? $rPricingItem->recommended_base_price : null;
+                
                 return [
                     'sku' => $sku,
-                    'product_name' => $item->product_name,
-                    'category' => $item->category,
-                    'variation' => $item->variation,
-                    'quantity' => $item->quantity,
+                    'parent' => $productMaster->parent ?? '',
+                    'image_path' => $imagePath,
+                    'product_name' => $item ? $item->product_name : '',
+                    'category' => $item ? $item->category : '',
+                    'variation' => $item ? $item->variation : '',
+                    'quantity' => $item ? $item->quantity : 0,
                     'base_price' => $basePrice,
-                    'status' => $item->status,
-                    'detail_status' => $item->detail_status,
-                    'goods_id' => $item->goods_id,
-                    'sku_id' => $item->sku_id,
-                    'date_created' => $item->date_created,
+                    'status' => $item ? $item->status : '',
+                    'detail_status' => $item ? $item->detail_status : '',
+                    'goods_id' => $item ? $item->goods_id : '',
+                    'sku_id' => $item ? $item->sku_id : '',
+                    'date_created' => $item ? $item->date_created : '',
                     'lp' => $lp,
                     'inventory' => $inventory,
                     'ovl30' => $ovl30,
@@ -1565,7 +1617,9 @@ class TemuController extends Controller
                     'spend' => round($spend, 2),
                     'ads_percent' => round($adsPercent, 2),
                     'npft_percent' => round($npftPercent, 2),
-                    'nroi_percent' => round($nroiPercent, 2)
+                    'nroi_percent' => round($nroiPercent, 2),
+                    'sprice' => $sprice,
+                    'recommended_base_price' => $recommendedBasePrice
                 ];
             });
 
@@ -1604,6 +1658,85 @@ class TemuController extends Controller
         } catch (\Exception $e) {
             Log::error('Error updating Temu price: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to update price'], 500);
+        }
+    }
+
+    /**
+     * Save Temu SPRICE (Suggested Price)
+     */
+    public function saveTemuSprice(Request $request)
+    {
+        try {
+            $request->validate([
+                'sku' => 'required|string',
+                'sprice' => 'required|numeric|min:0'
+            ]);
+
+            $sku = $request->sku;
+            $sprice = floatval($request->sprice);
+
+            // Get product master data for LP and temu_ship
+            $productMaster = ProductMaster::where('sku', $sku)->first();
+            
+            $lp = 0;
+            $temuShip = 0;
+            
+            if ($productMaster) {
+                $values = is_array($productMaster->Values) 
+                    ? $productMaster->Values 
+                    : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                
+                // Get LP
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($productMaster->lp)) {
+                    $lp = floatval($productMaster->lp);
+                }
+                
+                // Get temu_ship
+                $temuShip = floatval($values['temu_ship'] ?? 0);
+            }
+
+            // Get Temu marketplace percentage
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.91;
+
+            // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99)
+            $stemuPrice = $sprice <= 26.99 ? $sprice + 2.99 : $sprice;
+
+            // Calculate SGPRFT%
+            $sgprftPercent = $stemuPrice > 0 ? (($stemuPrice * $percentage - $lp - $temuShip) / $stemuPrice) * 100 : 0;
+
+            // Calculate SROI%
+            $sroiPercent = $lp > 0 ? (($stemuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
+
+            // Store SPRICE in TemuDataView (similar to eBay's approach)
+            $temuDataView = TemuDataView::firstOrNew(['sku' => $sku]);
+            $existingValue = is_array($temuDataView->value) 
+                ? $temuDataView->value 
+                : (is_string($temuDataView->value) ? json_decode($temuDataView->value, true) : []);
+            
+            $existingValue['sprice'] = $sprice;
+            $existingValue['sgprft_percent'] = round($sgprftPercent, 2);
+            $existingValue['sroi_percent'] = round($sroiPercent, 2);
+            
+            $temuDataView->value = $existingValue;
+            $temuDataView->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'SPRICE saved successfully',
+                'sprice' => $sprice,
+                'sgprft_percent' => round($sgprftPercent, 2),
+                'sroi_percent' => round($sroiPercent, 2)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving Temu SPRICE: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to save SPRICE'], 500);
         }
     }
 
@@ -1966,6 +2099,221 @@ class TemuController extends Controller
 
         // Output Download
         $fileName = 'Temu_Ad_Data_Sample_' . date('Y-m-d') . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $fileName . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    /**
+     * Upload Temu R Pricing Data (Truncate then Insert)
+     */
+    public function uploadTemuRPricing(Request $request)
+    {
+        $request->validate([
+            'r_pricing_file' => 'required|mimes:xlsx,xls,csv|max:10240'
+        ]);
+
+        try {
+            $file = $request->file('r_pricing_file');
+            $spreadsheet = IOFactory::load($file->getPathname());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return back()->with('error', 'File is empty or has no data rows');
+            }
+
+            // Get headers from first row
+            $headers = array_map('trim', $rows[0]);
+            
+            // Header mapping
+            $headerMapping = [
+                'Category' => 'pricing_opportunity_type',
+                'Pricing opportunity type' => 'pricing_opportunity_type',
+                'Product name' => 'product_name',
+                'Goods ID' => 'goods_id',
+                'SKU ID' => 'sku_id',
+                'Variation' => 'variation',
+                'Product status' => 'product_status',
+                'Current base price' => 'current_base_price',
+                'Recommended base price' => 'recommended_base_price',
+                'Date created' => 'date_created',
+                'Action' => 'action',
+            ];
+
+            // Find column indices
+            $columnIndices = [];
+            foreach ($headers as $index => $header) {
+                if (isset($headerMapping[$header])) {
+                    $columnIndices[$headerMapping[$header]] = $index;
+                } else {
+                    foreach ($headerMapping as $key => $dbColumn) {
+                        if (stripos($header, $key) !== false && !isset($columnIndices[$dbColumn])) {
+                            $columnIndices[$dbColumn] = $index;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Handle the duplicate "Category" column issue
+            $categoryColumns = [];
+            foreach ($headers as $index => $header) {
+                if (stripos($header, 'Category') !== false) {
+                    $categoryColumns[] = $index;
+                }
+            }
+            
+            if (count($categoryColumns) >= 2) {
+                $columnIndices['pricing_opportunity_type'] = $categoryColumns[0];
+                $columnIndices['category'] = $categoryColumns[1];
+            } elseif (count($categoryColumns) == 1) {
+                $columnIndices['pricing_opportunity_type'] = $categoryColumns[0];
+            }
+
+            // Truncate existing data
+            TemuRPricing::truncate();
+
+            $importCount = 0;
+            $errors = [];
+
+            // Process data rows (skip header)
+            for ($i = 1; $i < count($rows); $i++) {
+                $row = $rows[$i];
+                
+                // Skip empty rows
+                if (empty(array_filter($row))) {
+                    continue;
+                }
+
+                try {
+                    $data = [
+                        'pricing_opportunity_type' => isset($columnIndices['pricing_opportunity_type']) ? ($row[$columnIndices['pricing_opportunity_type']] ?? null) : null,
+                        'product_name' => isset($columnIndices['product_name']) ? ($row[$columnIndices['product_name']] ?? null) : null,
+                        'goods_id' => isset($columnIndices['goods_id']) ? ($row[$columnIndices['goods_id']] ?? null) : null,
+                        'sku_id' => isset($columnIndices['sku_id']) ? ($row[$columnIndices['sku_id']] ?? null) : null,
+                        'variation' => isset($columnIndices['variation']) ? ($row[$columnIndices['variation']] ?? null) : null,
+                        'product_status' => isset($columnIndices['product_status']) ? ($row[$columnIndices['product_status']] ?? null) : null,
+                        'category' => isset($columnIndices['category']) ? ($row[$columnIndices['category']] ?? null) : null,
+                        'current_base_price' => isset($columnIndices['current_base_price']) ? $this->sanitizePrice($row[$columnIndices['current_base_price']] ?? null) : null,
+                        'recommended_base_price' => isset($columnIndices['recommended_base_price']) ? $this->sanitizePrice($row[$columnIndices['recommended_base_price']] ?? null) : null,
+                        'date_created' => isset($columnIndices['date_created']) ? $this->parseDate($row[$columnIndices['date_created']] ?? null) : null,
+                        'action' => isset($columnIndices['action']) ? ($row[$columnIndices['action']] ?? null) : null,
+                    ];
+
+                    TemuRPricing::create($data);
+                    $importCount++;
+                } catch (\Exception $e) {
+                    $errors[] = "Row $i: " . $e->getMessage();
+                    Log::error("Temu R Pricing import error at row $i: " . $e->getMessage());
+                }
+            }
+
+            return back()->with('success', "Successfully imported $importCount R Pricing records!");
+
+        } catch (\Exception $e) {
+            Log::error('Temu R Pricing upload error: ' . $e->getMessage());
+            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download Temu R Pricing Sample File
+     */
+    public function downloadTemuRPricingSample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Header Row - matches Temu export format
+        $headers = [
+            'Category',
+            'Product name',
+            'Goods ID',
+            'SKU ID',
+            'Variation',
+            'Product status',
+            'Category',
+            'Current base price',
+            'Recommended base price',
+            'Date created',
+            'Action'
+        ];
+        
+        $sheet->fromArray($headers, NULL, 'A1');
+
+        // Sample Data
+        $sampleData = [
+            [
+                'Restricted traffic',
+                '5Core Speaker Stand Tripod Tall Adjustable 36 Inch DJ Pole Mount Studio Monitor Stands',
+                '602829443984319',
+                '51138028138319',
+                'As shown',
+                'Active',
+                'Racks & Stands',
+                '16.33',
+                '15.15',
+                '2025-02-01 03:33:46',
+                ''
+            ],
+            [
+                'Restricted traffic',
+                '5Core Keyboard Stand Double X Style Adjustable Piano Riser BLUE',
+                '603179483820280',
+                '41560251076147',
+                'As shown',
+                'Active',
+                'Stands',
+                '43.26',
+                '23.98',
+                '2025-02-27 00:02:29',
+                ''
+            ],
+            [
+                'Restricted traffic',
+                '5Core XLR Microphone Dynamic Mic Karaoke Singing Studio Microfono Handheld Mics',
+                '602737303467588',
+                '49990198154200',
+                'Blue',
+                'Active',
+                'Vocal',
+                '11.29',
+                '9.62',
+                '2025-04-20 01:05:48',
+                ''
+            ]
+        ];
+
+        $sheet->fromArray($sampleData, NULL, 'A2');
+
+        // Set column widths
+        $sheet->getColumnDimension('A')->setWidth(20);
+        $sheet->getColumnDimension('B')->setWidth(60);
+        $sheet->getColumnDimension('C')->setWidth(20);
+        $sheet->getColumnDimension('D')->setWidth(20);
+        $sheet->getColumnDimension('E')->setWidth(15);
+        $sheet->getColumnDimension('F')->setWidth(15);
+        $sheet->getColumnDimension('G')->setWidth(20);
+        $sheet->getColumnDimension('H')->setWidth(18);
+        $sheet->getColumnDimension('I')->setWidth(22);
+        $sheet->getColumnDimension('J')->setWidth(20);
+        $sheet->getColumnDimension('K')->setWidth(10);
+
+        // Style header row
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
+        ];
+        $sheet->getStyle('A1:K1')->applyFromArray($headerStyle);
+
+        // Output Download
+        $fileName = 'Temu_R_Pricing_Sample_' . date('Y-m-d') . '.xlsx';
 
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment;filename="' . $fileName . '"');
