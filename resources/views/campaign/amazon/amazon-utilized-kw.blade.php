@@ -416,7 +416,8 @@
                     return;
                 }
                 
-                // Get all data and apply filters (except utilization type filter)
+                // Get filtered data (respects all filters except utilization type)
+                // We need to get all data and apply filters manually since utilization type filter is separate
                 const allData = table.getData('all');
                 let overCount = 0;
                 let underCount = 0;
@@ -429,14 +430,22 @@
                 let validSkuCount = 0; // Count only valid SKUs (not parent, not empty)
                 
                 // Track processed SKUs to avoid counting duplicates
-                const processedSkus = new Set();
+                const processedSkusForNra = new Set(); // Track SKUs for NRA/RA counting
+                const processedSkusForCampaign = new Set(); // Track SKUs for campaign counting
+                const processedSkusForMissing = new Set(); // Track SKUs for missing counting
+                const processedSkusForZeroInv = new Set(); // Track SKUs for zero INV counting
                 
                 allData.forEach(function(row) {
                     // Count valid SKUs (exclude parent SKUs and empty SKUs)
                     const sku = row.sku || '';
                     const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
-                    if (isValidSku) {
-                        validSkuCount++;
+                    
+                    // Count zero/negative inventory (INV <= 0) - count BEFORE filters
+                    // This should count all zero INV SKUs regardless of current filter
+                    let inv = parseFloat(row.INV || 0);
+                    if (inv <= 0 && isValidSku && !processedSkusForZeroInv.has(sku)) {
+                        processedSkusForZeroInv.add(sku);
+                        zeroInvCount++;
                     }
                     
                     // Apply all filters except utilization type filter
@@ -454,13 +463,6 @@
                     
                     // Inventory filter
                     let invFilterVal = $("#inv-filter").val();
-                    let inv = parseFloat(row.INV || 0);
-                    
-                    // Count zero/negative inventory (INV <= 0)
-                    if (inv <= 0) {
-                        zeroInvCount++;
-                    }
-                    
                     if (!invFilterVal || invFilterVal === '') {
                         // Default: exclude INV = 0 and negative
                         if (inv <= 0) return;
@@ -474,9 +476,9 @@
                         if (inv <= 0) return;
                     }
                     
-                    // Count NRA and RA only for valid SKUs and only once per SKU
-                    if (isValidSku && !processedSkus.has(sku)) {
-                        processedSkus.add(sku);
+                    // Count NRA and RA only for valid SKUs and only once per SKU (after filters)
+                    if (isValidSku && !processedSkusForNra.has(sku)) {
+                        processedSkusForNra.add(sku);
                         // Note: Empty/null NRA defaults to "RA" in the display
                         let rowNra = row.NRA ? row.NRA.trim() : "";
                         if (rowNra === 'NRA') {
@@ -500,12 +502,26 @@
                         }
                     }
                     
-                    // Check if campaign is missing or exists
-                    const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                    if (!hasCampaign) {
-                        missingCount++;
-                    } else {
-                        totalCampaignCount++;
+                    // Check if campaign is missing or exists - only count unique valid SKUs (after filters)
+                    if (isValidSku) {
+                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                        
+                        if (hasCampaign) {
+                            // Count campaign only once per SKU
+                            if (!processedSkusForCampaign.has(sku)) {
+                                processedSkusForCampaign.add(sku);
+                                totalCampaignCount++;
+                            }
+                        } else {
+                            // Count missing only once per SKU
+                            if (!processedSkusForMissing.has(sku)) {
+                                processedSkusForMissing.add(sku);
+                                missingCount++;
+                            }
+                        }
+                        
+                        // Count valid SKUs that pass all filters
+                        validSkuCount++;
                     }
                     
                     // Now calculate utilization and count
@@ -1368,10 +1384,10 @@
 
                 $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
                     table.setFilter(combinedFilter);
-                    // Update counts when filter changes
+                    // Update counts when filter changes - use longer timeout to ensure filter is applied
                     setTimeout(function() {
                         updateButtonCounts();
-                    }, 200);
+                    }, 300);
                 });
 
                 // Initial update of all button counts after data loads

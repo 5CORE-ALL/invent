@@ -722,11 +722,15 @@ class AmazonSpBudgetController extends Controller
             if ($campaignType === 'PT') {
                 $amazonSpCampaignReportsL7->where(function($q) {
                     $q->where('campaignName', 'LIKE', '% PT')
-                      ->orWhere('campaignName', 'LIKE', '% PT.');
+                      ->orWhere('campaignName', 'LIKE', '% PT.')
+                      ->orWhere('campaignName', 'LIKE', '%PT')
+                      ->orWhere('campaignName', 'LIKE', '%PT.');
                 });
                 $amazonSpCampaignReportsL1->where(function($q) {
                     $q->where('campaignName', 'LIKE', '% PT')
-                      ->orWhere('campaignName', 'LIKE', '% PT.');
+                      ->orWhere('campaignName', 'LIKE', '% PT.')
+                      ->orWhere('campaignName', 'LIKE', '%PT')
+                      ->orWhere('campaignName', 'LIKE', '%PT.');
                 });
             } else {
                 $amazonSpCampaignReportsL7->where('campaignName', 'NOT LIKE', '%PT')
@@ -1654,7 +1658,9 @@ class AmazonSpBudgetController extends Controller
                 if ($campaignType === 'PT') {
                     $amazonSpCampaignReportsL30->where(function($q) {
                         $q->where('campaignName', 'LIKE', '% PT')
-                          ->orWhere('campaignName', 'LIKE', '% PT.');
+                          ->orWhere('campaignName', 'LIKE', '% PT.')
+                          ->orWhere('campaignName', 'LIKE', '%PT')
+                          ->orWhere('campaignName', 'LIKE', '%PT.');
                     });
                 } else {
                     $amazonSpCampaignReportsL30->where('campaignName', 'NOT LIKE', '%PT')
@@ -1733,7 +1739,9 @@ class AmazonSpBudgetController extends Controller
                     })
                     ->where(function($q) {
                         $q->where('campaignName', 'LIKE', '% PT')
-                          ->orWhere('campaignName', 'LIKE', '% PT.');
+                          ->orWhere('campaignName', 'LIKE', '% PT.')
+                          ->orWhere('campaignName', 'LIKE', '%PT')
+                          ->orWhere('campaignName', 'LIKE', '%PT.');
                     })
                     ->where('campaignStatus', '!=', 'ARCHIVED')
                     ->get();
@@ -1745,7 +1753,9 @@ class AmazonSpBudgetController extends Controller
                     })
                     ->where(function($q) {
                         $q->where('campaignName', 'LIKE', '% PT')
-                          ->orWhere('campaignName', 'LIKE', '% PT.');
+                          ->orWhere('campaignName', 'LIKE', '% PT.')
+                          ->orWhere('campaignName', 'LIKE', '%PT')
+                          ->orWhere('campaignName', 'LIKE', '%PT.');
                     })
                     ->where('campaignStatus', '!=', 'ARCHIVED')
                     ->get();
@@ -1757,7 +1767,9 @@ class AmazonSpBudgetController extends Controller
                     })
                     ->where(function($q) {
                         $q->where('campaignName', 'LIKE', '% PT')
-                          ->orWhere('campaignName', 'LIKE', '% PT.');
+                          ->orWhere('campaignName', 'LIKE', '% PT.')
+                          ->orWhere('campaignName', 'LIKE', '%PT')
+                          ->orWhere('campaignName', 'LIKE', '%PT.');
                     })
                     ->where('campaignStatus', '!=', 'ARCHIVED')
                     ->get();
@@ -1776,6 +1788,16 @@ class AmazonSpBudgetController extends Controller
             $normalizedSku = preg_replace('/\s+/', ' ', $normalizedSku);
             $sku = strtoupper(trim($normalizedSku));
             $parent = $pm->parent;
+
+            // For HL campaigns, only process parent SKUs
+            if ($campaignType === 'HL' && stripos($sku, 'PARENT') === false) {
+                continue;
+            }
+
+            // For KW/PT campaigns, skip parent SKUs
+            if (($campaignType === 'KW' || $campaignType === 'PT') && stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
 
             // For PT campaigns, apply unique SKU filter (same as getAmzUnderUtilizedBgtPt)
             if ($campaignType === 'PT' && in_array($sku, $processedSkus)) {
@@ -1798,7 +1820,9 @@ class AmazonSpBudgetController extends Controller
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
                     $cleanName = strtoupper(trim($campaignName));
-                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.');
+                    // Check both with space and without space before PT
+                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
+                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
                 });
 
                 $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
@@ -1806,7 +1830,9 @@ class AmazonSpBudgetController extends Controller
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
                     $cleanName = strtoupper(trim($campaignName));
-                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.');
+                    // Check both with space and without space before PT
+                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
+                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
                 });
 
                 $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
@@ -1814,7 +1840,9 @@ class AmazonSpBudgetController extends Controller
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
                     $cleanName = strtoupper(trim($campaignName));
-                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.');
+                    // Check both with space and without space before PT
+                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
+                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
                 });
             } elseif ($campaignType === 'HL') {
                 // For HL campaigns, also check L30 to determine if campaign exists
@@ -1904,7 +1932,9 @@ class AmazonSpBudgetController extends Controller
                 }
             }
 
-            if ($nra === 'NRA') {
+            // For HL campaigns, don't skip parent SKUs with NRA = 'NRA' - include all parent SKUs
+            // For KW/PT campaigns, skip SKUs with NRA = 'NRA'
+            if ($campaignType !== 'HL' && $nra === 'NRA') {
                 continue;
             }
 
@@ -1975,7 +2005,9 @@ class AmazonSpBudgetController extends Controller
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
                     $cleanName = strtoupper(trim($campaignName));
-                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.');
+                    // Check both with space and without space before PT
+                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
+                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
                 });
 
                 $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku) {
@@ -1983,7 +2015,9 @@ class AmazonSpBudgetController extends Controller
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
                     $cleanName = strtoupper(trim($campaignName));
-                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.');
+                    // Check both with space and without space before PT
+                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
+                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
                 });
             } elseif ($campaignType === 'HL') {
                 $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
@@ -2085,7 +2119,11 @@ class AmazonSpBudgetController extends Controller
             if ($campaignType === 'PT') {
                 $allL30Campaigns->where(function($q) {
                     $q->where('campaignName', 'LIKE', '% PT')
-                      ->orWhere('campaignName', 'LIKE', '% PT.');
+                      ->orWhere('campaignName', 'LIKE', '% PT.')
+                      ->orWhere('campaignName', 'LIKE', '%PT')
+                      ->orWhere('campaignName', 'LIKE', '%PT.')
+                      ->orWhere('campaignName', 'LIKE', '%PT')
+                      ->orWhere('campaignName', 'LIKE', '%PT.');
                 });
             } else {
                 $allL30Campaigns->where('campaignName', 'NOT LIKE', '%PT')
@@ -2116,31 +2154,198 @@ class AmazonSpBudgetController extends Controller
             $result[] = (object) $row;
         }
 
-        // For all SKUs, ensure they are in the result (even without campaigns)
-        $existingSkus = array_map(function($item) {
-            return strtoupper(trim($item->sku ?? ''));
-        }, $result);
-
-        foreach ($productMasters as $pm) {
-            // Skip soft deleted SKUs
-            if ($pm->deleted_at !== null) {
-                continue;
+        // For HL campaigns, use a direct approach to ensure ALL parent SKUs are included
+        if ($campaignType === 'HL') {
+            // Build a map of existing SKUs in result (using same normalization as main loop)
+            $existingSkusMap = [];
+            foreach ($result as $item) {
+                if (empty($item->sku)) {
+                    continue;
+                }
+                // Apply same normalization as main loop
+                $normalizedSku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->sku);
+                $normalizedSku = preg_replace('/\s+/', ' ', $normalizedSku);
+                $existingSku = strtoupper(trim($normalizedSku));
+                $existingSkusMap[$existingSku] = true;
             }
             
-            // Normalize SKU
-            $normalizedSku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku);
-            $normalizedSku = preg_replace('/\s+/', ' ', $normalizedSku);
-            $sku = strtoupper(trim($normalizedSku));
+            // Get ALL parent SKUs directly from database to ensure we have the complete list
+            $allParentSkus = ProductMaster::whereNull('deleted_at')
+                ->where('sku', 'LIKE', 'PARENT %')
+                ->get();
             
-            // Skip if SKU already exists in result
-            if (in_array($sku, $existingSkus)) {
-                continue;
+            foreach ($allParentSkus as $pm) {
+                // Normalize SKU
+                $normalizedSku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku);
+                $normalizedSku = preg_replace('/\s+/', ' ', $normalizedSku);
+                $sku = strtoupper(trim($normalizedSku));
+                
+                // Skip if SKU already exists in result
+                if (isset($existingSkusMap[$sku])) {
+                    continue;
+                }
+                
+                // This parent SKU is missing - add it
+                $baseSku = strtoupper(trim($pm->sku));
+                $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
+                $shopify = $shopifyData[$pm->sku] ?? null;
+                
+                // Get NRA and TPFT
+                $nra = '';
+                $tpft = null;
+                if (isset($nrValues[$pm->sku])) {
+                    $raw = $nrValues[$pm->sku];
+                    if (!is_array($raw)) {
+                        $raw = json_decode($raw, true);
+                    }
+                    if (is_array($raw)) {
+                        $nra = $raw['NRA'] ?? '';
+                        $tpft = $raw['TPFT'] ?? null;
+                    }
+                }
+                
+                // Check for campaign
+                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    return ($cleanName === $sku || $cleanName === $sku . ' HEAD');
+                });
+                $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    return ($cleanName === $sku || $cleanName === $sku . ' HEAD');
+                });
+                $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    return ($cleanName === $sku || $cleanName === $sku . ' HEAD');
+                });
+                
+                $hasCampaign = !empty($matchedCampaignL30) || !empty($matchedCampaignL7) || !empty($matchedCampaignL1);
+                $campaignId = ($matchedCampaignL30 ? $matchedCampaignL30->campaign_id : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaign_id : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaign_id : null) ?? ''));
+                $campaignName = ($matchedCampaignL30 ? $matchedCampaignL30->campaignName : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignName : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignName : null) ?? ''));
+                
+                // Calculate spend and CPC
+                $l7Spend = 0;
+                $l7Cpc = 0;
+                $l1Spend = 0;
+                $l1Cpc = 0;
+                $acosL30 = 0;
+                $acosL15 = 0;
+                $acosL7 = 0;
+                $acos = 0;
+                
+                if (isset($matchedCampaignL7) && $matchedCampaignL7) {
+                    $l7Spend = $matchedCampaignL7->cost ?? 0;
+                    $costPerClick7 = ($matchedCampaignL7 && $matchedCampaignL7->clicks > 0)
+                        ? ($matchedCampaignL7->cost / $matchedCampaignL7->clicks)
+                        : 0;
+                    $l7Cpc = $costPerClick7;
+                }
+                
+                if (isset($matchedCampaignL1) && $matchedCampaignL1) {
+                    $l1Spend = $matchedCampaignL1->cost ?? 0;
+                    $costPerClick1 = ($matchedCampaignL1 && $matchedCampaignL1->clicks > 0)
+                        ? ($matchedCampaignL1->cost / $matchedCampaignL1->clicks)
+                        : 0;
+                    $l1Cpc = $costPerClick1;
+                }
+                
+                if (isset($matchedCampaignL30) && $matchedCampaignL30) {
+                    $sales30 = $matchedCampaignL30->sales30d ?? 0;
+                    $spend30 = $matchedCampaignL30->cost ?? 0;
+                    if ($sales30 > 0) {
+                        $acosL30 = round(($spend30 / $sales30) * 100, 2);
+                    } elseif ($spend30 > 0) {
+                        $acosL30 = 100;
+                    }
+                    $acos = $acosL30;
+                }
+                
+                $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    return ($cleanName === $sku || $cleanName === $sku . ' HEAD');
+                });
+                
+                if (isset($matchedCampaignL15) && isset($matchedCampaignL1) && $matchedCampaignL15 && $matchedCampaignL1) {
+                    $sales15 = ($matchedCampaignL15->sales14d ?? 0) + ($matchedCampaignL1->sales1d ?? 0);
+                    $spend15 = $matchedCampaignL15->cost ?? 0;
+                    if ($sales15 > 0) {
+                        $acosL15 = round(($spend15 / $sales15) * 100, 2);
+                    } elseif ($spend15 > 0) {
+                        $acosL15 = 100;
+                    }
+                }
+                
+                if (isset($matchedCampaignL7) && $matchedCampaignL7) {
+                    $sales7 = $matchedCampaignL7->sales7d ?? 0;
+                    $spend7 = $matchedCampaignL7->cost ?? 0;
+                    if ($sales7 > 0) {
+                        $acosL7 = round(($spend7 / $sales7) * 100, 2);
+                    } elseif ($spend7 > 0) {
+                        $acosL7 = 100;
+                    }
+                }
+                
+                $result[] = (object) [
+                    'parent' => $pm->parent,
+                    'sku' => $pm->sku,
+                    'campaign_id' => $campaignId,
+                    'campaignName' => $campaignName,
+                    'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
+                    'campaignStatus' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? '')),
+                    'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                    'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
+                    'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
+                    'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
+                    'l7_spend' => $l7Spend,
+                    'l7_cpc' => $l7Cpc,
+                    'l1_spend' => $l1Spend,
+                    'l1_cpc' => $l1Cpc,
+                    'acos' => $acos,
+                    'acos_L30' => $acosL30,
+                    'acos_L15' => $acosL15,
+                    'acos_L7' => $acosL7,
+                    'NRA' => $nra,
+                    'TPFT' => $tpft,
+                    'hasCampaign' => $hasCampaign,
+                ];
+                
+                // Update existingSkusMap to avoid duplicates
+                $existingSkusMap[$sku] = true;
             }
+        } else {
+            // For KW/PT campaigns, use the second loop to add missing SKUs
+            // For all SKUs, ensure they are in the result (even without campaigns)
+            $existingSkus = array_map(function($item) {
+                return strtoupper(trim($item->sku ?? ''));
+            }, $result);
 
-            // Skip parent SKUs
-            if (stripos($sku, 'PARENT') !== false) {
-                continue;
-            }
+            foreach ($productMasters as $pm) {
+                // Skip soft deleted SKUs
+                if ($pm->deleted_at !== null) {
+                    continue;
+                }
+                
+                // Normalize SKU
+                $normalizedSku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku);
+                $normalizedSku = preg_replace('/\s+/', ' ', $normalizedSku);
+                $sku = strtoupper(trim($normalizedSku));
+                
+                // Skip if SKU already exists in result
+                if (in_array($sku, $existingSkus)) {
+                    continue;
+                }
+
+                // For KW/PT campaigns, skip parent SKUs
+                if (stripos($sku, 'PARENT') !== false) {
+                    continue;
+                }
 
             // Re-check if campaign exists for this SKU (in case it was missed in main loop)
             $matchedCampaignL30 = null;
@@ -2233,6 +2438,119 @@ class AmazonSpBudgetController extends Controller
                 }
             }
 
+            // Calculate spend and CPC for second loop (same as main loop)
+            $l7Spend = 0;
+            $l7Cpc = 0;
+            $l1Spend = 0;
+            $l1Cpc = 0;
+            $acosL30 = 0;
+            $acosL15 = 0;
+            $acosL7 = 0;
+            $acos = 0;
+            
+            if (isset($matchedCampaignL7) && $matchedCampaignL7) {
+                if ($campaignType === 'HL') {
+                    $l7Spend = $matchedCampaignL7->cost ?? 0;
+                    $costPerClick7 = ($matchedCampaignL7 && $matchedCampaignL7->clicks > 0)
+                        ? ($matchedCampaignL7->cost / $matchedCampaignL7->clicks)
+                        : 0;
+                    $l7Cpc = $costPerClick7;
+                } else {
+                    $l7Spend = $matchedCampaignL7->spend ?? 0;
+                    $l7Cpc = $matchedCampaignL7->costPerClick ?? 0;
+                }
+            }
+            
+            if (isset($matchedCampaignL1) && $matchedCampaignL1) {
+                if ($campaignType === 'HL') {
+                    $l1Spend = $matchedCampaignL1->cost ?? 0;
+                    $costPerClick1 = ($matchedCampaignL1 && $matchedCampaignL1->clicks > 0)
+                        ? ($matchedCampaignL1->cost / $matchedCampaignL1->clicks)
+                        : 0;
+                    $l1Cpc = $costPerClick1;
+                } else {
+                    $l1Spend = $matchedCampaignL1->spend ?? 0;
+                    $l1Cpc = $matchedCampaignL1->costPerClick ?? 0;
+                }
+            }
+            
+            // Calculate ACOS for L30
+            if (isset($matchedCampaignL30) && $matchedCampaignL30) {
+                if ($campaignType === 'HL') {
+                    $sales30 = $matchedCampaignL30->sales30d ?? 0;
+                    $spend30 = $matchedCampaignL30->cost ?? 0;
+                } else {
+                    $sales30 = $matchedCampaignL30->sales30d ?? 0;
+                    $spend30 = $matchedCampaignL30->spend ?? 0;
+                }
+                if ($sales30 > 0) {
+                    $acosL30 = round(($spend30 / $sales30) * 100, 2);
+                } elseif ($spend30 > 0) {
+                    $acosL30 = 100;
+                }
+                $acos = $acosL30;
+            }
+            
+            // Get matchedCampaignL15 for ACOS L15 calculation
+            $matchedCampaignL15 = null;
+            if ($campaignType === 'PT') {
+                $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
+                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
+                });
+            } elseif ($campaignType === 'HL') {
+                $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    $expected1 = $sku;
+                    $expected2 = $sku . ' HEAD';
+                    return ($cleanName === $expected1 || $cleanName === $expected2);
+                });
+            } else {
+                $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                    return $campaignName === $cleanSku;
+                });
+            }
+            
+            // Calculate ACOS for L15 and L7
+            if (isset($matchedCampaignL15) && isset($matchedCampaignL1) && $matchedCampaignL15 && $matchedCampaignL1) {
+                if ($campaignType === 'HL') {
+                    $sales15 = ($matchedCampaignL15->sales14d ?? 0) + ($matchedCampaignL1->sales1d ?? 0);
+                    $spend15 = $matchedCampaignL15->cost ?? 0;
+                } else {
+                    $sales15 = ($matchedCampaignL15->sales14d ?? 0) + ($matchedCampaignL1->sales1d ?? 0);
+                    $spend15 = $matchedCampaignL15->spend ?? 0;
+                }
+                if ($sales15 > 0) {
+                    $acosL15 = round(($spend15 / $sales15) * 100, 2);
+                } elseif ($spend15 > 0) {
+                    $acosL15 = 100;
+                }
+            }
+            
+            if (isset($matchedCampaignL7) && $matchedCampaignL7) {
+                if ($campaignType === 'HL') {
+                    $sales7 = $matchedCampaignL7->sales7d ?? 0;
+                    $spend7 = $matchedCampaignL7->cost ?? 0;
+                } else {
+                    $sales7 = $matchedCampaignL7->sales7d ?? 0;
+                    $spend7 = $matchedCampaignL7->spend ?? 0;
+                }
+                if ($sales7 > 0) {
+                    $acosL7 = round(($spend7 / $sales7) * 100, 2);
+                } elseif ($spend7 > 0) {
+                    $acosL7 = 100;
+                }
+            }
+            
             $result[] = (object) [
                 'parent' => $pm->parent,
                 'sku' => $pm->sku,
@@ -2244,18 +2562,183 @@ class AmazonSpBudgetController extends Controller
                 'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                 'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                 'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
-                'l7_spend' => 0,
-                'l7_cpc' => 0,
-                'l1_spend' => 0,
-                'l1_cpc' => 0,
-                'acos' => 0,
-                'acos_L30' => 0,
-                'acos_L15' => 0,
-                'acos_L7' => 0,
+                'l7_spend' => $l7Spend,
+                'l7_cpc' => $l7Cpc,
+                'l1_spend' => $l1Spend,
+                'l1_cpc' => $l1Cpc,
+                'acos' => $acos,
+                'acos_L30' => $acosL30,
+                'acos_L15' => $acosL15,
+                'acos_L7' => $acosL7,
                 'NRA' => $nra,
                 'TPFT' => $tpft,
                 'hasCampaign' => $hasCampaign,
             ];
+            }
+        }
+
+        // Final check for HL campaigns - ensure ALL parent SKUs are present (after all processing)
+        if ($campaignType === 'HL') {
+            // Rebuild existing SKUs map from current result (with proper normalization)
+            $finalExistingSkusMap = [];
+            foreach ($result as $item) {
+                if (empty($item->sku)) {
+                    continue;
+                }
+                // Apply same normalization
+                $normalizedSku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->sku);
+                $normalizedSku = preg_replace('/\s+/', ' ', $normalizedSku);
+                $existingSku = strtoupper(trim($normalizedSku));
+                $finalExistingSkusMap[$existingSku] = true;
+            }
+            
+            // Get ALL parent SKUs directly from database one more time
+            $allParentSkusFinal = ProductMaster::whereNull('deleted_at')
+                ->where('sku', 'LIKE', 'PARENT %')
+                ->get();
+            
+            foreach ($allParentSkusFinal as $pm) {
+                // Normalize SKU
+                $normalizedSku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku);
+                $normalizedSku = preg_replace('/\s+/', ' ', $normalizedSku);
+                $sku = strtoupper(trim($normalizedSku));
+                
+                // Skip if SKU already exists in result
+                if (isset($finalExistingSkusMap[$sku])) {
+                    continue;
+                }
+                
+                // This parent SKU is still missing - add it with default values
+                $baseSku = strtoupper(trim($pm->sku));
+                $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
+                $shopify = $shopifyData[$pm->sku] ?? null;
+                
+                // Get NRA and TPFT
+                $nra = '';
+                $tpft = null;
+                if (isset($nrValues[$pm->sku])) {
+                    $raw = $nrValues[$pm->sku];
+                    if (!is_array($raw)) {
+                        $raw = json_decode($raw, true);
+                    }
+                    if (is_array($raw)) {
+                        $nra = $raw['NRA'] ?? '';
+                        $tpft = $raw['TPFT'] ?? null;
+                    }
+                }
+                
+                // Check for campaign
+                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    return ($cleanName === $sku || $cleanName === $sku . ' HEAD');
+                });
+                $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    return ($cleanName === $sku || $cleanName === $sku . ' HEAD');
+                });
+                $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    return ($cleanName === $sku || $cleanName === $sku . ' HEAD');
+                });
+                
+                $hasCampaign = !empty($matchedCampaignL30) || !empty($matchedCampaignL7) || !empty($matchedCampaignL1);
+                $campaignId = ($matchedCampaignL30 ? $matchedCampaignL30->campaign_id : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaign_id : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaign_id : null) ?? ''));
+                $campaignName = ($matchedCampaignL30 ? $matchedCampaignL30->campaignName : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignName : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignName : null) ?? ''));
+                
+                // Calculate spend and CPC
+                $l7Spend = 0;
+                $l7Cpc = 0;
+                $l1Spend = 0;
+                $l1Cpc = 0;
+                $acosL30 = 0;
+                $acosL15 = 0;
+                $acosL7 = 0;
+                $acos = 0;
+                
+                if (isset($matchedCampaignL7) && $matchedCampaignL7) {
+                    $l7Spend = $matchedCampaignL7->cost ?? 0;
+                    $costPerClick7 = ($matchedCampaignL7 && $matchedCampaignL7->clicks > 0)
+                        ? ($matchedCampaignL7->cost / $matchedCampaignL7->clicks)
+                        : 0;
+                    $l7Cpc = $costPerClick7;
+                }
+                
+                if (isset($matchedCampaignL1) && $matchedCampaignL1) {
+                    $l1Spend = $matchedCampaignL1->cost ?? 0;
+                    $costPerClick1 = ($matchedCampaignL1 && $matchedCampaignL1->clicks > 0)
+                        ? ($matchedCampaignL1->cost / $matchedCampaignL1->clicks)
+                        : 0;
+                    $l1Cpc = $costPerClick1;
+                }
+                
+                if (isset($matchedCampaignL30) && $matchedCampaignL30) {
+                    $sales30 = $matchedCampaignL30->sales30d ?? 0;
+                    $spend30 = $matchedCampaignL30->cost ?? 0;
+                    if ($sales30 > 0) {
+                        $acosL30 = round(($spend30 / $sales30) * 100, 2);
+                    } elseif ($spend30 > 0) {
+                        $acosL30 = 100;
+                    }
+                    $acos = $acosL30;
+                }
+                
+                $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    return ($cleanName === $sku || $cleanName === $sku . ' HEAD');
+                });
+                
+                if (isset($matchedCampaignL15) && isset($matchedCampaignL1) && $matchedCampaignL15 && $matchedCampaignL1) {
+                    $sales15 = ($matchedCampaignL15->sales14d ?? 0) + ($matchedCampaignL1->sales1d ?? 0);
+                    $spend15 = $matchedCampaignL15->cost ?? 0;
+                    if ($sales15 > 0) {
+                        $acosL15 = round(($spend15 / $sales15) * 100, 2);
+                    } elseif ($spend15 > 0) {
+                        $acosL15 = 100;
+                    }
+                }
+                
+                if (isset($matchedCampaignL7) && $matchedCampaignL7) {
+                    $sales7 = $matchedCampaignL7->sales7d ?? 0;
+                    $spend7 = $matchedCampaignL7->cost ?? 0;
+                    if ($sales7 > 0) {
+                        $acosL7 = round(($spend7 / $sales7) * 100, 2);
+                    } elseif ($spend7 > 0) {
+                        $acosL7 = 100;
+                    }
+                }
+                
+                $result[] = (object) [
+                    'parent' => $pm->parent,
+                    'sku' => $pm->sku,
+                    'campaign_id' => $campaignId,
+                    'campaignName' => $campaignName,
+                    'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
+                    'campaignStatus' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? '')),
+                    'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                    'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
+                    'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
+                    'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
+                    'l7_spend' => $l7Spend,
+                    'l7_cpc' => $l7Cpc,
+                    'l1_spend' => $l1Spend,
+                    'l1_cpc' => $l1Cpc,
+                    'acos' => $acos,
+                    'acos_L30' => $acosL30,
+                    'acos_L15' => $acosL15,
+                    'acos_L7' => $acosL7,
+                    'NRA' => $nra,
+                    'TPFT' => $tpft,
+                    'hasCampaign' => $hasCampaign,
+                ];
+            }
         }
 
         // For KW campaigns, add unmatched campaigns (similar to ACOS control)
