@@ -66,8 +66,11 @@ class AmazonMissingAdsController extends Controller
         $amazonKwCampaigns = $allCampaigns->filter(function ($campaign) {
             $campaignName = strtoupper($campaign->campaignName);
             // Exclude PT and FBA campaigns - KW campaigns should NOT have PT or FBA
+            // Check both with space and without space before PT
             return !str_contains($campaignName, ' PT') && 
                    !str_contains($campaignName, ' PT.') &&
+                   !str_contains($campaignName, 'PT') && 
+                   !str_contains($campaignName, 'PT.') &&
                    !str_contains($campaignName, 'FBA') && 
                    !str_contains($campaignName, 'FBA.');
         });
@@ -75,7 +78,9 @@ class AmazonMissingAdsController extends Controller
         $amazonPtCampaigns = $allCampaigns->filter(function ($campaign) {
             $campaignName = strtoupper($campaign->campaignName);
             // Must contain PT but NOT FBA (regular PT campaigns, not FBA PT)
-            $hasPt = str_contains($campaignName, ' PT') || str_contains($campaignName, ' PT.');
+            // Check both with space and without space before PT
+            $hasPt = str_contains($campaignName, ' PT') || str_contains($campaignName, ' PT.') ||
+                     str_contains($campaignName, 'PT') || str_contains($campaignName, 'PT.');
             $hasFba = str_contains($campaignName, 'FBA') || str_contains($campaignName, 'FBA.');
             // Must have PT and NOT have FBA
             return $hasPt && !$hasFba;
@@ -110,11 +115,15 @@ class AmazonMissingAdsController extends Controller
                 $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($campaignNameRaw)));
                 $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim($sku)));
 
-                // Exact match: SKU + ' PT' or SKU + ' PT.'
+                // Exact match: SKU + ' PT' or SKU + ' PT.' (with space)
+                // Also check: SKU + 'PT' or SKU + 'PT.' (without space)
                 $expected1 = $cleanSku . ' PT';
                 $expected2 = $cleanSku . ' PT.';
+                $expected3 = $cleanSku . 'PT';
+                $expected4 = $cleanSku . 'PT.';
                 
-                return ($cleanName === $expected1 || $cleanName === $expected2);
+                return ($cleanName === $expected1 || $cleanName === $expected2 || 
+                        $cleanName === $expected3 || $cleanName === $expected4);
             });
 
             $row = [
@@ -221,7 +230,9 @@ class AmazonMissingAdsController extends Controller
             })
             ->where(function ($q) {
                 $q->where('campaignName', 'LIKE', '%FBA PT%')
-                ->orWhere('campaignName', 'LIKE', '%FBA PT.%');
+                ->orWhere('campaignName', 'LIKE', '%FBA PT.%')
+                ->orWhere('campaignName', 'LIKE', '%FBAPT%')
+                ->orWhere('campaignName', 'LIKE', '%FBAPT.%');
             })
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
@@ -251,15 +262,17 @@ class AmazonMissingAdsController extends Controller
             });
 
             // For PT: exact match with seller SKU + ' PT' or seller SKU + ' PT.'
+            // Also check without space: seller SKU + 'PT' or seller SKU + 'PT.'
             $matchedPtCampaign = $amazonPtCampaigns->first(function ($item) use ($sellerSkuUpper) {
                 // Normalize spaces: replace multiple spaces with single space
                 $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($item->campaignName, '.'))));
                 $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sellerSkuUpper, '.'))));
                 
-                // Exact match: SKU + ' PT' (normalized - trailing dot removed from both)
-                $expected = $cleanSku . ' PT';
+                // Exact match: SKU + ' PT' or SKU + 'PT' (with and without space)
+                $expected1 = $cleanSku . ' PT';
+                $expected2 = $cleanSku . 'PT';
                 
-                return $cleanName === $expected;
+                return ($cleanName === $expected1 || $cleanName === $expected2);
             });
 
             $row = [

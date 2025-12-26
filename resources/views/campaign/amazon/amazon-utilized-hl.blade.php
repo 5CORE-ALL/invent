@@ -535,10 +535,17 @@
                     let validParentSkuCount = 0; // Count only parent SKUs
                     
                     // Track processed SKUs to avoid counting duplicates
-                    const processedSkus = new Set();
-
+                    const processedSkusForNra = new Set(); // Track parent SKUs for NRA/RA counting
+                    const processedSkusForCampaign = new Set(); // Track parent SKUs for campaign counting
+                    const processedSkusForMissing = new Set(); // Track parent SKUs for missing counting
+                    const processedSkusForZeroInv = new Set(); // Track parent SKUs for zero INV counting
+                    
+                    // First pass: Collect all parent SKUs and determine if they have campaigns
+                    const skuCampaignMap = new Map(); // Map to track if SKU has campaign (from any row)
+                    const skuZeroInvMap = new Map(); // Map to track if SKU has zero/negative INV
+                    const allParentSkus = new Set(); // Track all unique parent SKUs in data
+                    
                     allData.forEach(function(row) {
-                        // Only count parent SKUs (SKU contains "PARENT")
                         const sku = row.sku || '';
                         const isParentSku = sku && sku.toUpperCase().includes('PARENT');
                         
@@ -546,9 +553,44 @@
                             return; // Skip non-parent SKUs
                         }
                         
-                        if (!processedSkus.has(sku)) {
-                            processedSkus.add(sku);
-                            validParentSkuCount++;
+                        // Track all parent SKUs
+                        allParentSkus.add(sku);
+                        
+                        // Check if this SKU has a campaign (from any row)
+                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                        if (!skuCampaignMap.has(sku)) {
+                            skuCampaignMap.set(sku, false);
+                        }
+                        if (hasCampaign) {
+                            skuCampaignMap.set(sku, true);
+                        }
+                        
+                        // Check if this SKU has zero/negative inventory (check all rows for this SKU)
+                        let inv = parseFloat(row.INV || 0);
+                        if (inv <= 0) {
+                            skuZeroInvMap.set(sku, true);
+                        } else if (!skuZeroInvMap.has(sku)) {
+                            // Only set to false if not already set to true
+                            skuZeroInvMap.set(sku, false);
+                        }
+                    });
+                    
+                    // Count zero INV from all parent SKUs (before filters)
+                    allParentSkus.forEach(function(sku) {
+                        if (skuZeroInvMap.get(sku) && !processedSkusForZeroInv.has(sku)) {
+                            processedSkusForZeroInv.add(sku);
+                            zeroInvCount++;
+                        }
+                    });
+
+                    // Second pass: Count based on filtered data
+                    allData.forEach(function(row) {
+                        // Only count parent SKUs (SKU contains "PARENT")
+                        const sku = row.sku || '';
+                        const isParentSku = sku && sku.toUpperCase().includes('PARENT');
+                        
+                        if (!isParentSku) {
+                            return; // Skip non-parent SKUs
                         }
                         
                         // Apply all filters except utilization type filter
@@ -567,12 +609,6 @@
                         // Inventory filter (HL: no default filter, show all by default)
                         let invFilterVal = $("#inv-filter").val();
                         let inv = parseFloat(row.INV || 0);
-                        
-                        // Count zero/negative inventory (INV <= 0)
-                        if (inv <= 0) {
-                            zeroInvCount++;
-                        }
-                        
                         if (!invFilterVal || invFilterVal === '') {
                             // Default: show all (no filtering)
                         } else if (invFilterVal === "ALL") {
@@ -585,9 +621,9 @@
                             if (inv <= 0) return;
                         }
                         
-                        // Count NRA and RA only for parent SKUs and only once per SKU
-                        if (!processedSkus.has(sku + '_nra')) {
-                            processedSkus.add(sku + '_nra');
+                        // Count NRA and RA only for parent SKUs and only once per SKU (after filters)
+                        if (!processedSkusForNra.has(sku)) {
+                            processedSkusForNra.add(sku);
                             // Note: Empty/null NRA defaults to "RA" in the display
                             let rowNra = row.NRA ? row.NRA.trim() : "";
                             if (rowNra === 'NRA') {
@@ -611,13 +647,25 @@
                             }
                         }
                         
-                        // Check if campaign is missing or exists
-                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                        if (!hasCampaign) {
-                            missingCount++;
+                        // Check if campaign is missing or exists - use the map to check if SKU has campaign from ANY row
+                        const hasCampaign = skuCampaignMap.get(sku) || false;
+                        
+                        if (hasCampaign) {
+                            // Count campaign only once per parent SKU
+                            if (!processedSkusForCampaign.has(sku)) {
+                                processedSkusForCampaign.add(sku);
+                                totalCampaignCount++;
+                            }
                         } else {
-                            totalCampaignCount++;
+                            // Count missing only once per parent SKU
+                            if (!processedSkusForMissing.has(sku)) {
+                                processedSkusForMissing.add(sku);
+                                missingCount++;
+                            }
                         }
+                        
+                        // Count valid parent SKUs that pass all filters
+                        validParentSkuCount++;
                         
                         // Now calculate utilization and count
                         let budget = parseFloat(row.campaignBudgetAmount) || 0;
@@ -648,16 +696,30 @@
                         }
                     });
 
-                    // Update missing campaign count
+                    // Count campaigns and missing from ALL parent SKUs (not just filtered ones)
+                    // This ensures accurate counts regardless of current filters
+                    let actualTotalCampaignCount = 0;
+                    let actualTotalMissingCount = 0;
+                    
+                    allParentSkus.forEach(function(sku) {
+                        const hasCampaign = skuCampaignMap.get(sku) || false;
+                        if (hasCampaign) {
+                            actualTotalCampaignCount++;
+                        } else {
+                            actualTotalMissingCount++;
+                        }
+                    });
+                    
+                    // Update missing campaign count - based on ALL parent SKUs
                     const missingCountEl = document.getElementById('missing-campaign-count');
                     if (missingCountEl) {
-                        missingCountEl.textContent = missingCount;
+                        missingCountEl.textContent = actualTotalMissingCount;
                     }
                     
-                    // Update total campaign count
+                    // Update total campaign count - based on ALL parent SKUs
                     const totalCampaignCountEl = document.getElementById('total-campaign-count');
                     if (totalCampaignCountEl) {
-                        totalCampaignCountEl.textContent = totalCampaignCount;
+                        totalCampaignCountEl.textContent = actualTotalCampaignCount;
                     }
                     
                     // Update NRA count
@@ -672,16 +734,18 @@
                         raCountEl.textContent = raCount;
                     }
                     
-                    // Update zero INV count
+                    // Update zero INV count - already counted from all parent SKUs
                     const zeroInvCountEl = document.getElementById('zero-inv-count');
                     if (zeroInvCountEl) {
                         zeroInvCountEl.textContent = zeroInvCount;
                     }
                     
-                    // Update total parent SKU count
+                    // Update total parent SKU count - always use backend count
                     const totalSkuCountEl = document.getElementById('total-sku-count');
                     if (totalSkuCountEl) {
-                        totalSkuCountEl.textContent = totalSkuCountFromBackend || validParentSkuCount;
+                        // Always use backend count if available, otherwise use allParentSkus.size
+                        const finalCount = totalSkuCountFromBackend > 0 ? totalSkuCountFromBackend : allParentSkus.size;
+                        totalSkuCountEl.textContent = finalCount;
                     }
 
                     // Update 7UB and 7UB+1UB counts
@@ -694,7 +758,8 @@
                     // Use totalSkuCountFromBackend to match backend count exactly (parent SKUs only)
                     const utilizationSelect = document.getElementById('utilization-type-select');
                     if (utilizationSelect) {
-                        utilizationSelect.options[0].text = `All (${totalSkuCountFromBackend || validParentSkuCount})`;
+                        const finalTotalCount = totalSkuCountFromBackend > 0 ? totalSkuCountFromBackend : allParentSkus.size;
+                        utilizationSelect.options[0].text = `All (${finalTotalCount})`;
                         utilizationSelect.options[1].text = `Over Utilized (${overCount})`;
                         utilizationSelect.options[2].text = `Under Utilized (${underCount})`;
                         utilizationSelect.options[3].text = `Correctly Utilized (${correctlyCount})`;
@@ -703,8 +768,10 @@
             }
 
             // Total campaign card click handler
-            document.getElementById('total-campaign-card').addEventListener('click', function() {
-                showCampaignOnly = !showCampaignOnly;
+            const totalCampaignCard = document.getElementById('total-campaign-card');
+            if (totalCampaignCard) {
+                totalCampaignCard.addEventListener('click', function() {
+                    showCampaignOnly = !showCampaignOnly;
                 if (showCampaignOnly) {
                     // Reset missing filter
                     showMissingOnly = false;
@@ -728,10 +795,13 @@
                     updateButtonCounts();
                 }
             });
+            }
 
             // Missing campaign card click handler
-            document.getElementById('missing-campaign-card').addEventListener('click', function() {
-                showMissingOnly = !showMissingOnly;
+            const missingCampaignCard = document.getElementById('missing-campaign-card');
+            if (missingCampaignCard) {
+                missingCampaignCard.addEventListener('click', function() {
+                    showMissingOnly = !showMissingOnly;
                 if (showMissingOnly) {
                     // Reset campaign filter
                     showCampaignOnly = false;
@@ -755,10 +825,13 @@
                     updateButtonCounts();
                 }
             });
+            }
 
             // Zero INV card click handler
-            document.getElementById('zero-inv-card').addEventListener('click', function() {
-                showZeroInvOnly = !showZeroInvOnly;
+            const zeroInvCard = document.getElementById('zero-inv-card');
+            if (zeroInvCard) {
+                zeroInvCard.addEventListener('click', function() {
+                    showZeroInvOnly = !showZeroInvOnly;
                 if (showZeroInvOnly) {
                     // Reset missing filter
                     showMissingOnly = false;
@@ -782,10 +855,13 @@
                     updateButtonCounts();
                 }
             });
+            }
 
             // NRA card click handler
-            document.getElementById('nra-card').addEventListener('click', function() {
-                showNraOnly = !showNraOnly;
+            const nraCard = document.getElementById('nra-card');
+            if (nraCard) {
+                nraCard.addEventListener('click', function() {
+                    showNraOnly = !showNraOnly;
                 if (showNraOnly) {
                     // Reset missing filter
                     showMissingOnly = false;
@@ -810,10 +886,13 @@
                     updateButtonCounts();
                 }
             });
+            }
 
             // RA card click handler
-            document.getElementById('ra-card').addEventListener('click', function() {
-                showRaOnly = !showRaOnly;
+            const raCard = document.getElementById('ra-card');
+            if (raCard) {
+                raCard.addEventListener('click', function() {
+                    showRaOnly = !showRaOnly;
                 if (showRaOnly) {
                     // Reset missing filter
                     showMissingOnly = false;
@@ -838,6 +917,7 @@
                     updateButtonCounts();
                 }
             });
+            }
 
             var table = new Tabulator("#budget-under-table", {
                 index: "sku",
@@ -1307,45 +1387,57 @@
                     totalL30Spend = parseFloat(response.total_l30_spend) || 0;
                     totalL30Sales = parseFloat(response.total_l30_sales) || 0;
                     totalSkuCountFromBackend = parseFloat(response.total_sku_count) || 0;
+                    // Update total count immediately when backend data is received
+                    const totalSkuCountEl = document.getElementById('total-sku-count');
+                    if (totalSkuCountEl && totalSkuCountFromBackend > 0) {
+                        totalSkuCountEl.textContent = totalSkuCountFromBackend;
+                    }
+                    // Force update counts after data loads to use backend count
+                    setTimeout(function() {
+                        updateButtonCounts();
+                    }, 500);
                     return response.data;
                 }
             });
 
             // Utilization type dropdown handler
-            document.getElementById('utilization-type-select').addEventListener('change', function() {
-                currentUtilizationType = this.value;
-                // Reset missing filter when dropdown changes
-                showMissingOnly = false;
-                document.getElementById('missing-campaign-card').style.boxShadow = '';
-                // Reset campaign filter
-                showCampaignOnly = false;
-                document.getElementById('total-campaign-card').style.boxShadow = '';
-                // Reset zero INV filter
-                showZeroInvOnly = false;
-                document.getElementById('zero-inv-card').style.boxShadow = '';
-                // Reset NRA/RA filters
-                showNraOnly = false;
-                document.getElementById('nra-card').style.boxShadow = '';
-                showRaOnly = false;
-                document.getElementById('ra-card').style.boxShadow = '';
+            const utilizationTypeSelect = document.getElementById('utilization-type-select');
+            if (utilizationTypeSelect) {
+                utilizationTypeSelect.addEventListener('change', function() {
+                    currentUtilizationType = this.value;
+                    // Reset missing filter when dropdown changes
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
                     
-                if (typeof table !== 'undefined' && table) {
-                    table.setFilter(combinedFilter);
-                    // Redraw cells to update formatter colors based on new type
-                    table.redraw(true);
-                    // Update column visibility for SBID and APR BID
-                    table.hideColumn('sbid');
-                    table.hideColumn('apr_bid');
-                    if (currentUtilizationType !== 'correctly' && currentUtilizationType !== 'all') {
-                        table.showColumn('sbid');
-                        table.showColumn('apr_bid');
+                    if (typeof table !== 'undefined' && table) {
+                        table.setFilter(combinedFilter);
+                        // Redraw cells to update formatter colors based on new type
+                        table.redraw(true);
+                        // Update column visibility for SBID and APR BID
+                        table.hideColumn('sbid');
+                        table.hideColumn('apr_bid');
+                        if (currentUtilizationType !== 'correctly' && currentUtilizationType !== 'all') {
+                            table.showColumn('sbid');
+                            table.showColumn('apr_bid');
+                        }
+                        // Update all button counts after filter is applied
+                        setTimeout(function() {
+                            updateButtonCounts();
+                        }, 200);
                     }
-                    // Update all button counts after filter is applied
-                    setTimeout(function() {
-                        updateButtonCounts();
-                    }, 200);
-                }
-            });
+                });
+            }
 
             // Combined filter function
             function combinedFilter(data) {
@@ -1490,6 +1582,10 @@
 
                 $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
                     table.setFilter(combinedFilter);
+                    // Update counts when filter changes - use longer timeout to ensure filter is applied
+                    setTimeout(function() {
+                        updateButtonCounts();
+                    }, 300);
                 });
 
                 // Initial update of all button counts after data loads
@@ -1499,10 +1595,13 @@
             });
 
             table.on("rowSelectionChanged", function(data, rows) {
-                if (data.length > 0) {
-                    document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
-                } else {
-                    document.getElementById("apr-all-sbid-btn").classList.add("d-none");
+                const aprAllSbidBtn = document.getElementById("apr-all-sbid-btn");
+                if (aprAllSbidBtn) {
+                    if (data.length > 0) {
+                        aprAllSbidBtn.classList.remove("d-none");
+                    } else {
+                        aprAllSbidBtn.classList.add("d-none");
+                    }
                 }
             });
 
@@ -1544,88 +1643,91 @@
                 }
             });
 
-            document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
-                const overlay = document.getElementById("progress-overlay");
-                overlay.style.display = "flex";
+            const aprAllSbidBtn = document.getElementById("apr-all-sbid-btn");
+            if (aprAllSbidBtn) {
+                aprAllSbidBtn.addEventListener("click", function() {
+                    const overlay = document.getElementById("progress-overlay");
+                    overlay.style.display = "flex";
 
-                var filteredData = table.getSelectedRows();
-                var campaignIds = [];
-                var bids = [];
+                    var filteredData = table.getSelectedRows();
+                    var campaignIds = [];
+                    var bids = [];
 
-                filteredData.forEach(function(row) {
-                    var rowEl = row.getElement();
-                    if (rowEl && rowEl.offsetParent !== null) {
-                        var rowData = row.getData();
-                        var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
-                        var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
-                        var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
-                        var ub7 = 0;
-                        if (budget > 0) {
-                            ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
-                        }
-                        
-                        var sbid = '';
-                        if (currentUtilizationType === 'over') {
-                            if (l7_cpc === 0) {
-                                sbid = 0.75;
-                            } else {
-                                sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                    filteredData.forEach(function(row) {
+                        var rowEl = row.getElement();
+                        if (rowEl && rowEl.offsetParent !== null) {
+                            var rowData = row.getData();
+                            var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
+                            var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
+                            var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
+                            var ub7 = 0;
+                            if (budget > 0) {
+                                ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
                             }
-                        } else if (currentUtilizationType === 'under') {
-                            if (ub7 < 70) {
-                                if (ub7 < 10 || l7_cpc === 0) {
+                            
+                            var sbid = '';
+                            if (currentUtilizationType === 'over') {
+                                if (l7_cpc === 0) {
                                     sbid = 0.75;
-                                } else if (l7_cpc > 0 && l7_cpc < 0.30) {
-                                    sbid = parseFloat((l7_cpc + 0.20).toFixed(2));
                                 } else {
-                                    sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
+                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                }
+                            } else if (currentUtilizationType === 'under') {
+                                if (ub7 < 70) {
+                                    if (ub7 < 10 || l7_cpc === 0) {
+                                        sbid = 0.75;
+                                    } else if (l7_cpc > 0 && l7_cpc < 0.30) {
+                                        sbid = parseFloat((l7_cpc + 0.20).toFixed(2));
+                                    } else {
+                                        sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
+                                    }
+                                } else {
+                                    sbid = '';
                                 }
                             } else {
                                 sbid = '';
                             }
-                        } else {
-                            sbid = '';
-                        }
 
-                        if (sbid !== '') {
-                            campaignIds.push(rowData.campaign_id);
-                            bids.push(sbid);
+                            if (sbid !== '') {
+                                campaignIds.push(rowData.campaign_id);
+                                bids.push(sbid);
+                            }
                         }
-                    }
-                });
+                    });
 
-                fetch('/update-keywords-bid-price', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                    },
-                    body: JSON.stringify({
-                        campaign_ids: campaignIds,
-                        bids: bids
+                    fetch('/update-keywords-bid-price', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            campaign_ids: campaignIds,
+                            bids: bids
+                        })
                     })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 200) {
-                        alert("Keywords updated successfully!");
-                    } else {
-                        let errorMsg = data.message || "Something went wrong";
-                        if (errorMsg.includes("Premium Ads")) {
-                            alert("Error: " + errorMsg);
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 200) {
+                            alert("Keywords updated successfully!");
                         } else {
-                            alert("Something went wrong: " + errorMsg);
+                            let errorMsg = data.message || "Something went wrong";
+                            if (errorMsg.includes("Premium Ads")) {
+                                alert("Error: " + errorMsg);
+                            } else {
+                                alert("Something went wrong: " + errorMsg);
+                            }
                         }
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    alert("Error updating bids");
-                })
-                .finally(() => {
-                    overlay.style.display = "none";
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        alert("Error updating bids");
+                    })
+                    .finally(() => {
+                        overlay.style.display = "none";
+                    });
                 });
-            });
+            }
 
             function updateBid(aprBid, campaignId) {
                 const overlay = document.getElementById("progress-overlay");
