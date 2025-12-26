@@ -441,6 +441,78 @@
         #channelTable th {
             text-transform: none !important;
         }
+
+        /* Channel Type Group Header Styles */
+        .channel-type-header,
+        .channel-type-header td,
+        table.dataTable tbody .channel-type-header,
+        table.dataTable tbody .channel-type-header td {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            color: white !important;
+            font-weight: bold !important;
+            font-size: 14px !important;
+            text-align: left !important;
+            padding: 12px 15px !important;
+            border: none !important;
+        }
+
+        .channel-type-header .type-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .channel-type-header .type-icon {
+            font-size: 18px;
+        }
+
+        .channel-type-header .type-name {
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .channel-type-header .type-count {
+            background: rgba(255,255,255,0.2);
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* B2C Type - Green */
+        .channel-type-header.type-b2c,
+        .channel-type-header.type-b2c td,
+        table.dataTable tbody .channel-type-header.type-b2c,
+        table.dataTable tbody .channel-type-header.type-b2c td {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+        }
+
+        /* B2B Type - Blue/Purple */
+        .channel-type-header.type-b2b,
+        .channel-type-header.type-b2b td,
+        table.dataTable tbody .channel-type-header.type-b2b,
+        table.dataTable tbody .channel-type-header.type-b2b td {
+            background: linear-gradient(135deg, #4568dc 0%, #b06ab3 100%) !important;
+        }
+
+        /* Dropship Type - Pink/Red */
+        .channel-type-header.type-dropship,
+        .channel-type-header.type-dropship td,
+        table.dataTable tbody .channel-type-header.type-dropship,
+        table.dataTable tbody .channel-type-header.type-dropship td {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+        }
+
+        /* Force background color on group headers */
+        .channel-group-header,
+        .channel-group-header td,
+        #channelTable tbody .channel-group-header,
+        #channelTable tbody .channel-group-header td,
+        table.dataTable tbody tr.channel-group-header,
+        table.dataTable tbody tr.channel-group-header td {
+            background-color: inherit !important;
+        }
     </style>
 @endsection
 
@@ -1980,11 +2052,10 @@
                 const table = jq('#channelTable').DataTable({
                     processing: true,
                     serverSide: false,
-                    ordering: true,
-                    // don't rely solely on this index number in config; we'll enforce order on initComplete too
-                    order: (l30Index >= 0) ? [[l30Index, 'desc']] : [], 
+                    ordering: false, // Disable ordering to preserve type grouping
+                    order: [], // No initial ordering
                     searching: true,
-                    pageLength: 50,
+                    pageLength: 100,
                     destroy: true,
                     ajax: {
                         url: '/channels-master-data',
@@ -2000,7 +2071,8 @@
                         dataSrc: function (json) {
                             if (!json || !json.data) return [];
 
-                            return json.data.map(item => {
+                            // Map and transform data
+                            const mappedData = json.data.map(item => {
                                 const l60Sales = toNum(pick(item, ['L-60 Sales', 'L60 Sales', 'l60_sales', 'A_L60', 'l60sales'], 0), 0);
                                 const l30Sales = toNum(pick(item, ['L30 Sales', 'l30_sales', 'T_Sale_l30', 'l30sales'], 0), 0);
 
@@ -2020,6 +2092,18 @@
                                 let kwSpent = toNum(pick(item, ['KW Spent', 'kw_spent', 'kwSpent'], 0), 0);
                                 let pmtSpent = toNum(pick(item, ['PMT Spent', 'pmt_spent', 'pmtSpent'], 0), 0);
                                 let totalAdSpend = toNum(pick(item, ['Total Ad Spend', 'total_spent', 'totalAdSpend'], 0), 0);
+
+                                // Get type from backend (normalized to B2C, B2B, Dropship only)
+                                let channelType = pick(item, ['type'], 'B2C');
+                                // Normalize type - only allow B2C, B2B, Dropship
+                                const typeNorm = (channelType || '').trim().toLowerCase();
+                                if (typeNorm === 'b2b') {
+                                    channelType = 'B2B';
+                                } else if (typeNorm === 'dropship') {
+                                    channelType = 'Dropship';
+                                } else {
+                                    channelType = 'B2C'; // Default everything else to B2C
+                                }
 
                                 return {
                                     'Channel': pick(item, ['channel', 'Channel', 'Channel '], ''),
@@ -2043,7 +2127,7 @@
                                     'Total Ad Spend': totalAdSpend,
                                     'Red Margin': toNum(pick(item, ['red_margin', 'Total_pft', 'total_pft'], 0), 0),
                                     'NR': toNum(pick(item, ['nr','NR'], 0), 0),
-                                    'type': pick(item, ['type'], ''),
+                                    'type': channelType,
                                     'Listing Counts': toNum(pick(item, ['listing_counts', 'listed_count', 'list_count'], 0), 0),
                                     'W/Ads': toNum(pick(item, ['w_ads', 'W/Ads','with_ads', 'ads'], 0), 0),
                                     '0 Sold SKU Count': toNum(pick(item, ['zero_sku', 'zero_sku_count', 'zero_sold_sku'], 0), 0),
@@ -2057,6 +2141,34 @@
                                     'Stock Mapping': toNum(pick(item, ['Stock Mapping', 'stock_mapping', 'stockMapping'], 0), 0),
                                 };
                             });
+
+                            // Group by type and sort within each group by L30 Sales descending
+                            const typeOrder = ['B2C', 'B2B', 'Dropship'];
+                            const grouped = { 'B2C': [], 'B2B': [], 'Dropship': [] };
+                            
+                            mappedData.forEach(item => {
+                                const type = item.type || 'B2C';
+                                if (grouped[type]) {
+                                    grouped[type].push(item);
+                                } else {
+                                    grouped['B2C'].push(item); // Fallback to B2C
+                                }
+                            });
+
+                            // Sort each group by L30 Sales descending
+                            Object.keys(grouped).forEach(type => {
+                                grouped[type].sort((a, b) => toNum(b['L30 Sales']) - toNum(a['L30 Sales']));
+                            });
+
+                            // Flatten with proper type ordering
+                            const sortedData = [];
+                            typeOrder.forEach(type => {
+                                if (grouped[type] && grouped[type].length > 0) {
+                                    sortedData.push(...grouped[type]);
+                                }
+                            });
+
+                            return sortedData;
                         },
                         error: function (xhr, error, thrown) {
                             console.log("AJAX error:", error, thrown);
@@ -2065,20 +2177,70 @@
                     columns: columns,
                     responsive: true,
 
-                    // ensure default sort is applied after table init (fixes timing/responsive issues)
+                    // No initial sorting - preserve type grouping
                     initComplete: function () {
-                        try {
-                            if (l30Index >= 0) {
-                                // set primary default order to L30 Sales descending
-                                this.api().order([[l30Index, 'desc']]).draw(false);
-                            }
-                        } catch (err) {
-                            console.warn('Could not set default order:', err);
-                        }
+                        // Type grouping is preserved from dataSrc
                     },
 
-                    // Re-initialize select dropdowns after each draw
-                    drawCallback: function() {
+                    // Insert group header rows after each draw
+                    drawCallback: function(settings) {
+                        const api = this.api();
+                        const rows = api.rows({ page: 'current' }).nodes();
+                        const data = api.rows({ page: 'current' }).data();
+                        let lastType = null;
+                        const colCount = api.columns().count();
+
+                        // Type icons and solid background colors
+                        const typeConfig = {
+                            'B2C': { 
+                                icon: '🛒', 
+                                displayName: 'B2C',
+                                bgColor: '#11998e'
+                            },
+                            'B2B': { 
+                                icon: '🏢', 
+                                displayName: 'B2B',
+                                bgColor: '#4568dc'
+                            },
+                            'Dropship': { 
+                                icon: '📦', 
+                                displayName: 'Dropship',
+                                bgColor: '#f5576c'
+                            }
+                        };
+
+                        // Count channels per type
+                        const typeCounts = {};
+                        data.each(function(row) {
+                            const type = row.type || 'B2C';
+                            typeCounts[type] = (typeCounts[type] || 0) + 1;
+                        });
+
+                        // Insert group headers with inline styles
+                        data.each(function(row, i) {
+                            const currentType = row.type || 'B2C';
+                            
+                            if (lastType !== currentType) {
+                                const config = typeConfig[currentType] || typeConfig['B2C'];
+                                const count = typeCounts[currentType] || 0;
+                                
+                                // Use div wrapper inside td for guaranteed background color
+                                jq(rows).eq(i).before(`
+                                    <tr>
+                                        <td colspan="${colCount}" style="padding: 0 !important; border: none !important;">
+                                            <div style="background-color: ${config.bgColor}; padding: 12px 15px; color: #fff; font-weight: bold; font-size: 14px; text-align: left;">
+                                                <span style="font-size: 18px; margin-right: 10px;">${config.icon}</span>
+                                                <span style="font-size: 15px; font-weight: 700; letter-spacing: 0.5px; margin-right: 10px;">${config.displayName}</span>
+                                                <span style="background: rgba(255,255,255,0.3); padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;">${count} Channel${count !== 1 ? 's' : ''}</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `);
+                                
+                                lastType = currentType;
+                            }
+                        });
+
                         // Add event listener to reset select to total after viewing breakdown
                         jq('.ad-spend-select').on('change', function() {
                             const self = this;
