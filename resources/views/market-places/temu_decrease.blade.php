@@ -984,30 +984,6 @@
                     width: 100
                 },
                 {
-                    title: "GROI %",
-                    field: "roi_percent",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        const colorClass = getRoiColor(value);
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
-                },
-
-                 {
-                    title: "Spend",
-                    field: "spend",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return '$' + value.toFixed(2);
-                    },
-                    width: 100
-                },
-                {
                     title: "ADS%",
                     field: "ads_percent",
                     hozAlign: "center",
@@ -1053,6 +1029,21 @@
                     },
                     width: 90
                 },
+                {
+                    title: "GROI %",
+                    field: "roi_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const colorClass = getRoiColor(value);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
+                    },
+                    width: 100
+                },
+
+                
+                
                 {
                     title: "NPFT %",
                     field: "npft_percent",
@@ -1251,6 +1242,17 @@
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(snroi)}%</span>`;
                     },
                     width: 80
+                },
+                 {
+                    title: "Spend",
+                    field: "spend",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return '$' + value.toFixed(2);
+                    },
+                    width: 100
                 },
                 {
                     title: "LP",
