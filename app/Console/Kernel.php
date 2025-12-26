@@ -77,6 +77,7 @@ class Kernel extends ConsoleKernel
         FetchWayfairDailyData::class,
         FetchShopifyB2BMetrics::class,
         FetchShopifyB2CMetrics::class,
+        \App\Console\Commands\RunAdvMastersCron::class,
 
     ];
 
@@ -346,6 +347,13 @@ class Kernel extends ConsoleKernel
         $schedule->command('sbid:update')
             ->dailyAt('00:01')
             ->timezone('Asia/Kolkata');
+
+        // Advertisement Masters Cron - Run every 5 minutes
+        $schedule->command('adv:run-masters-cron')
+            ->everyFiveMinutes()
+            ->timezone('UTC')
+            ->name('advertisement-masters-cron')
+            ->withoutOverlapping();
 
         // SERP (SEARCH) SBID Update - runs after SHOPPING SBID update
         $schedule->command('sbid:update-serp')
