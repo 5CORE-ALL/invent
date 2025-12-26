@@ -74,8 +74,9 @@ class Ebay3MissingAdsController extends Controller
             }
 
             $campaignListings = DB::connection('apicentral')
-                ->table('ebay_campaign_ads_listings')
+                ->table('ebay3_campaign_ads_listings')
                 ->select('listing_id', 'bid_percentage')
+                ->whereNotNull('bid_percentage')
                 ->get()
                 ->keyBy('listing_id')
                 ->toArray();
