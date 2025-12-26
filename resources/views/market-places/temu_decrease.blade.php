@@ -89,8 +89,8 @@
                     <div>
                         <select id="inventory-filter" class="form-select form-select-sm" style="width: 140px;">
                             <option value="all">All Inventory</option>
-                            <option value="gt0">INV &gt; 0</option>
-                            <option value="eq0">INV = 0</option>
+                            <option value="gt0" selected>INV &gt; 0</option>
+                            <option value="eq0" >INV = 0</option>
                         </select>
                     </div>
 
@@ -152,6 +152,20 @@
 
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-arrow-down"></i> Decrease Mode
+                    </button>
+                    
+                    <button id="increase-btn" class="btn btn-sm btn-success">
+                        <i class="fas fa-arrow-up"></i> Increase Mode
+                    </button>
+                    
+                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
+                        <i class="fa fa-eye"></i> Upload View Data
+                    </button>
+                    <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
+                        <i class="fa fa-chart-line"></i> Upload Ad Data
+                    </button>
+                    <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
+                        <i class="fa fa-tags"></i> Upload R Pricing
                     </button>
                 </div>
 
@@ -215,6 +229,173 @@
             </div>
         </div>
     </div>
+
+    <!-- Upload View Data Modal -->
+    <div class="modal fade" id="uploadViewDataModal" tabindex="-1" aria-labelledby="uploadViewDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="uploadViewDataModalLabel">
+                        <i class="fa fa-eye me-2"></i>Upload Temu View Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    
+                    <form id="uploadViewDataForm" action="{{ route('temu.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="viewDataFile" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                            </label>
+                            <input type="file" class="form-control" id="viewDataFile" name="file" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
+                            </div>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fa fa-lightbulb me-2"></i>
+                            <strong>Note:</strong> This will INSERT new records only (no truncate/update).
+                            <a href="{{ route('temu.viewdata.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadViewDataForm" class="btn btn-success">
+                        <i class="fa fa-upload me-1"></i>Upload View Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Ad Data Modal -->
+    <div class="modal fade" id="uploadAdDataModal" tabindex="-1" aria-labelledby="uploadAdDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="uploadAdDataModalLabel">
+                        <i class="fa fa-chart-line me-2"></i>Upload Temu Ad Data
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    
+                    <form id="uploadAdDataForm" action="{{ route('temu.addata.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="adDataFile" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                            </label>
+                            <input type="file" class="form-control" id="adDataFile" name="ad_data_file" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
+                            </div>
+                        </div>
+                        <div class="alert alert-warning">
+                            <i class="fa fa-exclamation-triangle me-2"></i>
+                            <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
+                            <br>
+                            <a href="{{ route('temu.addata.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadAdDataForm" class="btn btn-warning">
+                        <i class="fa fa-upload me-1"></i>Upload Ad Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload R Pricing Modal -->
+    <div class="modal fade" id="uploadRPricingModal" tabindex="-1" aria-labelledby="uploadRPricingModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="uploadRPricingModalLabel">
+                        <i class="fa fa-tags me-2"></i>Upload Temu R Pricing Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    
+                    <form id="uploadRPricingForm" action="{{ route('temu.rpricing.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="rPricingFile" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                            </label>
+                            <input type="file" class="form-control" id="rPricingFile" name="r_pricing_file" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
+                            </div>
+                        </div>
+                        <div class="alert alert-warning">
+                            <i class="fa fa-exclamation-triangle me-2"></i>
+                            <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
+                            <br>
+                            <a href="{{ route('temu.rpricing.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadRPricingForm" class="btn btn-danger">
+                        <i class="fa fa-upload me-1"></i>Upload R Pricing
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -222,6 +403,7 @@
     const COLUMN_VIS_KEY = "temu_decrease_column_visibility";
     let table = null;
     let decreaseModeActive = false;
+    let increaseModeActive = false;
     let selectedSkus = new Set();
     
     function showToast(message, type = 'info') {
@@ -246,19 +428,54 @@
     }
 
     $(document).ready(function() {
+        // Discount type dropdown change handler
+        $('#discount-type-select').on('change', function() {
+            const discountType = $(this).val();
+            const $input = $('#discount-percentage-input');
+            
+            if (discountType === 'percentage') {
+                $input.attr('placeholder', 'Enter %');
+            } else {
+                $input.attr('placeholder', 'Enter $');
+            }
+        });
+
         $('#decrease-btn').on('click', function() {
             decreaseModeActive = !decreaseModeActive;
+            increaseModeActive = false;
             const selectColumn = table.getColumn('_select');
             
             if (decreaseModeActive) {
                 selectColumn.show();
                 $(this).removeClass('btn-warning').addClass('btn-danger');
                 $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
+                $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
             } else {
                 selectColumn.hide();
                 $(this).removeClass('btn-danger').addClass('btn-warning');
                 $(this).html('<i class="fas fa-arrow-down"></i> Decrease Mode');
                 selectedSkus.clear();
+                updateSelectedCount();
+                updateSelectAllCheckbox();
+            }
+        });
+        
+        // Increase Mode Toggle
+        $('#increase-btn').on('click', function() {
+            increaseModeActive = !increaseModeActive;
+            decreaseModeActive = false;
+            const selectColumn = table.getColumn('_select');
+            
+            if (increaseModeActive) {
+                selectColumn.show();
+                $(this).removeClass('btn-success').addClass('btn-danger');
+                $(this).html('<i class="fas fa-times"></i> Cancel Increase');
+                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+            } else {
+                selectColumn.hide();
+                selectedSkus.clear();
+                $(this).removeClass('btn-danger').addClass('btn-success');
+                $(this).html('<i class="fas fa-arrow-up"></i> Increase Mode');
                 updateSelectedCount();
                 updateSelectAllCheckbox();
             }
@@ -331,6 +548,56 @@
             $('#select-all-checkbox').prop('checked', allFilteredSelected);
         }
 
+        // Retry function for saving SPRICE
+        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
+            return new Promise((resolve, reject) => {
+                if (row) {
+                    row.update({ sprice_status: 'processing' });
+                }
+                
+                $.ajax({
+                    url: '/temu-pricing/save-sprice',
+                    method: 'POST',
+                    data: {
+                        sku: sku,
+                        sprice: sprice,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        if (row) {
+                            row.update({
+                                sprice: sprice,
+                                sgprft_percent: response.sgprft_percent,
+                                sroi_percent: response.sroi_percent,
+                                sprice_status: 'saved'
+                            });
+                            row.reformat();
+                        }
+                        resolve(response);
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.error || xhr.responseText || 'Failed to save SPRICE';
+                        console.error(`Attempt ${retryCount + 1} for SKU ${sku} failed:`, errorMsg);
+                        
+                        if (retryCount < 1) {
+                            console.log(`Retrying SKU ${sku} in 2 seconds...`);
+                            setTimeout(() => {
+                                saveSpriceWithRetry(sku, sprice, row, retryCount + 1)
+                                    .then(resolve)
+                                    .catch(reject);
+                            }, 2000);
+                        } else {
+                            console.error(`Max retries reached for SKU ${sku}`);
+                            if (row) {
+                                row.update({ sprice_status: 'error' });
+                            }
+                            reject({ error: true, xhr: xhr });
+                        }
+                    }
+                });
+            });
+        }
+
         function applyDiscount() {
             const discountValue = parseFloat($('#discount-percentage-input').val());
             const discountType = $('#discount-type-select').val();
@@ -347,30 +614,71 @@
 
             const allData = table.getData('all');
             let updatedCount = 0;
+            let errorCount = 0;
+            const totalSkus = selectedSkus.size;
 
             allData.forEach(row => {
                 const sku = row['sku'];
                 if (selectedSkus.has(sku)) {
                     const currentPrice = parseFloat(row['base_price']) || 0;
-                    let newPrice;
-                    
-                    if (discountType === 'percentage') {
-                        newPrice = currentPrice * (1 - discountValue / 100);
-                    } else {
-                        newPrice = currentPrice - discountValue;
-                    }
-                    
-                    if (newPrice > 0) {
-                        row['base_price'] = newPrice.toFixed(2);
-                        updatedCount++;
+                    if (currentPrice > 0) {
+                        let newSPrice;
+                        
+                        if (discountType === 'percentage') {
+                            if (increaseModeActive) {
+                                newSPrice = currentPrice * (1 + discountValue / 100);
+                            } else {
+                                newSPrice = currentPrice * (1 - discountValue / 100);
+                            }
+                        } else {
+                            if (increaseModeActive) {
+                                newSPrice = currentPrice + discountValue;
+                            } else {
+                                newSPrice = currentPrice - discountValue;
+                            }
+                        }
+                        
+                        newSPrice = Math.max(0.01, newSPrice);
+                        
+                        const originalSPrice = parseFloat(row['sprice']) || 0;
+                        
+                        const tableRow = table.getRows().find(r => {
+                            const rowData = r.getData();
+                            return rowData['sku'] === sku;
+                        });
+                        
+                        if (tableRow) {
+                            tableRow.update({ 
+                                sprice: newSPrice,
+                                sprice_status: 'processing'
+                            });
+                        }
+                        
+                        saveSpriceWithRetry(sku, newSPrice, tableRow)
+                            .then((response) => {
+                                updatedCount++;
+                                if (updatedCount + errorCount === totalSkus) {
+                                    if (errorCount === 0) {
+                                        showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s)`, 'success');
+                                    } else {
+                                        showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                                    }
+                                }
+                            })
+                            .catch((error) => {
+                                errorCount++;
+                                if (tableRow) {
+                                    tableRow.update({ sprice: originalSPrice });
+                                }
+                                if (updatedCount + errorCount === totalSkus) {
+                                    showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
+                                }
+                            });
                     }
                 }
             });
-
-            table.replaceData(allData);
-            showToast(`Discount applied to ${updatedCount} SKU(s)`, 'success');
+            
             $('#discount-percentage-input').val('');
-            updateSummary();
         }
 
         function updateSummary() {
@@ -515,23 +823,6 @@
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: "rows",
             columns: [
-                {
-                    title: '<input type="checkbox" id="select-all-checkbox">',
-                    field: "_select",
-                    headerSort: false,
-                    frozen: true,
-                    width: 50,
-                    visible: false,
-                    formatter: function(cell) {
-                        const sku = cell.getRow().getData()['sku'];
-                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isChecked}>`;
-                    },
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                    }
-                },
-               
                 {
                     title: "Image",
                     field: "image_path",
@@ -693,74 +984,6 @@
                     width: 100
                 },
                 {
-                    title: "GROI %",
-                    field: "roi_percent",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        const colorClass = getRoiColor(value);
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
-                },
-
-
-                {
-                    title: "Restricted Price",
-                    field: "restricted_price",
-                    hozAlign: "center",
-                    sorter: "number",
-                  
-                    width: 100
-                },
-
-                
-               
-                
-                {
-                    title: "LP",
-                    field: "lp",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
-                    },
-                    width: 100,
-                    visible: false
-                },
-                {
-                    title: "Temu Ship",
-                    field: "temu_ship",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
-                    },
-                    width: 100,
-                    visible: false
-                },
-
-                 {
-                    title: "Spend",
-                    field: "spend",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return '$' + value.toFixed(2);
-                    },
-                    width: 100
-                },
-                {
                     title: "ADS%",
                     field: "ads_percent",
                     hozAlign: "center",
@@ -807,6 +1030,21 @@
                     width: 90
                 },
                 {
+                    title: "GROI %",
+                    field: "roi_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const colorClass = getRoiColor(value);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
+                    },
+                    width: 100
+                },
+
+                
+                
+                {
                     title: "NPFT %",
                     field: "npft_percent",
                     hozAlign: "center",
@@ -829,6 +1067,21 @@
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
                     },
                     width: 100
+                },
+                     {
+                    title: '<input type="checkbox" id="select-all-checkbox">',
+                    field: "_select",
+                    headerSort: false,
+                    width: 50,
+                    visible: false,
+                    formatter: function(cell) {
+                        const sku = cell.getRow().getData()['sku'];
+                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
+                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku}" ${isChecked}>`;
+                    },
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                    }
                 },
                 {
                     title: "R Prc",
@@ -864,6 +1117,7 @@
                     },
                     width: 80
                 },
+           
                 {
                     title: "S Temu Prc",
                     field: "stemu_price",
@@ -989,10 +1243,45 @@
                     },
                     width: 80
                 },
+                 {
+                    title: "Spend",
+                    field: "spend",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return '$' + value.toFixed(2);
+                    },
+                    width: 100
+                },
                 {
-                    title: "Goods ID",
-                    field: "goods_id",
-                    width: 150,
+                    title: "LP",
+                    field: "lp",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    },
+                    width: 100,
+                    visible: false
+                },
+                {
+                    title: "Temu Ship",
+                    field: "temu_ship",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    },
+                    width: 100,
                     visible: false
                 }
             ]
@@ -1236,6 +1525,8 @@
         });
 
         table.on('dataLoaded', function() {
+            // Apply default INV > 0 filter on page load
+            applyFilters();
             updateSummary();
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
