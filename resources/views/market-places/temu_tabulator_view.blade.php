@@ -99,9 +99,6 @@
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
                         <i class="fa fa-upload"></i> Upload Daily Data
                     </button>
-                    <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
-                        <i class="fa fa-dollar-sign"></i> Upload Pricing
-                    </button>
                 </div>
 
                 <!-- Summary Stats -->
@@ -172,56 +169,6 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="startUploadBtn">
                         <i class="fa fa-upload me-1"></i>Start Upload
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Upload Pricing Modal -->
-    <div class="modal fade" id="uploadPricingModal" tabindex="-1" aria-labelledby="uploadPricingModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="uploadPricingModalLabel">
-                        <i class="fa fa-dollar-sign me-2"></i>Upload Temu Pricing Data
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="uploadPricingForm" method="POST" action="{{ route('temu.pricing.upload') }}" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label for="pricingFile" class="form-label">Select Excel File</label>
-                            <input type="file" class="form-control" name="pricing_file" id="pricingFile" accept=".xlsx,.xls,.csv" required>
-                            <div class="form-text">
-                                Supported formats: Excel (.xlsx, .xls) or CSV
-                                <br>
-                                <a href="{{ route('temu.pricing.sample') }}" class="text-primary">
-                                    <i class="fa fa-download me-1"></i>Download Sample Excel Template
-                                </a>
-                            </div>
-                        </div>
-                        
-                        @if(session('success'))
-                            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                {{ session('success') }}
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        @endif
-                        
-                        @if(session('error'))
-                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                {{ session('error') }}
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        @endif
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadPricingForm" class="btn btn-primary">
-                        <i class="fa fa-upload me-1"></i>Upload Pricing
                     </button>
                 </div>
             </div>

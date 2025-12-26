@@ -167,6 +167,9 @@
                     <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
                         <i class="fa fa-tags"></i> Upload R Pricing
                     </button>
+                    <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
+                        <i class="fa fa-dollar-sign"></i> Upload Pricing
+                    </button>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -391,6 +394,62 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadRPricingForm" class="btn btn-danger">
                         <i class="fa fa-upload me-1"></i>Upload R Pricing
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Pricing Modal -->
+    <div class="modal fade" id="uploadPricingModal" tabindex="-1" aria-labelledby="uploadPricingModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title" id="uploadPricingModalLabel">
+                        <i class="fa fa-dollar-sign me-2"></i>Upload Temu Pricing Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    
+                    <form id="uploadPricingForm" method="POST" action="{{ route('temu.pricing.upload') }}" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="pricingFile" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                            </label>
+                            <input type="file" class="form-control" name="pricing_file" id="pricingFile" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
+                            </div>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fa fa-lightbulb me-2"></i>
+                            <strong>Note:</strong> This will update pricing data.
+                            <br>
+                            <a href="{{ route('temu.pricing.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadPricingForm" class="btn btn-info">
+                        <i class="fa fa-upload me-1"></i>Upload Pricing
                     </button>
                 </div>
             </div>
