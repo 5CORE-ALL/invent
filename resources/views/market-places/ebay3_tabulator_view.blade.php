@@ -64,6 +64,14 @@
         .badge.bg-ebay3 {
             background-color: #6f42c1 !important;
         }
+        
+        /* PARENT row light blue background */
+        .tabulator-row.parent-row {
+            background-color: rgba(69, 233, 255, 0.25) !important;
+        }
+        .tabulator-row.parent-row:hover {
+            background-color: rgba(69, 233, 255, 0.35) !important;
+        }
     </style>
 @endsection
 
@@ -792,6 +800,10 @@
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: "rows",
             columnCalcs: "both",
+            dataTree: true,
+            dataTreeStartExpanded: false,
+            dataTreeChildField: "_children",
+            dataTreeChildColumnCalcs: true,
             langs: {
                 "default": {
                     "pagination": {
@@ -800,12 +812,13 @@
                 }
             },
             initialSort: [{
-                column: "SCVR",
+                column: "Parent",
                 dir: "asc"
             }],
             rowFormatter: function(row) {
-                if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
-                    row.getElement().style.backgroundColor = "rgba(111, 66, 193, 0.1)";
+                const sku = row.getData()['(Child) sku'] || '';
+                if (sku.toUpperCase().includes('PARENT')) {
+                    row.getElement().classList.add('parent-row');
                 }
             },
             columns: [
@@ -818,7 +831,7 @@
                     tooltip: true,
                     frozen: true,
                     width: 150,
-                    visible: false
+                    visible: true
                 },
                 {
                     title: "Image",
@@ -831,10 +844,11 @@
                         return '';
                     },
                     headerSort: false,
-                    width: 80
+                    width: 80,
+                    visible: false
                 },
                 {
-                    title: "SKU",
+                    title: "Sku",
                     field: "(Child) sku",
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
@@ -843,7 +857,13 @@
                     frozen: true,
                     width: 250,
                     formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
                         const sku = cell.getValue();
+                        const isParent = sku && sku.toUpperCase().startsWith('PARENT');
+                        
+                        if (isParent) {
+                            return `<span style="font-weight: 700;">${sku}</span>`;
+                        }
                         
                         let html = `<span>${sku}</span>`;
                         
@@ -860,14 +880,24 @@
                     field: "INV",
                     hozAlign: "center",
                     width: 50,
-                    sorter: "number"
+                    sorter: "number",
+                    bottomCalc: "sum",
+                    bottomCalcFormatter: function(cell) {
+                        const value = cell.getValue();
+                        return value ? value.toLocaleString() : '0';
+                    }
                 },
                 {
                     title: "OV L30",
                     field: "L30",
                     hozAlign: "center",
                     width: 50,
-                    sorter: "number"
+                    sorter: "number",
+                    bottomCalc: "sum",
+                    bottomCalcFormatter: function(cell) {
+                        const value = cell.getValue();
+                        return value ? value.toLocaleString() : '0';
+                    }
                 },
                 {
                     title: "Dil",
@@ -962,11 +992,15 @@
                     headerSort: false,
                     formatter: function(cell) {
                         let value = cell.getValue();
-                        if (value === null || value === undefined || value === '' || value.trim() === '') {
+                        if (value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '')) {
                             value = 'REQ';
                         }
                         
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData['(Child) sku'] || '';
+                        
                         return `<select class="form-select form-select-sm nr-req-dropdown" 
+                            data-sku="${sku}"
                             style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px;">
                             <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
                             <option value="NR" ${value === 'NR' ? 'selected' : ''}>🔴</option>
@@ -1395,18 +1429,15 @@
         $(document).on('change', '.nr-req-dropdown', function() {
             const $select = $(this);
             const value = $select.val();
+            const sku = $select.data('sku');
             
-            const $cell = $select.closest('.tabulator-cell');
-            const row = table.getRow($cell.closest('.tabulator-row')[0]);
-            
-            if (!row) {
-                console.error('Could not find row');
+            if (!sku) {
+                console.error('Could not find SKU in dropdown data attribute');
+                showToast('Could not find SKU', 'error');
                 return;
             }
             
-            const sku = row.getData()['(Child) sku'];
-            
-            row.update({nr_req: value});
+            console.log('Saving NR/REQ for SKU:', sku, 'Value:', value);
             
             $.ajax({
                 url: '/listing_ebaythree/save-status',
@@ -1422,6 +1453,7 @@
                         const message = value === 'REQ' ? 'REQ updated' : (value === 'NR' ? 'NR updated' : 'Status cleared');
                         showToast(message, 'success');
                     } else {
+                        console.error('Save failed:', response);
                         showToast(response.message || 'Failed to save status', 'error');
                     }
                 },
@@ -1480,13 +1512,24 @@
             table.clearFilter(true);
 
             if (inventoryFilter === 'zero') {
-                table.addFilter('INV', '=', 0);
+                table.addFilter(function(data) {
+                    // For tree data, filter based on the INV value (sum for parents)
+                    return parseFloat(data.INV || 0) === 0;
+                });
             } else if (inventoryFilter === 'more') {
-                table.addFilter('INV', '>', 0);
+                table.addFilter(function(data) {
+                    // Filter by INV > 0 for all rows including PARENT
+                    return parseFloat(data.INV || 0) > 0;
+                });
             }
 
+            // Skip other filters for PARENT rows in tree mode
             if (nrlFilter !== 'all') {
                 table.addFilter(function(data) {
+                    // Skip filter for parent rows
+                    const sku = data['(Child) sku'] || '';
+                    if (sku.toUpperCase().includes('PARENT')) return true;
+                    
                     if (nrlFilter === 'REQ') {
                         return data.nr_req === 'REQ';
                     } else if (nrlFilter === 'NR') {
@@ -1601,7 +1644,25 @@
 
         // Update summary badges
         function updateSummary() {
-            const data = table.getData("active");
+            const rawData = table.getData("active");
+            
+            // Flatten tree data to get all child rows
+            const data = [];
+            rawData.forEach(row => {
+                // Add children if they exist
+                if (row._children && row._children.length > 0) {
+                    row._children.forEach(child => {
+                        data.push(child);
+                    });
+                } else {
+                    // Only add if not a parent (for orphan rows)
+                    const sku = row['(Child) sku'] || '';
+                    if (!sku.toUpperCase().includes('PARENT')) {
+                        data.push(row);
+                    }
+                }
+            });
+            
             let totalTcos = 0;
             let totalSpendL30 = 0;
             let totalKwSpendL30 = 0;
@@ -1621,6 +1682,7 @@
             const countedItemsPmt = new Set();
 
             data.forEach(row => {
+                // Child rows only (already filtered above)
                 if (parseFloat(row.INV) > 0) {
                     totalTcos += parseFloat(row['AD%'] || 0);
                     totalPftAmt += parseFloat(row['Total_pft'] || 0);

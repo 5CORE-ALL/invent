@@ -76,6 +76,8 @@ class ListingEbayThreeController extends Controller
 
     public function saveStatus(Request $request)
     {
+        \Log::info('saveStatus called', ['request' => $request->all()]);
+        
         $validated = $request->validate([
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',
@@ -85,6 +87,8 @@ class ListingEbayThreeController extends Controller
         ]);
 
         $sku = trim($validated['sku']);
+        
+        \Log::info('Saving status for SKU', ['sku' => $sku, 'nr_req' => $request->input('nr_req')]);
         
         // Get the most recent non-empty record, or create new
         $status = EbayThreeListingStatus::where('sku', $sku)
@@ -110,6 +114,8 @@ class ListingEbayThreeController extends Controller
                 $existing[$field] = $validated[$field];
             }
         }
+        
+        \Log::info('Final value to save', ['sku' => $sku, 'existing' => $existing]);
 
         // Clean up: Delete any duplicate records for this SKU before creating/updating
         EbayThreeListingStatus::where('sku', $sku)->delete();
@@ -119,6 +125,8 @@ class ListingEbayThreeController extends Controller
             'sku' => $sku,
             'value' => $existing
         ]);
+        
+        \Log::info('Status saved successfully', ['sku' => $sku]);
 
         return response()->json(['status' => 'success']);
     }
