@@ -85,6 +85,58 @@
             <div class="card-body py-3">
                 <h4>Temu Pricing</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                    <!-- Inventory Filter -->
+                    <div>
+                        <select id="inventory-filter" class="form-select form-select-sm" style="width: 140px;">
+                            <option value="all">All Inventory</option>
+                            <option value="gt0">INV &gt; 0</option>
+                            <option value="eq0">INV = 0</option>
+                        </select>
+                    </div>
+
+                    <!-- GPFT Filter -->
+                    <div>
+                        <select id="gpft-filter" class="form-select form-select-sm" style="width: 130px;">
+                            <option value="all">All GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40-50">40-50%</option>
+                            <option value="50-60">50-60%</option>
+                            <option value="60plus">60%+</option>
+                        </select>
+                    </div>
+
+                    <!-- CVR Filter -->
+                    <div>
+                        <select id="cvr-filter" class="form-select form-select-sm" style="width: 120px;">
+                            <option value="all">All CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0.01-1">0.01-1%</option>
+                            <option value="1-2">1-2%</option>
+                            <option value="2-3">2-3%</option>
+                            <option value="3-4">3-4%</option>
+                            <option value="0-4">0-4%</option>
+                            <option value="4-7">4-7%</option>
+                            <option value="7-10">7-10%</option>
+                            <option value="10plus">10%+</option>
+                        </select>
+                    </div>
+
+                    <!-- ADS Filter -->
+                    <div>
+                        <select id="ads-filter" class="form-select form-select-sm" style="width: 120px;">
+                            <option value="all">All ADS%</option>
+                            <option value="0-10">Below 10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-100">30-100%</option>
+                            <option value="100plus">100%+</option>
+                        </select>
+                    </div>
+
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -594,7 +646,6 @@
                         precision: 2
                     },
                     width: 120,
-                    editor: "number",
                     editorParams: {
                         min: 0,
                         step: 0.01
@@ -607,7 +658,11 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
-                        const temuPrice = basePrice < 26.99 ? basePrice + 2.99 : basePrice;
+                        // Only calculate Temu Price if base_price > 0 (item exists in Temu)
+                        if (basePrice === 0) {
+                            return '$0.00';
+                        }
+                        const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
                         return '$' + temuPrice.toFixed(2);
                     },
                     width: 120
@@ -622,7 +677,8 @@
                         const color = value < 0 ? '#dc3545' : (value > 0 ? '#28a745' : '#6c757d');
                         return `<span style="color: ${color}; font-weight: 600;">$${value.toFixed(2)}</span>`;
                     },
-                    width: 100
+                    width: 100,
+                    visible: false
                 },
                 {
                     title: "GPRFT %",
@@ -648,7 +704,18 @@
                     },
                     width: 100
                 },
-               
+
+
+                {
+                    title: "Restricted Price",
+                    field: "restricted_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                  
+                    width: 100
+                },
+
+                
                
                 
                 {
@@ -663,7 +730,8 @@
                         symbol: "$",
                         precision: 2
                     },
-                    width: 100
+                    width: 100,
+                    visible: false
                 },
                 {
                     title: "Temu Ship",
@@ -677,7 +745,8 @@
                         symbol: "$",
                         precision: 2
                     },
-                    width: 100
+                    width: 100,
+                    visible: false
                 },
 
                  {
@@ -762,6 +831,165 @@
                     width: 100
                 },
                 {
+                    title: "R Prc",
+                    field: "recommended_base_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value || value === 0) return '';
+                        return `$${parseFloat(value).toFixed(2)}`;
+                    },
+                    width: 80
+                },
+                {
+                    title: "S PRC",
+                    field: "sprice",
+                    hozAlign: "center",
+                    editor: "input",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const basePrice = parseFloat(rowData['base_price']) || 0;
+                        const sprice = parseFloat(value) || 0;
+                        
+                        if (!value || sprice === 0) return '';
+                        
+                        // If SPRICE matches Base Price, show dash
+                        if (sprice === basePrice) {
+                            return '<span style="color: #999; font-style: italic;">-</span>';
+                        }
+                        
+                        return `$${parseFloat(value).toFixed(2)}`;
+                    },
+                    width: 80
+                },
+                {
+                    title: "S Temu Prc",
+                    field: "stemu_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sprice = parseFloat(rowData['sprice']) || 0;
+                        
+                        if (sprice === 0) return '';
+                        
+                        // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99)
+                        const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
+                        return `$${stemuPrice.toFixed(2)}`;
+                    },
+                    width: 90
+                },
+                {
+                    title: "SGPRFT%",
+                    field: "sgprft_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sprice = parseFloat(rowData['sprice']) || 0;
+                        const lp = parseFloat(rowData['lp']) || 0;
+                        const temuShip = parseFloat(rowData['temu_ship']) || 0;
+                        const percentage = 0.91; // Temu marketplace percentage
+                        
+                        if (sprice === 0) return '';
+                        
+                        // Calculate Suggested Temu Price
+                        const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
+                        
+                        // SGPRFT% = ((S Temu Price × percentage - LP - Temu Ship) / S Temu Price) × 100
+                        const sgprft = stemuPrice > 0 ? ((stemuPrice * percentage - lp - temuShip) / stemuPrice) * 100 : 0;
+                        
+                        const colorClass = getPftColor(sgprft);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(sgprft)}%</span>`;
+                    },
+                    width: 80
+                },
+                {
+                    title: "SROI%",
+                    field: "sroi_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sprice = parseFloat(rowData['sprice']) || 0;
+                        const lp = parseFloat(rowData['lp']) || 0;
+                        const temuShip = parseFloat(rowData['temu_ship']) || 0;
+                        const percentage = 0.91; // Temu marketplace percentage
+                        
+                        if (sprice === 0 || lp === 0) return '';
+                        
+                        // Calculate Suggested Temu Price
+                        const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
+                        
+                        // SROI% = ((S Temu Price × percentage - LP - Temu Ship) / LP) × 100
+                        const sroi = lp > 0 ? ((stemuPrice * percentage - lp - temuShip) / lp) * 100 : 0;
+                        
+                        const colorClass = getRoiColor(sroi);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
+                    },
+                    width: 80
+                },
+                {
+                    title: "SPFT%",
+                    field: "spft_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sprice = parseFloat(rowData['sprice']) || 0;
+                        const lp = parseFloat(rowData['lp']) || 0;
+                        const temuShip = parseFloat(rowData['temu_ship']) || 0;
+                        const adsPercent = parseFloat(rowData['ads_percent']) || 0;
+                        const percentage = 0.91; // Temu marketplace percentage
+                        
+                        if (sprice === 0) return '';
+                        
+                        // Calculate Suggested Temu Price
+                        const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
+                        
+                        // SGPRFT%
+                        const sgprft = stemuPrice > 0 ? ((stemuPrice * percentage - lp - temuShip) / stemuPrice) * 100 : 0;
+                        
+                        // SPFT% = SGPRFT% - ADS%
+                        const spft = sgprft - adsPercent;
+                        
+                        const colorClass = getPftColor(spft);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(spft)}%</span>`;
+                    },
+                    width: 80
+                },
+                {
+                    title: "SNROI%",
+                    field: "snroi_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sprice = parseFloat(rowData['sprice']) || 0;
+                        const lp = parseFloat(rowData['lp']) || 0;
+                        const temuShip = parseFloat(rowData['temu_ship']) || 0;
+                        const adsPercent = parseFloat(rowData['ads_percent']) || 0;
+                        const percentage = 0.91; // Temu marketplace percentage
+                        
+                        if (sprice === 0 || lp === 0) return '';
+                        
+                        // Calculate Suggested Temu Price
+                        const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
+                        
+                        // SROI%
+                        const sroi = lp > 0 ? ((stemuPrice * percentage - lp - temuShip) / lp) * 100 : 0;
+                        
+                        // SNROI% = SROI% - ADS%
+                        const snroi = sroi - adsPercent;
+                        
+                        const colorClass = getRoiColor(snroi);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(snroi)}%</span>`;
+                    },
+                    width: 80
+                },
+                {
                     title: "Goods ID",
                     field: "goods_id",
                     width: 150,
@@ -774,6 +1002,90 @@
             const value = $(this).val();
             table.setFilter("sku", "like", value);
             updateSummary();
+        });
+
+        // Apply filters
+        function applyFilters() {
+            const inventoryFilter = $('#inventory-filter').val();
+            const gpftFilter = $('#gpft-filter').val();
+            const cvrFilter = $('#cvr-filter').val();
+            const adsFilter = $('#ads-filter').val();
+            const skuSearch = $('#sku-search').val();
+
+            // Clear all filters first
+            table.clearFilter();
+
+            // SKU search filter
+            if (skuSearch) {
+                table.setFilter("sku", "like", skuSearch);
+            }
+
+            // Inventory filter
+            if (inventoryFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data.inventory) || 0;
+                    if (inventoryFilter === 'gt0') return inv > 0;
+                    if (inventoryFilter === 'eq0') return inv === 0;
+                    return true;
+                });
+            }
+
+            // GPFT filter
+            if (gpftFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const gpft = parseFloat(data.profit_percent) || 0;
+                    
+                    if (gpftFilter === 'negative') return gpft < 0;
+                    if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
+                    if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
+                    if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
+                    if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
+                    if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
+                    if (gpftFilter === '50-60') return gpft >= 50 && gpft < 60;
+                    if (gpftFilter === '60plus') return gpft >= 60;
+                    return true;
+                });
+            }
+
+            // CVR filter
+            if (cvrFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const cvr = parseFloat(data.cvr_percent) || 0;
+                    const cvrRounded = Math.round(cvr * 100) / 100;
+                    
+                    if (cvrFilter === '0-0') return cvrRounded === 0;
+                    if (cvrFilter === '0.01-1') return cvrRounded >= 0.01 && cvrRounded <= 1;
+                    if (cvrFilter === '1-2') return cvrRounded > 1 && cvrRounded <= 2;
+                    if (cvrFilter === '2-3') return cvrRounded > 2 && cvrRounded <= 3;
+                    if (cvrFilter === '3-4') return cvrRounded > 3 && cvrRounded <= 4;
+                    if (cvrFilter === '0-4') return cvrRounded >= 0 && cvrRounded <= 4;
+                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '7-10') return cvrRounded > 7 && cvrRounded <= 10;
+                    if (cvrFilter === '10plus') return cvrRounded > 10;
+                    return true;
+                });
+            }
+
+            // ADS filter
+            if (adsFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const ads = parseFloat(data.ads_percent) || 0;
+                    
+                    if (adsFilter === '0-10') return ads >= 0 && ads < 10;
+                    if (adsFilter === '10-20') return ads >= 10 && ads < 20;
+                    if (adsFilter === '20-30') return ads >= 20 && ads < 30;
+                    if (adsFilter === '30-100') return ads >= 30 && ads <= 100;
+                    if (adsFilter === '100plus') return ads > 100;
+                    return true;
+                });
+            }
+
+            updateSummary();
+            updateSelectAllCheckbox();
+        }
+
+        $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter').on('change', function() {
+            applyFilters();
         });
 
         table.on('cellEdited', function(cell) {
@@ -804,6 +1116,39 @@
                     error: function(xhr) {
                         showToast('Failed to update price', 'error');
                         cell.restoreOldValue();
+                    }
+                });
+            }
+            
+            // Handle SPRICE edit
+            if (field === 'sprice') {
+                const newSprice = parseFloat(cell.getValue());
+                if (newSprice < 0) {
+                    showToast('SPRICE cannot be negative', 'error');
+                    cell.restoreOldValue();
+                    return;
+                }
+                
+                // Update the row data to trigger recalculation of SGPRFT%, SROI%, SPFT%, SNROI%
+                row.update({ sprice: newSprice });
+                
+                // Force reformat of the entire row to update calculated columns instantly
+                row.reformat();
+                
+                // Save to server
+                $.ajax({
+                    url: '/temu-pricing/save-sprice',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        sku: data['sku'],
+                        sprice: newSprice
+                    },
+                    success: function(response) {
+                        showToast('SPRICE saved successfully', 'success');
+                    },
+                    error: function(xhr) {
+                        showToast('Failed to save SPRICE', 'error');
                     }
                 });
             }

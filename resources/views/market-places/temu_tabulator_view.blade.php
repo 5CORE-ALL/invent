@@ -107,6 +107,9 @@
                     <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
                         <i class="fa fa-chart-line"></i> Upload Ad Data
                     </button>
+                    <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
+                        <i class="fa fa-tags"></i> Upload R Pricing
+                    </button>
                 </div>
 
                 <!-- Summary Stats -->
@@ -338,6 +341,62 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadAdDataForm" class="btn btn-warning">
                         <i class="fa fa-upload me-1"></i>Upload Ad Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload R Pricing Modal -->
+    <div class="modal fade" id="uploadRPricingModal" tabindex="-1" aria-labelledby="uploadRPricingModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="uploadRPricingModalLabel">
+                        <i class="fa fa-tags me-2"></i>Upload Temu R Pricing Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    
+                    <form id="uploadRPricingForm" action="{{ route('temu.rpricing.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="rPricingFile" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
+                            </label>
+                            <input type="file" class="form-control" id="rPricingFile" name="r_pricing_file" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                <i class="fa fa-info-circle text-info me-1"></i>
+                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
+                            </div>
+                        </div>
+                        <div class="alert alert-warning">
+                            <i class="fa fa-exclamation-triangle me-2"></i>
+                            <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
+                            <br>
+                            <a href="{{ route('temu.rpricing.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadRPricingForm" class="btn btn-danger">
+                        <i class="fa fa-upload me-1"></i>Upload R Pricing
                     </button>
                 </div>
             </div>
