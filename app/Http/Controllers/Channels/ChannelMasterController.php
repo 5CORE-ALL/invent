@@ -151,7 +151,7 @@ class ChannelMasterController extends Controller
     public function getViewChannelData(Request $request)
     {
         // Fetch both channel and sheet_link from ChannelMaster
-        $columns = ['channel', 'sheet_link', 'channel_percentage'];
+        $columns = ['channel', 'sheet_link', 'channel_percentage', 'type'];
         
         // Check if 'base' and 'target' columns exist before adding them
         if (Schema::hasColumn('channel_master', 'base')) {
@@ -162,6 +162,7 @@ class ChannelMasterController extends Controller
         }
         
         $channels = ChannelMaster::where('status', 'Active')
+            ->orderBy('type', 'asc')
             ->orderBy('id', 'asc')
             ->get($columns);
 
@@ -206,7 +207,15 @@ class ChannelMasterController extends Controller
         foreach ($channels as $channelRow) {
             $channel = $channelRow->channel;
 
-            // Base row
+            // Base row - normalize type to only B2C, B2B, Dropship
+            $rawType = $channelRow->type ?? '';
+            $normalizedType = 'B2C'; // default
+            if (strtolower(trim($rawType)) === 'b2b') {
+                $normalizedType = 'B2B';
+            } elseif (strtolower(trim($rawType)) === 'dropship') {
+                $normalizedType = 'Dropship';
+            }
+            
             $row = [
                 'Channel '       => ucfirst($channel),
                 'Link'           => null,
@@ -222,7 +231,7 @@ class ChannelMasterController extends Controller
                 'G RoiL60'       => 'N/A',
                 'red_margin'     => 0,
                 'NR'             => 0,
-                'type'           => '',
+                'type'           => $normalizedType,
                 'listed_count'   => 0,
                 'W/Ads'          => 0,
                 'channel_percentage' => $channelRow->channel_percentage ?? '',
