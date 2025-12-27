@@ -31,35 +31,57 @@ class AmazonMissingAdsController extends Controller
 
     public function getAmazonMissingAdsData(Request $request)
     {
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
+        // Increase memory and execution time limits
+        ini_set('memory_limit', '1024M');
+        set_time_limit(300); // 5 minutes max
+        
+        // Only select necessary columns to reduce memory
+        $productMasters = ProductMaster::select(['id', 'sku', 'parent'])
+            ->orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+        // Get amazon datasheet data - fetch all columns to avoid column name issues
+        $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)
+            ->get()
+            ->keyBy(function ($item) {
+                return strtoupper($item->sku);
+            });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        $shopifyData = ShopifySku::whereIn('sku', $skus)
+            ->whereIn('sku', $skus)
+            ->get()
+            ->keyBy('sku');
 
         $nrListingValues = AmazonListingStatus::whereIn('sku', $skus)->pluck('value', 'sku');
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
-        // Create uppercase SKU array for efficient matching (needed for query)
+        // Create uppercase SKU array for efficient matching
         $skuUpperArray = array_map('strtoupper', $skus);
 
-        // Optimize: Get campaigns that might match any of our SKUs (instead of ALL campaigns)
-        // This is much more efficient than loading all campaigns
-        $allCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->where(function($q) use ($skuUpperArray) {
-                foreach ($skuUpperArray as $skuUpper) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . $skuUpper . '%');
-                }
-            })
-            ->get();
+        // CRITICAL FIX: Use chunking with smaller batch size
+        $allCampaigns = collect();
+        $chunkSize = 5; // Reduced to 5 SKUs per query to prevent timeout
+        
+        foreach (array_chunk($skuUpperArray, $chunkSize) as $skuChunk) {
+            $campaignsChunk = AmazonSpCampaignReport::select(['id', 'campaignName', 'campaignStatus', 'ad_type'])
+                ->where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->where(function($q) use ($skuChunk) {
+                    foreach ($skuChunk as $skuUpper) {
+                        $q->orWhere('campaignName', 'LIKE', '%' . $skuUpper . '%');
+                    }
+                })
+                ->get();
+            
+            $allCampaigns = $allCampaigns->merge($campaignsChunk);
+            
+            // Clear memory after each chunk
+            unset($campaignsChunk);
+        }
 
         // Filter campaigns in memory - more efficient approach
         // Since query already filtered by SKU, we just need to separate KW and PT campaigns
