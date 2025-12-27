@@ -657,8 +657,11 @@
                 }
             });
 
+            // ✅ Track initial load to skip backend save on first load
+            window.isInitialLoad = true;
+            
             // ✅ Update Stats Based on *Visible (Filtered)* Data - Make it globally accessible
-            window.updateCampaignStats = function() {
+            window.updateCampaignStats = function(skipBackendSave = false) {
                 let visibleData = table.getData("active");
 
                 let stats = {
@@ -735,20 +738,22 @@
                     });
                 });
 
-                // Send to backend (non-blocking, debounced)
-                clearTimeout(window.statsUpdateTimer);
-                window.statsUpdateTimer = setTimeout(() => {
-                    $.ajax({
-                        url: "{{ route('adv-amazon.missing.save-data') }}",
-                        method: 'GET',
-                        data: {
-                            totalMissingAds: totalMissingAds2,
-                            kwMissing: stats.kwMissing,
-                            ptMissing: stats.ptMissing,
-                            bothMissing: stats.bothMissing
-                        }
-                    });
-                }, 500);
+                // Send to backend (skip on initial load to speed up data loading)
+                if (!skipBackendSave && !window.isInitialLoad) {
+                    clearTimeout(window.statsUpdateTimer);
+                    window.statsUpdateTimer = setTimeout(() => {
+                        $.ajax({
+                            url: "{{ route('adv-amazon.missing.save-data') }}",
+                            method: 'GET',
+                            data: {
+                                totalMissingAds: totalMissingAds2,
+                                kwMissing: stats.kwMissing,
+                                ptMissing: stats.ptMissing,
+                                bothMissing: stats.bothMissing
+                            }
+                        });
+                    }, 500);
+                }
             };
 
             table.on("tableBuilt", function () {
@@ -870,10 +875,15 @@
                 $("#status-filter, #inv-filter, #nra-filter, #nrl-filter, #missingAds-filter").on("change", reapplyFiltersAndUpdate);
 
                 // Remove redundant event listeners - only keep dataProcessed
-                table.on("dataProcessed", window.updateCampaignStats);
+                table.on("dataProcessed", function() {
+                    // Skip backend save on initial data load
+                    window.updateCampaignStats(true);
+                    // Mark initial load as complete after first data process
+                    setTimeout(() => { window.isInitialLoad = false; }, 1000);
+                });
 
-                // ✅ Initial Stats Load
-                window.updateCampaignStats();
+                // ✅ Initial Stats Load (skip backend save)
+                window.updateCampaignStats(true);
 
                 // Update All Missing Button Handler
                 $("#all-missing-btn").off("click").on("click", function() {
