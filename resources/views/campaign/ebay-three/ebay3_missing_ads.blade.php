@@ -47,15 +47,6 @@
             transition: background 0.18s, color 0.18s;
         }
 
-        /* .tabulator .tabulator-cell:focus {
-            outline: 1px solid #262626;
-            background: #e0eaff;
-        } */
-
-        /* .tabulator-row:hover {
-            background-color: #dbeafe !important;
-        } */
-
         .parent-row {
             background-color: #e0eaff !important;
             font-weight: 700;
@@ -420,51 +411,58 @@
                             var row = cell.getRow().getData();
                             var kwCampaign = row.kw_campaign_name || '';
                             var ptCampaign = row.pmt_bid_percentage || '';
-                            var nra = row.NRA || '';
+                            var nra = (row.NRA || '').trim();
                             var sku = row.sku || '';
-                            const isParent = sku.toUpperCase().includes("PARENT");
 
-                            const isNRA = ['NRA', 'NRA KW', 'NRA PMT'].includes(nra);
-                            
-                            // Handle NRA cases first (for both parent and child)
-                            if(isNRA){
+                            // If both ads are missing
+                            var bothMissing = !kwCampaign && !ptCampaign;
+
+                            // When NRA is set and both ads missing, hide the corresponding missing message
+                            if (bothMissing && nra === 'NRA KW') {
+                                // NRA KW indicates KW should be ignored — show only PMT Missing
+                                return `
+                                    <span style="color: red; font-weight:700;">PMT Missing</span>
+                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" style="cursor:pointer; margin-left:8px;"></i>
+                                `;
+                            }
+
+                            if (bothMissing && nra === 'NRA PMT') {
+                                // NRA PMT indicates PMT should be ignored — show only KW Missing
+                                return `
+                                    <span style="color: red; font-weight:700;">KW Missing</span>
+                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" style="cursor:pointer; margin-left:8px;"></i>
+                                `;
+                            }
+
+                            // If NRA (general) just show NRA BOTH or label
+                            if (['NRA', 'NRA KW', 'NRA PMT'].includes(nra) && !bothMissing) {
                                 const displayText = nra === 'NRA' ? 'NRA BOTH' : nra;
                                 return `
                                     <span style="color: red;">${displayText}</span>
-                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                        style="cursor:pointer; margin-left:8px;">
-                                    </i>
+                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" style="cursor:pointer; margin-left:8px;"></i>
                                 `;
                             }
-                            
-                            // Handle RA cases (for both parent and child)
+
+                            // Default RA/normal behavior
                             if(kwCampaign && ptCampaign){
                                 return `
-                                    <span style="color: green;">Both Running</span>
-                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                        style="cursor:pointer; margin-left:8px;">
-                                    </i>
+                                    <span style="color: green; font-weight:700;">Both Running</span>
+                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" style="cursor:pointer; margin-left:8px;"></i>
                                 `;
                             } else if(kwCampaign){
                                 return `
-                                    <span style="color: red;">PMT Missing</span>
-                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                        style="cursor:pointer; margin-left:8px;">
-                                    </i>
+                                    <span style="color: red; font-weight:700;">PMT Missing</span>
+                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" style="cursor:pointer; margin-left:8px;"></i>
                                 `;
                             } else if(ptCampaign){
                                 return `
-                                    <span style="color: red;">KW Missing</span>
-                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                        style="cursor:pointer; margin-left:8px;">
-                                    </i>
+                                    <span style="color: red; font-weight:700;">KW Missing</span>
+                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" style="cursor:pointer; margin-left:8px;"></i>
                                 `;
                             } else {
                                 return `
-                                    <span style="color: red;">KW Missing <br/> PMT Missing</span>
-                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                        style="cursor:pointer; margin-left:8px;">
-                                    </i>
+                                    <span style="color: red; font-weight:700;">KW Missing <br/> PMT Missing</span>
+                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" style="cursor:pointer; margin-left:8px;"></i>
                                 `;
                             }
                         }
