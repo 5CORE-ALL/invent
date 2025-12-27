@@ -1191,6 +1191,38 @@ class ProductMasterController extends Controller
         return response()->json(['data' => $data]);
     }
 
+    public function linkedProductDelink(Request $request)
+    {
+        $request->validate([
+            'group_id' => 'required|numeric',
+        ]);
+
+        try {
+            $count = ProductMaster::where('group_id', $request->group_id)->count();
+            
+            if ($count === 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No products found with this group ID.',
+                ], 404);
+            }
+
+            ProductMaster::where('group_id', $request->group_id)->update(['group_id' => null]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "Successfully delinked {$count} products from group {$request->group_id}.",
+                'count' => $count,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Delink products failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delink products: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function showUpdatedQty()
     {
         return view('inventory-management.auto-updated-qty');
