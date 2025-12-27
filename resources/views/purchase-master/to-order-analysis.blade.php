@@ -227,6 +227,16 @@
                             </select>
                         </div>
 
+                        {{-- NRP Filter Dropdown --}}
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block">🔍 NRP Filter</label>
+                            <select id="nrp-filter" class="form-select form-select-sm" style="min-width: 140px;">
+                                <option value="all" selected>All</option>
+                                <option value="show_nr">Show 2BDC</option>
+                                <option value="show_later">Show LATER</option>
+                            </select>
+                        </div>
+
                         {{-- 🔍 Search --}}
                         <div class="col-auto">
                             <label for="search-input" class="form-label fw-semibold mb-1 d-block">🔍 Search</label>
@@ -689,19 +699,40 @@
                                 </select>
                             `;
                         },
-                        hozAlign: "center"
+                        hozAlign: "center",
+                        cellCreated: function(cell) {
+                            // Ensure the select element has the correct value set after creation
+                            const selectEl = cell.getElement().querySelector('select');
+                            if (selectEl) {
+                                let value = cell.getValue() ?? '';
+                                value = String(value).trim().toUpperCase();
+                                
+                                // If empty, default to REQ
+                                if (!value || value === '') {
+                                    value = 'REQ';
+                                }
+                                
+                                // Ensure value matches one of the options
+                                if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
+                                    value = 'REQ';
+                                }
+                                
+                                selectEl.value = value;
+                            }
+                        }
                     },
                 ],
                 ajaxResponse: (url, params, response) => {
                     let data = response.data;
 
+                    // Backend already filters NR and LATER based on showNR/showLATER params
+                    // So we only filter for qty, parent, and stage here
                     let filtered = data.filter(item => {
                         let qty = parseFloat(item.approved_qty) || 0;
                         let isParent = item.SKU && item.SKU.startsWith("PARENT");
                         let isMfrg = item.stage && item.stage.trim().toLowerCase() === "mip";
-                        let isNR = item.nr && item.nr.trim().toUpperCase() === "NR";
 
-                        return qty > 0 && !isParent && !isMfrg && !isNR;
+                        return qty > 0 && !isParent && !isMfrg;
                     });
 
                     uniqueSuppliers = [...new Set(filtered.map(item => item.Supplier))].filter(Boolean);
@@ -1163,6 +1194,40 @@
             globalPreview.addEventListener("mouseleave", () => {
                 globalPreview.style.display = "none";
             });
+
+            // NRP Filter dropdown
+            document.getElementById('nrp-filter').addEventListener('change', function() {
+                reloadTableWithFilters();
+            });
+
+            function reloadTableWithFilters() {
+                const stage = document.getElementById("stage-filter").value;
+                const searchText = document.getElementById("search-input").value.trim();
+                const nrpFilter = document.getElementById("nrp-filter").value;
+                
+                let showNR = '0';
+                let showLATER = '0';
+                
+                if (nrpFilter === 'show_nr') {
+                    showNR = '1';
+                } else if (nrpFilter === 'show_later') {
+                    showLATER = '1';
+                }
+                
+                // Update AJAX URL with parameters
+                const params = new URLSearchParams({
+                    stage: stage || '',
+                    search: searchText || '',
+                    showNR: showNR,
+                    showLATER: showLATER
+                });
+                
+                table.setData('/to-order-analysis/data?' + params.toString())
+                    .then(() => {
+                        updateCounts();
+                    })
+                    .catch(err => console.error('Error reloading table:', err));
+            }
         });
     </script>
 @endsection

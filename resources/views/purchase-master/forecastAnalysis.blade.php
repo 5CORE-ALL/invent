@@ -128,6 +128,11 @@
                                 Show NR
                             </button>
 
+                            <!-- Toggle LATER -->
+                            <button id="toggle-later-rows" class="btn btn-sm text-white" style="background-color: #343a40;">
+                                Show LATER
+                            </button>
+
                             <!-- Row Type Filter -->
                             <select id="row-data-type" class="form-select-sm border border-primary" style="width: 150px;">
                                 <option value="all">🔁 Show All</option>
@@ -351,6 +356,16 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.body.style.zoom = "95%";
+        
+        // Debounce utility to prevent rapid fire AJAX calls
+        let debounceTimers = {};
+        function debounce(key, callback, delay = 300) {
+            if (debounceTimers[key]) {
+                clearTimeout(debounceTimers[key]);
+            }
+            debounceTimers[key] = setTimeout(callback, delay);
+        }
+        
         const getDilColor = (value) => {
             const percent = parseFloat(value) * 100;
             if (percent < 16.66) return 'red';
@@ -1212,6 +1227,7 @@
         let currentParentFilter = null;
         let currentColorFilter = null;
         let hideNRYes = true;
+        let hideLATERYes = true;
         let currentRowTypeFilter = 'all';
         let currentRestockFilter = false;
         let currentZeroInvFilter = false;
@@ -1254,6 +1270,9 @@
                     // NR match - if NRP filter is set to NR, show NR rows even if hideNRYes is true
                     const nrMatch = !hideNRYes || child.nr !== 'NR' || (currentNRPFilter === 'NR');
                     
+                    // LATER match - if NRP filter is set to LATER, show LATER rows even if hideLATERYes is true
+                    const laterMatch = !hideLATERYes || child.nr !== 'LATER' || (currentNRPFilter === 'LATER');
+                    
                     // Stage filter - check stage field or transit field
                     // If filter is "__blank__", match empty/null/undefined stage
                     const childStage = child.stage || '';
@@ -1287,7 +1306,7 @@
                             child.to_order >= 0 :
                             true;
                     }
-                    return nrMatch && nrpMatch && stageMatch && filterMatch;
+                    return nrMatch && laterMatch && nrpMatch && stageMatch && filterMatch;
                 });
 
                 if (matchingChildren.length > 0) {
@@ -1325,6 +1344,9 @@
                 // NR match - if NRP filter is set to NR, show NR rows even if hideNRYes is true
                 const matchesNR = hideNRYes ? (data.nr !== 'NR' || currentNRPFilter === 'NR') : true;
                 
+                // LATER match - if NRP filter is set to LATER, show LATER rows even if hideLATERYes is true
+                const matchesLATER = hideLATERYes ? (data.nr !== 'LATER' || currentNRPFilter === 'LATER') : true;
+                
                 // Stage filter - check stage field or transit field
                 // If filter is "__blank__", match empty/null/undefined stage
                 const dataStage = data.stage || '';
@@ -1347,12 +1369,12 @@
                     if (isParent) {
                         return data.Parent === currentParentFilter;
                     } else {
-                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && nrpMatch && stageMatch;
+                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch;
                     }
                 }
 
                 if (isChild) {
-                    const showChild = matchesFilter && matchesNR && nrpMatch && stageMatch;
+                    const showChild = matchesFilter && matchesNR && matchesLATER && nrpMatch && stageMatch;
                     if (currentRowTypeFilter === 'parent') return false;
                     if (currentRowTypeFilter === 'sku') return showChild;
                     return showChild;
@@ -1520,6 +1542,7 @@
 
             document.getElementById('yellow-count-box').textContent = `Appr Req: ${yellowCount}`;
             document.getElementById('toggle-nr-rows').textContent = hideNRYes ? "Show NR" : "Hide NR";
+            document.getElementById('toggle-later-rows').textContent = hideLATERYes ? "Show LATER" : "Hide LATER";
         }
 
         function updateParentTotalsBasedOnVisibleRows() {
@@ -1840,38 +1863,43 @@
                     }
                 }
 
-                updateForecastField({
-                    sku,
-                    parent,
-                    column: field,
-                    value: newValue
-                }, function() {
-                    $cell.data('original', newValue);
+                // Add visual feedback
+                $cell.css('opacity', '0.5');
 
-                    if (field === 'MOQ') {
-                        const today = new Date();
-                        const currentDate = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+                // Debounce the AJAX call
+                debounce(`qty-${sku}-${field}`, function() {
+                    updateForecastField({
+                        sku,
+                        parent,
+                        column: field,
+                        value: newValue
+                    }, function() {
+                        $cell.data('original', newValue);
+                        $cell.css('opacity', '1');
 
-                        const row = table.getRows().find(r =>
-                            r.getData().SKU === sku && r.getData().Parent === parent
-                        );
+                        if (field === 'MOQ') {
+                            const today = new Date();
+                            const currentDate = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
 
-                        if (row) row.update({ "MOQ": newValue });
+                            const row = table.getRows().find(r =>
+                                r.getData().SKU === sku && r.getData().Parent === parent
+                            );
 
-                        updateForecastField({
-                            sku,
-                            parent,
-                            column: 'Date of Appr',
-                            value: currentDate
-                        }, function() {
-                            const row = table.getRows().find(r => r.getData().SKU === sku &&
-                                r.getData().Parent === parent);
-                        });
-                    }
-                    setCombinedFilters();
-                }, function() {
-                    $cell.text(originalValue);
-                });
+                            if (row) row.update({ "MOQ": newValue }, true);
+
+                            updateForecastField({
+                                sku,
+                                parent,
+                                column: 'Date of Appr',
+                                value: currentDate
+                            });
+                        }
+                        // No need to call setCombinedFilters for MOQ changes
+                    }, function() {
+                        $cell.text(originalValue);
+                        $cell.css('opacity', '1');
+                    });
+                }, 200);
 
             });
 
@@ -1958,67 +1986,53 @@
                     // For date input: skip if no change
                     if (isDate && newValue === originalValue) return;
 
-                    updateForecastField({
-                            sku,
-                            parent,
-                            column: field,
-                            value: newValue
-                        },
-                        function() {
-                            if (isDate) {
-                                $el.data('original', newValue); // update reference
-                            }
-                            if (field === 'NR') {
-                                const row = table.getRows().find(r =>
-                                    r.getData().SKU === sku && r.getData().Parent === parent
-                                );
-                                if (row) {
-                                    // Update the row data - this will automatically trigger formatter
-                                    row.update({
-                                        nr: newValue
-                                    }, true); // true = update existing row data
+                    // Add visual feedback
+                    $el.css('opacity', '0.6');
+                    
+                    // Debounce for rapid changes
+                    debounce(`select-${sku}-${field}`, function() {
+                        updateForecastField({
+                                sku,
+                                parent,
+                                column: field,
+                                value: newValue
+                            },
+                            function() {
+                                $el.css('opacity', '1');
+                                
+                                if (isDate) {
+                                    $el.data('original', newValue);
                                 }
-
-                                setCombinedFilters();
-                            }
-                            if (field === 'Stage') {
-                                // Update the row data
+                                
                                 const row = table.getRows().find(r =>
                                     r.getData().SKU === sku && r.getData().Parent === parent
                                 );
-                                if (row) {
+                                
+                                if (!row) return;
+                                
+                                if (field === 'NR') {
+                                    row.update({ nr: newValue }, true);
+                                    setCombinedFilters(); // NR affects filtering
+                                } else if (field === 'Stage') {
                                     const rowData = row.getData();
                                     
                                     // Stage to table mapping
                                     const stageTableMap = {
                                         'mip': { table: 'mfrg-progress', field: 'order_given' },
                                         'r2s': { table: 'ready-to-ship', field: 'readyToShipQty' },
-                                        'transit': { table: 'transit', field: 'transit' },
-                                        'appr_req': { table: null, field: 'to_order' },
-                                        'to_order_analysis': { table: null, field: 'to_order' },
-                                        'all_good': { table: null, field: null }
+                                        'transit': { table: 'transit', field: 'transit' }
                                     };
 
                                     const stageConfig = stageTableMap[newValue];
                                     
-                                    // Prepare update object - clear other stage fields first
-                                    const updateData = {
-                                        stage: newValue
-                                    };
-                                    
-                                    // Clear fields that don't match the selected stage
-                                    if (newValue !== 'mip') {
-                                        updateData['order_given'] = 0;
-                                    }
-                                    if (newValue !== 'r2s') {
-                                        updateData['readyToShipQty'] = 0;
-                                    }
-                                    if (newValue !== 'transit') {
-                                        updateData['transit'] = 0;
-                                    }
+                                    // Prepare update - clear other stage fields
+                                    const updateData = { stage: newValue };
+                                    if (newValue !== 'mip') updateData['order_given'] = 0;
+                                    if (newValue !== 'r2s') updateData['readyToShipQty'] = 0;
+                                    if (newValue !== 'transit') updateData['transit'] = 0;
                                     
                                     if (stageConfig && stageConfig.table) {
-                                        // Check if SKU exists in the respective table and get quantity
+                                        // Fetch quantity for the stage
                                         fetch(`/forecast-analysis/get-sku-quantity?sku=${encodeURIComponent(sku)}&table=${stageConfig.table}`, {
                                             method: 'GET',
                                             headers: {
@@ -2028,76 +2042,44 @@
                                         })
                                         .then(res => res.json())
                                         .then(data => {
-                                            if (data.success && data.exists) {
-                                                // SKU exists in table, use its quantity
-                                                const quantity = parseFloat(data.quantity) || 0;
-                                                updateData[stageConfig.field] = quantity;
-                                            } else {
-                                                // SKU doesn't exist, set to 0 for this field
-                                                updateData[stageConfig.field] = 0;
-                                            }
-                                            
-                                            // Update row with all changes
+                                            updateData[stageConfig.field] = (data.success && data.exists) ? (parseFloat(data.quantity) || 0) : 0;
                                             row.update(updateData, true);
-                                            
-                                            // Refresh the cells to show updated values
-                                            setTimeout(() => {
-                                                const stageCell = row.getCells().find(cell => cell.getField() === 'stage');
-                                                const mipCell = row.getCells().find(cell => cell.getField() === 'order_given');
-                                                const r2sCell = row.getCells().find(cell => cell.getField() === 'readyToShipQty');
-                                                const transitCell = row.getCells().find(cell => cell.getField() === 'transit');
-                                                
-                                                if (stageCell) {
-                                                    stageCell.reformat();
-                                                    // Also manually set the select value to ensure it's selected
-                                                    const selectEl = stageCell.getElement().querySelector('select');
-                                                    if (selectEl) {
-                                                        selectEl.value = newValue.toLowerCase();
-                                                    }
+                                            // Only refresh cells for this row, not entire table
+                                            const cells = row.getCells();
+                                            cells.forEach(cell => {
+                                                const cellField = cell.getField();
+                                                if (['stage', 'order_given', 'readyToShipQty', 'transit', 'to_order'].includes(cellField)) {
+                                                    cell.reformat();
                                                 }
-                                                if (mipCell) mipCell.reformat();
-                                                if (r2sCell) r2sCell.reformat();
-                                                if (transitCell) transitCell.reformat();
-                                            }, 100);
-                                            
-                                            setCombinedFilters();
+                                            });
+                                            setCombinedFilters(); // Stage affects filtering
                                         })
                                         .catch(error => {
-                                            console.error('Error fetching quantity:', error);
-                                            // On error, still clear other fields and update stage
+                                            console.error('Error:', error);
                                             row.update(updateData, true);
                                             setCombinedFilters();
                                         });
                                     } else {
-                                        // For stages without table check (appr_req, to_order_analysis, all_good)
-                                        // Still clear other stage fields
+                                        // Stages without table check
                                         row.update(updateData, true);
-                                        
-                                        // Refresh the stage cell to show updated value
-                                        setTimeout(() => {
-                                            const stageCell = row.getCells().find(cell => cell.getField() === 'stage');
-                                            if (stageCell) {
-                                                stageCell.reformat();
-                                                // Also manually set the select value to ensure it's selected
-                                                const selectEl = stageCell.getElement().querySelector('select');
-                                                if (selectEl) {
-                                                    selectEl.value = newValue.toLowerCase();
-                                                }
-                                            }
-                                        }, 100);
-                                        
-                                        setCombinedFilters();
+                                        const stageCell = row.getCells().find(cell => cell.getField() === 'stage');
+                                        if (stageCell) stageCell.reformat();
+                                        setCombinedFilters(); // Stage affects filtering
                                     }
+                                } else if (field === 'Hide') {
+                                    row.update({ hide: newValue }, true);
+                                    // No need for setCombinedFilters for Hide field
                                 }
+                            },
+                            function() {
+                                $el.css('opacity', '1');
+                                if (isDate) {
+                                    $el.val(originalValue);
+                                }
+                                alert(`Failed to save ${field}.`);
                             }
-                        },
-                        function() {
-                            if (isDate) {
-                                $el.val(originalValue); // revert on fail
-                            }
-                            alert(`Failed to save ${field}.`);
-                        }
-                    );
+                        );
+                    }, 150);
                 });
 
             // Handle notes edit modal save
@@ -2277,6 +2259,12 @@
 
                 document.getElementById('toggle-nr-rows').textContent = hideNRYes ? "Show NR" : "Hide NR";
 
+            });
+
+            document.getElementById('toggle-later-rows').addEventListener('click', function() {
+                hideLATERYes = !hideLATERYes;
+                setCombinedFilters();
+                document.getElementById('toggle-later-rows').textContent = hideLATERYes ? "Show LATER" : "Hide LATER";
             });
 
             document.getElementById('row-data-type').addEventListener('change', function(e) {

@@ -96,6 +96,8 @@ class ToOrderAnalysisController extends Controller
         try {
             $search = strtolower($request->get('search', ''));
             $stageFilter = strtolower($request->get('stage', ''));
+            $showNR = $request->get('showNR', '0') === '1';
+            $showLATER = $request->get('showLATER', '0') === '1';
 
             // Fetch base data
             $toOrderRecords = DB::table('to_order_analysis')->get()->keyBy('sku');
@@ -114,8 +116,9 @@ class ToOrderAnalysisController extends Controller
                 $product = $productData->get($sheetSku);
                 $forecast = $forecastData->get($sheetSku);
                 
-                // Skip if SKU has NR in forecast_analysis table
-                if ($forecast && strtoupper(trim($forecast->nr ?? '')) === 'NR') {
+                // Skip if SKU has NR or LATER in forecast_analysis table
+                $nrValue = strtoupper(trim($forecast->nr ?? ''));
+                if ($forecast && ($nrValue === 'NR' || $nrValue === 'LATER')) {
                     continue; // Skip this SKU - don't show in to-order-analysis
                 }
                 
@@ -264,6 +267,10 @@ class ToOrderAnalysisController extends Controller
     public function getToOrderAnalysis()
     {
         try {
+            // Get showNR and showLATER from request if available (for API calls)
+            $showNR = request()->get('showNR', '0') === '1';
+            $showLATER = request()->get('showLATER', '0') === '1';
+            
             $toOrderRecords = DB::table('to_order_analysis')->whereNull('deleted_at')->get()->keyBy('sku');
             $productData = DB::table('product_master')->get()->keyBy(fn($item) => strtoupper(trim($item->sku)));
             $forecastData = DB::table('forecast_analysis')->get()->keyBy(fn($row) => strtoupper(trim($row->sku)));
@@ -280,9 +287,15 @@ class ToOrderAnalysisController extends Controller
                 $product = $productData->get($sheetSku);
                 $forecast = $forecastData->get($sheetSku);
                 
-                // Skip if SKU has NR in forecast_analysis table
-                if ($forecast && strtoupper(trim($forecast->nr ?? '')) === 'NR') {
-                    continue; // Skip this SKU - don't show in to-order-analysis
+                // Skip if SKU has NR or LATER in forecast_analysis table (unless explicitly shown)
+                $nrValue = strtoupper(trim($forecast->nr ?? ''));
+                if ($forecast) {
+                    if ($nrValue === 'NR' && !$showNR) {
+                        continue; // Skip NR SKU
+                    }
+                    if ($nrValue === 'LATER' && !$showLATER) {
+                        continue; // Skip LATER SKU
+                    }
                 }
                 
                 $parent = $toOrder->parent ?? $product->parent ?? '';
@@ -332,6 +345,7 @@ class ToOrderAnalysisController extends Controller
                     'sheet_link'      => $toOrder->sheet_link ?? '',
                     'Rfq Report Link' => $toOrder->rfq_report_link ?? '',
                     'stage'           => ($forecast ? ($forecast->stage ?? '') : ''),
+                    'nr'              => ($forecast ? ($forecast->nr ?? '') : ''),
                     'nrl'             => $toOrder->nrl ?? '',
                     'Adv date'        => $toOrder->advance_date ?? '',
                     'order_qty'       => $toOrder->order_qty ?? '',

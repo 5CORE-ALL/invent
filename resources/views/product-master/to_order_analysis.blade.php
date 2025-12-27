@@ -221,6 +221,21 @@
                                 </select>
                             </div>
 
+                            {{-- Show NR/LATER Buttons --}}
+                            <div class="col-auto">
+                                <label class="form-label fw-semibold mb-1 d-block">🔍 NRP Filter</label>
+                                <div class="btn-group" role="group">
+                                    <button type="button" id="toggle-nr-rows" class="btn btn-sm" 
+                                        style="background-color: #343a40; color: white; border: 1px solid #343a40;">
+                                        Show NR
+                                    </button>
+                                    <button type="button" id="toggle-later-rows" class="btn btn-sm" 
+                                        style="background-color: #343a40; color: white; border: 1px solid #343a40;">
+                                        Show LATER
+                                    </button>
+                                </div>
+                            </div>
+
                             {{-- 🔍 Search --}}
                             <div class="col-auto">
                                 <label for="search-input" class="form-label fw-semibold mb-1 d-block">🔍 Search</label>
@@ -499,18 +514,7 @@
 
                 // --- Stage Filter ---
                 document.getElementById('stage-filter').addEventListener('change', function() {
-                    const selectedStage = this.value.toLowerCase();
-                    const rows = document.querySelectorAll('#suppliers-table tbody tr');
-
-                    rows.forEach(row => {
-                        const stageSelect = row.querySelector('select[data-column="Stage"]');
-                        if (!stageSelect) return;
-                        row.style.display = !selectedStage || stageSelect.value.toLowerCase() ===
-                            selectedStage ? '' : 'none';
-                    });
-
-                    attachEditableListeners();
-                    attachStageListeners();
+                    refreshToOrderData();
                 });
 
                 // --- Listeners ---
@@ -802,6 +806,42 @@
             filterSelect.addEventListener("change", function() {
                 filterDateRows(this.value);
             });
+
+            // NR and LATER toggle buttons
+            let showNR = false;
+            let showLATER = false;
+
+            document.getElementById('toggle-nr-rows').addEventListener('click', function() {
+                showNR = !showNR;
+                this.textContent = showNR ? 'Hide NR' : 'Show NR';
+                this.style.backgroundColor = showNR ? '#28a745' : '#343a40';
+                refreshToOrderData();
+            });
+
+            document.getElementById('toggle-later-rows').addEventListener('click', function() {
+                showLATER = !showLATER;
+                this.textContent = showLATER ? 'Hide LATER' : 'Show LATER';
+                this.style.backgroundColor = showLATER ? '#28a745' : '#343a40';
+                refreshToOrderData();
+            });
+
+            function refreshToOrderData() {
+                const searchTerm = document.getElementById('search-input').value;
+                const stageTerm = document.getElementById('stage-filter').value;
+                
+                fetch(`/to-order-analysis?search=${searchTerm}&stage=${stageTerm}&showNR=${showNR ? 1 : 0}&showLATER=${showLATER ? 1 : 0}`, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(res => res.text())
+                .then(html => {
+                    tableBody.innerHTML = html;
+                    attachEditableListeners();
+                    attachStageListeners();
+                })
+                .catch(err => console.error('Error refreshing data:', err));
+            }
         </script>
     @endsection
 @endif
