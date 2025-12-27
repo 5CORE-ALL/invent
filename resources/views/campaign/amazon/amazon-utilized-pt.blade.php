@@ -315,6 +315,9 @@
         body {
             zoom: 90%;
         }
+        /* Keep header positioned so horizontal scroll can include it */
+        .tabulator .tabulator-header { position: relative !important; }
+        #budget-under-table .tabulator .tabulator-tableHolder { overflow-x: auto !important; }
     </style>
 @endsection
 @section('content')
@@ -332,7 +335,7 @@
                             <div class="card-body p-4">
                                 <!-- Type Filter and Count Cards Row -->
                                 <div class="row g-4 align-items-end mb-3 pb-3 border-bottom">
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization Type
                                         </label>
@@ -342,8 +345,9 @@
                                             <option value="under">Under Utilized</option>
                                             <option value="correctly">Correctly Utilized</option>
                                         </select>
-                                </div>
-                                    <div class="col-md-9">
+                                     </div>
+                                    <div class="col-md-2"></div>
+                                    <div class="col-md-8">
                                         <label class="form-label fw-semibold mb-2 d-block" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
                                         </label>
@@ -351,7 +355,7 @@
                                             <div class="badge-count-item" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total SKU</span>
                                                 <span class="fw-bold" id="total-sku-count" style="font-size: 1.1rem;">0</span>
-                            </div>
+                                            </div>
                                             <div class="badge-count-item total-campaign-card" id="total-campaign-card" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Campaign</span>
                                                 <span class="fw-bold" id="total-campaign-count" style="font-size: 1.1rem;">0</span>
@@ -433,6 +437,20 @@
                                         </select>
                                     </div>
                                     <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>SBGT Filter
+                                        </label>
+                                        <select id="sbgt-filter" class="form-select form-select-md">
+                                            <option value="">All SBGT</option>
+                                            <option value="8">SBGT 8 (ACOS &lt; 5)</option>
+                                            <option value="7">SBGT 7 (ACOS 5 - 9)</option>
+                                            <option value="6">SBGT 6 (ACOS 10 - 14)</option>
+                                            <option value="5">SBGT 5 (ACOS 15 - 19)</option>
+                                            <option value="4">SBGT 4 (ACOS 20 - 24)</option>
+                                            <option value="3">SBGT 3 (ACOS 25 - 29)</option>
+                                            <option value="2">SBGT 2 (ACOS 30 - 34)</option>
+                                            <option value="1">SBGT 1 (ACOS &gt;= 35)</option>
+                                        </select>
                                         <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
                                             <i class="fa-solid fa-check-double me-1"></i>
                                             APR ALL SBID
@@ -855,23 +873,27 @@
                 document.getElementById('nra-card').style.boxShadow = '';
                 showRaOnly = false;
                 document.getElementById('ra-card').style.boxShadow = '';
-                    
-                    if (typeof table !== 'undefined' && table) {
-                        table.setFilter(combinedFilter);
-                        // Redraw cells to update formatter colors based on new type
-                        table.redraw(true);
-                        // Update column visibility for SBID and APR BID
-                        table.hideColumn('sbid');
-                        table.hideColumn('apr_bid');
+                if (typeof table !== 'undefined' && table) {
+                    // Toggle columns before applying filter to avoid header/body shift
+                    table.hideColumn('sbid');
+                    table.hideColumn('apr_bid');
                     if (currentUtilizationType !== 'correctly' && currentUtilizationType !== 'all') {
-                            table.showColumn('sbid');
-                            table.showColumn('apr_bid');
-                        }
-                        // Update all button counts after filter is applied
-                        setTimeout(function() {
-                            updateButtonCounts();
-                        }, 200);
+                        table.showColumn('sbid');
+                        // apr_bid intentionally kept hidden for now
+                        // table.showColumn('apr_bid');
                     }
+
+                    // Delay filter/apply redraw to let Tabulator recalc layout
+                    setTimeout(function() {
+                        table.setFilter(combinedFilter);
+                        table.redraw(true);
+                        // Small reflow nudge for header/body scroll sync
+                        const holder = document.querySelector('#budget-under-table .tabulator .tabulator-tableHolder');
+                        if (holder) { holder.style.overflowX = 'auto'; holder.offsetHeight; }
+                        // Update counts after UI settles
+                        setTimeout(function() { updateButtonCounts(); }, 180);
+                    }, 60);
+                }
             });
 
             var table = new Tabulator("#budget-under-table", {
@@ -1098,6 +1120,33 @@
                         formatter: (cell) => parseFloat(cell.getValue() || 0)
                     },
                     {
+                        title: "SBGT",
+                        field: "sbgt",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var data = cell.getRow().getData();
+                            var acos = parseFloat(data.acos || 0);
+                            if (isNaN(acos) || acos === 0) acos = 100;
+                            var sbgt = '';
+                            if (acos < 5) sbgt = 8;
+                            else if (acos < 10) sbgt = 7;
+                            else if (acos < 15) sbgt = 6;
+                            else if (acos < 20) sbgt = 5;
+                            else if (acos < 25) sbgt = 4;
+                            else if (acos < 30) sbgt = 3;
+                            else if (acos < 35) sbgt = 2;
+                            else sbgt = 1;
+                            return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
+                        }
+                    },
+                    {
+                        title: "APR BGT",
+                        field: "apr_bgt",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) { return ''; }
+                    },
+                    {
                         title: "ACOS",
                         field: "acos",
                         hozAlign: "right",
@@ -1287,9 +1336,7 @@
                         title: "APR BID",
                         field: "apr_bid",
                         hozAlign: "center",
-                        visible: function() {
-                            return currentUtilizationType !== 'correctly';
-                        },
+                        visible: false,
                         formatter: function(cell) {
                             return `
                                 <div style="align-items:center; gap:5px;">
@@ -1364,6 +1411,23 @@
                 let rowAcos = parseFloat(acos) || 0;
                 if (isNaN(rowAcos) || rowAcos === 0) {
                     rowAcos = 100;
+                }
+
+                // Compute SBGT from ACOS mapping (same rules as ACOS control)
+                let rowSbgt = null;
+                if (rowAcos < 5) rowSbgt = 8;
+                else if (rowAcos < 10) rowSbgt = 7;
+                else if (rowAcos < 15) rowSbgt = 6;
+                else if (rowAcos < 20) rowSbgt = 5;
+                else if (rowAcos < 25) rowSbgt = 4;
+                else if (rowAcos < 30) rowSbgt = 3;
+                else if (rowAcos < 35) rowSbgt = 2;
+                else rowSbgt = 1;
+
+                // SBGT filter (if selected)
+                let sbgtFilterVal = $('#sbgt-filter').val();
+                if (sbgtFilterVal && sbgtFilterVal !== '') {
+                    if (parseInt(sbgtFilterVal) !== parseInt(rowSbgt)) return false;
                 }
 
                 // Check if campaign is missing
@@ -1459,12 +1523,13 @@
                 table.setFilter(combinedFilter);
                 
                 // Set initial column visibility based on current utilization type
+                // Hide APR columns by default (kept for future use). Show SBID only for specific types.
+                table.hideColumn('apr_bid');
+                table.hideColumn('apr_bgt');
                 if (currentUtilizationType === 'correctly' || currentUtilizationType === 'all') {
                     table.hideColumn('sbid');
-                    table.hideColumn('apr_bid');
                 } else {
                     table.showColumn('sbid');
-                    table.showColumn('apr_bid');
                 }
 
                 // Update counts when data is filtered (debounced)
@@ -1485,7 +1550,7 @@
                     }, 300);
                 });
 
-                $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
+                $("#status-filter, #inv-filter, #nra-filter, #sbgt-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     // Update counts when filter changes - use longer timeout to ensure filter is applied
                     setTimeout(function() {

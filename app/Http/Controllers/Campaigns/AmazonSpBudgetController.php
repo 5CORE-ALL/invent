@@ -2064,7 +2064,7 @@ class AmazonSpBudgetController extends Controller
 
             if (isset($matchedCampaignL30) && $matchedCampaignL30) {
                 if ($campaignType === 'HL') {
-                    $sales30 = $matchedCampaignL30->sales30d ?? 0;
+                    $sales30 = $matchedCampaignL30->sales ?? 0;
                     $spend30 = $matchedCampaignL30->cost ?? 0;
                 } else {
                     $sales30 = $matchedCampaignL30->sales30d ?? 0;

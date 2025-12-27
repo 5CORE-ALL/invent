@@ -8,6 +8,7 @@
             background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
             border-bottom: 1px solid #403f3f;
             box-shadow: 0 4px 16px rgba(37, 99, 235, 0.10);
+            position: relative !important;
         }
 
         .tabulator .tabulator-header .tabulator-col {
@@ -149,6 +150,11 @@
             }
         }
 
+        /* Ensure table body horizontal scroll syncs with header */
+        #budget-under-table .tabulator .tabulator-tableHolder {
+            overflow-x: auto !important;
+        }
+
         .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
             padding: 8px 16px;
             margin: 0 4px;
@@ -228,7 +234,7 @@
                             <div class="card-body p-4">
                                 <!-- Type Filter and Count Cards Row -->
                                 <div class="row g-4 align-items-end mb-3 pb-3 border-bottom">
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization Type
                                         </label>
@@ -238,8 +244,9 @@
                                             <option value="under">Under Utilized</option>
                                             <option value="correctly">Correctly Utilized</option>
                                         </select>
-                                </div>
-                                    <div class="col-md-9">
+                                    </div>
+                                    <div class="col-md-2"></div>
+                                    <div class="col-md-8">
                                         <label class="form-label fw-semibold mb-2 d-block" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
                                         </label>
@@ -329,10 +336,34 @@
                                         </select>
                                     </div>
                                     <div class="col-md-2">
-                                        <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
-                                            <i class="fa-solid fa-check-double me-1"></i>
-                                            APR ALL SBID
-                                        </button>
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>SBGT
+                                        </label>
+                                        <select id="sbgt-filter" class="form-select form-select-md">
+                                            <option value="">All SBGT</option>
+                                            <option value="8">SBGT 8 (ACOS &lt; 5)</option>
+                                            <option value="7">SBGT 7 (5 ≤ ACOS &lt; 10)</option>
+                                            <option value="6">SBGT 6 (10 ≤ ACOS &lt; 15)</option>
+                                            <option value="5">SBGT 5 (15 ≤ ACOS &lt; 20)</option>
+                                            <option value="4">SBGT 4 (20 ≤ ACOS &lt; 25)</option>
+                                            <option value="3">SBGT 3 (25 ≤ ACOS &lt; 30)</option>
+                                            <option value="2">SBGT 2 (30 ≤ ACOS &lt; 35)</option>
+                                            <option value="1">SBGT 1 (ACOS ≥ 35)</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 d-flex gap-2">
+                                        <div class="w-50">
+                                            <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
+                                                <i class="fa-solid fa-check-double me-1"></i>
+                                                APR ALL SBID
+                                            </button>
+                                        </div>
+                                        <div class="w-50">
+                                            <button id="apr-all-sbgt-btn" class="btn btn-warning btn-sm w-100 d-none">
+                                                <i class="fa-solid fa-check-double me-1"></i>
+                                                APR ALL SBGT
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -754,20 +785,31 @@
                 document.getElementById('ra-card').style.boxShadow = '';
                     
                     if (typeof table !== 'undefined' && table) {
-                        table.setFilter(combinedFilter);
-                        // Redraw cells to update formatter colors based on new type
-                        table.redraw(true);
-                        // Update column visibility for SBID and APR BID
+                        // Update column visibility for SBID only; APR BID remains hidden
                         table.hideColumn('sbid');
-                        table.hideColumn('apr_bid');
-                    if (currentUtilizationType !== 'correctly' && currentUtilizationType !== 'all') {
+                        if (currentUtilizationType !== 'correctly' && currentUtilizationType !== 'all') {
                             table.showColumn('sbid');
-                            table.showColumn('apr_bid');
                         }
-                        // Update all button counts after filter is applied
+                        table.hideColumn('apr_bid');
+
+                        // Give Tabulator a brief moment to recalc layout, then apply filter and redraw
                         setTimeout(function() {
-                            updateButtonCounts();
-                        }, 200);
+                            try {
+                                table.redraw(true);
+                            } catch (e) {}
+                            table.setFilter(combinedFilter);
+                            // Force a small reflow to align header/body scrolling
+                            const holder = document.querySelector('#budget-under-table .tabulator .tabulator-tableHolder');
+                            if (holder) {
+                                holder.style.overflowX = 'auto';
+                                // nudge scroll to force sync
+                                holder.scrollLeft = holder.scrollLeft;
+                            }
+                            // Update all button counts after filter is applied
+                            setTimeout(function() {
+                                updateButtonCounts();
+                            }, 200);
+                        }, 60);
                     }
             });
 
@@ -995,6 +1037,38 @@
                         formatter: (cell) => parseFloat(cell.getValue() || 0)
                     },
                     {
+                        title: "SBGT",
+                        field: "sbgt",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var acos = parseFloat(row.acos || 0);
+                            var sbgt;
+
+                            // New ACOS-based sbgt rule (copied from ACOS control)
+                            if (acos < 5) {
+                                sbgt = 8;
+                            } else if (acos < 10) {
+                                sbgt = 7;
+                            } else if (acos < 15) {
+                                sbgt = 6;
+                            } else if (acos < 20) {
+                                sbgt = 5;
+                            } else if (acos < 25) {
+                                sbgt = 4;
+                            } else if (acos < 30) {
+                                sbgt = 3;
+                            } else if (acos < 35) {
+                                sbgt = 2;
+                            } else {
+                                sbgt = 1;
+                            }
+
+                            return `
+                                <div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>
+                            `;
+                        },
+                    },
+                    {
                         title: "ACOS",
                         field: "acos",
                         hozAlign: "right",
@@ -1017,7 +1091,7 @@
                             } else if (acos > 14) {
                                 td.classList.add('red-bg');
                             }
-                            return acos.toFixed(0) + "%";
+                            return acos.toFixed(2) + "%";
                         }
                     },
                     {
@@ -1184,9 +1258,7 @@
                         title: "APR BID",
                         field: "apr_bid",
                         hozAlign: "center",
-                        visible: function() {
-                            return currentUtilizationType !== 'correctly';
-                        },
+                        visible: false,
                         formatter: function(cell) {
                             return `
                                 <div style="align-items:center; gap:5px;">
@@ -1303,6 +1375,32 @@
                     return false;
                 }
 
+                // SBGT filter (computed from ACOS using same mapping as display)
+                let sbgtFilterVal = $("#sbgt-filter").val();
+                if (sbgtFilterVal) {
+                    let acosVal = parseFloat(data.acos || 0);
+                    let rowSbgt;
+                    if (acosVal < 5) {
+                        rowSbgt = '8';
+                    } else if (acosVal < 10) {
+                        rowSbgt = '7';
+                    } else if (acosVal < 15) {
+                        rowSbgt = '6';
+                    } else if (acosVal < 20) {
+                        rowSbgt = '5';
+                    } else if (acosVal < 25) {
+                        rowSbgt = '4';
+                    } else if (acosVal < 30) {
+                        rowSbgt = '3';
+                    } else if (acosVal < 35) {
+                        rowSbgt = '2';
+                    } else {
+                        rowSbgt = '1';
+                    }
+
+                    if (rowSbgt !== sbgtFilterVal) return false;
+                }
+
                 // Apply zero INV filter first (if enabled)
                 let inv = parseFloat(data.INV || 0);
                 if (showZeroInvOnly) {
@@ -1358,11 +1456,11 @@
                 // Set initial column visibility based on current utilization type
                 if (currentUtilizationType === 'correctly' || currentUtilizationType === 'all') {
                     table.hideColumn('sbid');
-                    table.hideColumn('apr_bid');
                 } else {
                     table.showColumn('sbid');
-                    table.showColumn('apr_bid');
                 }
+                // Ensure APR BID remains hidden
+                table.hideColumn('apr_bid');
 
                 // Update counts when data is filtered (debounced)
                 let filterTimeout = null;
@@ -1382,7 +1480,7 @@
                     }, 300);
                 });
 
-                $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
+                $("#status-filter, #inv-filter, #nra-filter, #sbgt-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     // Update counts when filter changes - use longer timeout to ensure filter is applied
                     setTimeout(function() {
@@ -1397,11 +1495,9 @@
             });
 
             table.on("rowSelectionChanged", function(data, rows) {
-                if (data.length > 0) {
-                    document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
-                } else {
-                    document.getElementById("apr-all-sbid-btn").classList.add("d-none");
-                }
+                // Keep APR ALL SBID and APR ALL SBGT buttons hidden
+                document.getElementById("apr-all-sbid-btn").classList.add("d-none");
+                document.getElementById("apr-all-sbgt-btn").classList.add("d-none");
             });
 
             document.addEventListener("change", function(e) {
@@ -1524,6 +1620,108 @@
                     overlay.style.display = "none";
                 });
             });
+
+            // Batch APR SBGT handler
+            document.getElementById("apr-all-sbgt-btn").addEventListener("click", function() {
+                const overlay = document.getElementById("progress-overlay");
+                overlay.style.display = "flex";
+
+                var filteredData = table.getSelectedRows();
+                var campaignIds = [];
+                var bgts = [];
+
+                filteredData.forEach(function(row) {
+                    var rowEl = row.getElement();
+                    if (rowEl && rowEl.offsetParent !== null) {
+                        var rowData = row.getData();
+                        var acos = parseFloat(rowData.acos || 0);
+
+                        if (acos > 0) {
+                            // Compute SBGT based on ACOS (same rule as display)
+                            var sbgtValue;
+                            if (acos < 5) {
+                                sbgtValue = 8;
+                            } else if (acos < 10) {
+                                sbgtValue = 7;
+                            } else if (acos < 15) {
+                                sbgtValue = 6;
+                            } else if (acos < 20) {
+                                sbgtValue = 5;
+                            } else if (acos < 25) {
+                                sbgtValue = 4;
+                            } else if (acos < 30) {
+                                sbgtValue = 3;
+                            } else if (acos < 35) {
+                                sbgtValue = 2;
+                            } else {
+                                sbgtValue = 1;
+                            }
+
+                            campaignIds.push(rowData.campaign_id);
+                            bgts.push(sbgtValue);
+                        }
+                    }
+                });
+
+                fetch('/update-amazon-campaign-bgt-price', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({
+                        campaign_ids: campaignIds,
+                        bgts: bgts
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 200) {
+                        alert("Campaign budget updated successfully!");
+                    } else {
+                        alert("Something went wrong: " + data.message);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("Request failed: " + err.message);
+                })
+                .finally(() => {
+                    overlay.style.display = "none";
+                });
+            });
+
+            function updateBgt(sbgtValue, campaignId) {
+                const overlay = document.getElementById("progress-overlay");
+                overlay.style.display = "flex";
+
+                fetch('/update-amazon-campaign-bgt-price', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({
+                        campaign_ids: [campaignId],
+                        bgts: [sbgtValue]
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 200) {
+                        alert("Campaign budget updated successfully!");
+                    } else {
+                        alert("Something went wrong: " + data.message);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("Request failed: " + err.message);
+                })
+                .finally(() => {
+                    overlay.style.display = "none";
+                });
+            }
 
             function updateBid(aprBid, campaignId) {
                 const overlay = document.getElementById("progress-overlay");
