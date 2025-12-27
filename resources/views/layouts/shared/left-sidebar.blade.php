@@ -924,6 +924,8 @@
                         <li><a href="{{ url('shopify-b2c/daily-sales') }}">Shopify B2C Sales</a></li>
 
                         <li><a href="{{ url('shopify-b2b/daily-sales') }}">Shopify B2B Sales</a></li>
+
+                        <li><a href="{{ route('bestbuy.daily.sales') }}">Best Buy Sales Data</a></li>
                     </ul>
                 </div>
             </li>

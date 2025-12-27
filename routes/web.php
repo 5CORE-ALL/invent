@@ -278,6 +278,7 @@ use App\Http\Controllers\Sales\EbaySalesController;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Http\Controllers\Sales\DobaSalesController;
 use App\Http\Controllers\Sales\MercariController;
+use App\Http\Controllers\Sales\BestBuySalesController;
 
 /*  
 |--------------------------------------------------------------------------
@@ -549,6 +550,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/linked-products-view', [ProductMasterController::class, 'linkedProductsView'])->name('linked.products.view');
     Route::post('/linked-products-store', [ProductMasterController::class, 'linkedProductStore'])->name('linked.products.store');
     Route::get('/linked-products-data-list', [ProductMasterController::class, 'linkedProductsList']);
+    Route::post('/linked-products-delink', [ProductMasterController::class, 'linkedProductDelink'])->name('linked.products.delink');
 
     //show updated qty
     Route::get('/show-updated-qty', [ProductMasterController::class, 'showUpdatedQty'])->name('show.updated.qty');
@@ -783,6 +785,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
     Route::get('/ebay/sku-sales-data', [EbaySalesController::class, 'getSkuSalesData'])->name('ebay.sku.sales.data');
     
+    // Best Buy Sales Routes
+    Route::get('/bestbuy/daily-sales-data', [BestBuySalesController::class, 'getData'])->name('bestbuy.daily.sales.data');
+    Route::get('/bestbuy/daily-sales', [BestBuySalesController::class, 'index'])->name('bestbuy.daily.sales');
+    Route::get('/bestbuy-daily-sales-column-visibility', [BestBuySalesController::class, 'getColumnVisibility']);
+    Route::post('/bestbuy-daily-sales-column-visibility', [BestBuySalesController::class, 'saveColumnVisibility']);
 
     
     // eBay 2 Sales Routes

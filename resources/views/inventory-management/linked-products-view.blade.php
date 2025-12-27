@@ -244,6 +244,7 @@
                                     <th>Group</th>
                                     <th>Linked Skus</th>
                                     <th>Parent</th>
+                                    <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody id="inventory-table-body">
@@ -605,7 +606,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center">No records found</td></tr>';
                     return;
                 }
 
@@ -616,7 +617,11 @@
                         <td>${item.group_id || '-'}</td>
                         <td>${(item.skus && item.skus.length) ? item.skus.join(', ') : '-'}</td>
                         <td>${(item.parents && item.parents.length) ? item.parents.join(', ') : '-'}</td>
-                       
+                        <td>
+                            <button class="btn btn-danger btn-sm delink-btn" data-group-id="${item.group_id}" title="Delink Group">
+                                <i class="fas fa-unlink"></i> Delink
+                            </button>
+                        </td>
                     `;
 
                     tbody.appendChild(row);
@@ -694,6 +699,33 @@
                             },
                             error: function (xhr) {
                                 alert('Failed to delete warehouse.');
+                                console.error(xhr.responseText);
+                            }
+                        });
+                    }
+                });
+
+                // DELINK BUTTON
+                $(document).on('click', '.delink-btn', function () {
+                    const groupId = $(this).data('group-id');
+
+                    if (confirm(`Are you sure you want to delink all products from Group ${groupId}? This will remove the group association from all linked SKUs.`)) {
+                        $.ajax({
+                            url: '{{ route("linked.products.delink") }}',
+                            type: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                group_id: groupId
+                            },
+                            success: function (response) {
+                                alert(response.message);
+                                loadData(); // Refresh table
+                            },
+                            error: function (xhr) {
+                                const errorMsg = xhr.responseJSON?.message || 'Failed to delink products.';
+                                alert(errorMsg);
                                 console.error(xhr.responseText);
                             }
                         });
