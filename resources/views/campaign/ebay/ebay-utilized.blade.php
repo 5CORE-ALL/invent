@@ -16,27 +16,28 @@
             text-align: center;
             background: #D8F3F3;
             border-right: 1px solid #262626;
-            padding: 4px 2px;
+            padding: 8px 4px;
             font-weight: 700;
             color: #1e293b;
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             letter-spacing: 0.02em;
             transition: background 0.2s;
             height: 80px !important;
             vertical-align: middle;
+            position: relative;
         }
 
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
-            transform: rotate(-90deg);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-90deg);
             white-space: nowrap;
             overflow: visible;
-            width: 80px;
-            height: 20px;
-            margin: 0 auto;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transform-origin: center center;
+            width: auto;
+            height: auto;
+            display: block;
+            text-align: center;
         }
 
         .tabulator .tabulator-header .tabulator-col:hover {
@@ -79,8 +80,8 @@
         }
 
         #budget-under-table .tabulator {
-            border-radius: 18px;
-            box-shadow: 0 6px 24px rgba(37, 99, 235, 0.13);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(37, 99, 235, 0.1);
             overflow: hidden;
             border: 1px solid #e5e7eb;
         }
@@ -143,21 +144,21 @@
         }
 
         .utilization-type-btn {
-            padding: 8px 16px;
+            padding: 8px 12px;
             border: 2px solid #dee2e6;
             background: white;
             color: #495057;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
-            transition: all 0.3s;
-            font-weight: 500;
+            transition: all 0.3s ease;
+            font-weight: 600;
             width: 120px !important;
             min-width: 120px !important;
             max-width: 120px !important;
-            height: 40px !important;
-            min-height: 40px !important;
-            max-height: 40px !important;
-            font-size: 11px !important;
+            height: 38px !important;
+            min-height: 38px !important;
+            max-height: 38px !important;
+            font-size: 10.5px !important;
             text-align: center !important;
             display: flex !important;
             align-items: center !important;
@@ -165,16 +166,18 @@
             white-space: nowrap !important;
             overflow: hidden !important;
             text-overflow: ellipsis !important;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
         }
 
         .utilization-type-btn.active {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15) !important;
+            border-width: 2px;
         }
 
         .utilization-type-btn:hover {
             transform: translateY(-1px);
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
         }
 
         body {
@@ -189,28 +192,28 @@
     ])
     <div class="row">
         <div class="col-12">
-            <div class="card shadow-sm">
-                <div class="card-body py-3">
+            <div class="card shadow-sm" style="border-radius: 12px; border: 1px solid #e5e7eb;">
+                <div class="card-body py-4 px-4">
                     <div class="mb-4">
                         <!-- Title -->
-                        <h4 class="fw-bold text-primary mb-3 d-flex align-items-center">
+                        <h4 class="fw-bold text-primary mb-4 d-flex align-items-center">
                             <i class="fa-solid fa-chart-line me-2"></i>
-                            Ebay Utilized's
+                            eBay Campaign Utilization Dashboard
                         </h4>
 
                         <!-- Filters Row -->
                         <div class="row g-3 mb-3">
                             <!-- Utilization Type Selector -->
                             <div class="col-md-8">
-                                <div class="d-flex gap-3 align-items-start flex-wrap">
-                                    <span class="fw-bold me-2 mt-2">Type:</span>
+                                <div class="d-flex gap-2 align-items-start flex-wrap">
+                                    <span class="fw-bold me-2 mt-2" style="font-size: 0.95rem; color: #495057;">Filter by Type:</span>
                                     <div class="d-flex flex-column align-items-center">
-                                        <button class="utilization-type-btn" data-type="total" style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border-color: #0056b3; width: 120px;">Total Campaigns</button>
+                                        <button class="utilization-type-btn active" data-type="total" style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border-color: #0056b3; width: 120px;">Total Campaigns</button>
                                         <i class="fa fa-eye text-primary mt-1" style="font-size: 14px;"></i>
                                         <span class="btn-count fw-bold text-primary" id="total-btn-count" style="font-size: 12px;">0</span>
                                     </div>
                                     <div class="d-flex flex-column align-items-center">
-                                        <button class="utilization-type-btn active" data-type="over" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); color: white; border-color: #ff01d0; width: 120px;">Over Utilized</button>
+                                        <button class="utilization-type-btn" data-type="over" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); color: white; border-color: #ff01d0; width: 120px;">Over Utilized</button>
                                         <i class="fa fa-eye text-primary mt-1" style="font-size: 14px;"></i>
                                         <span class="btn-count fw-bold text-primary" id="over-btn-count" style="font-size: 12px;">0</span>
                                     </div>
@@ -262,22 +265,22 @@
                                 <div class="d-flex gap-3 justify-content-end align-items-center flex-wrap">
                                     <!-- Total Stats -->
                                     <div class="d-flex gap-3 me-3">
-                                        <div class="text-end">
-                                            <div class="text-muted small" style="font-size: 0.9rem;">Total L30 Spend</div>
-                                            <div class="fw-bold" style="font-size: 1.1rem;" id="total-l30-spend">$0.00</div>
+                                        <div class="text-end px-2 py-1" style="border-left: 3px solid #007bff; background: #f8f9fa; border-radius: 4px;">
+                                            <div class="text-muted small" style="font-size: 0.85rem;">L30 Spend</div>
+                                            <div class="fw-bold text-primary" style="font-size: 1.05rem;" id="total-l30-spend">$0.00</div>
                                         </div>
-                                        <div class="text-end">
-                                            <div class="text-muted small" style="font-size: 0.9rem;">Total L30 Sales</div>
-                                            <div class="fw-bold" style="font-size: 1.1rem;" id="total-l30-sales">$0.00</div>
+                                        <div class="text-end px-2 py-1" style="border-left: 3px solid #28a745; background: #f8f9fa; border-radius: 4px;">
+                                            <div class="text-muted small" style="font-size: 0.85rem;">L30 Sales</div>
+                                            <div class="fw-bold text-success" style="font-size: 1.05rem;" id="total-l30-sales">$0.00</div>
                                         </div>
-                                        <div class="text-end">
-                                            <div class="text-muted small" style="font-size: 0.9rem;">Total ACOS</div>
-                                            <div class="fw-bold" style="font-size: 1.1rem;" id="total-acos">0.00%</div>
+                                        <div class="text-end px-2 py-1" style="border-left: 3px solid #ffc107; background: #f8f9fa; border-radius: 4px;">
+                                            <div class="text-muted small" style="font-size: 0.85rem;">Avg ACOS</div>
+                                            <div class="fw-bold text-warning" style="font-size: 1.05rem;" id="total-acos">0.00%</div>
                                         </div>
                                     </div>
-                                    <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none shadow-sm">
+                                    <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none shadow-sm" style="border-radius: 6px; font-weight: 600;">
                                         <i class="fa-solid fa-check-double me-1"></i>
-                                        APR ALL SBID
+                                        Apply All SBID
                                     </button>
                                 </div>
                             </div>
@@ -286,16 +289,15 @@
                         <!-- Search and Controls Row -->
                         <div class="row g-3 mb-3">
                             <div class="col-md-4">
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light">
-                                        <i class="fa-solid fa-search text-muted"></i>
+                                <div class="input-group shadow-sm" style="border-radius: 6px;">
+                                    <span class="input-group-text bg-light" style="border-right: none;">
+                                        <i class="fa fa-search text-muted"></i>
                                     </span>
-                                    <input type="text" id="global-search" class="form-control form-control-md" 
-                                           placeholder="Search campaign...">
+                                    <input type="text" id="global-search" class="form-control" placeholder="Search campaigns..." style="border-left: none;">
                                 </div>
                             </div>
                             <div class="col-md-2">
-                                <select id="status-filter" class="form-select form-select-md">
+                                <select id="status-filter" class="form-select form-select-md shadow-sm" style="border-radius: 6px; font-weight: 500;">
                                     <option value="">All Status</option>
                                     <option value="RUNNING">Running</option>
                                     <option value="PAUSED">Paused</option>
@@ -303,28 +305,28 @@
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <select id="inv-filter" class="form-select form-select-md">
+                                <select id="inv-filter" class="form-select form-select-md shadow-sm" style="border-radius: 6px; font-weight: 500;">
                                     <option value="">All Inventory</option>
-                                    <option value="ALL">ALL</option>
-                                    <option value="INV_0">0 INV</option>
-                                    <option value="OTHERS">OTHERS</option>
+                                    <option value="ALL">All</option>
+                                    <option value="INV_0">0 Inventory</option>
+                                    <option value="OTHERS">Others</option>
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <select id="nra-filter" class="form-select form-select-md">
-                                    <option value="">All NRA</option>
+                                <select id="nra-filter" class="form-select form-select-md shadow-sm" style="border-radius: 6px; font-weight: 500;">
+                                    <option value="">All NRA Status</option>
                                     <option value="NRA">NRA</option>
                                     <option value="RA">RA</option>
-                                    <option value="LATER">LATER</option>
+                                    <option value="LATER">Later</option>
                                 </select>
                             </div>
                         </div>
                     </div>
 
                     <!-- Pagination Info -->
-                    <div class="row mb-2">
+                    <div class="row mb-3">
                         <div class="col-12">
-                            <div id="pagination-info" class="text-muted small"></div>
+                            <div id="pagination-info" class="text-muted small fw-semibold" style="background: #f8f9fa; padding: 8px 12px; border-radius: 6px; display: inline-block;"></div>
                         </div>
                     </div>
 
@@ -339,7 +341,7 @@
     <div class="modal fade" id="utilizationChartModal" tabindex="-1" aria-labelledby="utilizationChartModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
             <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
+                <div class="modal-header bg-primary text-white" style="border-top-left-radius: 8px; border-top-right-radius: 8px;">
                     <h5 class="modal-title fw-bold" id="utilizationChartModalLabel">
                         <i class="fa-solid fa-chart-line me-2"></i>
                         <span id="chart-title">Utilization Trend</span>
@@ -356,15 +358,15 @@
         </div>
     </div>
 
-    <div id="progress-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 9999;">
-        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
-            <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+    <div id="progress-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 9999; backdrop-filter: blur(4px);">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+            <div class="spinner-border text-primary" role="status" style="width: 3.5rem; height: 3.5rem; border-width: 4px;">
                 <span class="visually-hidden">Loading...</span>
             </div>
-            <div class="mt-3" style="color: white; font-size: 1.2rem; font-weight: 500;">
+            <div class="mt-3" style="color: #333; font-size: 1.3rem; font-weight: 600;">
                 Updating campaigns...
             </div>
-            <div style="color: #a3e635; font-size: 0.9rem; margin-top: 0.5rem;">
+            <div style="color: #6c757d; font-size: 0.95rem; margin-top: 0.5rem;">
                 Please wait while we process your request
             </div>
         </div>
@@ -377,7 +379,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-            let currentUtilizationType = 'over'; // Default to over
+            let currentUtilizationType = 'total'; // Default to total
             let totalACOSValue = 0;
             let totalL30Spend = 0;
             let totalL30Sales = 0;
@@ -402,8 +404,8 @@
                     clearTimeout(countUpdateTimeout);
                 }
                 countUpdateTimeout = setTimeout(function() {
-                    // Get all data (not filtered) for accurate counts
-                    const allData = table.getData('all');
+                    // Get filtered data to show current filter results
+                    const allData = table.getData();
                     
                     // Count for each type (mutually exclusive like controller)
                     let totalCount = allData.length;
@@ -487,22 +489,6 @@
                         }
 
                         // Remaining campaigns are uncategorized edge cases
-                        // They don't fit any of the main utilization patterns
-                        if (!categorized) {
-                            // Debug log for uncategorized campaigns
-                            if (Math.random() < 0.1) { // Log 10% of uncategorized for debugging
-                                console.log('Uncategorized campaign:', {
-                                    campaign: row.campaignName,
-                                    ub7: ub7.toFixed(1),
-                                    ub1: ub1.toFixed(1),
-                                    ub7Color: ub7Color,
-                                    ub1Color: ub1Color,
-                                    price: price,
-                                    inv: inv,
-                                    dilColor: dilColor
-                                });
-                            }
-                        }
                         
                         // Count campaigns with 0 inventory (separate from other categories)
                         if (inv === 0) {
@@ -532,21 +518,7 @@
                     const zeroInvBtnCount = document.getElementById('zero-inv-btn-count');
                     const lowPriceBtnCount = document.getElementById('low-price-btn-count');
                     
-                    // Debug count breakdown
-                    console.log('=== COUNT BREAKDOWN ===');
-                    console.log('Total loaded:', totalCount);
-                    console.log('Over:', overCount);
-                    console.log('Under:', underCount);
-                    console.log('Under $20+:', underAbove20Count);
-                    console.log('Correctly:', correctlyCount);
-                    console.log('Transition:', transitionCount);
-                    console.log('UB7 Green/UB1 Red:', ub7GreenUb1RedCount);
-                    console.log('UB7 Green/UB1 Pink:', ub7GreenUb1PinkCount);
-                    console.log('Zero Inventory:', zeroInvCount);
-                    console.log('Price < $20:', lowPriceCount);
-                    console.log('Sum of main categories:', overCount + underCount + correctlyCount + transitionCount);
-                    console.log('Expected total: 460, Actual total:', totalCount);
-                    console.log('Missing campaigns:', 460 - totalCount);
+                    // Update counts silently (debug logs removed for production)
                     
                     if (totalBtnCount) totalBtnCount.textContent = totalCount;
                     if (overBtnCount) overBtnCount.textContent = overCount;
@@ -566,21 +538,15 @@
                 btn.addEventListener('click', function() {
                     document.querySelectorAll('.utilization-type-btn').forEach(b => {
                         b.classList.remove('active');
-                        if (!b.classList.contains('transition')) {
-                            // Remove transition class from non-transition buttons when they become inactive
-                        }
                     });
                     this.classList.add('active');
                     currentUtilizationType = this.getAttribute('data-type');
                     
                     if (typeof table !== 'undefined' && table) {
                         table.setFilter(combinedFilter);
-                        // Redraw cells to update formatter colors based on new type
                         table.redraw(true);
-                        // Update all button counts after filter is applied
-                        setTimeout(function() {
-                            updateButtonCounts();
-                        }, 200);
+                        // Force immediate count update
+                        updateButtonCounts();
                     }
                 });
             });
@@ -589,8 +555,8 @@
                 index: "sku",
                 ajaxURL: "/ebay/utilized/ads/data",
                 ajaxParams: {
-                    all_campaigns: true, // Request all campaigns
-                    limit: 1000 // Ensure we get all campaigns
+                    all_campaigns: true,
+                    limit: 10000
                 },
                 layout: "fitData",
                 movableColumns: true,
@@ -1353,19 +1319,11 @@
                     totalL30Spend = parseFloat(response.total_l30_spend) || 0;
                     totalL30Sales = parseFloat(response.total_l30_sales) || 0;
                     
-                    // Debug: Log the actual data count vs expected
-                    console.log('=== CAMPAIGN DATA DEBUG ===');
-                    console.log('Expected campaigns: 460');
-                    console.log('Loaded campaigns:', response.data ? response.data.length : 0);
-                    console.log('Response metadata:', {
-                        total_acos: response.total_acos,
-                        total_campaigns: response.total_campaigns || 'not provided',
-                        data_length: response.data ? response.data.length : 0
-                    });
+                    console.log('Total campaigns loaded:', response.data ? response.data.length : 0);
                     
                     // Update total display elements
-                    document.getElementById("total-l30-spend").innerText = "$" + totalL30Spend.toFixed(2);
-                    document.getElementById("total-l30-sales").innerText = "$" + totalL30Sales.toFixed(2);
+                    document.getElementById("total-l30-spend").innerText = "$" + totalL30Spend.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    document.getElementById("total-l30-sales").innerText = "$" + totalL30Sales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                     document.getElementById("total-acos").innerText = totalACOSValue.toFixed(2) + "%";
                     
                     return response.data;
@@ -1438,23 +1396,39 @@
                 }
 
                 // Global search filter
-                let searchVal = $("#global-search").val()?.toLowerCase() || "";
-                if (searchVal && !(data.campaignName?.toLowerCase().includes(searchVal))) {
-                    return false;
+                let searchVal = document.getElementById("global-search")?.value?.toLowerCase() || "";
+                if (searchVal && searchVal.trim() !== "") {
+                    let campaignName = (data.campaignName || "").toLowerCase();
+                    let sku = (data.sku || "").toLowerCase();
+                    let parent = (data.parent || "").toLowerCase();
+                    
+                    if (!campaignName.includes(searchVal) && 
+                        !sku.includes(searchVal) && 
+                        !parent.includes(searchVal)) {
+                        return false;
+                    }
                 }
 
                 // Status filter
-                let statusVal = $("#status-filter").val();
+                let statusVal = document.getElementById("status-filter")?.value || "";
                 if (statusVal && data.campaignStatus !== statusVal) {
                     return false;
                 }
 
-                // Inventory filter - removed all exclusions
-                let invFilterVal = $("#inv-filter").val();
-                // Total campaigns and all other types: Show all campaigns regardless of inventory
+                // Inventory filter - implement proper logic
+                let invFilterVal = document.getElementById("inv-filter")?.value || "";
+                if (invFilterVal) {
+                    let inv = parseFloat(data.INV || 0);
+                    if (invFilterVal === 'INV_0' && inv !== 0) {
+                        return false;
+                    } else if (invFilterVal === 'OTHERS' && inv === 0) {
+                        return false;
+                    }
+                    // 'ALL' shows everything, so no filter needed
+                }
 
                 // NR filter
-                let nraFilterVal = $("#nra-filter").val();
+                let nraFilterVal = document.getElementById("nra-filter")?.value || "";
                 if (nraFilterVal) {
                     let rowVal = data.NR || "";
                     if (rowVal !== nraFilterVal) return false;
@@ -1465,34 +1439,54 @@
 
             table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
+                // Initial count update
+                updateButtonCounts();
+            });
 
-                // Update counts when data is filtered (debounced)
-                let filterTimeout = null;
-                table.on("dataFiltered", function(filteredRows) {
-                    if (filterTimeout) clearTimeout(filterTimeout);
-                    filterTimeout = setTimeout(function() {
-                        updateButtonCounts();
-                    }, 200);
-                });
+            // Update counts when data is filtered
+            table.on("dataFiltered", function(filters, rows) {
+                updateButtonCounts();
+            });
 
-                // Debounced search
-                let searchTimeout = null;
-                $("#global-search").on("keyup", function() {
+            // Update counts when data is loaded
+            table.on("dataLoaded", function(data) {
+                updateButtonCounts();
+            });
+
+            // Debounced search
+            let searchTimeout = null;
+            const searchInput = document.getElementById("global-search");
+            if (searchInput) {
+                searchInput.addEventListener("keyup", function() {
                     if (searchTimeout) clearTimeout(searchTimeout);
                     searchTimeout = setTimeout(function() {
                         table.setFilter(combinedFilter);
                     }, 300);
                 });
+            }
 
-                $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
+            // Filter change handlers
+            const statusFilter = document.getElementById("status-filter");
+            const invFilter = document.getElementById("inv-filter");
+            const nraFilter = document.getElementById("nra-filter");
+            
+            if (statusFilter) {
+                statusFilter.addEventListener("change", function() {
                     table.setFilter(combinedFilter);
                 });
-
-                // Initial update of all button counts after data loads
-                setTimeout(function() {
-                    updateButtonCounts();
-                }, 1000);
-            });
+            }
+            
+            if (invFilter) {
+                invFilter.addEventListener("change", function() {
+                    table.setFilter(combinedFilter);
+                });
+            }
+            
+            if (nraFilter) {
+                nraFilter.addEventListener("change", function() {
+                    table.setFilter(combinedFilter);
+                });
+            }
 
             table.on("rowSelectionChanged", function(data, rows) {
                 if (data.length > 0) {
@@ -1723,10 +1717,7 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                 });
             }
 
-            // Load counts
-            loadUtilizationCounts();
-
-            // Add click handlers to utilization cards
+            // Add click handlers to utilization cards (if they exist)
             document.querySelectorAll('.utilization-card').forEach(card => {
                 card.addEventListener('click', function() {
                     const type = this.getAttribute('data-type');
@@ -1736,20 +1727,6 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
         });
 
         let utilizationChartInstance = null;
-
-        function loadUtilizationCounts() {
-            fetch('/ebay/get-utilization-counts')
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 200) {
-                        document.getElementById('total-campaigns-count').textContent = data.total_campaigns || 0;
-                        document.getElementById('over-utilized-count').textContent = data.over_utilized || 0;
-                        document.getElementById('under-utilized-count').textContent = data.under_utilized || 0;
-                        document.getElementById('correctly-utilized-count').textContent = data.correctly_utilized || 0;
-                    }
-                })
-                .catch(err => console.error('Error loading counts:', err));
-        }
 
         function showUtilizationChart(type) {
             const chartTitle = document.getElementById('chart-title');

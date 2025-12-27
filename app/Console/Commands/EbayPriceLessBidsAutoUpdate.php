@@ -37,13 +37,13 @@ class EbayPriceLessBidsAutoUpdate extends Command
             return 0;
         }
 
-        // Filter out campaigns with empty campaign_id
+        // Filter out campaigns with empty campaign_id or zero/blank sbid
         $validCampaigns = array_filter($campaigns, function($campaign) {
-            return !empty($campaign->campaign_id);
+            return !empty($campaign->campaign_id) && !empty($campaign->sbid) && floatval($campaign->sbid) > 0;
         });
         
         if (empty($validCampaigns)) {
-            $this->warn("⚠️  No valid campaigns found (all have empty campaign_id).");
+            $this->warn("⚠️  No valid campaigns found (all have empty campaign_id or zero/blank sbid).");
             return 0;
         }
         
@@ -266,16 +266,34 @@ class EbayPriceLessBidsAutoUpdate extends Command
 
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             
-            // Calculate SBID based on budget utilization
+            // Calculate SBID based on budget utilization - handle cases where CPC is 0
             if($ub7 < 70){
                 // Under-utilized: increase bid by 5%
-                $row['sbid'] = round($l7_cpc * 1.05, 2);
+                if($l7_cpc > 0){
+                    $row['sbid'] = round($l7_cpc * 1.05, 2);
+                }elseif($l1_cpc > 0){
+                    $row['sbid'] = round($l1_cpc * 1.05, 2);
+                }else{
+                    $row['sbid'] = 0.10; // Default minimum for price < 30
+                }
             }else if($ub7 > 90){
                 // Over-utilized: decrease bid by 10%
-                $row['sbid'] = round($l1_cpc * 0.90, 2);
+                if($l1_cpc > 0){
+                    $row['sbid'] = round($l1_cpc * 0.90, 2);
+                }elseif($l7_cpc > 0){
+                    $row['sbid'] = round($l7_cpc * 0.90, 2);
+                }else{
+                    $row['sbid'] = 0.10; // Default minimum for price < 30
+                }
             }else{
                 // Correctly utilized (70-90): keep current bid
-                $row['sbid'] = round($l7_cpc, 2);
+                if($l7_cpc > 0){
+                    $row['sbid'] = round($l7_cpc, 2);
+                }elseif($l1_cpc > 0){
+                    $row['sbid'] = round($l1_cpc, 2);
+                }else{
+                    $row['sbid'] = 0.10; // Default minimum for price < 30
+                }
             }
             
             // Apply price-based SBID caps - this runs AFTER the ub7 calculation

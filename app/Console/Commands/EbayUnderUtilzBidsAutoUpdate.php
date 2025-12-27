@@ -37,13 +37,13 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
             return 0;
         }
 
-        // Filter out campaigns with empty campaign_id
+        // Filter out campaigns with empty campaign_id or zero/blank sbid
         $validCampaigns = array_filter($campaigns, function($campaign) {
-            return !empty($campaign->campaign_id);
+            return !empty($campaign->campaign_id) && !empty($campaign->sbid) && floatval($campaign->sbid) > 0;
         });
         
         if (empty($validCampaigns)) {
-            $this->warn("⚠️  No valid campaigns found (all have empty campaign_id).");
+            $this->warn("⚠️  No valid campaigns found (all have empty campaign_id or zero/blank sbid).");
             return 0;
         }
         
@@ -220,10 +220,19 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
 
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
 
+            // Calculate SBID - handle cases where l7_cpc is 0 or missing
             if($ub7 < 10){
                 $row['sbid'] = 0.50;
             }else{
-                $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
+                // If l7_cpc is 0 or missing, use l1_cpc as fallback, otherwise use default
+                if($l7_cpc > 0){
+                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
+                }elseif($l1_cpc > 0){
+                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
+                }else{
+                    // If both l7_cpc and l1_cpc are 0, use default minimum bid
+                    $row['sbid'] = 0.75;
+                }
             }
 
             $row['NR'] = '';

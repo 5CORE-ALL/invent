@@ -48,6 +48,48 @@ class EbayACOSController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
+        // Get product master SKUs for filtering additional campaigns
+        $productMasterSkus = $productMasters->pluck('sku')->map(function($sku) {
+            return strtoupper(trim($sku));
+        })->filter()->unique()->values()->all();
+
+        // Fetch additional RUNNING campaigns not in product_masters from L7, L1, and L30
+        // Store full objects, not just names, for easier matching
+        $allAdditionalL7 = EbayPriorityReport::where('report_range', 'L7')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+
+        $allAdditionalL1 = EbayPriorityReport::where('report_range', 'L1')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+
+        $allAdditionalL30 = EbayPriorityReport::where('report_range', 'L30')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+
+        // Get normalized campaign names for filtering
+        $additionalCampaignNames = $allAdditionalL7->merge($allAdditionalL1)->merge($allAdditionalL30)
+            ->map(function($campaign) {
+                $normalized = str_replace("\xC2\xA0", ' ', $campaign->campaign_name ?? '');
+                return strtoupper(trim($normalized));
+            })
+            ->unique()
+            ->filter(function($campaignSku) use ($productMasterSkus) {
+                // Only exclude if it exactly matches a product master SKU
+                return !in_array($campaignSku, $productMasterSkus);
+            })
+            ->values()
+            ->all();
+
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
@@ -105,7 +147,8 @@ class EbayACOSController extends Controller
                 return stripos($normalizedCampaign, $sku) !== false;
             });
 
-            if (!$matchedCampaignL7 && !$matchedCampaignL1) {
+            // If no L7 or L1, check L30 - campaign might only have L30 data
+            if (!$matchedCampaignL7 && !$matchedCampaignL1 && !$matchedCampaignL30) {
                 continue;
             }
 
@@ -115,13 +158,17 @@ class EbayACOSController extends Controller
             $row['INV']    = $shopify->inv ?? 0;
             $row['L30']    = $shopify->quantity ?? 0;
             $row['price']  = $ebay->ebay_price ?? 0;
-            $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
-            $row['campaignName'] = $matchedCampaignL7->campaign_name ?? ($matchedCampaignL1->campaign_name ?? '');
-            $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
-            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
+            // Use L7 if available, otherwise L1, otherwise L30
+            $campaignForDisplay = $matchedCampaignL7 ?? $matchedCampaignL1 ?? $matchedCampaignL30;
+            $row['campaign_id'] = $campaignForDisplay->campaign_id ?? '';
+            $row['campaignName'] = $campaignForDisplay->campaign_name ?? '';
+            $row['campaignStatus'] = $campaignForDisplay->campaignStatus ?? '';
+            $row['campaignBudgetAmount'] = $campaignForDisplay->campaignBudgetAmount ?? '';
 
-            $adFees   = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
-            $sales    = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0 );
+            // Use L30 if available, otherwise L7, otherwise L1 for ACOS calculation
+            $campaignForAcosCalc = $matchedCampaignL30 ?? $matchedCampaignL7 ?? $matchedCampaignL1;
+            $adFees   = (float) str_replace('USD ', '', $campaignForAcosCalc->cpc_ad_fees_payout_currency ?? 0);
+            $sales    = (float) str_replace('USD ', '', $campaignForAcosCalc->cpc_sale_amount_payout_currency ?? 0 );
 
             $acos = $sales > 0 ? ($adFees / $sales) * 100 : 0;
             
@@ -147,8 +194,93 @@ class EbayACOSController extends Controller
                 }
             }
 
-            // Only show items with price >= 30 and NR !== 'NRA'
-            if ($row['NR'] !== 'NRA' && $row['price'] >= 30) {
+            // Show all campaigns that pass basic filters - frontend will apply additional filters
+            // Only exclude if NR === 'NRA' (NRA campaigns should not show)
+            if ($row['NR'] !== 'NRA') {
+                $result[] = (object) $row;
+            }
+        }
+
+        // Process additional RUNNING campaigns not in product_masters
+        foreach ($additionalCampaignNames as $campaignSku) {
+            // Match using the already fetched campaigns
+            $matchedCampaignL7 = $allAdditionalL7->first(function ($item) use ($campaignSku) {
+                $normalized = str_replace("\xC2\xA0", ' ', $item->campaign_name ?? '');
+                return strtoupper(trim($normalized)) === $campaignSku;
+            });
+
+            $matchedCampaignL1 = $allAdditionalL1->first(function ($item) use ($campaignSku) {
+                $normalized = str_replace("\xC2\xA0", ' ', $item->campaign_name ?? '');
+                return strtoupper(trim($normalized)) === $campaignSku;
+            });
+
+            $matchedCampaignL30 = $allAdditionalL30->first(function ($item) use ($campaignSku) {
+                $normalized = str_replace("\xC2\xA0", ' ', $item->campaign_name ?? '');
+                return strtoupper(trim($normalized)) === $campaignSku;
+            });
+
+            // Use L7 if available, otherwise L30, otherwise L1
+            $campaignForDisplay = $matchedCampaignL7 ?? $matchedCampaignL30 ?? $matchedCampaignL1;
+            if (!$campaignForDisplay) {
+                continue;
+            }
+
+            $row = [];
+            $row['parent'] = '';
+            $row['sku'] = $campaignForDisplay->campaign_name ?? $campaignSku;
+            
+            // Try to get INV and L30 from ShopifySku using original campaign name as SKU
+            $originalCampaignName = $campaignForDisplay->campaign_name ?? $campaignSku;
+            $shopify = ShopifySku::where('sku', $originalCampaignName)->first();
+            
+            // If not found, try case-insensitive search
+            if (!$shopify) {
+                $shopify = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($originalCampaignName))])->first();
+            }
+            
+            $row['INV'] = $shopify->inv ?? 0;
+            $row['L30'] = $shopify->quantity ?? 0;
+            
+            // Try to get price from EbayMetric using original campaign name as SKU
+            $ebayMetric = EbayMetric::where('sku', $originalCampaignName)->first();
+            
+            // If not found, try case-insensitive search
+            if (!$ebayMetric) {
+                $ebayMetric = EbayMetric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($originalCampaignName))])->first();
+            }
+            
+            $row['price'] = $ebayMetric->ebay_price ?? 0;
+            
+            $row['campaign_id'] = $campaignForDisplay->campaign_id ?? '';
+            $row['campaignName'] = $campaignForDisplay->campaign_name ?? '';
+            $row['campaignStatus'] = $campaignForDisplay->campaignStatus ?? '';
+            $row['campaignBudgetAmount'] = $campaignForDisplay->campaignBudgetAmount ?? '';
+
+            // Use L30 data if available, otherwise use L7 data, otherwise use L1 data
+            $campaignForAcos = $matchedCampaignL30 ?? $matchedCampaignL7 ?? $matchedCampaignL1;
+            if (!$campaignForAcos) {
+                continue; // Skip if no data found in any range
+            }
+            $adFees = (float) str_replace('USD ', '', $campaignForAcos->cpc_ad_fees_payout_currency ?? 0);
+            $sales = (float) str_replace('USD ', '', $campaignForAcos->cpc_sale_amount_payout_currency ?? 0);
+
+            $acos = $sales > 0 ? ($adFees / $sales) * 100 : 0;
+            
+            if($adFees > 0 && $sales === 0){
+                $row['acos'] = 100;
+            }else{
+                $row['acos'] = $acos;
+            }
+
+            $row['l7_spend'] = $matchedCampaignL7 ? (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0) : 0;
+            $row['l7_cpc'] = $matchedCampaignL7 ? (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0) : 0;
+            $row['l1_spend'] = $matchedCampaignL1 ? (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0) : 0;
+            $row['l1_cpc'] = $matchedCampaignL1 ? (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0) : 0;
+            $row['NR'] = '';
+
+            // Show all RUNNING campaigns - frontend will apply filters (ub7, ub1, price, inv, DIL)
+            // This ensures campaigns are in the response even if they don't meet all filter criteria
+            if($row['campaignStatus'] === 'RUNNING'){
                 $result[] = (object) $row;
             }
         }
