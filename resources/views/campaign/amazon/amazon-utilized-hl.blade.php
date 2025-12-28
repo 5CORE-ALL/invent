@@ -82,6 +82,10 @@
             background-color: #dc3545;
         }
 
+        .status-dot.yellow {
+            background-color: #ffc107;
+        }
+
         .tabulator-row {
             background-color: #fff !important;
             transition: background 0.18s;
@@ -377,6 +381,13 @@
                                                 <span class="fw-bold" id="missing-campaign-count"
                                                     style="font-size: 1.1rem;">0</span>
                                             </div>
+                                            <div class="badge-count-item nra-missing-card" id="nra-missing-card"
+                                                style="background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span
+                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA MISSING</span>
+                                                <span class="fw-bold" id="nra-missing-count"
+                                                    style="font-size: 1.1rem;">0</span>
+                                            </div>
                                             <div class="badge-count-item zero-inv-card" id="zero-inv-card"
                                                 style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Zero
@@ -544,6 +555,7 @@
         document.addEventListener("DOMContentLoaded", function() {
             let currentUtilizationType = 'all'; // Default to all
             let showMissingOnly = false; // Filter for missing campaigns only
+            let showNraMissingOnly = false; // Filter for NRA missing campaigns only
             let showZeroInvOnly = false; // Filter for zero/negative inventory only
             let showCampaignOnly = false; // Filter for campaigns only
             let showNraOnly = false; // Filter for NRA only
@@ -584,6 +596,7 @@
                     let underCount = 0;
                     let correctlyCount = 0;
                     let missingCount = 0;
+                    let nraMissingCount = 0; // Count NRA missing campaigns
                     let zeroInvCount = 0; // Count zero and negative inventory
                     let totalCampaignCount = 0; // Count total campaigns
                     let nraCount = 0; // Count NRA
@@ -594,6 +607,7 @@
                     const processedSkusForNra = new Set(); // Track parent SKUs for NRA/RA counting
                     const processedSkusForCampaign = new Set(); // Track parent SKUs for campaign counting
                     const processedSkusForMissing = new Set(); // Track parent SKUs for missing counting
+                    const processedSkusForNraMissing = new Set(); // Track parent SKUs for NRA missing counting
                     const processedSkusForZeroInv = new Set(); // Track parent SKUs for zero INV counting
 
                     // First pass: Collect all parent SKUs and determine if they have campaigns
@@ -724,7 +738,22 @@
                             // Count missing only once per parent SKU (for filtered data)
                             if (!processedSkusForMissing.has(sku)) {
                                 processedSkusForMissing.add(sku);
-                                missingCount++;
+                                // Check if this is a red dot (missing AND not yellow)
+                                let rowNrlForMissing = row.NRL ? row.NRL.trim() : "";
+                                let rowNraForMissing = row.NRA ? row.NRA.trim() : "";
+                                // Only count as missing (red dot) if neither NRL='NRL' nor NRA='NRA'
+                                if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') {
+                                    missingCount++;
+                                }
+                            }
+                            // Count NRA missing separately (yellow dots)
+                            if (!processedSkusForNraMissing.has(sku)) {
+                                processedSkusForNraMissing.add(sku);
+                                let rowNrlForNraMissing = row.NRL ? row.NRL.trim() : "";
+                                let rowNraForNraMissing = row.NRA ? row.NRA.trim() : "";
+                                if (rowNrlForNraMissing === 'NRL' || rowNraForNraMissing === 'NRA') {
+                                    nraMissingCount++;
+                                }
                             }
                         }
 
@@ -777,6 +806,12 @@
                     const missingCountEl = document.getElementById('missing-campaign-count');
                     if (missingCountEl) {
                         missingCountEl.textContent = missingCount;
+                    }
+
+                    // Update NRA missing count
+                    const nraMissingCountEl = document.getElementById('nra-missing-count');
+                    if (nraMissingCountEl) {
+                        nraMissingCountEl.textContent = nraMissingCount;
                     }
 
                     // Update total campaign count - based on filtered data
@@ -838,6 +873,9 @@
                         // Reset missing filter
                         showMissingOnly = false;
                         document.getElementById('missing-campaign-card').style.boxShadow = '';
+                        // Reset NRA missing filter
+                        showNraMissingOnly = false;
+                        document.getElementById('nra-missing-card').style.boxShadow = '';
                         // Reset zero INV filter
                         showZeroInvOnly = false;
                         document.getElementById('zero-inv-card').style.boxShadow = '';
@@ -871,12 +909,48 @@
                         // Reset zero INV filter
                         showZeroInvOnly = false;
                         document.getElementById('zero-inv-card').style.boxShadow = '';
+                        // Reset NRA missing filter
+                        showNraMissingOnly = false;
+                        document.getElementById('nra-missing-card').style.boxShadow = '';
                         // Reset NRA/RA filters
                         showNraOnly = false;
                         document.getElementById('nra-card').style.boxShadow = '';
                         showRaOnly = false;
                         document.getElementById('ra-card').style.boxShadow = '';
                         this.style.boxShadow = '0 4px 12px rgba(220, 53, 69, 0.5)';
+                    } else {
+                        this.style.boxShadow = '';
+                    }
+
+                    if (typeof table !== 'undefined' && table) {
+                        table.setFilter(combinedFilter);
+                        table.redraw(true);
+                        updateButtonCounts();
+                    }
+                });
+            }
+
+            // NRA missing card click handler
+            const nraMissingCampaignCard = document.getElementById('nra-missing-card');
+            if (nraMissingCampaignCard) {
+                nraMissingCampaignCard.addEventListener('click', function() {
+                    showNraMissingOnly = !showNraMissingOnly;
+                    if (showNraMissingOnly) {
+                        // Reset campaign filter
+                        showCampaignOnly = false;
+                        document.getElementById('total-campaign-card').style.boxShadow = '';
+                        // Reset missing filter
+                        showMissingOnly = false;
+                        document.getElementById('missing-campaign-card').style.boxShadow = '';
+                        // Reset zero INV filter
+                        showZeroInvOnly = false;
+                        document.getElementById('zero-inv-card').style.boxShadow = '';
+                        // Reset NRA/RA filters
+                        showNraOnly = false;
+                        document.getElementById('nra-card').style.boxShadow = '';
+                        showRaOnly = false;
+                        document.getElementById('ra-card').style.boxShadow = '';
+                        this.style.boxShadow = '0 4px 12px rgba(255, 193, 7, 0.5)';
                     } else {
                         this.style.boxShadow = '';
                     }
@@ -898,6 +972,9 @@
                         // Reset missing filter
                         showMissingOnly = false;
                         document.getElementById('missing-campaign-card').style.boxShadow = '';
+                        // Reset NRA missing filter
+                        showNraMissingOnly = false;
+                        document.getElementById('nra-missing-card').style.boxShadow = '';
                         // Reset campaign filter
                         showCampaignOnly = false;
                         document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -928,6 +1005,9 @@
                         // Reset missing filter
                         showMissingOnly = false;
                         document.getElementById('missing-campaign-card').style.boxShadow = '';
+                        // Reset NRA missing filter
+                        showNraMissingOnly = false;
+                        document.getElementById('nra-missing-card').style.boxShadow = '';
                         // Reset campaign filter
                         showCampaignOnly = false;
                         document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -959,6 +1039,9 @@
                         // Reset missing filter
                         showMissingOnly = false;
                         document.getElementById('missing-campaign-card').style.boxShadow = '';
+                        // Reset NRA missing filter
+                        showNraMissingOnly = false;
+                        document.getElementById('nra-missing-card').style.boxShadow = '';
                         // Reset campaign filter
                         showCampaignOnly = false;
                         document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -1032,8 +1115,19 @@
                             const hasCampaign = row.hasCampaign !== undefined ?
                                 row.hasCampaign :
                                 (row.campaign_id && row.campaignName);
-                            const dotColor = hasCampaign ? 'green' : 'red';
-                            const title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
+                            
+                            // Check if NRL is "NRL" (red dot) OR NRA is "NRA" - if so, show yellow dot
+                            const nrlValue = row.NRL ? row.NRL.trim() : "";
+                            const nraValue = row.NRA ? row.NRA.trim() : "";
+                            let dotColor, title;
+                            
+                            if (nrlValue === 'NRL' || nraValue === 'NRA') {
+                                dotColor = 'yellow';
+                                title = 'NRL or NRA - Not Required';
+                            } else {
+                                dotColor = hasCampaign ? 'green' : 'red';
+                                title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
+                            }
 
                             return `
                                 <div style="display: flex; align-items: center; justify-content: center;">
@@ -1106,23 +1200,15 @@
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
-                            const value = cell.getValue() || "RL"; // Default to RL
-
-                            let bgColor = "";
-                            if (value === "NRL") {
-                                bgColor = "background-color:#dc3545;color:#000;"; // red
-                            } else {
-                                bgColor =
-                                "background-color:#28a745;color:#000;"; // green (default for RL)
-                            }
+                            const value = cell.getValue() || "REQ"; // Default to REQ
 
                             return `
                                 <select class="form-select form-select-sm editable-select" 
                                         data-sku="${sku}" 
                                         data-field="NRL"
-                                        style="width: 90px; ${bgColor}">
-                                    <option value="RL" ${value === 'RL' ? 'selected' : ''}>RL</option>
-                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>NRL</option>
+                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
                                 </select>
                             `;
                         },
@@ -1135,28 +1221,20 @@
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
-                            const value = (cell.getValue()?.trim()) || "RA"; // Default to RA
-
-                            let bgColor = "";
-                            if (value === "NRA") {
-                                bgColor = "background-color:#dc3545;color:#000;"; // red
-                            } else if (value === "RA") {
-                                bgColor = "background-color:#28a745;color:#000;"; // green
-                            } else if (value === "LATER") {
-                                bgColor = "background-color:#ffc107;color:#000;"; // yellow
-                            } else {
-                                // Default to RA with green color
-                                bgColor = "background-color:#28a745;color:#000;"; // green
-                            }
+                            const rowData = row.getData();
+                            // If NRL is 'NRL' (red dot), default to NRA, otherwise default to RA
+                            const nrlValue = rowData.NRL || "REQ";
+                            const defaultValue = (nrlValue === 'NRL') ? "NRA" : "RA";
+                            const value = (cell.getValue()?.trim()) || defaultValue;
 
                             return `
                                 <select class="form-select form-select-sm editable-select" 
                                         data-sku="${sku}" 
                                         data-field="NRA"
-                                        style="width: 100px; ${bgColor}">
-                                    <option value="RA" ${value === 'RA' ? 'selected' : ''}>RA</option>
-                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>NRA</option>
-                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
+                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                    <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
+                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>🔴</option>
+                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>🟡</option>
                                 </select>
                             `;
                         },
@@ -1193,10 +1271,6 @@
                         },
                         hozAlign: "center",
                         visible: false
-                    },
-                    {
-                        title: "CAMPAIGN",
-                        field: "campaignName"
                     },
                     {
                         title: "BGT",
@@ -1346,29 +1420,24 @@
                             if (currentUtilizationType === 'over') {
                                 // Over-utilized: l7_cpc * 0.90 (if l7_cpc === 0, then 0.75)
                                 if (l7_cpc === 0) {
-                                    sbid = 0.75;
+                                    sbid = '0.75';
                                 } else {
-                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                    sbid = (Math.floor(l7_cpc * 0.90 * 100) / 100).toFixed(2);
                                 }
                             } else if (currentUtilizationType === 'under') {
                                 // Under-utilized: Complex logic based on ub7 and l7_cpc
-                                if (ub7 < 70) {
-                                    if (ub7 < 10 || l7_cpc === 0) {
-                                        sbid = 0.75;
-                                    } else if (l7_cpc > 0 && l7_cpc < 0.30) {
-                                        sbid = (l7_cpc + 0.20).toFixed(2);
-                                    } else {
-                                        sbid = (Math.floor((l7_cpc * 1.10) * 100) / 100).toFixed(2);
-                                    }
+                                if (ub7 < 10 || l7_cpc === 0) {
+                                    sbid = '0.75';
+                                } else if (l7_cpc > 0 && l7_cpc < 0.30) {
+                                    sbid = (l7_cpc + 0.20).toFixed(2);
                                 } else {
-                                    sbid = '';
+                                    sbid = (l7_cpc * 1.10).toFixed(2);
                                 }
                             } else {
                                 // Correctly-utilized: Usually no SBID (empty)
                                 sbid = '';
                             }
-                            return sbid === '' ? '' : (typeof sbid === 'string' ? sbid : sbid
-                                .toFixed(2));
+                            return sbid;
                         }
                     },
                     {
@@ -1421,6 +1490,10 @@
                             `;
                         },
                         hozAlign: "center"
+                    },
+                    {
+                        title: "CAMPAIGN",
+                        field: "campaignName"
                     },
                     {
                         title: "APR BID",
@@ -1500,6 +1573,9 @@
                     // Reset missing filter when dropdown changes
                     showMissingOnly = false;
                     document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
                     // Reset campaign filter
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -1556,8 +1632,17 @@
                     // Show only rows with campaigns
                     if (!hasCampaign) return false;
                 } else if (showMissingOnly) {
-                    // Show only rows without campaigns
+                    // Show only rows without campaigns AND exclude yellow dots (NRL='NRL' OR NRA='NRA')
                     if (hasCampaign) return false;
+                    // Exclude yellow dots: if NRL='NRL' OR NRA='NRA', don't show
+                    const nrlValueForFilter = data.NRL ? data.NRL.trim() : "";
+                    const nraValueForFilter = data.NRA ? data.NRA.trim() : "";
+                    if (nrlValueForFilter === 'NRL' || nraValueForFilter === 'NRA') return false;
+                } else if (showNraMissingOnly) {
+                    // Show only rows without campaigns AND with NRA = 'NRA' (yellow dots only)
+                    if (hasCampaign) return false;
+                    const nraValueForNraMissing = data.NRA ? data.NRA.trim() : "";
+                    if (nraValueForNraMissing !== 'NRA') return false;
                 }
 
                 // Apply utilization type filter (Amazon rules)
@@ -1733,7 +1818,38 @@
                     let field = e.target.getAttribute("data-field");
                     let value = e.target.value;
 
-                    fetch('/update-amazon-nr-nrl-fba', {
+                    // Update color immediately for NRA field
+                    if (field === 'NRA') {
+                        if (value === 'NRA') {
+                            e.target.style.backgroundColor = '#dc3545'; // red
+                            e.target.style.color = '#000';
+                        } else if (value === 'RA') {
+                            e.target.style.backgroundColor = '#28a745'; // green
+                            e.target.style.color = '#000';
+                        } else if (value === 'LATER') {
+                            e.target.style.backgroundColor = '#ffc107'; // yellow
+                            e.target.style.color = '#000';
+                        }
+                    }
+
+                    // Update color immediately for FBA field
+                    if (field === 'FBA') {
+                        if (value === 'FBA') {
+                            e.target.style.backgroundColor = '#007bff'; // blue
+                            e.target.style.color = '#fff';
+                        } else if (value === 'FBM') {
+                            e.target.style.backgroundColor = '#6f42c1'; // purple
+                            e.target.style.color = '#fff';
+                        } else if (value === 'BOTH') {
+                            e.target.style.backgroundColor = '#90ee90'; // light green
+                            e.target.style.color = '#000';
+                        }
+                    }
+
+                    // Use different endpoint for NRL field
+                    let endpoint = '/update-amazon-nr-nrl-fba';
+
+                    fetch(endpoint, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -1749,6 +1865,13 @@
                         .then(res => res.json())
                         .then(data => {
                             console.log(data);
+                            // Update table data with response
+                            if (data.success && typeof table !== 'undefined' && table) {
+                                let row = table.searchRows('sku', '=', sku);
+                                if (row.length > 0) {
+                                    row[0].update({[field]: value});
+                                }
+                            }
                         })
                         .catch(err => console.error(err));
                 }

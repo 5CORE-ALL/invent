@@ -1921,9 +1921,10 @@ class AmazonSpBudgetController extends Controller
                 $campaignName = '';
             }
 
-            // Check NRA filter and get TPFT
+            // Check NRA filter and get TPFT and NRL
             $nra = '';
             $tpft = null;
+            $nrl = 'REQ'; // Default value
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
                 if (!is_array($raw)) {
@@ -1932,6 +1933,7 @@ class AmazonSpBudgetController extends Controller
                 if (is_array($raw)) {
                     $nra = $raw['NRA'] ?? '';
                     $tpft = $raw['TPFT'] ?? null;
+                    $nrl = $raw['NRL'] ?? 'REQ';
                 }
             }
 
@@ -1972,6 +1974,7 @@ class AmazonSpBudgetController extends Controller
                     'acos_L7' => 0,
                     'NRA' => $nra,
                     'TPFT' => $tpft,
+                    'NRL' => $nrl,
                     'hasCampaign' => $hasCampaign,
                 ];
             }
@@ -2316,6 +2319,7 @@ class AmazonSpBudgetController extends Controller
                     'acos_L7' => $acosL7,
                     'NRA' => $nra,
                     'TPFT' => $tpft,
+                    'NRL' => $nrl,
                     'hasCampaign' => $hasCampaign,
                 ];
                 
@@ -2427,9 +2431,10 @@ class AmazonSpBudgetController extends Controller
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
             $shopify = $shopifyData[$pm->sku] ?? null;
 
-            // Get NRA and TPFT
+            // Get NRA and TPFT and NRL
             $nra = '';
             $tpft = null;
+            $nrl = 'REQ'; // Default value
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
                 if (!is_array($raw)) {
@@ -2438,6 +2443,7 @@ class AmazonSpBudgetController extends Controller
                 if (is_array($raw)) {
                     $nra = $raw['NRA'] ?? '';
                     $tpft = $raw['TPFT'] ?? null;
+                    $nrl = $raw['NRL'] ?? 'REQ';
                 }
             }
 
@@ -2575,6 +2581,7 @@ class AmazonSpBudgetController extends Controller
                 'acos_L7' => $acosL7,
                 'NRA' => $nra,
                 'TPFT' => $tpft,
+                'NRL' => $nrl,
                 'hasCampaign' => $hasCampaign,
             ];
             }
@@ -2616,9 +2623,10 @@ class AmazonSpBudgetController extends Controller
                 $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
                 $shopify = $shopifyData[$pm->sku] ?? null;
                 
-                // Get NRA and TPFT
+                // Get NRA and TPFT and NRL
                 $nra = '';
                 $tpft = null;
+                $nrl = 'REQ'; // Default value
                 if (isset($nrValues[$pm->sku])) {
                     $raw = $nrValues[$pm->sku];
                     if (!is_array($raw)) {
@@ -2627,6 +2635,7 @@ class AmazonSpBudgetController extends Controller
                     if (is_array($raw)) {
                         $nra = $raw['NRA'] ?? '';
                         $tpft = $raw['TPFT'] ?? null;
+                        $nrl = $raw['NRL'] ?? 'REQ';
                     }
                 }
                 
@@ -2739,6 +2748,7 @@ class AmazonSpBudgetController extends Controller
                     'acos_L7' => $acosL7,
                     'NRA' => $nra,
                     'TPFT' => $tpft,
+                    'NRL' => $nrl,
                     'hasCampaign' => $hasCampaign,
                 ];
             }
