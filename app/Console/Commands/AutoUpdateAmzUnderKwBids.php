@@ -216,12 +216,11 @@ class AutoUpdateAmzUnderKwBids extends Command
 
             // New SBID rule - matching page filter: INV > 0, NRA !== 'NRA', campaignName !== '', ub7 < 70 && ub1 < 70
             if ($row['INV'] > 0 && $row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 70 && $ub1 < 70)) {
-                if ($ub7 < 10 || $l7_cpc == 0) {
+                if ($ub7 < 10 || $l7_cpc == 0 || $l1_cpc == 0) {
                     $row['sbid'] = 0.75;
-                } else if ($l7_cpc > 0 && $l7_cpc < 0.30) {
-                    $row['sbid'] = round($l7_cpc + 0.20, 2);
                 } else {
-                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
+                    // UB7 is between 10%-70%: use L1 CPC * 1.1
+                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
                 }
                 $result[] = (object) $row;
             }

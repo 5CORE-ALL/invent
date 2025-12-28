@@ -321,7 +321,7 @@ class AutoUpdateAmazonKwBids extends Command
             if ($l7_cpc === 0.0) {
                 $row['sbid'] = 0.75;
             } else {
-                $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
+                $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
             }
 
             $budget = floatval($row['campaignBudgetAmount']);
