@@ -72,44 +72,44 @@ class AutoUpdateAmzUnderKwBids extends Command
         }
 
         try {
-            //$result = $updateKwBids->updateAutoCampaignKeywordsBid($campaignIds, $newBids);
+            $result = $updateKwBids->updateAutoCampaignKeywordsBid($campaignIds, $newBids);
 
-            // Handle Response object (when no keywords found)
-            // if (is_object($result) && method_exists($result, 'getData')) {
-            //     $result = $result->getData(true);
-            // }
+            //Handle Response object (when no keywords found)
+            if (is_object($result) && method_exists($result, 'getData')) {
+                $result = $result->getData(true);
+            }
 
             // Check for errors
-            // if (is_array($result) && isset($result['status'])) {
-            //     if ($result['status'] == 200) {
-            //         $this->info("✓ Bid update completed successfully!");
-            //         $this->line("");
-            //         $this->info("Updated campaigns:");
-            //         foreach ($validCampaigns as $campaign) {
-            //             $campaignName = $campaign->campaignName ?? 'N/A';
-            //             $newBid = $campaign->sbid ?? 0;
-            //             $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
-            //         }
-            //     } else {
-            //         $this->error("✗ Bid update failed!");
-            //         $this->error("Status: " . $result['status']);
-            //         if (isset($result['message'])) {
-            //             $this->error("Message: " . $result['message']);
-            //         }
-            //         if (isset($result['error'])) {
-            //             $this->error("Error: " . $result['error']);
-            //         }
-            //         return 1;
-            //     }
-            // } else {
-            //     // Handle unexpected response format
-            //     $this->warn("Unexpected response format from update method.");
-            //     if (is_array($result) || is_object($result)) {
-            //         $this->line("Response: " . json_encode($result));
-            //     } else {
-            //         $this->line("Response type: " . gettype($result));
-            //     }
-            // }
+            if (is_array($result) && isset($result['status'])) {
+                if ($result['status'] == 200) {
+                    $this->info("✓ Bid update completed successfully!");
+                    $this->line("");
+                    $this->info("Updated campaigns:");
+                    foreach ($validCampaigns as $campaign) {
+                        $campaignName = $campaign->campaignName ?? 'N/A';
+                        $newBid = $campaign->sbid ?? 0;
+                        $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+                    }
+                } else {
+                    $this->error("✗ Bid update failed!");
+                    $this->error("Status: " . $result['status']);
+                    if (isset($result['message'])) {
+                        $this->error("Message: " . $result['message']);
+                    }
+                    if (isset($result['error'])) {
+                        $this->error("Error: " . $result['error']);
+                    }
+                    return 1;
+                }
+            } else {
+                // Handle unexpected response format
+                $this->warn("Unexpected response format from update method.");
+                if (is_array($result) || is_object($result)) {
+                    $this->line("Response: " . json_encode($result));
+                } else {
+                    $this->line("Response type: " . gettype($result));
+                }
+            }
 
             $this->info('Campaings to be updated: ' . count($campaigns));
 
