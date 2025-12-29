@@ -2069,9 +2069,11 @@ class AmazonSpBudgetController extends Controller
                 if ($campaignType === 'HL') {
                     $sales30 = $matchedCampaignL30->sales ?? 0;
                     $spend30 = $matchedCampaignL30->cost ?? 0;
+                    $clicks30 = $matchedCampaignL30->clicks ?? 0;
                 } else {
                     $sales30 = $matchedCampaignL30->sales30d ?? 0;
                     $spend30 = $matchedCampaignL30->spend ?? 0;
+                    $clicks30 = $matchedCampaignL30->clicks ?? 0;
                 }
                 if ($sales30 > 0) {
                     $campaignMap[$mapKey]['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
@@ -2079,6 +2081,8 @@ class AmazonSpBudgetController extends Controller
                     $campaignMap[$mapKey]['acos_L30'] = 100;
                 }
                 $campaignMap[$mapKey]['acos'] = $campaignMap[$mapKey]['acos_L30'];
+                $campaignMap[$mapKey]['l30_spend'] = $spend30;
+                $campaignMap[$mapKey]['l30_clicks'] = $clicks30;
             }
 
             if (isset($matchedCampaignL15) && isset($matchedCampaignL1) && $matchedCampaignL15 && $matchedCampaignL1) {
@@ -2974,6 +2978,8 @@ class AmazonSpBudgetController extends Controller
                     $row['acos_L30'] = 0;
                     $row['acos_L15'] = 0;
                     $row['acos_L7'] = 0;
+                    $row['l30_spend'] = 0;
+                    $row['l30_clicks'] = 0;
                     $row['NRA'] = '';
                     $row['TPFT'] = null;
                     $row['hasCampaign'] = true;
@@ -2981,12 +2987,15 @@ class AmazonSpBudgetController extends Controller
                     if (isset($matchedCampaignL30) && $matchedCampaignL30) {
                         $sales30 = $matchedCampaignL30->sales30d ?? 0;
                         $spend30 = $matchedCampaignL30->spend ?? 0;
+                        $clicks30 = $matchedCampaignL30->clicks ?? 0;
                         if ($sales30 > 0) {
                             $row['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
                         } elseif ($spend30 > 0) {
                             $row['acos_L30'] = 100;
                         }
                         $row['acos'] = $row['acos_L30'];
+                        $row['l30_spend'] = $spend30;
+                        $row['l30_clicks'] = $clicks30;
                     }
 
                     if (isset($matchedCampaignL15) && isset($matchedCampaignL1) && $matchedCampaignL15 && $matchedCampaignL1) {
