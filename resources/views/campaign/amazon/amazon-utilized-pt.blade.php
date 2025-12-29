@@ -434,7 +434,7 @@
                                             <option value="">All Inventory</option>
                                             <option value="ALL">ALL</option>
                                             <option value="INV_0">0 INV</option>
-                                            <option value="OTHERS">OTHERS</option>
+                                            <option value="OTHERS" selected>OTHERS</option>
                                         </select>
                                     </div>
                                     <div class="col-md-2">
@@ -450,18 +450,18 @@
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>SBGT Filter
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>ACOS Filter
                                         </label>
                                         <select id="sbgt-filter" class="form-select form-select-md">
-                                            <option value="">All SBGT</option>
-                                            <option value="8">SBGT 8 (ACOS &lt; 5)</option>
-                                            <option value="7">SBGT 7 (ACOS 5 - 9)</option>
-                                            <option value="6">SBGT 6 (ACOS 10 - 14)</option>
-                                            <option value="5">SBGT 5 (ACOS 15 - 19)</option>
-                                            <option value="4">SBGT 4 (ACOS 20 - 24)</option>
-                                            <option value="3">SBGT 3 (ACOS 25 - 29)</option>
-                                            <option value="2">SBGT 2 (ACOS 30 - 34)</option>
-                                            <option value="1">SBGT 1 (ACOS &gt;= 35)</option>
+                                            <option value="">All ACOS</option>
+                                            <option value="8">ACOS &lt; 5%</option>
+                                            <option value="7">ACOS 5-9%</option>
+                                            <option value="6">ACOS 10-14%</option>
+                                            <option value="5">ACOS 15-19%</option>
+                                            <option value="4">ACOS 20-24%</option>
+                                            <option value="3">ACOS 25-29%</option>
+                                            <option value="2">ACOS 30-34%</option>
+                                            <option value="1">ACOS ≥ 35%</option>
                                         </select>
                                         <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
                                             <i class="fa-solid fa-check-double me-1"></i>
@@ -1318,6 +1318,59 @@
                         title: "SBID",
                         field: "sbid",
                         hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            // Get row data
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            
+                            // Calculate SBID for row A
+                            var aL1Cpc = parseFloat(aData.l1_cpc) || 0;
+                            var aL7Cpc = parseFloat(aData.l7_cpc) || 0;
+                            var aBudget = parseFloat(aData.campaignBudgetAmount) || 0;
+                            var aUb7 = 0;
+                            if (aBudget > 0) {
+                                aUb7 = (parseFloat(aData.l7_spend) || 0) / (aBudget * 7) * 100;
+                            }
+                            var aSbid = 0;
+                            if (currentUtilizationType === 'over') {
+                                if (aL7Cpc === 0) {
+                                    aSbid = 0.75;
+                                } else {
+                                    aSbid = Math.floor(aL1Cpc * 0.90 * 100) / 100;
+                                }
+                            } else if (currentUtilizationType === 'under') {
+                                if (aUb7 < 10 || aL7Cpc === 0 || aL1Cpc === 0) {
+                                    aSbid = 0.75;
+                                } else {
+                                    aSbid = Math.floor(aL1Cpc * 1.10 * 100) / 100;
+                                }
+                            }
+                            
+                            // Calculate SBID for row B
+                            var bL1Cpc = parseFloat(bData.l1_cpc) || 0;
+                            var bL7Cpc = parseFloat(bData.l7_cpc) || 0;
+                            var bBudget = parseFloat(bData.campaignBudgetAmount) || 0;
+                            var bUb7 = 0;
+                            if (bBudget > 0) {
+                                bUb7 = (parseFloat(bData.l7_spend) || 0) / (bBudget * 7) * 100;
+                            }
+                            var bSbid = 0;
+                            if (currentUtilizationType === 'over') {
+                                if (bL7Cpc === 0) {
+                                    bSbid = 0.75;
+                                } else {
+                                    bSbid = Math.floor(bL1Cpc * 0.90 * 100) / 100;
+                                }
+                            } else if (currentUtilizationType === 'under') {
+                                if (bUb7 < 10 || bL7Cpc === 0 || bL1Cpc === 0) {
+                                    bSbid = 0.75;
+                                } else {
+                                    bSbid = Math.floor(bL1Cpc * 1.10 * 100) / 100;
+                                }
+                            }
+                            
+                            return aSbid - bSbid;
+                        },
                         visible: function() {
                             return currentUtilizationType !== 'correctly' && currentUtilizationType !== 'all';
                         },
@@ -1331,7 +1384,7 @@
                                 ub7 = (parseFloat(row.l7_spend) || 0) / (budget * 7) * 100;
                             }
                             
-                            var sbid = '';
+                            var sbid = 0;
                             if (currentUtilizationType === 'over') {
                                 // Over-utilized: l7_cpc * 0.90 (if l7_cpc === 0, then 0.75)
                                 if (l7_cpc === 0) {
@@ -1348,7 +1401,7 @@
                                 }
                             } else {
                                 // Correctly-utilized: Usually no SBID (empty)
-                                sbid = '';
+                                sbid = 0;
                             }
                             return sbid;
                         }
