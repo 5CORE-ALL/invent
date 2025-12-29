@@ -924,6 +924,7 @@
                     {
                         title: "SKU",
                         field: "sku",
+                        hozAlign: "left",
                         formatter: function(cell) {
                             let sku = cell.getValue();
                             return `
@@ -968,12 +969,12 @@
                     {
                         title: "INV",
                         field: "INV",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "FBA INV",
                         field: "FBA_INV",
-                        visible: false,
+                        visible: true,
                         headerSort: false,
                         sorter: "number",
                         formatter: function(cell) {
@@ -984,7 +985,7 @@
                     {
                         title: "OV L30",
                         field: "L30",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "DIL %",
@@ -1000,12 +1001,12 @@
                             }
                             return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                         },
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "AL 30",
                         field: "A_L30",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "A DIL %",
@@ -1021,7 +1022,7 @@
                             }
                             return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                         },
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "NRL",
@@ -1041,7 +1042,7 @@
                                 </select>
                             `;
                         },
-                        visible: false,
+                        visible: true,
                         hozAlign: "center"
                     },
                     {
@@ -1068,7 +1069,7 @@
                             `;
                         },
                         hozAlign: "center",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "FBA",
