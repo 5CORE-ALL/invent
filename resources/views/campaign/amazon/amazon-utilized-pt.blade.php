@@ -1226,6 +1226,28 @@
                         formatter: function(cell) { return ''; }
                     },
                     {
+                        title: "Spend L30",
+                        field: "l30_spend",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return "$" + value.toFixed(2);
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "Clicks L30",
+                        field: "l30_clicks",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
                         title: "ACOS",
                         field: "acos",
                         hozAlign: "right",
@@ -1250,28 +1272,6 @@
                             }
                             return acos.toFixed(0) + "%";
                         }
-                    },
-                    {
-                        title: "Spend L30",
-                        field: "l30_spend",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return "$" + value.toFixed(2);
-                        },
-                        sorter: "number",
-                        width: 90
-                    },
-                    {
-                        title: "Clicks L30",
-                        field: "l30_clicks",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
-                        },
-                        sorter: "number",
-                        width: 90
                     },
                     {
                         title: "7 UB%",
