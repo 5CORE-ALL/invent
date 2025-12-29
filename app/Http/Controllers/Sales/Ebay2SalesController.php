@@ -79,10 +79,10 @@ class Ebay2SalesController extends Controller
         // if (!$marketplaceData) {
         //     $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay')->first();
         // }
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 78; // Default 78% for eBay 2
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 85; // Default 85% for eBay 2
         $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
         $margin = $percentage - $adUpdates;
-        // Convert percentage to decimal (e.g., 78 -> 0.78)
+        // Convert percentage to decimal (e.g., 85 -> 0.85)
         $percentageDecimal = $percentage / 100;
 
         $data = [];
@@ -129,9 +129,9 @@ class Ebay2SalesController extends Controller
                 // COGS = LP * quantity
                 $cogs = $lp * $quantity;
 
-                // PFT Each = (unit_price * 0.78) - lp - ship_cost (eBay 2 uses 78% margin)
+                // PFT Each = (unit_price * 0.85) - lp - ship_cost (eBay 2 uses 85% margin)
                 $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-                $pftEach = ($unitPrice * 0.78) - $lp - $shipCost;
+                $pftEach = ($unitPrice * 0.85) - $lp - $shipCost;
 
                 // PFT Each % = (pft_each / unit_price) * 100
                 $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;

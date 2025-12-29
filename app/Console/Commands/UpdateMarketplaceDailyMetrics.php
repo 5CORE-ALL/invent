@@ -1432,9 +1432,10 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateBestBuyMetrics($date)
     {
-        // Get Best Buy USA L30 orders from mirakl_daily_data
+        // Get Best Buy USA L30 orders from mirakl_daily_data (exclude CLOSED status)
         $orders = MiraklDailyData::where('channel_name', 'Best Buy USA')
             ->where('period', 'l30')
+            ->where('status', '!=', 'CLOSED')
             ->get();
 
         if ($orders->isEmpty()) {

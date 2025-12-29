@@ -58,6 +58,7 @@ use App\Models\DobaListingStatus;
 use App\Models\DobaMetric;
 use App\Models\DobaSheetdata;
 use App\Models\Ebay2Metric;
+use App\Models\Ebay2Order;
 use App\Models\EbayTwoListingStatus;
 use App\Models\Ebay3Metric;
 use App\Models\EbayThreeListingStatus;
@@ -661,93 +662,128 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // $query = Ebay2Metric::where('sku', 'not like', '%Parent%');
+        // Use ebay2_orders table (same as Ebay2SalesController)
+        $orders = Ebay2Order::with('items')
+            ->where('period', 'l30')
+            ->get();
 
-        $query = DB::connection('apicentral')
-            ->table('ebay2_metrics')
-            ->where('sku', 'not like', '%Parent%');
+        $ordersL60 = Ebay2Order::with('items')
+            ->where('period', 'l60')
+            ->get();
 
-        $l30Orders = $query->sum('ebay_l30');
-        $l60Orders = $query->sum('ebay_l60');
-
-        $l30Sales  = (clone $query)->selectRaw('SUM(ebay_l30 * ebay_price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(ebay_l60 * ebay_price) as total')->value('total') ?? 0;
-
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
-
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'EbayTwo')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
+        // Get eBay 2 marketing percentage
+        $percentage = ChannelMaster::where('channel', 'EbayTwo')->value('channel_percentage') ?? 85;
+        $percentageDecimal = $percentage / 100; // convert % to fraction
 
         // Load product masters (lp, ship) keyed by SKU
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'ebay_price', 'ebay_l30','ebay_l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
+        // Calculate L30 metrics
+        $l30Orders = 0;
+        $l30Sales = 0;
+        $totalProfit = 0;
+        $totalCogs = 0;
 
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->ebay_price;
-            $unitsL30  = (int) $row->ebay_l30;
-            $unitsL60  = (int) $row->ebay_l60;
+        foreach ($orders as $order) {
+            foreach ($order->items as $item) {
+                if (!$item->sku || $item->sku === '') continue;
 
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
+                $l30Orders++;
+                $quantity = (int) ($item->quantity ?? 1);
+                $price = (float) ($item->price ?? 0);
+                $l30Sales += $price;
+
+                $unitPrice = $quantity > 0 ? $price / $quantity : 0;
+
+                // Get LP and Ship from ProductMaster
+                $sku = strtoupper($item->sku);
+                $lp = 0;
+                $ship = 0;
+
+                if (isset($productMasters[$sku])) {
+                    $pm = $productMasters[$sku];
+                    $values = is_array($pm->Values) ? $pm->Values :
+                            (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                    // Get LP
+                    foreach ($values as $k => $v) {
+                        if (strtolower($k) === "lp") {
+                            $lp = floatval($v);
+                            break;
+                        }
+                    }
+                    if ($lp === 0 && isset($pm->lp)) {
+                        $lp = floatval($pm->lp);
+                    }
+
+                    // Get Ship (ebay2_ship or ship)
+                    $ship = isset($values["ebay2_ship"]) && $values["ebay2_ship"] !== null 
+                        ? floatval($values["ebay2_ship"]) 
+                        : (isset($values["ship"]) ? floatval($values["ship"]) : 0);
+                }
+
+                // COGS = LP * quantity
+                $totalCogs += ($lp * $quantity);
+
+                // PFT Each = (unitPrice * percentage) - lp - ship
+                $pftEach = ($unitPrice * $percentageDecimal) - $lp - $ship;
+                $totalProfit += ($pftEach * $quantity);
             }
-
-            $lp   = 0;
-            $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
         }
 
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
+        // Calculate L60 metrics
+        $l60Orders = 0;
+        $l60Sales = 0;
+        $totalProfitL60 = 0;
+        $totalCogsL60 = 0;
 
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+        foreach ($ordersL60 as $order) {
+            foreach ($order->items as $item) {
+                if (!$item->sku || $item->sku === '') continue;
 
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
+                $l60Orders++;
+                $quantity = (int) ($item->quantity ?? 1);
+                $price = (float) ($item->price ?? 0);
+                $l60Sales += $price;
+
+                $unitPrice = $quantity > 0 ? $price / $quantity : 0;
+
+                $sku = strtoupper($item->sku);
+                $lp = 0;
+                $ship = 0;
+
+                if (isset($productMasters[$sku])) {
+                    $pm = $productMasters[$sku];
+                    $values = is_array($pm->Values) ? $pm->Values :
+                            (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                    foreach ($values as $k => $v) {
+                        if (strtolower($k) === "lp") {
+                            $lp = floatval($v);
+                            break;
+                        }
+                    }
+                    if ($lp === 0 && isset($pm->lp)) {
+                        $lp = floatval($pm->lp);
+                    }
+
+                    $ship = isset($values["ebay2_ship"]) && $values["ebay2_ship"] !== null 
+                        ? floatval($values["ebay2_ship"]) 
+                        : (isset($values["ship"]) ? floatval($values["ship"]) : 0);
+                }
+
+                $totalCogsL60 += ($lp * $quantity);
+                $pftEach = ($unitPrice * $percentageDecimal) - $lp - $ship;
+                $totalProfitL60 += ($pftEach * $quantity);
+            }
         }
 
-        // Use L30 Sales for denominator
+        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
         // Channel data
@@ -1940,94 +1976,31 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
+        // Get metrics from marketplace_daily_metrics table (pre-calculated)
+        $metrics = MarketplaceDailyMetric::where('channel', 'Best Buy USA')->latest('date')->first();
+
+        // Get L60 data from BestbuyUsaProduct for comparison
         $query = BestbuyUsaProduct::where('sku', 'not like', '%Parent%');
-
-        $l30Orders = $query->sum('m_l30');
         $l60Orders = $query->sum('m_l60');
-
-        $l30Sales  = (clone $query)->selectRaw('SUM(m_l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(m_l60 * price) as total')->value('total') ?? 0;
 
+        // Use MarketplaceDailyMetric data
+        $l30Sales = $metrics->total_sales ?? $metrics->l30_sales ?? 0;
+        $l30Orders = $metrics->total_orders ?? 0;
+        $totalProfit = $metrics->total_pft ?? 0;
+        $totalCogs = $metrics->total_cogs ?? 0;
+        $gProfitPct = $metrics->pft_percentage ?? 0;
+        $gRoi = $metrics->roi_percentage ?? 0;
+
+        // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
 
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'BestBuy USA')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
+        // L60 profit percentage (calculate from L60 data if needed)
+        $gprofitL60 = 0;
+        $gRoiL60 = 0;
 
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'm_l30','m_l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
-
-
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->m_l30;
-            $unitsL60  = (int) $row->m_l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
-
-            $lp   = 0;
-            $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
-        }
-
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // N PFT = same as Gprofit% for Best Buy (no ads)
+        $nPft = $gProfitPct;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'BestBuy USA')->first();
@@ -2050,6 +2023,7 @@ class ChannelMasterController extends Controller
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,

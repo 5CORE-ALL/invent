@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Ebay3Metric;
 use App\Models\EbayTask;
+use App\Services\EbayThreeApiService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -119,7 +120,84 @@ class FetchEbay3Metrics extends Command
             }
         }
 
+        // Fetch competitor prices (LMP) using Browse API
+        $this->updateCompetitorPrices();
+
         $this->info('✅ eBay Metrics updated');
+    }
+
+    /**
+     * Fetch competitor prices for all SKUs using Browse API
+     */
+    private function updateCompetitorPrices()
+    {
+        $this->info('🔄 Fetching competitor prices...');
+
+        $ebayService = app(EbayThreeApiService::class);
+        $allMetrics = Ebay3Metric::whereNotNull('sku')
+            ->where('sku', 'not like', '%PARENT%')
+            ->get();
+
+        $processedCount = 0;
+        $totalCount = $allMetrics->count();
+        $maxLmps = 5; // Store top 5 lowest competitor prices
+
+        foreach ($allMetrics as $metric) {
+            $sku = $metric->sku;
+
+            // Use SKU to search for competitor prices
+            $competitors = $ebayService->doRepricing($sku);
+
+            if (!empty($competitors)) {
+                // Filter out our own listing and get top competitors
+                $filteredCompetitors = [];
+                foreach ($competitors as $comp) {
+                    // Skip if it's our own item
+                    if ($comp['item_id'] === $metric->item_id) {
+                        continue;
+                    }
+                    
+                    if ($comp['total_price'] > 0) {
+                        $filteredCompetitors[] = [
+                            'price' => $comp['total_price'],
+                            'link' => $comp['link'],
+                            'title' => $comp['title'],
+                            'seller' => $comp['seller'],
+                        ];
+                    }
+
+                    // Limit to maxLmps
+                    if (count($filteredCompetitors) >= $maxLmps) {
+                        break;
+                    }
+                }
+
+                if (!empty($filteredCompetitors)) {
+                    // Lowest price for quick access
+                    $lowestPrice = $filteredCompetitors[0]['price'] ?? null;
+                    $lowestLink = $filteredCompetitors[0]['link'] ?? null;
+
+                    $metric->update([
+                        'price_lmpa' => $lowestPrice,
+                        'lmp_link' => $lowestLink,
+                        'lmp_data' => $filteredCompetitors,
+                    ]);
+                    
+                    $lmpCount = count($filteredCompetitors);
+                    $this->info("📊 {$sku}: {$lmpCount} LMPs found, Lowest = \${$lowestPrice}");
+                }
+            }
+
+            $processedCount++;
+
+            // Rate limiting - add small delay every 10 SKUs
+            if ($processedCount % 10 === 0) {
+                $this->info("⏳ Processed {$processedCount}/{$totalCount} SKUs...");
+                sleep(1);
+            }
+        }
+
+        $this->info("✅ Competitor prices updated for {$processedCount} SKUs");
     }
 
     private function dateRanges()

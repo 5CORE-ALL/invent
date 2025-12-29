@@ -1797,8 +1797,8 @@ class PricingMasterViewsController extends Controller
                 $ebay2DataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
                 $existing = is_array($ebay2DataView->value) ? $ebay2DataView->value : (json_decode($ebay2DataView->value, true) ?: []);
 
-                $spft = $sprice > 0 ? round(((($sprice * 0.79) - $lp - $ebay2ship) / $sprice) * 100, 2) : 0;
-                $sroi = $lp > 0 ? ((($sprice * 0.79) - $lp - $ebay2ship) / $lp) * 100 : 0;
+                $spft = $sprice > 0 ? round(((($sprice * 0.85) - $lp - $ebay2ship) / $sprice) * 100, 2) : 0;
+                $sroi = $lp > 0 ? ((($sprice * 0.85) - $lp - $ebay2ship) / $lp) * 100 : 0;
 
                 $existing['SPRICE'] = number_format($sprice, 2, '.', '');
                 $existing['SPFT'] = number_format($spft, 2, '.', '');
@@ -1917,10 +1917,10 @@ class PricingMasterViewsController extends Controller
                 $marketplaces = [
                     'shein' => 0.89,
                     'amz' => 0.67,
-                    'ebay' => 0.77,
+                    'ebay' => 0.85,
                     'shopifyb2c' => 0.75,
-                    'ebay2' => 0.79,
-                    'ebay3' => 0.78,
+                    'ebay2' => 0.85,
+                    'ebay3' => 0.85,
                     'doba' => 0.95,
                     'temu' => 0.87,
                     'reverb' => 0.80,

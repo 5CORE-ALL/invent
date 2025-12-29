@@ -9,19 +9,21 @@ use Aws\Credentials\Credentials;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductStockMapping;
+
 class BestBuyApiService
 {
     private function getAccessToken()
     {
-            $response = Http::withoutVerifying()->asForm()->post('https://auth.mirakl.net/oauth/token', [
-                'grant_type' => 'client_credentials',
-                'client_id' => config('services.macy.client_id'),
-                'client_secret' => config('services.macy.client_secret'),
-            ]);
-            return $response->successful() ? $response->json()['access_token'] : null;        
+        $response = Http::withoutVerifying()->asForm()->post('https://auth.mirakl.net/oauth/token', [
+            'grant_type' => 'client_credentials',
+            'client_id' => config('services.macy.client_id'),
+            'client_secret' => config('services.macy.client_secret'),
+        ]);
+        return $response->successful() ? $response->json()['access_token'] : null;
     }
 
-    public function getInventory(){
+    public function getInventory()
+    {
         $token = $this->getAccessToken();
         if (!$token) return;
         $pageToken = null;
@@ -33,7 +35,7 @@ class BestBuyApiService
             if ($pageToken) {
                 $url .= '&page_token=' . urlencode($pageToken);
             }
-            $request=Http::withoutVerifying()->withToken($token);
+            $request = Http::withoutVerifying()->withToken($token);
             $response = $request->get($url);
             if (!$response->successful()) {
                 $this->error('Product fetch failed: ' . $response->body());
@@ -45,47 +47,46 @@ class BestBuyApiService
             $products = $json['data'] ?? [];
             $pageToken = $json['next_page_token'] ?? null;
             // $allProducts = array_merge($allProducts, $products);
-            foreach ($products as $product) {               
+            foreach ($products as $product) {
                 $sku = $product['id'] ?? null;
-                
+
                 $totalQuantity = isset($product['quantities']) && is_array($product['quantities'])
-    ? array_sum(array_column($product['quantities'], 'available_quantity'))
-    : 0;
-    
+                    ? array_sum(array_column($product['quantities'], 'available_quantity'))
+                    : 0;
+
                 if (!$sku) continue;
-                $allProducts[]=[
-                    'sku'=>$sku,
-                    'quantity'=>$totalQuantity
+                $allProducts[] = [
+                    'sku' => $sku,
+                    'quantity' => $totalQuantity
                 ];
             }
-             $page++;
+            $page++;
         } while ($pageToken);
         foreach ($allProducts as $sku => $data) {
-        $sku = $data['sku'] ?? null;
-        $quantity =$data['quantity'];
-                    // ProductStockMapping::updateOrCreate(
+            $sku = $data['sku'] ?? null;
+            $quantity = $data['quantity'];
+            // ProductStockMapping::updateOrCreate(
             //     ['sku' => $sku],
             //     ['inventory_bestbuy'=>$quantity,]
             // );
-            ProductStockMapping::where('sku', $sku)->update(['inventory_bestbuy' => (int) $quantity]);    
+            ProductStockMapping::where('sku', $sku)->update(['inventory_bestbuy' => (int) $quantity]);
         }
         return $allProducts;
     }
 
 
     public function getMiraklChannels()
-{
-     $token = $this->getAccessToken();
-    $url = 'https://miraklconnect.com/api/channels';
-    $response = Http::withoutVerifying()->withToken($token)->get($url);
+    {
+        $token = $this->getAccessToken();
+        $url = 'https://miraklconnect.com/api/channels';
+        $response = Http::withoutVerifying()->withToken($token)->get($url);
 
-    dd($response->body());
-    if (!$response->successful()) {
-        Log::error('Failed to fetch channels: ' . $response->body());
-        return [];
+        dd($response->body());
+        if (!$response->successful()) {
+            Log::error('Failed to fetch channels: ' . $response->body());
+            return [];
+        }
+
+        return $response->json(); // returns array of channels
     }
-
-    return $response->json(); // returns array of channels
-}
-
 }

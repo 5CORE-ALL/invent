@@ -504,12 +504,12 @@
 
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-                $('#total-sales-badge').text('Total Sales: $' + Math.round(totalRevenue).toLocaleString());
-                $('#total-revenue-badge').text('Total Revenue: $' + Math.round(totalRevenue).toLocaleString());
-                $('#pft-percentage-badge').text('GPFT %: ' + Math.round(pftPercentage) + '%');
-                $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
-                $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
-                $('#pft-total-badge').text('GPFT Total: $' + Math.round(totalPft).toLocaleString());
+                $('#total-sales-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
+                $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
+                $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
+                $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+                $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
+                $('#pft-total-badge').text('GPFT Total: $' + totalPft.toFixed(2));
 
                 const pftBadge = $('#pft-total-badge');
                 if (totalPft >= 0) {
@@ -518,11 +518,11 @@
                     pftBadge.removeClass('bg-dark').addClass('bg-danger');
                 }
 
-                $('#l30-sales-badge').text('L30 Sales: $' + Math.round(totalL30Sales).toLocaleString());
-                $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
-                $('#tacos-percentage-badge').text('TACOS %: ' + Math.round(tacosPercentage) + '%');
-                $('#m-pft-badge').text('N PFT: ' + Math.round(mPft) + '%');
-                $('#n-roi-badge').text('N ROI: ' + Math.round(nRoi) + '%');
+                $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
+                $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+                $('#tacos-percentage-badge').text('TACOS %: ' + tacosPercentage.toFixed(1) + '%');
+                $('#m-pft-badge').text('N PFT: ' + mPft.toFixed(1) + '%');
+                $('#n-roi-badge').text('N ROI: ' + nRoi.toFixed(1) + '%');
             }
 
             // Build Column Visibility Dropdown

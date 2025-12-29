@@ -23,6 +23,7 @@ class BestBuySalesController extends Controller
 
         $orders = MiraklDailyData::bestBuyUsa()
             ->l30()
+            ->where('status', '!=', 'CLOSED')
             ->orderBy('order_created_at', 'desc')
             ->get();
 
