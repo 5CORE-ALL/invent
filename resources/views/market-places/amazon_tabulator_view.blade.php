@@ -2595,22 +2595,16 @@
                 $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
                 
-                // AVG PFT = Profit / Sales (before ads)
-                const avgPft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
-                $('#avg-pft-badge').text('AVG PFT: ' + avgPft.toFixed(1) + '%');
-                
-                // AVG GPFT = Average of GPFT% values from each row
-                let totalGpft = 0;
-                let gpftCount = 0;
-                data.forEach(row => {
-                    if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
-                        const gpft = parseFloat(row['GPFT%']) || 0;
-                        totalGpft += gpft;
-                        gpftCount++;
-                    }
-                });
-                const avgGpft = gpftCount > 0 ? (totalGpft / gpftCount) : 0;
+                // AVG GPFT% = (Total_pft / Total_Sales) * 100 (Gross Profit % - before ads)
+                const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
                 $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft.toFixed(1) + '%');
+                
+                // TACOS% = (Total Ad Spend / Total Sales) * 100
+                const tacosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
+                
+                // AVG PFT% = GPFT% - TACOS% (Net Profit % - after ads)
+                const avgPft = avgGpft - tacosPercent;
+                $('#avg-pft-badge').text('AVG PFT: ' + avgPft.toFixed(1) + '%');
                 
                 // Update total SKU count badge
                 $('#total-sku-count-badge').text('Total SKUs: ' + totalSkuCount.toLocaleString()).show();
