@@ -1307,24 +1307,43 @@
                                 sbgt = 1;
                             }
 
-                            return sbgt;
+                            var clicks = parseInt(row.l30_clicks || 0).toLocaleString();
+                            var spend = "$" + parseFloat(row.l30_spend || 0).toFixed(0);
+                            var adSold = parseInt(row.l30_purchases || 0).toLocaleString();
+                            var tooltipText = "Clicks: " + clicks + "\nSpend: " + spend + "\nAd Sold: " + adSold;
+
+                            return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span><i class="bi bi-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
                         }
-                    },
-                    {
-                        title: "Spend L30",
-                        field: "l30_spend",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return "$" + value.toFixed(2);
-                        },
-                        sorter: "number",
-                        width: 90
                     },
                     {
                         title: "Clicks L30",
                         field: "l30_clicks",
                         hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "Spend L30",
+                        field: "l30_spend",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return "$" + value.toFixed(0);
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "Ad Sold L30",
+                        field: "l30_purchases",
+                        hozAlign: "right",
+                        visible: false,
                         formatter: function(cell) {
                             var value = parseInt(cell.getValue() || 0);
                             return value.toLocaleString();
@@ -1357,6 +1376,17 @@
                             }
                             return acos.toFixed(0) + "%";
                         }
+                    },
+                    {
+                        title: "AD CVR",
+                        field: "ad_cvr",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2) + "%";
+                        },
+                        sorter: "number",
+                        width: 90
                     },
                     {
                         title: "7 UB%",
@@ -1847,6 +1877,27 @@
 
             table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
+
+                // Add event listener for info icon click to toggle columns
+                document.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('info-icon-toggle')) {
+                        e.stopPropagation();
+                        var clicksCol = table.getColumn('l30_clicks');
+                        var spendCol = table.getColumn('l30_spend');
+                        var adSoldCol = table.getColumn('l30_purchases');
+                        
+                        // Toggle visibility
+                        if (clicksCol.isVisible()) {
+                            table.hideColumn('l30_clicks');
+                            table.hideColumn('l30_spend');
+                            table.hideColumn('l30_purchases');
+                        } else {
+                            table.showColumn('l30_clicks');
+                            table.showColumn('l30_spend');
+                            table.showColumn('l30_purchases');
+                        }
+                    }
+                });
 
                 // Update counts when data is filtered (debounced)
                 let filterTimeout = null;

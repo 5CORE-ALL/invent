@@ -2070,10 +2070,14 @@ class AmazonSpBudgetController extends Controller
                     $sales30 = $matchedCampaignL30->sales ?? 0;
                     $spend30 = $matchedCampaignL30->cost ?? 0;
                     $clicks30 = $matchedCampaignL30->clicks ?? 0;
+                    $purchases30 = $matchedCampaignL30->purchases30d ?? 0;
+                    $unitsSold30 = $matchedCampaignL30->unitsSold ?? 0;
                 } else {
                     $sales30 = $matchedCampaignL30->sales30d ?? 0;
                     $spend30 = $matchedCampaignL30->spend ?? 0;
                     $clicks30 = $matchedCampaignL30->clicks ?? 0;
+                    $purchases30 = $matchedCampaignL30->purchases30d ?? 0;
+                    $unitsSold30 = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
                 }
                 if ($sales30 > 0) {
                     $campaignMap[$mapKey]['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
@@ -2083,6 +2087,9 @@ class AmazonSpBudgetController extends Controller
                 $campaignMap[$mapKey]['acos'] = $campaignMap[$mapKey]['acos_L30'];
                 $campaignMap[$mapKey]['l30_spend'] = $spend30;
                 $campaignMap[$mapKey]['l30_clicks'] = $clicks30;
+                $campaignMap[$mapKey]['l30_purchases'] = $unitsSold30;
+                // Calculate AD CVR: (purchases / clicks) * 100
+                $campaignMap[$mapKey]['ad_cvr'] = $clicks30 > 0 ? round(($purchases30 / $clicks30) * 100, 2) : 0;
             }
 
             if (isset($matchedCampaignL15) && isset($matchedCampaignL1) && $matchedCampaignL15 && $matchedCampaignL1) {
@@ -2980,6 +2987,7 @@ class AmazonSpBudgetController extends Controller
                     $row['acos_L7'] = 0;
                     $row['l30_spend'] = 0;
                     $row['l30_clicks'] = 0;
+                    $row['ad_cvr'] = 0;
                     $row['NRA'] = '';
                     $row['TPFT'] = null;
                     $row['hasCampaign'] = true;
@@ -2988,6 +2996,8 @@ class AmazonSpBudgetController extends Controller
                         $sales30 = $matchedCampaignL30->sales30d ?? 0;
                         $spend30 = $matchedCampaignL30->spend ?? 0;
                         $clicks30 = $matchedCampaignL30->clicks ?? 0;
+                        $purchases30 = $matchedCampaignL30->purchases30d ?? 0;
+                        $unitsSold30 = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
                         if ($sales30 > 0) {
                             $row['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
                         } elseif ($spend30 > 0) {
@@ -2996,6 +3006,8 @@ class AmazonSpBudgetController extends Controller
                         $row['acos'] = $row['acos_L30'];
                         $row['l30_spend'] = $spend30;
                         $row['l30_clicks'] = $clicks30;
+                        $row['l30_purchases'] = $unitsSold30;
+                        $row['ad_cvr'] = $clicks30 > 0 ? round(($purchases30 / $clicks30) * 100, 2) : 0;
                     }
 
                     if (isset($matchedCampaignL15) && isset($matchedCampaignL1) && $matchedCampaignL15 && $matchedCampaignL1) {
