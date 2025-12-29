@@ -659,14 +659,19 @@ class EbayOverUtilizedBgtController extends Controller
 
         $ebayDataView = EbayDataView::firstOrNew(['sku' => $sku]);
 
-        $jsonData = $ebayDataView->value ?? [];
+        // Decode existing value if it's a JSON string
+        $jsonData = is_array($ebayDataView->value) 
+            ? $ebayDataView->value 
+            : (json_decode($ebayDataView->value ?? '{}', true) ?: []);
 
+        // Save field value
         $jsonData[$field] = $value;
 
         $ebayDataView->value = $jsonData;
         $ebayDataView->save();
 
         return response()->json([
+            'success' => true,
             'status' => 200,
             'message' => "Field updated successfully",
             'updated_json' => $jsonData
@@ -1040,14 +1045,21 @@ class EbayOverUtilizedBgtController extends Controller
 
         $result = [];
         $campaignMap = [];
+        $ebaySkuSet = []; // Track unique SKUs in eBay for count
 
         foreach ($productMasters as $pm) {
+            // Skip PARENT SKUs
+            if (stripos($pm->sku, 'PARENT') !== false) {
+                continue;
+            }
+
             $sku = strtoupper(trim($pm->sku));
             $parent = $pm->parent;
             $shopify = $shopifyData[$pm->sku] ?? null;
             $ebay = $ebayMetricData[$pm->sku] ?? null;
 
             $nrValue = '';
+            $nrlValue = '';
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
                 if (!is_array($raw)) {
@@ -1055,11 +1067,8 @@ class EbayOverUtilizedBgtController extends Controller
                 }
                 if (is_array($raw)) {
                     $nrValue = $raw['NR'] ?? null;
+                    $nrlValue = $raw['NRL'] ?? null;
                 }
-            }
-
-            if ($nrValue == 'NRA') {
-                continue;
             }
 
             $matchedReports = $reports->filter(function ($item) use ($sku) {
@@ -1068,67 +1077,100 @@ class EbayOverUtilizedBgtController extends Controller
                 return $campaignSku === $cleanSku;
             });
 
-            if ($matchedReports->isEmpty()) {
-                continue;
+            // Check if campaign exists
+            $hasCampaign = false;
+            $matchedCampaignL7 = null;
+            $matchedCampaignL1 = null;
+            $matchedCampaignL30 = null;
+            $campaignId = '';
+            $campaignName = '';
+            $campaignBudgetAmount = 0;
+            $campaignStatus = '';
+
+            if (!$matchedReports->isEmpty()) {
+                foreach ($matchedReports as $campaign) {
+                    $tempCampaignId = $campaign->campaign_id ?? '';
+                    if (!empty($tempCampaignId) && $campaign->campaignStatus === 'RUNNING') {
+                        $hasCampaign = true;
+                        $campaignId = $tempCampaignId;
+                        $campaignName = $campaign->campaign_name ?? '';
+                        $campaignBudgetAmount = $campaign->campaignBudgetAmount ?? 0;
+                        $campaignStatus = $campaign->campaignStatus ?? '';
+
+                        $reportRange = $campaign->report_range ?? '';
+                        if ($reportRange == 'L7') {
+                            $matchedCampaignL7 = $campaign;
+                        }
+                        if ($reportRange == 'L1') {
+                            $matchedCampaignL1 = $campaign;
+                        }
+                        if ($reportRange == 'L30') {
+                            $matchedCampaignL30 = $campaign;
+                        }
+                    }
+                }
             }
 
-            foreach ($matchedReports as $campaign) {
-                $campaignId = $campaign->campaign_id ?? '';
-                if (empty($campaignId) || $campaign->campaignStatus !== 'RUNNING') {
-                    continue;
+            // Use SKU as key if no campaign, otherwise use campaignId
+            $mapKey = !empty($campaignId) ? $campaignId : 'SKU_' . $sku;
+
+            if (!isset($campaignMap[$mapKey])) {
+                $price = $ebay->ebay_price ?? 0;
+                $ebayL30 = $ebay->ebay_l30 ?? 0;
+                
+                // Track eBay SKU (if has eBay data with price > 0 or campaign)
+                if (($ebay && $price > 0) || $hasCampaign) {
+                    $ebaySkuSet[$sku] = true;
                 }
+                
+                $campaignMap[$mapKey] = [
+                    'parent' => $parent,
+                    'sku' => $pm->sku,
+                    'campaign_id' => $campaignId,
+                    'campaignName' => $campaignName,
+                    'campaignBudgetAmount' => $campaignBudgetAmount,
+                    'campaignStatus' => $campaignStatus,
+                    'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                    'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
+                    'price' => $price,
+                    'ebay_l30' => $ebayL30,
+                    'l7_spend' => 0,
+                    'l7_cpc' => 0,
+                    'l1_spend' => 0,
+                    'l1_cpc' => 0,
+                    'acos' => 0,
+                    'adFees' => 0,
+                    'sales' => 0,
+                    'NR' => $nrValue,
+                    'NRL' => $nrlValue,
+                    'hasCampaign' => $hasCampaign,
+                ];
+            }
 
-                if (!isset($campaignMap[$campaignId])) {
-                    $price = $ebay->ebay_price ?? 0;
-                    // Only include campaigns with price >= 30
-                    if ($price < 30) {
-                        continue;
-                    }
-                    
-                    $campaignMap[$campaignId] = [
-                        'parent' => $parent,
-                        'sku' => $pm->sku,
-                        'campaign_id' => $campaignId,
-                        'campaignName' => $campaign->campaign_name ?? '',
-                        'campaignBudgetAmount' => $campaign->campaignBudgetAmount ?? 0,
-                        'campaignStatus' => $campaign->campaignStatus ?? '',
-                        'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
-                        'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
-                        'price' => $price,
-                        'l7_spend' => 0,
-                        'l7_cpc' => 0,
-                        'l1_spend' => 0,
-                        'l1_cpc' => 0,
-                        'acos' => 0,
-                        'adFees' => 0,
-                        'sales' => 0,
-                        'NR' => $nrValue,
-                    ];
-                }
+            // Add campaign data if exists
+            if ($matchedCampaignL7) {
+                $adFees = (float) str_replace(['USD ', ','], '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? '0');
+                $cpc = (float) str_replace(['USD ', ','], '', $matchedCampaignL7->cost_per_click ?? '0');
+                $campaignMap[$mapKey]['l7_spend'] = $adFees;
+                $campaignMap[$mapKey]['l7_cpc'] = $cpc;
+            }
 
-                $reportRange = $campaign->report_range ?? '';
-                $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
-                $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
-                $cpc = (float) str_replace(['USD ', ','], '', $campaign->cost_per_click ?? '0');
+            if ($matchedCampaignL1) {
+                $adFees = (float) str_replace(['USD ', ','], '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? '0');
+                $cpc = (float) str_replace(['USD ', ','], '', $matchedCampaignL1->cost_per_click ?? '0');
+                $campaignMap[$mapKey]['l1_spend'] = $adFees;
+                $campaignMap[$mapKey]['l1_cpc'] = $cpc;
+            }
 
-                if ($reportRange == 'L7') {
-                    $campaignMap[$campaignId]['l7_spend'] = $adFees;
-                    $campaignMap[$campaignId]['l7_cpc'] = $cpc;
-                }
-
-                if ($reportRange == 'L1') {
-                    $campaignMap[$campaignId]['l1_spend'] = $adFees;
-                    $campaignMap[$campaignId]['l1_cpc'] = $cpc;
-                }
-
-                if ($reportRange == 'L30') {
-                    $campaignMap[$campaignId]['adFees'] = $adFees;
-                    $campaignMap[$campaignId]['sales'] = $sales;
-                    if ($sales > 0) {
-                        $campaignMap[$campaignId]['acos'] = round(($adFees / $sales) * 100, 2);
-                    } else if ($adFees > 0 && $sales == 0) {
-                        $campaignMap[$campaignId]['acos'] = 100;
-                    }
+            if ($matchedCampaignL30) {
+                $adFees = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? '0');
+                $sales = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? '0');
+                $campaignMap[$mapKey]['adFees'] = $adFees;
+                $campaignMap[$mapKey]['sales'] = $sales;
+                if ($sales > 0) {
+                    $campaignMap[$mapKey]['acos'] = round(($adFees / $sales) * 100, 2);
+                } else if ($adFees > 0 && $sales == 0) {
+                    $campaignMap[$mapKey]['acos'] = 100;
                 }
             }
         }
@@ -1159,6 +1201,7 @@ class EbayOverUtilizedBgtController extends Controller
             }
 
             $nrValue = '';
+            $nrlValue = '';
             if ($matchedSku && isset($nrValues[$matchedSku])) {
                 $raw = $nrValues[$matchedSku];
                 if (!is_array($raw)) {
@@ -1166,32 +1209,35 @@ class EbayOverUtilizedBgtController extends Controller
                 }
                 if (is_array($raw)) {
                     $nrValue = $raw['NR'] ?? null;
+                    $nrlValue = $raw['NRL'] ?? null;
                 }
-            }
-
-            if ($nrValue == 'NRA') {
-                continue;
             }
 
             $shopify = $matchedSku ? ($shopifyData[$matchedSku] ?? null) : null;
             $ebay = $matchedSku ? ($ebayMetricData[$matchedSku] ?? null) : null;
             
-            // Try to get price from EbayMetric using campaign name as SKU
+            // Try to get price and ebay_l30 from EbayMetric using campaign name as SKU
             $price = 0;
+            $ebayL30 = 0;
             if ($ebay) {
                 $price = $ebay->ebay_price ?? 0;
+                $ebayL30 = $ebay->ebay_l30 ?? 0;
             } else {
                 // Try to find by campaign name
                 $ebayMetricByName = EbayMetric::where('sku', $campaignName)->first();
                 if ($ebayMetricByName) {
                     $price = $ebayMetricByName->ebay_price ?? 0;
+                    $ebayL30 = $ebayMetricByName->ebay_l30 ?? 0;
                 }
             }
-            
-            // // Only include campaigns with price >= 30
-            // if ($price < 30) {
-            //     continue;
-            // }
+
+            // Track eBay SKU for campaigns not matching ProductMaster SKUs (if has price > 0)
+            if ($price > 0) {
+                $campaignSkuUpper = strtoupper(trim($campaignName));
+                if (!isset($ebaySkuSet[$campaignSkuUpper])) {
+                    $ebaySkuSet[$campaignSkuUpper] = true;
+                }
+            }
 
             $campaignMap[$campaignId] = [
                 'parent' => '',
@@ -1203,6 +1249,7 @@ class EbayOverUtilizedBgtController extends Controller
                 'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
                 'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                 'price' => $price,
+                'ebay_l30' => $ebayL30,
                 'l7_spend' => 0,
                 'l7_cpc' => 0,
                 'l1_spend' => 0,
@@ -1211,6 +1258,8 @@ class EbayOverUtilizedBgtController extends Controller
                 'adFees' => 0,
                 'sales' => 0,
                 'NR' => $nrValue,
+                'NRL' => $nrlValue,
+                'hasCampaign' => true, // These campaigns always have campaigns
             ];
 
             foreach ($campaignReports as $campaign) {
@@ -1261,6 +1310,19 @@ class EbayOverUtilizedBgtController extends Controller
 
         $totalACOSAll = $totalSalesAll > 0 ? ($totalSpendAll / $totalSalesAll) * 100 : 0;
 
+        // Calculate total SKU count (excluding PARENT SKUs and deleted records)
+        $totalSkuCount = ProductMaster::whereNull('deleted_at')
+            ->whereRaw("UPPER(sku) NOT LIKE 'PARENT %'")
+            ->count();
+
+        // Calculate eBay SKU count - count all unique SKUs from EbayMetric table
+        $ebaySkuCount = EbayMetric::select('sku')
+            ->distinct()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereRaw("UPPER(sku) NOT LIKE 'PARENT %'")
+            ->count();
+
         foreach ($campaignMap as $campaignId => $row) {
             $result[] = (object) $row;
         }
@@ -1271,6 +1333,8 @@ class EbayOverUtilizedBgtController extends Controller
             'total_l30_spend' => round($totalSpendAll, 2),
             'total_l30_sales' => round($totalSalesAll, 2),
             'total_acos' => round($totalACOSAll, 2),
+            'total_sku_count' => $totalSkuCount,
+            'ebay_sku_count' => $ebaySkuCount,
             'status' => 200,
         ]);
     }
