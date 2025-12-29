@@ -790,6 +790,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/bestbuy/daily-sales', [BestBuySalesController::class, 'index'])->name('bestbuy.daily.sales');
     Route::get('/bestbuy-daily-sales-column-visibility', [BestBuySalesController::class, 'getColumnVisibility']);
     Route::post('/bestbuy-daily-sales-column-visibility', [BestBuySalesController::class, 'saveColumnVisibility']);
+    
+    // Best Buy Pricing Routes
+    Route::get('/bestbuy-pricing', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyPricingView'])->name('bestbuy.pricing');
+    Route::get('/bestbuy-data-json', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyDataJson'])->name('bestbuy.data.json');
+    Route::post('/bestbuy-save-nr', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveNrToDatabase'])->name('bestbuy.save.nr');
+    Route::post('/bestbuy-save-sprice', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveSpriceToDatabase'])->name('bestbuy.save.sprice');
+    Route::post('/bestbuy-update-listed-live', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'updateListedLive'])->name('bestbuy.update.listed.live');
+    Route::get('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'getColumnVisibility'])->name('bestbuy.pricing.column.get');
+    Route::post('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'setColumnVisibility'])->name('bestbuy.pricing.column.set');
 
     
     // eBay 2 Sales Routes

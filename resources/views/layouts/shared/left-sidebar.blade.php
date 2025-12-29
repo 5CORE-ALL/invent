@@ -3082,6 +3082,8 @@
 
                                     <li><a href="{{ route('listing.bestbuyusa') }}">Listing Bestbuy USA</a>
                                     </li>
+                                    
+                                    <li><a href="{{ route('bestbuy.pricing') }}">Best Buy Pricing</a></li>
                                 </ul>
                             </div>
                         </li>

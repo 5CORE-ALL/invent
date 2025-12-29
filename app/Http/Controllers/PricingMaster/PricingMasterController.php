@@ -240,8 +240,8 @@ class PricingMasterController extends Controller
                 // eBay
                 $item->ebay_price = $ebay->ebay_price ?? 0;
                 $item->ebay_l30 = $ebay->ebay_l30 ?? 0;
-                $item->ebay_pft = $item->ebay_price > 0 ? (($item->ebay_price * 0.77 - $lp - $ship) / $item->ebay_price) : 0;
-                $item->ebay_roi = ($lp > 0 && $item->ebay_price > 0) ? (($item->ebay_price * 0.77 - $lp - $ship) / $lp) : 0;
+                $item->ebay_pft = $item->ebay_price > 0 ? (($item->ebay_price * 0.85 - $lp - $ship) / $item->ebay_price) : 0;
+                $item->ebay_roi = ($lp > 0 && $item->ebay_price > 0) ? (($item->ebay_price * 0.85 - $lp - $ship) / $lp) : 0;
 
                 // Macy
                 $item->macy_price = $macy->price ?? 0;

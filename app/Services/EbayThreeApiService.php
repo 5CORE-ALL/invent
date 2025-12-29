@@ -170,4 +170,121 @@ class EbayThreeApiService
             ];
         }
     }
+
+    /**
+     * Get competitor prices using eBay Browse API
+     * 
+     * @param string $query - SKU, title or EPID to search for
+     * @return array - Array of competitor listings with price, shipping, link
+     */
+    public function doRepricing($query)
+    {
+        $token = $this->generateBrowseToken();
+        if (!$token) {
+            return [];
+        }
+
+        $constructedData = [];
+        $url = 'https://api.ebay.com/buy/browse/v1/item_summary/search?q=' . urlencode($query) . '&limit=50';
+
+        $maxPages = 3; // Limit to 3 pages to avoid too many API calls
+        $pageCount = 0;
+
+        do {
+            $pageCount++;
+            
+            try {
+                $response = Http::withToken($token)
+                    ->timeout(30)
+                    ->connectTimeout(15)
+                    ->get($url);
+
+                if (!$response->successful()) {
+                    break;
+                }
+
+                $responseJSON = $response->json();
+                $items = $responseJSON['itemSummaries'] ?? [];
+
+                foreach ($items as $data) {
+                    $price = floatval($data['price']['value'] ?? 0);
+                    $shippingCost = 0;
+                    
+                    // Extract shipping cost if available
+                    if (isset($data['shippingOptions'][0]['shippingCost']['value'])) {
+                        $shippingCost = floatval($data['shippingOptions'][0]['shippingCost']['value']);
+                    }
+
+                    $constructedData[] = [
+                        'title' => $data['title'] ?? '',
+                        'item_id' => $data['itemId'] ?? '',
+                        'link' => $data['itemWebUrl'] ?? '',
+                        'condition' => $data['condition'] ?? '',
+                        'price' => $price,
+                        'shipping_cost' => $shippingCost,
+                        'total_price' => $price + $shippingCost,
+                        'seller' => $data['seller']['username'] ?? '',
+                        'image' => $data['image']['imageUrl'] ?? '',
+                    ];
+                }
+
+                $url = $responseJSON['next'] ?? null;
+
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('eBay Browse API error: ' . $e->getMessage());
+                break;
+            }
+
+        } while (!empty($url) && $pageCount < $maxPages);
+
+        // Sort by total price (lowest first)
+        usort($constructedData, function($a, $b) {
+            return $a['total_price'] <=> $b['total_price'];
+        });
+
+        return $constructedData;
+    }
+
+    /**
+     * Generate Bearer Token for Browse API (uses client credentials grant)
+     */
+    public function generateBrowseToken()
+    {
+        $cacheKey = 'ebay3_browse_bearer';
+        
+        if (Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
+        }
+
+        $clientId = env('EBAY_3_APP_ID');
+        $clientSecret = env('EBAY_3_CERT_ID');
+
+        try {
+            $response = Http::asForm()
+                ->withBasicAuth($clientId, $clientSecret)
+                ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                    'grant_type' => 'client_credentials',
+                    'scope' => 'https://api.ebay.com/oauth/api_scope',
+                ]);
+
+            if ($response->failed()) {
+                \Illuminate\Support\Facades\Log::error('Failed to get eBay Browse token: ' . $response->body());
+                return null;
+            }
+
+            $data = $response->json();
+            $accessToken = $data['access_token'] ?? null;
+            $expiresIn = $data['expires_in'] ?? 3600;
+
+            if ($accessToken) {
+                Cache::put($cacheKey, $accessToken, now()->addSeconds($expiresIn - 60));
+            }
+
+            return $accessToken;
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('eBay Browse token exception: ' . $e->getMessage());
+            return null;
+        }
+    }
 }

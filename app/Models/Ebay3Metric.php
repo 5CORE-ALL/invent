@@ -20,5 +20,12 @@ class Ebay3Metric extends Model
         'ebay_price',
         'views',
         'l7_views',
-    ];    
+        'price_lmpa',
+        'lmp_link',
+        'lmp_data',
+    ];
+
+    protected $casts = [
+        'lmp_data' => 'array',
+    ];
 }

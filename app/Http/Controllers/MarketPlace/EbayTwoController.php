@@ -162,8 +162,8 @@ class EbayTwoController extends Controller
                 ($adMetricsBySku[$sku][$range]['Sls'] ?? 0) + (int) $report->sales;
         }
 
-        // 5. Use fixed percentage of 0.78 (78%) for eBay2
-        $percentage = 0.78;
+        // 5. Use fixed percentage of 0.85 (85%) for eBay2
+        $percentage = 0.85;
         $pmtAds = 0; // No PMT ads updates tracking for eBay2
 
         // 6. Build Result
@@ -441,8 +441,8 @@ class EbayTwoController extends Controller
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
 
-        // Use fixed 78% for EbayTwo
-        $percentage = 0.78;
+        // Use fixed 85% for EbayTwo
+        $percentage = 0.85;
 
         // Get ProductMaster for lp and ship
         $pm = ProductMaster::where('sku', $sku)->first();
@@ -519,7 +519,7 @@ class EbayTwoController extends Controller
             'ship' => $ship
         ]);
 
-        // SROI = ((SPRICE * 0.78 - lp - ship) / lp) * 100 (same as regular ROI formula)
+        // SROI = ((SPRICE * 0.85 - lp - ship) / lp) * 100 (same as regular ROI formula)
         $sroi = round(
             $lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0,
             2
