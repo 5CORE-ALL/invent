@@ -80,14 +80,7 @@
                     <select id="gpft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
-                        <option value="negative">Negative</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30-40">30-40%</option>
-                        <option value="40-50">40-50%</option>
-                        <option value="50-60">50-60%</option>
-                        <option value="60plus">60%+</option>
+                        <option value="40plus">40%+</option>
                     </select>
 
                     <select id="cvr-filter" class="form-select form-select-sm"
@@ -2408,14 +2401,7 @@
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
                         const gpft = parseFloat(data['GPFT%']) || 0;
-                        if (gpftFilter === 'negative') return gpft < 0;
-                        if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
-                        if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
-                        if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
-                        if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
-                        if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                        if (gpftFilter === '50-60') return gpft >= 50 && gpft < 60;
-                        if (gpftFilter === '60plus') return gpft >= 60;
+                        if (gpftFilter === '40plus') return gpft >= 40;
                         return true;
                     });
                 }
