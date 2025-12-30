@@ -106,7 +106,7 @@
                                 </div>
                             </li>
                             <li>
-                                <a href="{{ route('mfrg.in.progress') }}">MFRG In Progress</a>
+                                <a href="{{ route('mfrg.in.progress') }}">MIP</a>
                             </li>
                             <li>
                                 <a href="{{ route('ready.to.ship') }}">Ready To Ship</a>

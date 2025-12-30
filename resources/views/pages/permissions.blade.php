@@ -212,7 +212,7 @@
                                 ['value' => 'purchase_master_ledger', 'text' => 'Ledger'],
                                 ['value' => 'purchase_master_advance_payments', 'text' => 'Advance & Payments'],
                                 ['value' => 'purchase_master_supplier_ledger', 'text' => 'Supplier Ledger'],
-                                ['value' => 'purchase_master_mfrg_in_progress', 'text' => 'MFRG In Progress'],
+                                ['value' => 'purchase_master_mfrg_in_progress', 'text' => 'MIP'],
                                 ['value' => 'purchase_master_ready_to_ship', 'text' => 'Ready To Ship'],
                                 ['value' => 'purchase_master_mfrg_quality_check', 'text' => 'MFRG Quality Check'],
                                 ['value' => 'purchase_master_china_load', 'text' => 'China Load'],
