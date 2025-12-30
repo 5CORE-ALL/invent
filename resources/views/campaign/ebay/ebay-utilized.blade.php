@@ -692,6 +692,12 @@
                 utilizationTypeSelect.addEventListener('change', function() {
                     currentUtilizationType = this.value;
                     if (typeof table !== 'undefined' && table) {
+                        // Update SBID column visibility based on utilization type
+                        if (currentUtilizationType === 'correctly' || currentUtilizationType === 'all') {
+                            table.hideColumn('sbid');
+                        } else {
+                            table.showColumn('sbid');
+                        }
                         table.setFilter(combinedFilter);
                         table.redraw(true);
                         updateButtonCounts();
@@ -706,6 +712,10 @@
                     // Reset dropdown to "All" when showing campaigns only
                     document.getElementById('utilization-type-select').value = 'all';
                     currentUtilizationType = 'all';
+                    // Hide SBID column when showing all
+                    if (typeof table !== 'undefined' && table) {
+                        table.hideColumn('sbid');
+                    }
                     // Reset missing filter
                     showMissingOnly = false;
                     document.getElementById('missing-campaign-card').style.boxShadow = '';
@@ -1343,7 +1353,7 @@
                                 
                                 // Global rule: If L7_CPC is 0, set SBID to 0.75 regardless of utilization type
                                 if (l7Cpc === 0) {
-                                    return 0.75;
+                                    return 0.50;
                                 }
                                 
                                 // Rule: If both UB7 and UB1 are below 70%, set SBID as L7_CPC + 0.10
@@ -1416,12 +1426,24 @@
                                         }
                                     }
                                 } else if (currentUtilizationType === 'over') {
-                                    sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
-                                } else if (currentUtilizationType === 'under') {
-                                    if (ub7 >= 10 && ub7 <= 50) {
-                                        sbid = Math.floor(l7Cpc * 1.20 * 100) / 100;
+                                    // Over-utilized: l1_cpc * 0.90, fallback to l7_cpc * 0.90, then 0.50
+                                    if (l1Cpc > 0) {
+                                        sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                    } else if (l7Cpc > 0) {
+                                        sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
                                     } else {
+                                        sbid = 0.50;
+                                    }
+                                } else if (currentUtilizationType === 'under') {
+                                    // Under-utilized: If ub7 < 10: 0.50, else l7_cpc * 1.10, fallback to l1_cpc * 1.10, then 0.75
+                                    if (ub7 < 10) {
+                                        sbid = 0.50;
+                                    } else if (l7Cpc > 0) {
                                         sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
+                                    } else if (l1Cpc > 0) {
+                                        sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
+                                    } else {
+                                        sbid = 0.75;
                                     }
                                 } else {
                                     sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
@@ -1462,28 +1484,17 @@
                                 return '0.00'; // No SBID suggestion if colors don't match
                             }
                             
-                            // Debug logging for specific campaigns
-                            var campaignName = row.campaignName || '';
-                            var isDebugCampaign = campaignName.includes('WF 10 140 PP 4OHM') ||
-                                campaignName.includes('WF 15 156 PP 4OHM 2PCS') || campaignName
-                                .includes('RM 8 BG');
-                            
                             var sbid = 0;
                             
                             // Global rule: If L7_CPC is 0, set SBID to 0.75 regardless of utilization type
                             if (l7_cpc === 0) {
                                 sbid = 0.75;
-                                if (isDebugCampaign) console.log(
-                                    'Global Rule Applied - L7_CPC = 0 - SBID:', sbid);
                                 return sbid.toFixed(2);
                             }
                             
                             // Rule: If both UB7 and UB1 are below 70%, set SBID as L7_CPC + 0.10
                             if (ub7 < 70 && ub1 < 70) {
                                 sbid = parseFloat((l7_cpc + 0.10).toFixed(2));
-                                if (isDebugCampaign) console.log(
-                                    'UB7 & UB1 < 70% Rule Applied - SBID:', sbid,
-                                    '(L7_CPC + 0.10)');
                                 return sbid.toFixed(2);
                             }
                             
@@ -1491,24 +1502,15 @@
                             if (ub7 > 90 && ub1 > 90) {
                                 if (l1_cpc > 0) {
                                     sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                    if (isDebugCampaign) console.log(
-                                        'UB7 & UB1 > 90% Rule Applied - SBID:', sbid,
-                                        '(L1_CPC * 0.90)');
                                 } else if (l7_cpc > 0) {
                                     sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                    if (isDebugCampaign) console.log(
-                                        'UB7 & UB1 > 90% Rule Applied - SBID:', sbid,
-                                        '(L7_CPC * 0.90 fallback)');
                                 } else {
                                     sbid = 0;
-                                    if (isDebugCampaign) console.log(
-                                        'UB7 & UB1 > 90% Rule Applied - SBID:', sbid,
-                                        '(No CPC data)');
                                 }
                                 return sbid.toFixed(2);
                             }
                             
-                            if (currentUtilizationType === 'total') {
+                            if (currentUtilizationType === 'all') {
                                 // For total campaigns, determine individual campaign's utilization status
                                 var rowAcos = parseFloat(row.acos) || 0;
                                 if (isNaN(rowAcos) || rowAcos === 0) {
@@ -1520,7 +1522,15 @@
                                 var inv = parseFloat(row.INV || 0);
                                 var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 /
                                     inv) : 0;
-                                var dilColor = getDilColor(dilDecimal);
+                                // Helper function to get DIL color
+                                function getDilColorLocal(value) {
+                                    var percent = parseFloat(value) * 100;
+                                    if (percent < 16.66) return 'red';
+                                    if (percent >= 16.66 && percent < 25) return 'yellow';
+                                    if (percent >= 25 && percent < 50) return 'green';
+                                    return 'pink';
+                                }
+                                var dilColor = getDilColorLocal(dilDecimal);
                                 var isPink = (dilColor === "pink");
                                 
                                 // Determine utilization status (same logic as combinedFilter)
@@ -1542,78 +1552,50 @@
                                     isUnderUtilized = true;
                                 }
                                 
-                                // Debug logging
-                                if (isDebugCampaign) {
-                                    console.log('=== SBID Debug for:', campaignName, '===');
-                                    console.log('L1_CPC:', l1_cpc, 'L7_CPC:', l7_cpc);
-                                    console.log('Budget:', budget, 'UB7:', ub7.toFixed(2), 'UB1:',
-                                        ub1.toFixed(2));
-                                    console.log('ACOS:', rowAcos, 'Total ACOS:', totalACOSValue);
-                                    console.log('Price:', row.price, 'INV:', inv, 'L30:', l30);
-                                    console.log('DIL Decimal:', dilDecimal, 'DIL Color:', dilColor,
-                                        'Is Pink:', isPink);
-                                    console.log('Is Over Utilized:', isOverUtilized);
-                                    console.log('Is Under Utilized:', isUnderUtilized);
-                                }
-                                
                                 // Apply SBID logic based on determined status
                                 if (isOverUtilized) {
                                     if (l1_cpc > 0) {
                                         sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                        if (isDebugCampaign) console.log('Over Utilized - SBID:',
-                                            sbid, '(L1_CPC * 0.90)');
                                     } else if (l7_cpc > 0) {
                                         sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                        if (isDebugCampaign) console.log('Over Utilized - SBID:',
-                                            sbid, '(L7_CPC * 0.90 fallback)');
                                     } else {
                                         sbid = 0;
-                                        if (isDebugCampaign) console.log('Over Utilized - SBID:',
-                                            sbid, '(No CPC data available)');
                                     }
                                 } else if (isUnderUtilized) {
                                     if (ub7 >= 10 && ub7 <= 50) {
                                         sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
-                                        if (isDebugCampaign) console.log(
-                                            'Under Utilized (UB7 10-50%) - SBID:', sbid,
-                                            '(L7_CPC * 1.20)');
                                     } else {
                                         sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
-                                        if (isDebugCampaign) console.log(
-                                            'Under Utilized (UB7 > 50%) - SBID:', sbid,
-                                            '(L7_CPC * 1.10)');
                                     }
                                 } else {
                                     // Correctly-utilized or other: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
                                     if (l1_cpc > 0) {
                                         sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                        if (isDebugCampaign) console.log(
-                                            'Correctly Utilized/Other - SBID:', sbid,
-                                            '(L1_CPC * 0.90)');
                                     } else if (l7_cpc > 0) {
                                         sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                        if (isDebugCampaign) console.log(
-                                            'Correctly Utilized/Other - SBID:', sbid,
-                                            '(L7_CPC * 0.90 fallback)');
                                     } else {
                                         sbid = 0;
-                                        if (isDebugCampaign) console.log(
-                                            'Correctly Utilized/Other - SBID:', sbid,
-                                            '(No CPC data available)');
                                     }
                                 }
-                                
-                                if (isDebugCampaign) {
-                                    console.log('Final SBID:', sbid);
-                                    console.log('=== End Debug ===');
-                                }
                             } else if (currentUtilizationType === 'over') {
+                                // Over-utilized: l1_cpc * 0.90, fallback to l7_cpc * 0.90, then 0.50
+                                if (l1_cpc > 0) {
                                 sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                            } else if (currentUtilizationType === 'under') {
-                                if (ub7 >= 10 && ub7 <= 50) {
-                                    sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
+                                } else if (l7_cpc > 0) {
+                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
                                 } else {
+                                    sbid = 0.50;
+                                }
+                            } else if (currentUtilizationType === 'under') {
+                                // Under-utilized: If ub7 < 10: 0.50, else l7_cpc * 1.10, fallback to l1_cpc * 1.10, then 0.75
+                                if (ub7 < 10) {
+                                    sbid = 0.50;
+                                } else if (l7_cpc > 0) {
                                     sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                                } else if (l1_cpc > 0) {
+                                    sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
+                                } else {
+                                    sbid = 0.75;
                                 }
                             } else {
                                 // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
@@ -1627,6 +1609,7 @@
                             }
                             return sbid.toFixed(2);
                         },
+                        visible: true,
                         width: 70
                     },
                     {
@@ -1687,7 +1670,7 @@
                                     } else {
                                         sbid = 0;
                                     }
-                                } else if (currentUtilizationType === 'total') {
+                                } else if (currentUtilizationType === 'all') {
                                     // For total campaigns, determine individual campaign's utilization status
                                     var rowAcos = parseFloat(rowData.acos) || 0;
                                     if (isNaN(rowAcos) || rowAcos === 0) {
@@ -1747,18 +1730,24 @@
                                         }
                                     }
                                 } else if (currentUtilizationType === 'over') {
+                                    // Over-utilized: l1_cpc * 0.90, fallback to l7_cpc * 0.90, then 0.50
                                     if (l1_cpc > 0) {
                                         sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                                     } else if (l7_cpc > 0) {
                                         sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
                                     } else {
-                                        sbid = 0;
+                                        sbid = 0.50;
                                     }
                                 } else if (currentUtilizationType === 'under') {
-                                    if (ub7 >= 10 && ub7 <= 50) {
-                                        sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
-                                    } else {
+                                    // Under-utilized: If ub7 < 10: 0.50, else l7_cpc * 1.10, fallback to l1_cpc * 1.10, then 0.75
+                                    if (ub7 < 10) {
+                                        sbid = 0.50;
+                                    } else if (l7_cpc > 0) {
                                         sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                                    } else if (l1_cpc > 0) {
+                                        sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
+                                    } else {
+                                        sbid = 0.75;
                                     }
                                 } else {
                                     // Correctly-utilized: use L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
@@ -1804,8 +1793,6 @@
                     if (ebaySkuCountEl) {
                         ebaySkuCountEl.textContent = ebaySkuCountFromBackend;
                     }
-                    
-                    console.log('Total campaigns loaded:', response.data ? response.data.length : 0);
                     
                     return response.data;
                 }
@@ -2011,7 +1998,6 @@
                     })
                     .then(res => res.json())
                     .then(data => {
-                        console.log(data);
                             // Update table data with response
                             if (data.success && typeof table !== 'undefined' && table) {
                                 let row = table.searchRows('sku', '=', sku);
@@ -2129,18 +2115,24 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                                 }
                             }
                         } else if (currentUtilizationType === 'over') {
+                            // Over-utilized: l1_cpc * 0.90, fallback to l7_cpc * 0.90, then 0.50
                             if (l1_cpc > 0) {
                                 sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                             } else if (l7_cpc > 0) {
                                 sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
                             } else {
-                                sbid = 0;
+                                sbid = 0.50;
                             }
                         } else if (currentUtilizationType === 'under') {
-                            if (ub7 >= 10 && ub7 <= 50) {
-                                sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
-                            } else {
+                            // Under-utilized: If ub7 < 10: 0.50, else l7_cpc * 1.10, fallback to l1_cpc * 1.10, then 0.75
+                            if (ub7 < 10) {
+                                sbid = 0.50;
+                            } else if (l7_cpc > 0) {
                                 sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                            } else if (l1_cpc > 0) {
+                                sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
+                            } else {
+                                sbid = 0.75;
                             }
                         } else {
                             // Correctly-utilized: use L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
