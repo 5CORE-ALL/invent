@@ -1975,6 +1975,7 @@ class AmazonSpBudgetController extends Controller
                     'acos_L7' => 0,
                     'NRA' => $nra,
                     'TPFT' => $tpft,
+                    'PFT' => $tpft,
                     'NRL' => $nrl,
                     'hasCampaign' => $hasCampaign,
                 ];

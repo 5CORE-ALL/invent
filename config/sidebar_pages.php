@@ -11,7 +11,7 @@ return [
     // Purchase Masters
     ['value' =>'purchase_master_categories', 'text' => 'Categories', 'group' => 'Purchase Masters'],
     ['value' =>'purchase_master_suppliers', 'text' => 'Suppliers', 'group' => 'Purchase Masters'],
-    ['value' =>'purchase_master_mfrg_in_progress', 'text' => 'MFRG In Progress', 'group' => 'Purchase Masters'],
+    ['value' =>'purchase_master_mfrg_in_progress', 'text' => 'MIP', 'group' => 'Purchase Masters'],
 
     // Product Masters
     ['value' => 'product_lists', 'text' => 'Product Lists', 'group' => 'Product Masters'],
