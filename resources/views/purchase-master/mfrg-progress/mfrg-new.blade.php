@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'MFRG In Progress'])
+@extends('layouts.vertical', ['title' => 'MIP'])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -129,7 +129,7 @@
     </style>
 @endsection
 @section('content')
-    @include('layouts.shared.page-title', ['page_title' => 'MFRG In Progress', 'sub_title' => 'MFRG In Progress'])
+    @include('layouts.shared.page-title', ['page_title' => 'MIP', 'sub_title' => 'MIP'])
 
     <div class="row">
         <div class="col-12">
@@ -137,7 +137,7 @@
                 <div class="card-body">
 
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h4 class="mb-0">MFRG In Progress</h4>
+                        <h4 class="mb-0">MIP</h4>
                     </div>
 
                     <div class="row mb-4 g-3 align-items-end justify-content-between">

@@ -141,7 +141,7 @@
                             @if (isset($permissions['purchase_master_mfrg_in_progress']) &&
                                     in_array('view', $permissions['purchase_master_mfrg_in_progress']))
                                 <li>
-                                    <a href="{{ route('mfrg.in.progress') }}">MFRG In Progress</a>
+                                    <a href="{{ route('mfrg.in.progress') }}">MIP</a>
                                 </li>
                             @endif
                             <li>

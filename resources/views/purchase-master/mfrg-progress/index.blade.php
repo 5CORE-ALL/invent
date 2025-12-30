@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'MFRG In Progress', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'MIP', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -69,7 +69,7 @@
 </style>
 @endsection
 @section('content')
-@include('layouts.shared.page-title', ['page_title' => 'MFRG In Progress', 'sub_title' => 'MFRG In Progress'])
+@include('layouts.shared.page-title', ['page_title' => 'MIP', 'sub_title' => 'MIP'])
 <div class="row">
     <div class="col-12">
         <div class="card shadow-sm">
@@ -137,7 +137,8 @@
                                             placeholder="🔍 Search supplier..." style="font-size: 0.97rem; height: 32px; border-radius: 6px; background: #f4f6fa;">
                                     </div>
                                     <div id="customSelectOptions" style="max-height: 160px; overflow-y: auto; padding: 2px 0;">
-                                        <div class="custom-select-option px-3 py-2 rounded" data-value="">Select supplier</div>
+                                        <div class="custom-select-option px-3 py-2 rounded" data-value="">All supplier</div>
+                                        <div class="custom-select-option px-3 py-2 rounded" data-value="__all_suppliers__" style="font-weight: 600; border-bottom: 1px solid #e0e6ed; margin-bottom: 4px;">Supplier</div>
                                         @foreach ($suppliers as $item)
                                             <div class="custom-select-option px-3 py-2 rounded" data-value="">{{ $item }}</div>
                                         @endforeach
@@ -244,7 +245,7 @@
                                     <div class="search-results" data-results-column="3" style="position:relative; z-index:10;"></div>
                                 </th>
                                 <th data-column="17" class="text-center">Stage<div class="resizer"></div></th>
-                                <th data-column="18" class="text-center">NRP<div class="resizer"></div></th>
+                                <th data-column="18" class="text-center" hidden>NRP<div class="resizer"></div></th>
                                 <th data-column="4" class="text-center">Order<br/>QTY<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div></th>
@@ -281,7 +282,18 @@
                                     </td>
                                     <td data-column="1">
                                         @if(!empty($item->Image))
-                                            <img src="{{ $item->Image }}" class="hover-img" data-src="{{ $item->Image }}" alt="Image" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;">
+                                            @php
+                                                // Check if it's a storage path or full URL
+                                                $imageUrl = $item->Image;
+                                                if (strpos($imageUrl, 'storage/') === 0 || strpos($imageUrl, '/storage/') === 0) {
+                                                    $imageUrl = asset($imageUrl);
+                                                } elseif (strpos($imageUrl, 'http') !== 0 && strpos($imageUrl, '//') !== 0) {
+                                                    // If it's a relative path, make it absolute
+                                                    $imageUrl = asset($imageUrl);
+                                                }
+                                            @endphp
+                                            <img src="{{ $imageUrl }}" class="hover-img" data-src="{{ $imageUrl }}" alt="Image" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                                            <span class="text-muted" style="display: none;">No</span>
                                         @else
                                             <span class="text-muted">No</span>
                                         @endif
@@ -320,7 +332,7 @@
                                             <option value="to_order_analysis" {{ $stageValue === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
                                         </select>
                                     </td>
-                                    <td data-column="18" class="text-center">
+                                    <td data-column="18" class="text-center" hidden>
                                         @php
                                             $nrValue = strtoupper(trim($item->nr ?? ''));
                                             $bgColor = '#ffffff';
@@ -763,6 +775,12 @@
             }
 
             const hiddenColumns = getHiddenColumns();
+            // Ensure column 1 (Image) is always visible - remove it from hidden columns if present
+            if (hiddenColumns.includes('1')) {
+                hiddenColumns.splice(hiddenColumns.indexOf('1'), 1);
+                saveHiddenColumns(hiddenColumns);
+            }
+            
             document.querySelectorAll('.column-checkbox').forEach(checkbox => {
                 const columnIndex = checkbox.getAttribute('data-column');
                 const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
@@ -770,7 +788,13 @@
                 if (!th || !label) return;
                 const colNameText = th.childNodes[0]?.nodeValue?.trim() || th.textContent?.trim() || `Column ${columnIndex}`;
                 const colName = capitalizeWords(colNameText);
-                if (hiddenColumns.includes(columnIndex)) {
+                
+                // Force column 1 (Image) to always be visible
+                if (columnIndex === '1') {
+                    checkbox.checked = true;
+                    document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = '');
+                    label.innerHTML = `${colName} <i class="mdi mdi-eye text-primary"></i>`;
+                } else if (hiddenColumns.includes(columnIndex)) {
                     checkbox.checked = false;
                     document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => cell.style.display = 'none');
                     label.innerHTML = `${colName} <i class="mdi mdi-eye-off text-muted"></i>`;
@@ -787,6 +811,14 @@
                     const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
                     const label = document.querySelector(`label[for="column-${columnIndex}"]`);
                     if (!th || !label) return;
+                    
+                    // Prevent hiding column 1 (Image)
+                    if (columnIndex === '1') {
+                        this.checked = true;
+                        alert('Image column cannot be hidden');
+                        return;
+                    }
+                    
                     const colNameText = th.childNodes[0]?.nodeValue?.trim() || th.textContent?.trim() || `Column ${columnIndex}`;
                     const colName = capitalizeWords(colNameText);
                     let hidden = getHiddenColumns();
@@ -1428,10 +1460,29 @@
                 selectBox.classList.remove('active');
 
                 const selectedSupplier = e.target.textContent.trim();
+                const selectedValue = e.target.getAttribute('data-value');
                 const allRows = document.querySelectorAll('tbody tr');
 
                 if (!selectedSupplier || selectedSupplier === 'Select supplier') {
                     document.getElementById('advance-total-wrapper').style.display = 'none';
+                    // Reset all rows visibility
+                    allRows.forEach(row => {
+                        // Check stage from data attribute first (more reliable)
+                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                        const stageSelect = row.querySelector('.editable-select-stage');
+                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                        const rowStage = rowStageSelect || rowStageAttr;
+                        
+                        // Only show MIP stage rows
+                        if (rowStage === 'mip') {
+                            row.style.display = '';
+                        } else {
+                            row.style.display = 'none';
+                        }
+                    });
+                    calculateTotalCBM();
+                    calculateTotalAmount();
+                    calculateTotalOrderQty();
                     return;
                 }
 
@@ -1440,21 +1491,70 @@
 
                 // Filter rows matching selected supplier
                 let matchingRows = [];
-                allRows.forEach(row => {
-                    const supplierCell = row.querySelector('td[data-column="6"]');
-                    if (supplierCell) {
-                        const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
-                        const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
-                        if (supplierName.toLowerCase() === selectedSupplier.toLowerCase()) {
+                
+                // Special case: "Supplier" option - show only rows with blank/empty supplier
+                if (selectedValue === '__all_suppliers__' || selectedSupplier === 'Supplier') {
+                    // Show only rows that have blank/empty supplier
+                    allRows.forEach(row => {
+                        // Check stage from data attribute first (more reliable)
+                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                        const stageSelect = row.querySelector('.editable-select-stage');
+                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                        const rowStage = rowStageSelect || rowStageAttr;
+                        
+                        // Only show MIP stage rows
+                        if (rowStage !== 'mip') {
+                            row.style.display = 'none';
+                            return;
+                        }
+                        
+                        const supplierCell = row.querySelector('td[data-column="6"]');
+                        if (supplierCell) {
+                            const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
+                            const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
+                            // Show only rows where supplier is blank/empty
+                            if (!supplierName || supplierName === '' || supplierName === 'supplier') {
+                                row.style.display = '';
+                                matchingRows.push(row);
+                            } else {
+                                row.style.display = 'none';
+                            }
+                        } else {
+                            // If no supplier cell, show the row
                             row.style.display = '';
                             matchingRows.push(row);
+                        }
+                    });
+                } else {
+                    // Normal supplier filtering - match exact supplier name
+                    allRows.forEach(row => {
+                        // Check stage from data attribute first (more reliable)
+                        const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                        const stageSelect = row.querySelector('.editable-select-stage');
+                        const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                        const rowStage = rowStageSelect || rowStageAttr;
+                        
+                        // Only show MIP stage rows
+                        if (rowStage !== 'mip') {
+                            row.style.display = 'none';
+                            return;
+                        }
+                        
+                        const supplierCell = row.querySelector('td[data-column="6"]');
+                        if (supplierCell) {
+                            const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
+                            const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
+                            if (supplierName.toLowerCase() === selectedSupplier.toLowerCase()) {
+                                row.style.display = '';
+                                matchingRows.push(row);
+                            } else {
+                                row.style.display = 'none';
+                            }
                         } else {
                             row.style.display = 'none';
                         }
-                    } else {
-                        row.style.display = 'none';
-                    }
-                });
+                    });
+                }
 
                 if (!wrapper) {
                     console.warn("Wrapper not found! Skipping animation and totals.");
@@ -1464,6 +1564,16 @@
                 if (matchingRows.length === 0) {
                     wrapper.style.display = 'none';
                     console.log("No matching rows, hiding wrapper.");
+                    return;
+                }
+                
+                // For "Supplier" option, hide advance wrapper as it shows multiple suppliers
+                if (selectedValue === '__all_suppliers__' || selectedSupplier === 'Supplier') {
+                    wrapper.style.display = 'none';
+                    // Recalculate totals for all visible rows
+                    calculateTotalCBM();
+                    calculateTotalAmount();
+                    calculateTotalOrderQty();
                     return;
                 } else {
                     wrapper.style.display = 'block';

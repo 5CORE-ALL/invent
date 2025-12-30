@@ -1731,7 +1731,7 @@
                 items: [
                     { name: 'Categories', icon: '📦', route: '/purchase-masters/categories' },
                     { name: 'Suppliers', icon: '🏢', route: '/purchase-masters/suppliers' },
-                    { name: 'MFRG In Progress', icon: '⚙️', route: '/purchase-masters/mfrg-in-progress' }
+                    { name: 'MIP', icon: '⚙️', route: '/purchase-masters/mfrg-in-progress' }
                 ]
             },
             'Tasks': {

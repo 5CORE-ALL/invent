@@ -95,18 +95,87 @@ class MFRGInProgressController extends Controller
             $priceFromPO = null;
             $currencyFromPO = null;
 
-            // Shopify Image
-            if (isset($shopifyImages[$sku]) && !empty($shopifyImages[$sku]->image_src)) {
-                $image = $shopifyImages[$sku]->image_src;
+            // Generate SKU variations for better matching
+            $skuVariations = [
+                $sku, // Original normalized
+                str_replace(' ', '', $sku), // No spaces
+                preg_replace('/\s+/', ' ', $sku), // Single space
+            ];
+            
+            // Also try original SKU from database
+            if (!empty($row->sku)) {
+                $skuVariations[] = strtoupper(trim($row->sku));
+                $skuVariations[] = strtoupper(preg_replace('/\s+/', ' ', trim($row->sku)));
             }
 
-            // Product Master Data
-            if (isset($productMaster[$sku])) {
-                $productRow = $productMaster[$sku];
+            // Shopify Image - try multiple variations
+            foreach ($skuVariations as $skuVar) {
+                if (isset($shopifyImages[$skuVar]) && !empty($shopifyImages[$skuVar]->image_src)) {
+                    $image = $shopifyImages[$skuVar]->image_src;
+                    break; // Found image, stop searching
+                }
+            }
+            
+            // If still no image, try direct database lookup with flexible matching
+            if (empty($image) && !empty($row->sku)) {
+                // Try exact match first
+                $directImage = DB::table('shopify_skus')
+                    ->whereRaw('UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(9), " "), CHAR(10), " "), CHAR(13), " "), CHAR(160), " "))) = ?', [$sku])
+                    ->whereNotNull('image_src')
+                    ->where('image_src', '!=', '')
+                    ->value('image_src');
+                
+                // If no exact match, try pattern matching
+                if (empty($directImage)) {
+                    $skuPattern = str_replace(' ', '%', $sku);
+                    $directImage = DB::table('shopify_skus')
+                        ->whereRaw('UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(9), " "), CHAR(10), " "), CHAR(13), " "), CHAR(160), " "))) LIKE ?', ['%' . $skuPattern . '%'])
+                        ->whereNotNull('image_src')
+                        ->where('image_src', '!=', '')
+                        ->value('image_src');
+                }
+                
+                // If still no match, try without spaces
+                if (empty($directImage)) {
+                    $skuNoSpaces = str_replace(' ', '', $sku);
+                    $directImage = DB::table('shopify_skus')
+                        ->whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, " ", ""), CHAR(9), ""), CHAR(10), ""), CHAR(13), "")) = ?', [$skuNoSpaces])
+                        ->whereNotNull('image_src')
+                        ->where('image_src', '!=', '')
+                        ->value('image_src');
+                }
+                
+                if (!empty($directImage)) {
+                    $image = $directImage;
+                }
+            }
+
+            // Product Master Data - try multiple variations
+            $productRow = null;
+            foreach ($skuVariations as $skuVar) {
+                if (isset($productMaster[$skuVar])) {
+                    $productRow = $productMaster[$skuVar];
+                    break;
+                }
+            }
+            
+            // If still no product master, try direct database lookup
+            if (!$productRow && !empty($row->sku)) {
+                $directProduct = DB::table('product_master')
+                    ->whereRaw('UPPER(TRIM(REPLACE(REPLACE(REPLACE(sku, CHAR(9), " "), CHAR(10), " "), CHAR(13), " "))) = ?', [$sku])
+                    ->orWhereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . str_replace(' ', '%', $sku) . '%'])
+                    ->first();
+                
+                if ($directProduct) {
+                    $productRow = $directProduct;
+                }
+            }
+
+            if ($productRow) {
                 $values = json_decode($productRow->Values ?? '{}', true);
 
                 if (is_array($values)) {
-                    if (!empty($values['image_path'])) {
+                    if (!empty($values['image_path']) && empty($image)) {
                         $image = 'storage/' . ltrim($values['image_path'], '/');
                     }
                     if (isset($values['cbm'])) {
@@ -114,7 +183,7 @@ class MFRGInProgressController extends Controller
                     }
                 }
 
-                $parent = strtoupper(trim($productRow->parent));
+                $parent = strtoupper(trim($productRow->parent ?? ''));
             }
 
             // Supplier from Parent Mapping
@@ -150,10 +219,20 @@ class MFRGInProgressController extends Controller
             $row->nr = $nr;
             $row->order_qty = $row->qty; // Add order_qty field for validation
 
-            $row->Image = $image;
+            // Assign image - ensure it's not null if found
+            $row->Image = !empty($image) ? $image : null;
             $row->CBM = $cbm;
             $row->price_from_po = $priceFromPO;
             $row->currency_from_po = $currencyFromPO;
+            
+            // Debug logging for specific SKU (can be removed later)
+            if (stripos($row->sku, 'WF 12120 8OHMS') !== false || stripos($row->sku, 'WF121208OHMS') !== false) {
+                Log::info('Image lookup for SKU: ' . $row->sku, [
+                    'normalized_sku' => $sku,
+                    'found_image' => $row->Image,
+                    'sku_variations' => $skuVariations
+                ]);
+            }
         }
 
 
