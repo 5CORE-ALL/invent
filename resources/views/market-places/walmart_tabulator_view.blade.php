@@ -83,9 +83,9 @@
                     </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm" style="width: 120px; display: inline-block;">
-                        <option value="all">All NR</option>
-                        <option value="1">NR = 1</option>
-                        <option value="0">NR = 0</option>
+                        <option value="all">All Status</option>
+                        <option value="REQ" selected>REQ Only</option>
+                        <option value="NR">NR Only</option>
                     </select>
 
                     <select id="cvr-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
@@ -99,6 +99,27 @@
                         <option value="4-7">4-7%</option>
                         <option value="7-10">7-10%</option>
                         <option value="10plus">10%+</option>
+                    </select>
+
+                    <select id="gpft-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50-60">50-60%</option>
+                        <option value="60plus">60%+</option>
+                    </select>
+
+                    <select id="ads-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                        <option value="all">AD%</option>
+                        <option value="0-10">Below 10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-100">30-100%</option>
+                        <option value="100plus">100%+</option>
                     </select>
 
                     <select id="parent-filter" class="form-select form-select-sm"
@@ -153,31 +174,30 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <div class="row g-2">
-                        <div class="col-auto">
-                            <span id="total-sku-count-badge" class="badge bg-primary">Total SKUs: 0</span>
-                        </div>
-                        <div class="col-auto">
-                            <span id="inv-gt-0" class="badge bg-success">INV &gt; 0: 0</span>
-                        </div>
-                        <div class="col-auto">
-                            <span id="listed-count" class="badge bg-info">Listed: 0</span>
-                        </div>
-                        <div class="col-auto">
-                            <span id="live-count" class="badge bg-warning">Live: 0</span>
-                        </div>
-                        <div class="col-auto">
-                            <span id="avg-pft" class="badge bg-secondary">Avg PFT%: 0%</span>
-                        </div>
-                        <div class="col-auto">
-                            <span id="avg-roi" class="badge bg-dark">Avg ROI%: 0%</span>
-                        </div>
-                        <div class="col-auto">
-                            <span id="total-sales-amt-badge" class="badge bg-primary">Total SALES: $0</span>
-                        </div>
-                        <div class="col-auto">
-                            <span id="total-pft-amt-badge" class="badge bg-success">Total PFT: $0</span>
-                        </div>
+                    <h6 class="mb-3">All Calculations Summary</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <!-- Top Metrics -->
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="avg-pft" style="color: black; font-weight: bold;">AVG PFT: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        
+                        <!-- Walmart Metrics -->
+                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total Walmart INV: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total W L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold Count: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
+                        
+                        <!-- Financial Metrics -->
+                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
+                        
+                        <!-- Status Counts -->
+                        <span class="badge bg-primary fs-6 p-2" id="total-sku-count-badge" style="color: black; font-weight: bold;">Total SKUs: 0</span>
                     </div>
                 </div>
             </div>
@@ -223,6 +243,7 @@
 @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "walmart_tabulator_column_visibility";
+        const MARKETPLACE_PERCENTAGE = {{ $percentage ?? 80 }} / 100; // Walmart marketplace percentage
         let table = null;
 
         $(document).ready(function() {
@@ -527,7 +548,14 @@
                                 return `<span style="color: #dc3545; font-weight: 600;">100%</span>`;
                             }
                             
-                            return `${parseFloat(value).toFixed(0)}%`;
+                            // Color coding for AD%
+                            let color = '';
+                            if (percent < 10) color = '#28a745'; // green - good
+                            else if (percent >= 10 && percent < 20) color = '#ffc107'; // yellow
+                            else if (percent >= 20 && percent < 30) color = '#fd7e14'; // orange
+                            else color = '#a00211'; // red - bad
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${parseFloat(value).toFixed(0)}%</span>`;
                         },
                         width: 55
                     },
@@ -536,9 +564,12 @@
                         field: "PFT%",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '0.00%';
-                            const percent = parseFloat(value);
+                            const rowData = cell.getRow().getData();
+                            const gpft = parseFloat(rowData['GPFT%'] || 0);
+                            const ad = parseFloat(rowData['AD%'] || 0);
+                            
+                            // If AD% is 100% (no sales case), PFT% = GPFT% (same as eBay)
+                            const percent = (ad === 100) ? gpft : (gpft - ad);
                             let color = '';
                             
                             // getPftColor logic from Amazon
@@ -575,7 +606,7 @@
                         width: 65
                     },
                     {
-                        title: "BB Price",
+                        title: "W Prc",
                         field: "buybox_base_price",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -725,40 +756,6 @@
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
                         width: 80
-                    },
-                    {
-                        title: "Listed",
-                        field: "Listed",
-                        width: 70,
-                        headerSort: false,
-                        visible: true,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            const sku = cell.getRow().getData()['(Child) sku'];
-                            const isParent = cell.getRow().getData().is_parent_summary;
-
-                            if (isParent) return '';
-
-                            return `<input type="checkbox" class="form-check-input listed-checkbox" 
-                                   data-sku="${sku}" ${value ? 'checked' : ''}>`;
-                        }
-                    },
-                    {
-                        title: "Live",
-                        field: "Live",
-                        width: 70,
-                        headerSort: false,
-                        visible: true,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            const sku = cell.getRow().getData()['(Child) sku'];
-                            const isParent = cell.getRow().getData().is_parent_summary;
-
-                            if (isParent) return '';
-
-                            return `<input type="checkbox" class="form-check-input live-checkbox" 
-                                   data-sku="${sku}" ${value ? 'checked' : ''}>`;
-                        }
                     },
                     {
                         title: "SPEND L30",
@@ -990,12 +987,12 @@
                 }
 
                 if (nrlFilter !== 'all') {
-                    if (nrlFilter === 'req') {
+                    if (nrlFilter === 'REQ') {
                         // Show only REQ (exclude NR)
                         table.addFilter(function(data) {
                             return data.NR !== 'NR';
                         });
-                    } else if (nrlFilter === 'nr') {
+                    } else if (nrlFilter === 'NR') {
                         // Show only NR
                         table.addFilter(function(data) {
                             return data.NR === 'NR';
@@ -1031,6 +1028,41 @@
                     });
                 }
 
+                // GPFT% filter
+                const gpftFilter = $('#gpft-filter').val();
+                if (gpftFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
+                        const gpft = parseFloat(data['GPFT%']) || 0;
+                        
+                        if (gpftFilter === 'negative') return gpft < 0;
+                        if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
+                        if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
+                        if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
+                        if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
+                        if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
+                        if (gpftFilter === '50-60') return gpft >= 50 && gpft < 60;
+                        if (gpftFilter === '60plus') return gpft >= 60;
+                        return true;
+                    });
+                }
+
+                // AD% filter
+                const adsFilter = $('#ads-filter').val();
+                if (adsFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true;
+                        const adPercent = parseFloat(data['AD%']) || 0;
+                        
+                        if (adsFilter === '0-10') return adPercent >= 0 && adPercent < 10;
+                        if (adsFilter === '10-20') return adPercent >= 10 && adPercent < 20;
+                        if (adsFilter === '20-30') return adPercent >= 20 && adPercent < 30;
+                        if (adsFilter === '30-100') return adPercent >= 30 && adPercent <= 100;
+                        if (adsFilter === '100plus') return adPercent > 100;
+                        return true;
+                    });
+                }
+
                 if (statusFilter === 'listed') {
                     table.addFilter('Listed', '=', true);
                 } else if (statusFilter === 'live') {
@@ -1053,11 +1085,11 @@
                 updateSummary();
             }
 
-            $('#inventory-filter, #nrl-filter, #cvr-filter, #parent-filter, #status-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #cvr-filter, #gpft-filter, #ads-filter, #parent-filter, #status-filter').on('change', function() {
                 applyFilters();
             });
 
-            // Update calc values (matching Amazon's formula with 0.80)
+            // Update calc values using MARKETPLACE_PERCENTAGE
             function updateCalcValues() {
                 const data = table.getData("active");
                 let totalSales = 0;
@@ -1068,13 +1100,13 @@
                     if (row.is_parent_summary || parseFloat(row.INV) <= 0) return;
 
                     const price = parseFloat(row.price) || 0;
-                    const l30 = parseFloat(row.L30) || 0;
+                    const wL30 = parseFloat(row.W_L30) || 0;
                     const lp = parseFloat(row.LP_productmaster) || 0;
                     const ship = parseFloat(row.Ship_productmaster) || 0;
 
-                    const sales = price * l30;
-                    const profit = (price * 0.80 - lp - ship) * l30;
-                    const cogs = lp * l30;
+                    const sales = price * wL30;
+                    const profit = (price * MARKETPLACE_PERCENTAGE - lp - ship) * wL30;
+                    const cogs = lp * wL30;
 
                     totalSales += sales;
                     totalProfit += profit;
@@ -1101,27 +1133,103 @@
                 let liveCount = 0;
                 let totalSalesAmt = 0;
                 let totalPftAmt = 0;
+                let totalViews = 0;
+                let totalInv = 0;
+                let totalWL30 = 0;
+                let zeroSoldCount = 0;
+                let totalSpendL30 = 0;
+                let totalKwSpendL30 = 0;
+                let totalPmtSpendL30 = 0;
+                let totalCogs = 0;
+                let totalPrices = 0;
+                let priceCount = 0;
+                let totalDilPercent = 0;
+                let dilCount = 0;
+                let totalAdPercent = 0;
 
                 childData.forEach(row => {
                     if (parseFloat(row.INV) > 0) invGt0++;
                     if (row.Listed) listedCount++;
                     if (row.Live) liveCount++;
 
-                    const price = parseFloat(row.price) || 0;
-                    const l30 = parseFloat(row.L30) || 0;
-                    const lp = parseFloat(row.LP_productmaster) || 0;
-                    const ship = parseFloat(row.Ship_productmaster) || 0;
+                    // Only calculate totals for rows with INV > 0 (same as eBay)
+                    if (parseFloat(row.INV) > 0) {
+                        const price = parseFloat(row.price) || 0;
+                        const wL30 = parseFloat(row.W_L30) || 0;
+                        const l30 = parseFloat(row.L30) || 0;
+                        const lp = parseFloat(row.LP_productmaster) || 0;
+                        const ship = parseFloat(row.Ship_productmaster) || 0;
+                        const inv = parseFloat(row.INV) || 0;
+                        const views = parseFloat(row.insights_views) || 0;
+                        const adSpend = parseFloat(row.AD_Spend_L30) || 0;
+                        const kwSpend = parseFloat(row.kw_spend_L30) || 0;
+                        const pmtSpend = parseFloat(row.pmt_spend_L30) || 0;
 
-                    totalSalesAmt += price * l30;
-                    totalPftAmt += (price * 0.80 - lp - ship) * l30;
+                        totalSalesAmt += price * wL30;
+                        totalPftAmt += (price * MARKETPLACE_PERCENTAGE - lp - ship) * wL30;
+                        totalViews += views;
+                        totalInv += inv;
+                        totalWL30 += wL30;
+                        totalSpendL30 += adSpend;
+                        totalKwSpendL30 += kwSpend;
+                        totalPmtSpendL30 += pmtSpend;
+                        totalCogs += lp * wL30;
+                        
+                        // Count SKUs with 0 sold (W_L30 = 0)
+                        if (wL30 === 0) zeroSoldCount++;
+                        
+                        if (price > 0) {
+                            totalPrices += price;
+                            priceCount++;
+                        }
+                        
+                        const dil = parseFloat(row['E Dil%'] || row.L30 / row.INV * 100) || 0;
+                        if (!isNaN(dil)) {
+                            totalDilPercent += dil;
+                            dilCount++;
+                        }
+                        
+                        // Sum AD% for AVG PFT calculation (same as eBay2)
+                        const adPercent = parseFloat(row['AD%']) || 0;
+                        totalAdPercent += adPercent;
+                    }
                 });
 
+                // Calculate average CVR = (Total W_L30 / Total Views) * 100
+                const avgCvr = totalViews > 0 ? (totalWL30 / totalViews) * 100 : 0;
+                
+                // Calculate DIL% = average of individual DIL% (same as eBay)
+                const avgDil = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
+                
+                // Calculate average GPFT = (Total Profit / Total Sales) * 100 (same as eBay)
+                const avgGpft = totalSalesAmt > 0 ? (totalPftAmt / totalSalesAmt) * 100 : 0;
+                
+                // Calculate weighted average price = Total Sales / Total L30
+                const avgPrice = totalWL30 > 0 ? totalSalesAmt / totalWL30 : 0;
+                
+                // Calculate ROI% = (Total Profit / Total COGS) * 100
+                const roiPercent = totalCogs > 0 ? (totalPftAmt / totalCogs) * 100 : 0;
+                
+                // Calculate AVG PFT = GPFT - (Sum of AD% / count of INV > 0 rows) (same as eBay2)
+                const avgAdPercent = invGt0 > 0 ? totalAdPercent / invGt0 : 0;
+                const avgPft = avgGpft - avgAdPercent;
+
+                // Update all badges
                 $('#total-sku-count-badge').text('Total SKUs: ' + totalSkuCount.toLocaleString());
-                $('#inv-gt-0').text('INV > 0: ' + invGt0.toLocaleString());
-                $('#listed-count').text('Listed: ' + listedCount.toLocaleString());
-                $('#live-count').text('Live: ' + liveCount.toLocaleString());
-                $('#total-sales-amt-badge').text('Total SALES: $' + Math.round(totalSalesAmt).toLocaleString());
-                $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt).toLocaleString());
+                $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt).toLocaleString());
+                $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt).toLocaleString());
+                $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft.toFixed(1) + '%');
+                $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
+                $('#avg-cvr-badge').text('Avg CVR: ' + avgCvr.toFixed(2) + '%');
+                $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+                $('#total-inv-badge').text('Total Walmart INV: ' + totalInv.toLocaleString());
+                $('#total-l30-badge').text('Total W L30: ' + totalWL30.toLocaleString());
+                $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
+                $('#avg-dil-percent-badge').text('DIL %: ' + avgDil.toFixed(1) + '%');
+                $('#total-spend-l30-badge').text('Total Spend L30: $' + totalSpendL30.toFixed(2));
+                $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalCogs).toLocaleString());
+                $('#roi-percent-badge').text('ROI %: ' + roiPercent.toFixed(1) + '%');
+                $('#avg-pft').text('AVG PFT: ' + avgPft.toFixed(1) + '%');
             }
 
             // Build column visibility dropdown
@@ -1246,6 +1354,25 @@
             // Refresh button
             $('#refresh-btn').on('click', function() {
                 table.setData();
+            });
+
+            // Copy SKU button handler
+            $(document).on('click', '.copy-sku-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).data('sku');
+                navigator.clipboard.writeText(sku).then(() => {
+                    showToast('success', 'SKU copied: ' + sku);
+                }).catch(() => {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = sku;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    showToast('success', 'SKU copied: ' + sku);
+                });
             });
 
             // Import form handler
