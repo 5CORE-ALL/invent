@@ -8,6 +8,8 @@ use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\WalmartDataView;
+use App\Models\WalmartCampaignReport;
+use App\Models\WalmartListingStatus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductMaster;
@@ -86,7 +88,10 @@ class WalmartControllerMarket extends Controller
         // Fetch shopify data for these SKUs
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        // Fetch NR values for these SKUs from walmartDataView
+        // Fetch NR values from WalmartListingStatus (same table as Listing Walmart)
+        $walmartListingStatuses = WalmartListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Also get Listed/Live from WalmartDataView
         $walmartDataViews = WalmartDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch Walmart product sheet data
@@ -96,9 +101,20 @@ class WalmartControllerMarket extends Controller
         $listedValues = [];
         $liveValues = [];
 
+        // Get NR values from WalmartListingStatus (map rl_nrl: RL->REQ, NRL->NR)
+        foreach ($walmartListingStatuses as $sku => $statusRecord) {
+            $value = is_array($statusRecord->value) ? $statusRecord->value : (json_decode($statusRecord->value, true) ?: []);
+            if (isset($value['rl_nrl'])) {
+                $rlNrl = $value['rl_nrl'];
+                $nrValues[$sku] = ($rlNrl === 'RL') ? 'REQ' : (($rlNrl === 'NRL') ? 'NR' : $rlNrl);
+            } else {
+                $nrValues[$sku] = false;
+            }
+        }
+
+        // Get Listed/Live from WalmartDataView
         foreach ($walmartDataViews as $sku => $dataView) {
             $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
-            $nrValues[$sku] = $value['NR'] ?? false;
             $listedValues[$sku] = isset($value['Listed']) ? (int) $value['Listed'] : false;
             $liveValues[$sku] = isset($value['Live']) ? (int) $value['Live'] : false;
         }
@@ -297,23 +313,29 @@ class WalmartControllerMarket extends Controller
             return response()->json(['error' => 'SKU and NR are required.'], 400);
         }
 
-        $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
-        $existingValue = $dataView->value;
-
-        $value = is_array($existingValue)
-            ? $existingValue
-            : (json_decode($existingValue, true) ?: []);
-
-        $value['NR'] = $nrValue;
-
-        // ✅ assign array directly (no json_encode)
-        $dataView->value = $value;
-        $dataView->save();
+        // Map NR values: REQ -> RL, NR -> NRL
+        $rlNrlValue = ($nrValue === 'REQ') ? 'RL' : (($nrValue === 'NR') ? 'NRL' : $nrValue);
+        
+        // Save to WalmartListingStatus (same table as Listing Walmart page)
+        $status = WalmartListingStatus::where('sku', $sku)->first();
+        $statusValue = [];
+        
+        if ($status) {
+            $statusValue = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+            WalmartListingStatus::where('sku', $sku)->delete();
+        }
+        
+        $statusValue['rl_nrl'] = $rlNrlValue;
+        
+        WalmartListingStatus::create([
+            'sku' => $sku,
+            'value' => $statusValue
+        ]);
 
         return response()->json([
             'success' => true,
-            'data' => $dataView,
-            'stored_value' => $value
+            'sku' => $sku,
+            'stored_value' => $statusValue
         ]);
     }
 
@@ -638,7 +660,13 @@ class WalmartControllerMarket extends Controller
     // Tabulator view methods
     public function walmartTabulatorView(Request $request)
     {
-        return view('market-places.walmart_tabulator_view');
+        // Get percentage from database
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
+        
+        return view('market-places.walmart_tabulator_view', [
+            'percentage' => $percentage
+        ]);
     }
 
     public function walmartDataJson(Request $request)
@@ -689,8 +717,19 @@ class WalmartControllerMarket extends Controller
         // Fetch shopify data
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        // Fetch Walmart data view for NR, Listed, Live
+        // Fetch Walmart data view for Listed, Live
         $walmartDataViews = WalmartDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Fetch NR values from WalmartListingStatus (same table as Listing Walmart)
+        $walmartListingStatuses = WalmartListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Fetch ad spend data from WalmartCampaignReport (L30) - only Live campaigns, not paused
+        $normalizeSku = fn($sku) => strtoupper(trim($sku));
+        $walmartCampaignReportsL30 = WalmartCampaignReport::where('report_range', 'L30')
+            ->where('status', 'Live')
+            ->whereIn('campaignName', $nonParentSkus)
+            ->get()
+            ->keyBy(fn($item) => $normalizeSku($item->campaignName));
 
         $result = [];
         $slNo = 1;
@@ -785,13 +824,10 @@ class WalmartControllerMarket extends Controller
                 $item['image_path'] = $shopifyItem->image_src ?? ($values['image_path'] ?? null);
             }
 
-            // Get Walmart data view values
+            // Get Walmart data view values (for Listed, Live, SPRICE etc)
             if (isset($walmartDataViews[$sku])) {
                 $dataView = $walmartDataViews[$sku];
                 $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
-                // Use stored NR value if exists, otherwise calculate based on INV
-                $nrValue = $value['NR'] ?? (floatval($item['INV']) > 0 ? 'REQ' : 'NR');
-                $item['NR'] = $nrValue === 'NR' ? 'NR' : 'REQ';
                 $item['Listed'] = isset($value['Listed']) ? (bool)$value['Listed'] : false;
                 $item['Live'] = isset($value['Live']) ? (bool)$value['Live'] : false;
                 // Load saved SPRICE data
@@ -801,38 +837,68 @@ class WalmartControllerMarket extends Controller
                 $item['SROI'] = $value['SROI'] ?? 0;
                 // Load saved buybox price
                 $item['buybox_price'] = $value['buybox_price'] ?? 0;
+            }
+
+            // Get NR value from WalmartListingStatus (same table as Listing Walmart)
+            if (isset($walmartListingStatuses[$sku])) {
+                $statusRecord = $walmartListingStatuses[$sku];
+                $statusValue = is_array($statusRecord->value) ? $statusRecord->value : (json_decode($statusRecord->value, true) ?: []);
+                if (isset($statusValue['rl_nrl'])) {
+                    $rlNrl = $statusValue['rl_nrl'];
+                    // Map: RL -> REQ, NRL -> NR
+                    $item['NR'] = ($rlNrl === 'RL') ? 'REQ' : (($rlNrl === 'NRL') ? 'NR' : $rlNrl);
+                } else {
+                    $item['NR'] = floatval($item['INV']) > 0 ? 'REQ' : 'NR';
+                }
             } else {
                 // No saved data - calculate default based on INV
                 $item['NR'] = floatval($item['INV']) > 0 ? 'REQ' : 'NR';
             }
 
-            // Calculate formulas matching Amazon (using 0.80 hardcoded like Amazon)
+            // Calculate formulas using percentage from database
             $price = floatval($item['price']);
             $sprice = floatval($item['SPRICE']);
             $w_l30 = floatval($item['W_L30']);
             $l30 = floatval($item['L30']);
             $inv = floatval($item['INV']);
 
-            // AD% = 0 for now (as requested)
-            $item['AD%'] = 0;
-            $item['AD_Spend_L30'] = 0;
-            $item['kw_spend_L30'] = 0;
-            $item['pmt_spend_L30'] = 0;
+            // Get ad spend data from WalmartCampaignReport
+            $normalizedSku = $normalizeSku($sku);
+            $adSpendL30 = 0;
+            $kwSpendL30 = 0;
+            if (isset($walmartCampaignReportsL30[$normalizedSku])) {
+                $campaign = $walmartCampaignReportsL30[$normalizedSku];
+                $adSpendL30 = floatval($campaign->spend ?? 0);
+                $kwSpendL30 = floatval($campaign->spend ?? 0); // Same as ad spend for Walmart
+            }
+            
+            $item['AD_Spend_L30'] = $adSpendL30;
+            $item['kw_spend_L30'] = $kwSpendL30;
+            $item['pmt_spend_L30'] = 0; // No PMT spend for Walmart
 
-            // GPFT% Formula = ((price × 0.80 - ship - lp) / price) × 100
+            // Calculate AD% = (AD Spend / Sales) * 100
+            $salesAmount = $price * $w_l30;
+            $item['AD%'] = 0;
+            if ($salesAmount > 0) {
+                $item['AD%'] = round(($adSpendL30 / $salesAmount) * 100, 2);
+            } else if ($adSpendL30 > 0) {
+                $item['AD%'] = 100; // If there's spend but no sales
+            }
+
+            // GPFT% Formula = ((price × percentage - ship - lp) / price) × 100
             $item['GPFT%'] = 0;
             if ($price > 0) {
-                $item['GPFT%'] = round((($price * 0.80 - $ship - $lp) / $price) * 100, 2);
+                $item['GPFT%'] = round((($price * $percentage - $ship - $lp) / $price) * 100, 2);
             }
 
             // PFT% = GPFT% - AD%
             $item['PFT%'] = round(($item['GPFT%'] ?? 0) - $item['AD%'], 2);
 
-            // ROI% = ((price * (0.80 - AD%/100) - ship - lp) / lp) * 100
+            // ROI% = ((price * (percentage - AD%/100) - ship - lp) / lp) * 100
             $item['ROI_percentage'] = 0;
             $adDecimal = $item['AD%'] / 100;
             if ($lp > 0 && $price > 0) {
-                $item['ROI_percentage'] = round((($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
+                $item['ROI_percentage'] = round((($price * ($percentage - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
             }
 
             // Dil% = (L30 / INV) * 100
@@ -849,23 +915,23 @@ class WalmartControllerMarket extends Controller
                 $item['CVR_L30'] = round(($w_l30 / $sess30) * 100, 2);
             }
 
-            // SGPFT% = ((SPRICE * 0.80 - ship - lp) / SPRICE) * 100
+            // SGPFT% = ((SPRICE * percentage - ship - lp) / SPRICE) * 100
             // Only calculate if we have a saved value from database, otherwise calculate it
             if ($sprice > 0) {
                 // If SGPFT was loaded from database, use it; otherwise calculate
                 if (!isset($item['SGPFT']) || $item['SGPFT'] == 0) {
-                    $item['SGPFT'] = round((($sprice * 0.80 - $ship - $lp) / $sprice) * 100, 2);
+                    $item['SGPFT'] = round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2);
                 }
             }
 
             // SPFT% = SGPFT% - AD%
             $item['Spft%'] = round(($item['SGPFT'] ?? 0) - $item['AD%'], 2);
 
-            // SROI% = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
+            // SROI% = ((SPRICE * (percentage - AD%/100) - ship - lp) / lp) * 100
             // Only calculate if we have a saved value from database, otherwise calculate it
             if (!isset($item['SROI']) || $item['SROI'] == 0) {
                 if ($lp > 0 && $sprice > 0) {
-                    $item['SROI'] = round((($sprice * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
+                    $item['SROI'] = round((($sprice * ($percentage - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
                 }
             }
 
@@ -876,22 +942,22 @@ class WalmartControllerMarket extends Controller
                 
                 // Calculate SGPFT based on default price (only if price > 0)
                 if ($price > 0) {
-                    $item['SGPFT'] = round((($price * 0.80 - $ship - $lp) / $price) * 100, 2);
+                    $item['SGPFT'] = round((($price * $percentage - $ship - $lp) / $price) * 100, 2);
                     $item['Spft%'] = round($item['SGPFT'] - $item['AD%'], 2);
                 }
                 // Calculate SROI only if lp > 0 and price > 0
                 if ($lp > 0 && $price > 0) {
-                    $item['SROI'] = round((($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
+                    $item['SROI'] = round((($price * ($percentage - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
                 }
             } else if (!empty($item['SPRICE'])) {
                 $item['has_custom_sprice'] = true;
             }
 
-            // PFT AMT = (Price * 0.80 - LP - Ship) * L30
-            $item['pft_amt'] = ($price * 0.80 - $lp - $ship) * $l30;
+            // PFT AMT = (Price * percentage - LP - Ship) * W_L30
+            $item['pft_amt'] = ($price * $percentage - $lp - $ship) * $w_l30;
 
-            // SALES AMT = Price * L30
-            $item['sales_amt'] = $price * $l30;
+            // SALES AMT = Price * W_L30
+            $item['sales_amt'] = $price * $w_l30;
 
             $result[] = (object) $item;
         }
