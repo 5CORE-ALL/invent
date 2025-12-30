@@ -118,35 +118,40 @@ class MFRGInProgressController extends Controller
             
             // If still no image, try direct database lookup with flexible matching
             if (empty($image) && !empty($row->sku)) {
-                // Try exact match first
-                $directImage = DB::table('shopify_skus')
-                    ->whereRaw('UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(9), " "), CHAR(10), " "), CHAR(13), " "), CHAR(160), " "))) = ?', [$sku])
-                    ->whereNotNull('image_src')
-                    ->where('image_src', '!=', '')
-                    ->value('image_src');
-                
-                // If no exact match, try pattern matching
-                if (empty($directImage)) {
-                    $skuPattern = str_replace(' ', '%', $sku);
+                try {
+                    // Try exact match first - simplified query
                     $directImage = DB::table('shopify_skus')
-                        ->whereRaw('UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(9), " "), CHAR(10), " "), CHAR(13), " "), CHAR(160), " "))) LIKE ?', ['%' . $skuPattern . '%'])
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
                         ->whereNotNull('image_src')
                         ->where('image_src', '!=', '')
                         ->value('image_src');
-                }
-                
-                // If still no match, try without spaces
-                if (empty($directImage)) {
-                    $skuNoSpaces = str_replace(' ', '', $sku);
-                    $directImage = DB::table('shopify_skus')
-                        ->whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, " ", ""), CHAR(9), ""), CHAR(10), ""), CHAR(13), "")) = ?', [$skuNoSpaces])
-                        ->whereNotNull('image_src')
-                        ->where('image_src', '!=', '')
-                        ->value('image_src');
-                }
-                
-                if (!empty($directImage)) {
-                    $image = $directImage;
+                    
+                    // If no exact match, try pattern matching
+                    if (empty($directImage)) {
+                        $skuPattern = str_replace(' ', '%', $sku);
+                        $directImage = DB::table('shopify_skus')
+                            ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . $skuPattern . '%'])
+                            ->whereNotNull('image_src')
+                            ->where('image_src', '!=', '')
+                            ->value('image_src');
+                    }
+                    
+                    // If still no match, try without spaces
+                    if (empty($directImage)) {
+                        $skuNoSpaces = str_replace(' ', '', $sku);
+                        $directImage = DB::table('shopify_skus')
+                            ->whereRaw('UPPER(REPLACE(sku, " ", "")) = ?', [$skuNoSpaces])
+                            ->whereNotNull('image_src')
+                            ->where('image_src', '!=', '')
+                            ->value('image_src');
+                    }
+                    
+                    if (!empty($directImage)) {
+                        $image = $directImage;
+                    }
+                } catch (\Exception $e) {
+                    // Silently fail if database query has issues
+                    Log::warning('Image lookup query failed for SKU: ' . $row->sku, ['error' => $e->getMessage()]);
                 }
             }
 
@@ -161,13 +166,18 @@ class MFRGInProgressController extends Controller
             
             // If still no product master, try direct database lookup
             if (!$productRow && !empty($row->sku)) {
-                $directProduct = DB::table('product_master')
-                    ->whereRaw('UPPER(TRIM(REPLACE(REPLACE(REPLACE(sku, CHAR(9), " "), CHAR(10), " "), CHAR(13), " "))) = ?', [$sku])
-                    ->orWhereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . str_replace(' ', '%', $sku) . '%'])
-                    ->first();
-                
-                if ($directProduct) {
-                    $productRow = $directProduct;
+                try {
+                    $directProduct = DB::table('product_master')
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+                        ->orWhereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . str_replace(' ', '%', $sku) . '%'])
+                        ->first();
+                    
+                    if ($directProduct) {
+                        $productRow = $directProduct;
+                    }
+                } catch (\Exception $e) {
+                    // Silently fail if database query has issues
+                    Log::warning('Product master lookup query failed for SKU: ' . $row->sku, ['error' => $e->getMessage()]);
                 }
             }
 
