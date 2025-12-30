@@ -106,12 +106,16 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge fs-6 p-2" id="google-spent-badge" style="background-color: #4285f4; color: white; font-weight: bold;">Google Spent: ${{ number_format($googleSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="tacos-percentage-badge" style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0%</span>
+                        <span class="badge fs-6 p-2" id="n-pft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="n-roi-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                     </div>
                 </div>
             </div>
@@ -135,6 +139,7 @@
 <script>
     const COLUMN_VIS_KEY = "shopify_b2c_sales_column_visibility";
     let table = null;
+    const GOOGLE_SPENT = {{ $googleSpent ?? 0 }};
     
     // Toast notification function
     function showToast(message, type = 'info') {
@@ -237,12 +242,12 @@
                     frozen: true,
                     cssClass: "text-primary fw-bold"
                 },
-                {
-                    title: "Product Title",
-                    field: "title",
-                    width: 300,
-                    tooltip: true
-                },
+                // {
+                //     title: "Product Title",
+                //     field: "title",
+                //     width: 300,
+                //     tooltip: true
+                // },
                 {
                     title: "Qty",
                     field: "quantity",
@@ -325,6 +330,7 @@
                     field: "ship",
                     hozAlign: "right",
                     sorter: "number",
+                     visible: false,
                     width: 80,
                     formatter: "money",
                     formatterParams: {
@@ -339,6 +345,7 @@
                     field: "t_weight",
                     hozAlign: "right",
                     sorter: "number",
+                     visible: false,
                     width: 90
                 },
                 {
@@ -347,6 +354,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
+                     visible: false,
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -432,8 +440,23 @@
                     }
                 },
                 {
+                    title: "Spent",
+                    field: "google_spent",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 110,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
+                },
+                {
                     title: "Order Date",
                     field: "order_date",
+                    visible: false,
                     sorter: "datetime",
                     width: 160,
                     formatter: function(cell) {
@@ -446,6 +469,7 @@
                 {
                     title: "Status",
                     field: "financial_status",
+                    visible: false,
                     width: 100,
                     formatter: function(cell) {
                         const value = cell.getValue();
@@ -461,6 +485,7 @@
                     title: "Fulfillment",
                     field: "fulfillment_status",
                     width: 110,
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (!value) return '<span class="badge bg-warning">Pending</span>';
@@ -473,26 +498,31 @@
                 {
                     title: "Customer",
                     field: "customer_name",
+                     visible: false,
                     width: 150
                 },
                 {
                     title: "City",
                     field: "shipping_city",
+                     visible: false,
                     width: 120
                 },
                 {
                     title: "Country",
                     field: "shipping_country",
+                     visible: false,
                     width: 100
                 },
                 {
                     title: "Tracking",
                     field: "tracking_number",
+                     visible: false,
                     width: 150
                 },
                 {
                     title: "Tags",
                     field: "tags",
+                     visible: false,
                     width: 120
                 }
             ]
@@ -558,12 +588,23 @@
             // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
+            // Calculate TACOS Percentage: (Google Spent / Total Sales) * 100
+            const tacosPercentage = totalRevenue > 0 ? (GOOGLE_SPENT / totalRevenue) * 100 : 0;
+
+            // Calculate N PFT: PFT % - TACOS %
+            const nPft = pftPercentage - tacosPercentage;
+            
+            // Calculate N ROI: (Net Profit / Total COGS) * 100
+            // Net Profit = Total PFT - Google Spent
+            const netProfit = totalPft - GOOGLE_SPENT;
+            const nRoi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
+
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#total-sales-badge').text('Total Sales: $' + totalL30Sales.toFixed(2));
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-            $('#pft-percentage-badge').text('PFT %: ' + Math.round(pftPercentage) + '%');
-            $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
+            $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
+            $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
             $('#pft-total-badge').text('PFT Total: $' + totalPft.toFixed(2));
             
@@ -577,6 +618,9 @@
             
             $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
             $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+            $('#tacos-percentage-badge').text('TACOS %: ' + tacosPercentage.toFixed(1) + '%');
+            $('#n-pft-badge').text('N PFT: ' + nPft.toFixed(1) + '%');
+            $('#n-roi-badge').text('N ROI: ' + nRoi.toFixed(1) + '%');
         }
 
         // Build Column Visibility Dropdown
