@@ -740,6 +740,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
+        // Shein has no ads, so N ROI = G ROI and N PFT = G PFT
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
@@ -747,11 +748,15 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalRevenue,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
             'total_commission' => $totalCommission,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 
@@ -869,6 +874,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
+        // Mercari has no ads, so N ROI = G ROI and N PFT = G PFT
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalOrders, // 1 per order
@@ -876,12 +882,16 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalSales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalSales,
             'total_fees' => $totalFees,
             'net_proceeds' => $totalNetProceeds,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 
@@ -995,6 +1005,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
+        // Mercari has no ads, so N ROI = G ROI and N PFT = G PFT
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalOrders, // 1 per order
@@ -1002,12 +1013,16 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalSales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalSales,
             'total_fees' => $totalFees,
             'net_proceeds' => $totalNetProceeds,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
     
@@ -1244,6 +1259,10 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => $roiPercentage,
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
+            'n_roi' => $roiPercentage,
+            'n_pft' => $totalPft,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
         ];
     }
 
@@ -1359,10 +1378,14 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalRevenue,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 
@@ -1478,10 +1501,14 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalRevenue,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 
@@ -1709,6 +1736,10 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => $roiPercentage,
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
+            'n_roi' => $roiPercentage,
+            'n_pft' => $totalPft,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
         ];
     }
 

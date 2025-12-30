@@ -1919,6 +1919,9 @@ class ChannelMasterController extends Controller
         // N PFT = same as Gprofit% for Best Buy (no ads)
         $nPft = $gProfitPct;
 
+        // N ROI = same as G ROI for Best Buy (no ads)
+        $nRoi = $metrics->n_roi ?? $gRoi;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'BestBuy USA')->first();
 
@@ -1942,6 +1945,7 @@ class ChannelMasterController extends Controller
             'G RoiL60'      => round($gRoiL60, 2),
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2481,6 +2485,8 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
+        $nPftValue = $metrics->n_pft ?? $totalProfit;
+        $nRoi = $metrics->n_roi ?? $gRoi;
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -2489,8 +2495,8 @@ class ChannelMasterController extends Controller
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shein')->first();
@@ -2509,11 +2515,12 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60' => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'   => round($gRoiL60, 2),
-            'N PFT'      => round($nPft, 2) . '%',
+            'Gprofit%'   => round($gProfitPct, 1) . '%',
+            'gprofitL60' => round($gprofitL60, 1) . '%',
+            'G Roi'      => round($gRoi, 1),
+            'G RoiL60'   => round($gRoiL60, 1),
+            'N PFT'      => round($nPft, 1) . '%',
+            'N ROI'      => round($nRoi, 1),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2933,6 +2940,9 @@ class ChannelMasterController extends Controller
         // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
         $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
 
+        // N ROI = same as G ROI for AliExpress (no ads)
+        $nRoi = $metrics->n_roi ?? $gRoi;
+
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Aliexpress')->first();
 
@@ -2955,6 +2965,7 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -3031,9 +3042,11 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
+        $nPftValue = $metrics->n_pft ?? $totalProfit;
+        $nRoi = $metrics->n_roi ?? $gRoi;
         
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -3059,11 +3072,12 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60' => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'   => round($gRoiL60, 2),
-            'N PFT'      => round($nPft, 2) . '%',
+            'Gprofit%'   => round($gProfitPct, 1) . '%',
+            'gprofitL60' => round($gprofitL60, 1) . '%',
+            'G Roi'      => round($gRoi, 1),
+            'G RoiL60'   => round($gRoiL60, 1),
+            'N PFT'      => round($nPft, 1) . '%',
+            'N ROI'      => round($nRoi, 1),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -3136,9 +3150,11 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
+        $nPftValue = $metrics->n_pft ?? $totalProfit;
+        $nRoi = $metrics->n_roi ?? $gRoi;
         
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -3164,11 +3180,12 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60' => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'   => round($gRoiL60, 2),
-            'N PFT'      => round($nPft, 2) . '%',
+            'Gprofit%'   => round($gProfitPct, 1) . '%',
+            'gprofitL60' => round($gprofitL60, 1) . '%',
+            'G Roi'      => round($gRoi, 1),
+            'G RoiL60'   => round($gRoiL60, 1),
+            'N PFT'      => round($nPft, 1) . '%',
+            'N ROI'      => round($nRoi, 1),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -3802,6 +3819,8 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
+        $nPftValue = $metrics->n_pft ?? $totalProfit;
+        $nRoi = $metrics->n_roi ?? $gRoi;
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -3810,8 +3829,8 @@ class ChannelMasterController extends Controller
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shopify B2C')->first();
@@ -3830,11 +3849,12 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60' => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'   => round($gRoiL60, 2),
-            'N PFT'      => round($nPft, 2) . '%',
+            'Gprofit%'   => round($gProfitPct, 1) . '%',
+            'gprofitL60' => round($gprofitL60, 1) . '%',
+            'G Roi'      => round($gRoi, 1),
+            'G RoiL60'   => round($gRoiL60, 1),
+            'N PFT'      => round($nPft, 1) . '%',
+            'N ROI'      => round($nRoi, 1),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -3912,6 +3932,8 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
+        $nPftValue = $metrics->n_pft ?? $totalProfit;
+        $nRoi = $metrics->n_roi ?? $gRoi;
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -3920,8 +3942,8 @@ class ChannelMasterController extends Controller
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shopify B2B')->first();
@@ -3940,11 +3962,12 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60' => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'   => round($gRoiL60, 2),
-            'N PFT'      => round($nPft, 2) . '%',
+            'Gprofit%'   => round($gProfitPct, 1) . '%',
+            'gprofitL60' => round($gprofitL60, 1) . '%',
+            'G Roi'      => round($gRoi, 1),
+            'G RoiL60'   => round($gRoiL60, 1),
+            'N PFT'      => round($nPft, 1) . '%',
+            'N ROI'      => round($nRoi, 1),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,

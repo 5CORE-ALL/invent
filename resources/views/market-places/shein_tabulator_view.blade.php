@@ -608,8 +608,8 @@
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-            $('#pft-percentage-badge').text('PFT %: ' + Math.round(pftPercentage) + '%');
-            $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
+            $('#pft-percentage-badge').text('PFT %: ' + pftPercentage.toFixed(1) + '%');
+            $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
             $('#pft-total-badge').text('PFT Total: $' + totalPft.toFixed(2));
             
