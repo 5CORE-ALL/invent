@@ -1106,6 +1106,17 @@
                         }
                     },
                     {
+                        title: "Price",
+                        field: "price",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return "$" + value.toFixed(2);
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
                         title: "Missing",
                         field: "hasCampaign",
                         hozAlign: "center",

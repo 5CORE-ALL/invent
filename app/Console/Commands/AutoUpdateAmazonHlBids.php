@@ -354,7 +354,7 @@ class AutoUpdateAmazonHlBids extends Command
                 continue; // Skip if invalid bid
             }
 
-            if ($ub7 > 90 && $ub1 > 90) {
+            if ($ub7 > 99 && $ub1 > 99) {
                 $result[] = (object) $row;
             }
 

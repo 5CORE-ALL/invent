@@ -220,7 +220,7 @@ class AutoUpdateAmzUnderHlBids extends Command
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
             // New SBID rule - matching page filter: NRA !== 'NRA', campaignName !== '', ub7 < 70 && ub1 < 70
-            if ($row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 70 && $ub1 < 70)) {
+            if ($row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
                 if ($ub7 < 10 || $l7_cpc == 0) {
                     $row['sbid'] = 0.75;
                 } else if ($l7_cpc > 0 && $l7_cpc < 0.30) {

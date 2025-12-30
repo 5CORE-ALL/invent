@@ -1964,6 +1964,7 @@ class AmazonSpBudgetController extends Controller
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                     'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
+                    'price' => ($amazonSheet && isset($amazonSheet->price)) ? $amazonSheet->price : 0,
                     'l7_spend' => 0,
                     'l7_cpc' => 0,
                     'l1_spend' => 0,
