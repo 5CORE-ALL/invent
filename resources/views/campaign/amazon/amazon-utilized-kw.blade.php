@@ -587,11 +587,11 @@
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
                     
                     // 7UB + 1UB condition categorization (matches command)
-                    if (ub7 > 90 && ub1 > 90) {
+                    if (ub7 > 99 && ub1 > 99) {
                         overCount++;
-                    } else if (ub7 < 70 && ub1 < 70) {
+                    } else if (ub7 < 66 && ub1 < 66) {
                         underCount++;
-                    } else if (ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90) {
+                    } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
                         correctlyCount++;
                     }
                 });
@@ -1135,18 +1135,44 @@
                                 sbgt = 1;
                             }
 
+                            return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
+                        },
+                    },
+                    {
+                        title: "ACOS",
+                        field: "acos",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var acosRaw = row.acos; 
+                            var acos = parseFloat(acosRaw);
+                            if (isNaN(acos)) {
+                                acos = 0;
+                            }
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            
                             var clicks = parseInt(row.l30_clicks || 0).toLocaleString();
                             var spend = "$" + parseFloat(row.l30_spend || 0).toFixed(0);
                             var adSold = parseInt(row.l30_purchases || 0).toLocaleString();
                             var tooltipText = "Clicks: " + clicks + "\nSpend: " + spend + "\nAd Sold: " + adSold;
-
-                            return `
-                                <div class="text-center">
-                                    <span class="fw-bold sbgt-value">${sbgt}</span>
-                                    <i class="bi bi-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i>
-                                </div>
-                            `;
-                        },
+                            
+                            var acosDisplay;
+                            if (acos === 0) {
+                                td.classList.add('red-bg');
+                                acosDisplay = "100%"; 
+                            } else if (acos < 7) {
+                                td.classList.add('pink-bg');
+                                acosDisplay = acos.toFixed(0) + "%";
+                            } else if (acos >= 7 && acos <= 14) {
+                                td.classList.add('green-bg');
+                                acosDisplay = acos.toFixed(0) + "%";
+                            } else if (acos > 14) {
+                                td.classList.add('red-bg');
+                                acosDisplay = acos.toFixed(0) + "%";
+                            }
+                            return `<div class="text-center">${acosDisplay}<i class="bi bi-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
+                        }
                     },
                     {
                         title: "Clicks L30",
@@ -1167,7 +1193,7 @@
                         visible: false,
                         formatter: function(cell) {
                             var value = parseFloat(cell.getValue() || 0);
-                            return "$" + value.toFixed(0);
+                            return value.toFixed(0);
                         },
                         sorter: "number",
                         width: 90
@@ -1183,32 +1209,6 @@
                         },
                         sorter: "number",
                         width: 90
-                    },
-                    {
-                        title: "ACOS",
-                        field: "acos",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var acosRaw = row.acos; 
-                            var acos = parseFloat(acosRaw);
-                            if (isNaN(acos)) {
-                                acos = 0;
-                            }
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (acos === 0) {
-                                td.classList.add('red-bg');
-                                return "100%"; 
-                            } else if (acos < 7) {
-                                td.classList.add('pink-bg');
-                            } else if (acos >= 7 && acos <= 14) {
-                                td.classList.add('green-bg');
-                            } else if (acos > 14) {
-                                td.classList.add('red-bg');
-                            }
-                            return acos.toFixed(0) + "%";
-                        }
                     },
                     {
                         title: "AD CVR",
@@ -1538,14 +1538,14 @@
                 if (currentUtilizationType === 'all') {
                     // Show all data (no filter on utilization)
                 } else if (currentUtilizationType === 'over') {
-                    // Over-utilized: ub7 > 90 && ub1 > 90
-                    if (!(ub7 > 90 && ub1 > 90)) return false;
+                    // Over-utilized: ub7 > 99 && ub1 > 99
+                    if (!(ub7 > 99 && ub1 > 99)) return false;
                 } else if (currentUtilizationType === 'under') {
-                    // Under-utilized: ub7 < 70
-                    if (!(ub7 < 70 && ub1 < 70)) return false;
+                    // Under-utilized: ub7 < 66
+                    if (!(ub7 < 66 && ub1 < 66)) return false;
                 } else if (currentUtilizationType === 'correctly') {
-                    // Correctly-utilized: ub7 >= 70 && ub7 <= 90
-                    if (!(ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90)) return false;
+                    // Correctly-utilized: ub7 >= 66 && ub7 <= 99
+                    if (!(ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99)) return false;
                 }
 
                 // Global search filter

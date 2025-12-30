@@ -1000,7 +1000,13 @@
 
                             var sbid = 0;
                             
-                            sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                            if(l1_cpc > 0) {
+                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                            }else if(l7_cpc > 0) {
+                                sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                            }else{
+                                sbid = 0.50;
+                            }
                             sbid = sbid.toFixed(2);
                             return sbid;
                         },
@@ -1024,7 +1030,13 @@
                                 var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
 
                                 var sbid = 0;
-                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                if(l1_cpc > 0) {
+                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                }else if(l7_cpc > 0) {
+                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                }else{
+                                    sbid = 0.50;
+                                }
                                 sbid = sbid.toFixed(2);
                                 updateBid(sbid, rowData.campaign_id);
                             }
@@ -1265,7 +1277,13 @@
 
                         var sbid = 0;
 
-                        sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                        if(l1_cpc > 0) {
+                            sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                        }else if(l7_cpc > 0) {
+                            sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                        }else{
+                            sbid = 0.50;
+                        }
                         sbid = sbid.toFixed(2);
 
                         campaignIds.push(rowData.campaign_id);

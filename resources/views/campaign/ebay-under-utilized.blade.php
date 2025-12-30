@@ -972,8 +972,10 @@
 
                             if (ub7 < 10) {
                                 sbid = 0.50;
-                            }else {
+                            }else if(l7_cpc > 0) {
                                 sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                            }else if(l1_cpc > 0) {
+                                sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
                             }
                             
                             sbid = sbid.toFixed(2);
@@ -999,10 +1001,12 @@
                                 var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
 
                                 var sbid = 0;
-                                if(l7_cpc == 0) {
-                                    sbid = 0.75;
-                                }else{
+                                if (ub7 < 10) {
+                                    sbid = 0.50;
+                                }else if(l7_cpc > 0) {
                                     sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                                }else if(l1_cpc > 0) {
+                                    sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
                                 }
                                 sbid = sbid.toFixed(2);
                                 updateBid(sbid, rowData.campaign_id);
@@ -1188,11 +1192,14 @@
                         var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
 
                         var sbid = 0;
-                        if(l7_cpc == 0) {
-                            sbid = 0.75;
-                        }else{
+                        if (ub7 < 10) {
+                            sbid = 0.50;
+                        }else if(l7_cpc > 0) {
                             sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                        }else if(l1_cpc > 0) {
+                            sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
                         }
+                        
                         sbid = sbid.toFixed(2);
 
                         campaignIds.push(rowData.campaign_id);
