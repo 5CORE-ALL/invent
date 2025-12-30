@@ -564,9 +564,12 @@
                         field: "PFT%",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '0.00%';
-                            const percent = parseFloat(value);
+                            const rowData = cell.getRow().getData();
+                            const gpft = parseFloat(rowData['GPFT%'] || 0);
+                            const ad = parseFloat(rowData['AD%'] || 0);
+                            
+                            // If AD% is 100% (no sales case), PFT% = GPFT% (same as eBay)
+                            const percent = (ad === 100) ? gpft : (gpft - ad);
                             let color = '';
                             
                             // getPftColor logic from Amazon
