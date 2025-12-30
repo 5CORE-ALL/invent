@@ -216,6 +216,15 @@
                                                 0
                                             </div>
                                         </div>
+                                        <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                                        <div class="text-center flex-fill">
+                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                                🔢 Total Items
+                                            </div>
+                                            <div id="total-order-items" class="fw-bold text-warning" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                                0
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -262,6 +271,7 @@
                                 {{-- <th data-column="16">photo int.<br/>sale<div class="resizer"></div></th> --}}
                                 <th data-column="14">CBM<div class="resizer"></div></th>
                                 <th data-column="15" hidden>total<br/>cbm<div class="resizer"></div></th>
+                                <th data-column="20" class="text-center">CTN CBM E<div class="resizer"></div></th>
                                 {{-- <th data-column="19" class="text-center">BARCODE<br/>&<br/>SKU<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="20">artwork<br/>&<br/>maual<br/>book<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="21">notes<div class="resizer"></div></th> --}}
@@ -439,28 +449,36 @@
                                          data-column="pay_conf_date" class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px;">
                                     </td>
                                     @php
-                                        $bgColor = '';
+                                        $textColor = '';
                                         $daysDiff = null;
+                                        $formattedDate = '';
 
                                         if (!empty($item->created_at)) {
-                                            $daysDiff = \Carbon\Carbon::parse($item->created_at)->diffInDays(\Carbon\Carbon::today());
+                                            $date = \Carbon\Carbon::parse($item->created_at);
+                                            $daysDiff = $date->diffInDays(\Carbon\Carbon::today());
+                                            
+                                            // Format date with 3-letter month in uppercase: 15 DEC 2024
+                                            $day = $date->format('d');
+                                            $month = strtoupper($date->format('M')); // M gives 3-letter month like Jan, Feb - convert to uppercase
+                                            $year = $date->format('Y');
+                                            $formattedDate = $day . ' ' . $month . ' ' . $year;
 
                                             if ($daysDiff > 25) {
-                                                $bgColor = 'background-color: red; color: black;';
+                                                $textColor = 'color: red;';
                                             } elseif ($daysDiff >= 15 && $daysDiff <= 25) {
-                                                $bgColor = 'background-color: yellow; color: black;';
+                                                $textColor = 'color: #ffc107;'; // Yellow text
                                             } else {
-                                                $bgColor = 'color: black;';
+                                                $textColor = 'color: black;';
                                             }
                                         }
                                     @endphp
                                     <td data-column="10">
-                                        <div style="display: flex; align-items: center; gap: 4px;">
+                                        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
                                             <input type="date" data-sku="{{ $item->sku }}" data-column="created_at" value="{{ !empty($item->created_at) ? \Carbon\Carbon::parse($item->created_at)->format('Y-m-d') : '' }}" 
-                                            class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px; {{ $bgColor }}">
-                                            @if ($daysDiff !== null)
-                                                <span style="font-size: 12px; color: rgb(72, 69, 69); white-space: nowrap;">
-                                                    {{ $daysDiff }} D
+                                            class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px; {{ $textColor }}">
+                                            @if ($daysDiff !== null && !empty($formattedDate))
+                                                <span style="font-size: 11px; {{ $textColor }}; white-space: nowrap; font-weight: 500;">
+                                                    {{ $formattedDate }} ({{ $daysDiff }}D)
                                                 </span>
                                             @endif
                                         </div>
@@ -544,6 +562,10 @@
 
                                     <td data-column="14">
                                         {{ isset($item->CBM) ? number_format($item->CBM, 4) : 'N/A' }}
+                                    </td>
+
+                                    <td data-column="20" class="text-center">
+                                        {{ isset($item->ctn_cbm_e) && $item->ctn_cbm_e !== null ? number_format($item->ctn_cbm_e, 4) : 'N/A' }}
                                     </td>
 
                                     <td data-column="15" hidden>
@@ -659,6 +681,9 @@
 
         //total amount
         calculateTotalAmount();
+
+        //total order items count
+        calculateTotalOrderItems();
 
         // Delete with checkbox functionality
         setupDeleteWithCheckbox();
@@ -941,6 +966,11 @@
                             this.style.border = '2px solid green';
                             setTimeout(() => this.style.border = '', 1000);
 
+                            // Update supplier counts if supplier changed
+                            if (column === 'supplier' && updateSupplierCounts) {
+                                updateSupplierCounts();
+                            }
+
                             // ✅ Recalculate Total on rate change
                             if (column === 'rate') {
                                 const qtyCell = row.querySelector('td[data-column="4"]');
@@ -1197,6 +1227,7 @@
             calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderQty();
+            calculateTotalOrderItems();
         }
 
         function setupAutoUpload() {
@@ -1414,6 +1445,7 @@
                             calculateTotalCBM();
                             calculateTotalAmount();
                             calculateTotalOrderQty();
+                            calculateTotalOrderItems();
                             
                             alert(`Successfully deleted ${data.deleted_count} item(s).`);
                         } else {
@@ -1431,6 +1463,59 @@
             updateDeleteButton();
         }
 
+        // Function to calculate and update supplier counts (defined globally)
+        function updateSupplierCounts() {
+            const optionsContainer = document.getElementById('customSelectOptions');
+            if (!optionsContainer) return;
+            
+            const allOptions = Array.from(optionsContainer.querySelectorAll('.custom-select-option'));
+            const allRows = document.querySelectorAll('tbody tr');
+            const supplierCounts = {};
+            
+            // Count rows for each supplier (only MIP stage)
+            allRows.forEach(row => {
+                // Check stage from data attribute first (more reliable)
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                
+                // Only count MIP stage rows
+                if (rowStage !== 'mip') {
+                    return;
+                }
+                
+                const supplierCell = row.querySelector('td[data-column="6"]');
+                if (supplierCell) {
+                    const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
+                    const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
+                    if (supplierName && supplierName !== '' && supplierName !== 'supplier') {
+                        supplierCounts[supplierName] = (supplierCounts[supplierName] || 0) + 1;
+                    }
+                }
+            });
+            
+            // Update option text with counts
+            allOptions.forEach(option => {
+                const optionText = option.textContent.trim();
+                const supplierName = optionText.replace(/\s*\(\d+\)\s*$/, ''); // Remove existing count
+                
+                // Skip "All supplier" and "Supplier" options
+                if (optionText === 'All supplier' || optionText === 'Supplier' || option.getAttribute('data-value') === '__all_suppliers__') {
+                    return;
+                }
+                
+                // Update with count if supplier exists
+                if (supplierCounts[supplierName] !== undefined) {
+                    option.textContent = `${supplierName} (${supplierCounts[supplierName]})`;
+                    option.setAttribute('data-count', supplierCounts[supplierName]);
+                } else {
+                    option.textContent = supplierName;
+                    option.setAttribute('data-count', '0');
+                }
+            });
+        }
+
         function setupSupplierAdvanceCalculation() {
             const selectBox = document.getElementById('customSelectBox');
             const dropdown = document.getElementById('customSelectDropdown');
@@ -1446,6 +1531,10 @@
                 selectBox.classList.toggle('active', dropdown.style.display === 'block');
                 searchInput.value = '';
                 allOptions.forEach(option => option.style.display = '');
+                
+                // Update counts when dropdown opens
+                updateSupplierCounts();
+                
                 setTimeout(() => searchInput.focus(), 100);
             });
 
@@ -1455,11 +1544,17 @@
                 // UI update
                 allOptions.forEach(opt => opt.classList.remove('selected', 'bg-primary', 'text-white'));
                 e.target.classList.add('selected', 'bg-primary', 'text-white');
-                selectedText.textContent = e.target.textContent;
+                
+                // Get text without count for display
+                const optionText = e.target.textContent.trim();
+                const displayText = optionText.replace(/\s*\(\d+\)\s*$/, '');
+                selectedText.textContent = displayText;
+                
                 dropdown.style.display = 'none';
                 selectBox.classList.remove('active');
 
-                const selectedSupplier = e.target.textContent.trim();
+                // Remove count from supplier name for comparison
+                const selectedSupplier = optionText.replace(/\s*\(\d+\)\s*$/, '').trim();
                 const selectedValue = e.target.getAttribute('data-value');
                 const allRows = document.querySelectorAll('tbody tr');
 
@@ -1574,6 +1669,7 @@
                     calculateTotalCBM();
                     calculateTotalAmount();
                     calculateTotalOrderQty();
+                    calculateTotalOrderItems();
                     return;
                 } else {
                     wrapper.style.display = 'block';
@@ -1582,7 +1678,16 @@
                 // Calculate total group value
                 let totalGroupValue = 0;
                 matchingRows.forEach(row => {
-                    const qty = parseFloat(row.querySelector('td[data-column="4"]')?.innerText || '0') || 0;
+                    const qtyCell = row.querySelector('td[data-column="4"]');
+                    let qty = 0;
+                    if (qtyCell) {
+                        const qtyInput = qtyCell.querySelector('input');
+                        if (qtyInput) {
+                            qty = parseFloat(qtyInput.value) || 0;
+                        } else {
+                            qty = parseFloat(qtyCell.textContent.trim()) || parseFloat(qtyCell.getAttribute('data-qty')) || 0;
+                        }
+                    }
                     const rate = parseFloat(row.querySelector('input[data-column="rate"]')?.value || '0') || 0;
                     totalGroupValue += qty * rate;
                 });
@@ -1600,9 +1705,19 @@
                 let supplierTotalCBM = 0;
                 let supplierTotalOrderQty = 0;
                 let supplierTotalAmount = 0;
+                let supplierTotalItems = 0;
 
                 matchingRows.forEach(row => {
-                    const qty = parseFloat(row.querySelector('td[data-column="4"]')?.innerText || '0') || 0;
+                    const qtyCell = row.querySelector('td[data-column="4"]');
+                    let qty = 0;
+                    if (qtyCell) {
+                        const qtyInput = qtyCell.querySelector('input');
+                        if (qtyInput) {
+                            qty = parseFloat(qtyInput.value) || 0;
+                        } else {
+                            qty = parseFloat(qtyCell.textContent.trim()) || parseFloat(qtyCell.getAttribute('data-qty')) || 0;
+                        }
+                    }
                     const rate = parseFloat(row.querySelector('input[data-column="rate"]')?.value || '0') || 0;
                     const rowTotal = qty * rate;
 
@@ -1610,13 +1725,13 @@
                     const pendingInput = row.querySelector('input[data-column="pending"]');
 
                     const cbmInput = row.querySelector('input[data-column="total_cbm"]');
-                    const orderQtyCell = row.querySelector('td[data-column="4"]');
 
                     const cbm = parseFloat(cbmInput?.value || '0');
 
                     if (!isNaN(cbm)) supplierTotalCBM += cbm;
                     if (!isNaN(qty)) supplierTotalOrderQty += qty;
                     supplierTotalAmount += rowTotal;
+                    supplierTotalItems++;
 
                     let rowAdvance = 0;
                     if (totalGroupValue > 0 && rowTotal > 0) {
@@ -1634,10 +1749,11 @@
                 document.getElementById('advance-amount').textContent = totalAdvance.toFixed(2);
                 document.getElementById('pending-amount').textContent = totalPending.toFixed(2);
 
-                // Update supplier cbm and order qty
+                // Update supplier cbm and order qty (update main totals with supplier filtered values)
                 document.getElementById('total-cbm').textContent = supplierTotalCBM.toFixed(2);
                 document.getElementById('total-order-qty').textContent = supplierTotalOrderQty;
-                document.getElementById('total-amount').textContent = supplierTotalAmount;
+                document.getElementById('total-amount').textContent = supplierTotalAmount.toFixed(0);
+                document.getElementById('total-order-items').textContent = supplierTotalItems;
 
                 // Animate wrapper
                 wrapper.classList.add('animate__animated', 'animate__fadeIn');
@@ -1731,8 +1847,19 @@
         let supplierIndex = 0;
         let intervalId = null;
 
-        // Collect unique suppliers
+        // Collect unique suppliers (only from MIP stage rows)
         rows.forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only collect suppliers from MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
             const supplierCell = row.querySelector('td[data-column="6"]');
             if (supplierCell) {
                 // Get supplier from dropdown
@@ -1746,6 +1873,18 @@
 
         function showSupplierRows(supplier) {
             rows.forEach(row => {
+                // Check stage from data attribute first (more reliable)
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                
+                // Only show MIP stage rows
+                if (rowStage !== 'mip') {
+                    row.style.display = "none";
+                    return;
+                }
+                
                 const cell = row.querySelector('td[data-column="6"]');
                 if (cell) {
                     // Get supplier from dropdown
@@ -1768,6 +1907,7 @@
             calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderQty();
+            calculateTotalOrderItems();
         }
 
         function playNextSupplier() {
@@ -1775,10 +1915,21 @@
             showSupplierRows(suppliers[supplierIndex]);
         }
 
-        // Function to refresh supplier list
+        // Function to refresh supplier list (only from MIP stage rows)
         function refreshSupplierList() {
             suppliers.length = 0; // Clear existing list
             rows.forEach(row => {
+                // Check stage from data attribute first (more reliable)
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                
+                // Only collect suppliers from MIP stage rows
+                if (rowStage !== 'mip') {
+                    return;
+                }
+                
                 const supplierCell = row.querySelector('td[data-column="6"]');
                 if (supplierCell) {
                     const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
@@ -1810,12 +1961,29 @@
         document.getElementById("play-pause").addEventListener("click", function () {
             this.style.display = "none";
             document.getElementById("play-auto").style.display = "inline-block";
-            rows.forEach(row => row.style.display = "");
-                const title = document.getElementById("current-supplier");
+            
+            // Show only MIP stage rows when pausing
+            rows.forEach(row => {
+                // Check stage from data attribute first (more reliable)
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                
+                // Only show MIP stage rows
+                if (rowStage === 'mip') {
+                    row.style.display = "";
+                } else {
+                    row.style.display = "none";
+                }
+            });
+            
+            const title = document.getElementById("current-supplier");
             if (title) title.textContent = "";
             calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderQty();
+            calculateTotalOrderItems();
         });
 
 
@@ -1918,10 +2086,31 @@
     function calculateTotalOrderQty() {
         let totalOrderQty = 0;
         document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only count MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
             if (row.style.display !== "none") { 
-                const cell = row.querySelector('[data-column="4"]');
+                const cell = row.querySelector('td[data-column="4"]');
                 if (cell) {
-                    const value = parseFloat(cell.textContent.trim());
+                    // Try to get value from input field first
+                    const input = cell.querySelector('input');
+                    let value = 0;
+                    
+                    if (input) {
+                        value = parseFloat(input.value) || 0;
+                    } else {
+                        // Fallback to textContent or data attribute
+                        value = parseFloat(cell.textContent.trim()) || parseFloat(cell.getAttribute('data-qty')) || 0;
+                    }
+                    
                     if (!isNaN(value)) {
                         totalOrderQty += value;
                     }
@@ -1930,6 +2119,29 @@
         });
 
         document.getElementById('total-order-qty').textContent = totalOrderQty;
+    }
+
+    function calculateTotalOrderItems() {
+        let totalItems = 0;
+        document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only count MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
+            // Only count visible rows
+            if (row.style.display !== "none") {
+                totalItems++;
+            }
+        });
+
+        document.getElementById('total-order-items').textContent = totalItems;
     }
 
     // Filter to show only MIP stage on page load
@@ -1950,10 +2162,18 @@
         calculateTotalCBM();
         calculateTotalAmount();
         calculateTotalOrderQty();
+        calculateTotalOrderItems();
     }
 
     // Initialize filter on page load
     filterByMIPStageOnLoad();
+    
+    // Update supplier counts on page load
+    setTimeout(() => {
+        if (updateSupplierCounts) {
+            updateSupplierCounts();
+        }
+    }, 500);
 
 </script>
 
