@@ -15,6 +15,7 @@ use App\Models\ShopifyB2CDailyData;
 use App\Models\ShopifyB2BDailyData;
 use App\Models\TikTokDailyData;
 use App\Models\MiraklDailyData;
+use App\Models\DobaDailyData;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\ChannelMaster;
@@ -48,6 +49,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Shopify B2B' => fn() => $this->calculateShopifyB2BMetrics($date),
             'TikTok' => fn() => $this->calculateTikTokMetrics($date),
             'Best Buy USA' => fn() => $this->calculateBestBuyMetrics($date),
+            'Doba' => fn() => $this->calculateDobaMetrics($date),
         ];
 
         foreach ($channels as $channel => $calculator) {
@@ -629,8 +631,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             $cogs = $lp * $quantity;
             $totalCogs += $cogs;
 
-            // Calculate PFT: (FB Prc * 0.87 - LP - Temu Ship) * Quantity
-            $pft = ($fbPrice * 0.87 - $lp - $temuShip) * $quantity;
+            // Calculate PFT: (FB Prc * 0.91 - LP - Temu Ship) * Quantity (matching blade view)
+            $pft = ($fbPrice * 0.91 - $lp - $temuShip) * $quantity;
             $totalPft += $pft;
         }
 
@@ -738,6 +740,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
+        // Shein has no ads, so N ROI = G ROI and N PFT = G PFT
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
@@ -745,11 +748,15 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalRevenue,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
             'total_commission' => $totalCommission,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 
@@ -867,6 +874,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
+        // Mercari has no ads, so N ROI = G ROI and N PFT = G PFT
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalOrders, // 1 per order
@@ -874,12 +882,16 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalSales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalSales,
             'total_fees' => $totalFees,
             'net_proceeds' => $totalNetProceeds,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 
@@ -993,6 +1005,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
+        // Mercari has no ads, so N ROI = G ROI and N PFT = G PFT
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalOrders, // 1 per order
@@ -1000,12 +1013,16 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalSales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalSales,
             'total_fees' => $totalFees,
             'net_proceeds' => $totalNetProceeds,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
     
@@ -1242,6 +1259,10 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => $roiPercentage,
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
+            'n_roi' => $roiPercentage,
+            'n_pft' => $totalPft,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
         ];
     }
 
@@ -1357,10 +1378,14 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalRevenue,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 
@@ -1476,10 +1501,14 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalRevenue,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => $pftPercentage,
-            'roi_percentage' => $roiPercentage,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 
@@ -1707,6 +1736,124 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => $roiPercentage,
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
+            'n_roi' => $roiPercentage,
+            'n_pft' => $totalPft,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+        ];
+    }
+
+    private function calculateDobaMetrics($date)
+    {
+        // Get Doba L30 orders from DobaDailyData (matching DobaSalesController)
+        $orders = DobaDailyData::where('period', 'L30')
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return null;
+        }
+
+        // Get unique SKUs
+        $skus = $orders->pluck('sku')->filter()->unique()->values()->toArray();
+
+        // Get ProductMaster data keyed by SKU
+        $productMasters = ProductMaster::whereIn('sku', $skus)
+            ->get()
+            ->keyBy('sku');
+
+        // Doba uses 0.95 margin (matching DobaSalesController)
+        $margin = 0.95;
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($orders as $order) {
+            if (!$order->sku || $order->sku === '') continue;
+
+            $totalOrders++;
+            $quantity = (int) ($order->quantity ?? 1);
+            $itemPrice = (float) ($order->item_price ?? 0);
+            $totalPrice = (float) ($order->total_price ?? 0);
+            
+            $totalQuantity += $quantity;
+            $totalRevenue += $totalPrice;
+
+            if ($quantity > 0 && $itemPrice > 0) {
+                $totalWeightedPrice += $itemPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            // Get LP and Ship from ProductMaster
+            $lp = 0;
+            $ship = 0;
+
+            if (isset($productMasters[$order->sku])) {
+                $pm = $productMasters[$order->sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                
+                // Get LP
+                if (isset($values['lp'])) {
+                    $lp = floatval($values['lp']);
+                }
+                
+                // Get Ship
+                if (isset($values['ship'])) {
+                    $ship = floatval($values['ship']);
+                }
+            }
+
+            // COGS = LP * quantity
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            // Ship Cost calculation (matching DobaSalesController)
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // PFT Each = (itemPrice * 0.95) - ship - lp
+            // If order type is "Pickup with a prepaid label", don't reduce shipping cost
+            if (strtolower($order->order_type ?? '') === 'pickup with a prepaid label') {
+                $pftEach = ($itemPrice * $margin) - $lp;
+            } else {
+                $pftEach = ($itemPrice * $margin) - $ship - $lp;
+            }
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        // Doba has no ads, so N ROI = G ROI and N PFT = G PFT
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 }
