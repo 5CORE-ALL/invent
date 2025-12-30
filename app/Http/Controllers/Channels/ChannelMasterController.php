@@ -662,82 +662,28 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Use ebay2_orders table (same as Ebay2SalesController)
-        $orders = Ebay2Order::with('items')
-            ->where('period', 'l30')
-            ->get();
-
+        // Get metrics from marketplace_daily_metrics table (pre-calculated, same as Amazon)
+        $metrics = MarketplaceDailyMetric::where('channel', 'eBay 2')->latest('date')->first();
+        
+        // Get L60 data from orders for comparison
         $ordersL60 = Ebay2Order::with('items')
             ->where('period', 'l60')
             ->get();
 
+        // Calculate L60 Sales and metrics
+        $l60Orders = 0;
+        $l60Sales = 0;
+        $totalProfitL60 = 0;
+        $totalCogsL60 = 0;
+
         // Get eBay 2 marketing percentage
         $percentage = ChannelMaster::where('channel', 'EbayTwo')->value('channel_percentage') ?? 85;
-        $percentageDecimal = $percentage / 100; // convert % to fraction
+        $percentageDecimal = $percentage / 100;
 
         // Load product masters (lp, ship) keyed by SKU
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
-
-        // Calculate L30 metrics
-        $l30Orders = 0;
-        $l30Sales = 0;
-        $totalProfit = 0;
-        $totalCogs = 0;
-
-        foreach ($orders as $order) {
-            foreach ($order->items as $item) {
-                if (!$item->sku || $item->sku === '') continue;
-
-                $l30Orders++;
-                $quantity = (int) ($item->quantity ?? 1);
-                $price = (float) ($item->price ?? 0);
-                $l30Sales += $price;
-
-                $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-
-                // Get LP and Ship from ProductMaster
-                $sku = strtoupper($item->sku);
-                $lp = 0;
-                $ship = 0;
-
-                if (isset($productMasters[$sku])) {
-                    $pm = $productMasters[$sku];
-                    $values = is_array($pm->Values) ? $pm->Values :
-                            (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                    // Get LP
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-
-                    // Get Ship (ebay2_ship or ship)
-                    $ship = isset($values["ebay2_ship"]) && $values["ebay2_ship"] !== null 
-                        ? floatval($values["ebay2_ship"]) 
-                        : (isset($values["ship"]) ? floatval($values["ship"]) : 0);
-                }
-
-                // COGS = LP * quantity
-                $totalCogs += ($lp * $quantity);
-
-                // PFT Each = (unitPrice * percentage) - lp - ship
-                $pftEach = ($unitPrice * $percentageDecimal) - $lp - $ship;
-                $totalProfit += ($pftEach * $quantity);
-            }
-        }
-
-        // Calculate L60 metrics
-        $l60Orders = 0;
-        $l60Sales = 0;
-        $totalProfitL60 = 0;
-        $totalCogsL60 = 0;
 
         foreach ($ordersL60 as $order) {
             foreach ($order->items as $item) {
@@ -780,11 +726,28 @@ class ChannelMasterController extends Controller
             }
         }
 
+        // Use pre-calculated metrics from MarketplaceDailyMetric (same as Amazon)
+        $l30Sales = $metrics->total_sales ?? 0;
+        $l30Orders = $metrics->total_orders ?? 0;
+        $totalProfit = $metrics->total_pft ?? 0;
+        $totalCogs = $metrics->total_cogs ?? 0;
+        $gProfitPct = $metrics->pft_percentage ?? 0;
+        $gRoi = $metrics->roi_percentage ?? 0;
+        $tacosPercentage = $metrics->tacos_percentage ?? 0;
+        $nPft = $metrics->n_pft ?? 0;
+        $nRoi = $metrics->n_roi ?? 0;
+        $kwSpent = $metrics->kw_spent ?? 0;
+        $pmtSpent = $metrics->pmt_spent ?? 0;
+
+        // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        
+        // L60 profit percentage
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
+
+        // Calculate Ads %
+        $adsPercentage = $l30Sales > 0 ? (($kwSpent + $pmtSpent) / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'EbayTwo')->first();
@@ -804,12 +767,16 @@ class ChannelMasterController extends Controller
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
             'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60'   => round($gprofitL60, 2) . '%',
+            'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
-            'G RoiL60'      => round($gRoiL60, 2),
-            'KW Spent'   => 0,
-            'PMT Spent'  => 0,
-            'Total Ad Spend' => 0,
+            'G RoiL60'   => round($gRoiL60, 2),
+            'Total PFT'  => round($totalProfit, 2),
+            'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
+            'KW Spent'   => round($kwSpent, 2),
+            'PMT Spent'  => round($pmtSpent, 2),
+            'Total Ad Spend' => round($kwSpent + $pmtSpent, 2),
+            'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
