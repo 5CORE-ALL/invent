@@ -127,7 +127,7 @@
                             <div class="custom-select-wrapper" style="min-width: 150px; position: relative;">
                                 <div class="custom-select-box d-flex align-items-center justify-content-between" id="customSelectBox"
                                     style="border: 1.5px solid #e0e6ed; border-radius: 7px; background: #fff; height: 38px; padding: 0 14px; cursor: pointer; box-shadow: 0 1px 4px rgba(60,192,195,0.07); transition: border-color 0.2s;">
-                                    <span id="customSelectSelectedText" class="flex-grow-1 text-truncate" style="font-size: 1rem; color: #222;">Select supplier</span>
+                                    <span id="customSelectSelectedText" class="flex-grow-1 text-truncate" style="font-size: 1rem; color: #222;">All supplier</span>
                                     <i class="mdi mdi-menu-down" style="font-size: 1.3rem; color: #3bc0c3;"></i>
                                 </div>
                                 <div class="custom-select-dropdown shadow" id="customSelectDropdown"
@@ -1463,7 +1463,7 @@
                 const selectedValue = e.target.getAttribute('data-value');
                 const allRows = document.querySelectorAll('tbody tr');
 
-                if (!selectedSupplier || selectedSupplier === 'Select supplier') {
+                if (!selectedSupplier || selectedSupplier === 'Select supplier' || selectedSupplier === 'All supplier') {
                     document.getElementById('advance-total-wrapper').style.display = 'none';
                     // Reset all rows visibility
                     allRows.forEach(row => {
