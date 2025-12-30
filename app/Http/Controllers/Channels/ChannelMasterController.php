@@ -1347,93 +1347,38 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $query = DobaSheetdata::where('sku', 'not like', '%Parent%');
+        // Use pre-calculated metrics from MarketplaceDailyMetric (like Amazon, eBay 2, Temu)
+        $latestMetric = MarketplaceDailyMetric::where('channel', 'Doba')
+            ->orderBy('date', 'desc')
+            ->first();
 
-        $l30Orders = $query->sum('l30');
-        $l60Orders = $query->sum('l60');
+        // Get L60 data for comparison (60 days ago)
+        $l60Date = Carbon::today()->subDays(60)->format('Y-m-d');
+        $l60Metric = MarketplaceDailyMetric::where('channel', 'Doba')
+            ->where('date', $l60Date)
+            ->first();
 
-        $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
+        // Current metrics
+        $l30Sales = $latestMetric ? $latestMetric->l30_sales : 0;
+        $l30Orders = $latestMetric ? $latestMetric->total_orders : 0;
+        $totalCogs = $latestMetric ? $latestMetric->total_cogs : 0;
+        $totalPft = $latestMetric ? $latestMetric->total_pft : 0;
+        $gProfitPct = $latestMetric ? $latestMetric->pft_percentage : 0;
+        $gRoi = $latestMetric ? $latestMetric->roi_percentage : 0;
+        $nPft = $latestMetric ? ($latestMetric->n_pft ?? $totalPft) : 0;
+        $nRoi = $latestMetric ? ($latestMetric->n_roi ?? $gRoi) : 0;
 
+        // L60 metrics
+        $l60Sales = $l60Metric ? $l60Metric->l30_sales : 0;
+        $l60Orders = $l60Metric ? $l60Metric->total_orders : 0;
+        $gprofitL60 = $l60Metric ? $l60Metric->pft_percentage : 0;
+        $gRoiL60 = $l60Metric ? $l60Metric->roi_percentage : 0;
+
+        // Growth calculation
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
 
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Doba')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
-
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'l30','l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
-
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->l30;
-            $unitsL60  = (int) $row->l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
-
-            $lp   = 0;
-            $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
-        }
-
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // N PFT percentage
+        $nPftPct = $l30Sales > 0 ? ($nPft / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Doba')->first();
@@ -1452,11 +1397,12 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60'   => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'      => round($gRoiL60, 2),
-            'N PFT'      => round($nPft, 2) . '%',
+            'Gprofit%'   => round($gProfitPct, 1) . '%',
+            'gprofitL60'   => round($gprofitL60, 1) . '%',
+            'G Roi'      => round($gRoi, 1),
+            'G RoiL60'      => round($gRoiL60, 1),
+            'N PFT'      => round($nPftPct, 1) . '%',
+            'N ROI'      => round($nRoi, 1),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1522,6 +1468,8 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
+        $nRoi = $metrics->n_roi ?? $gRoi; // N ROI = G ROI when no ads
+        $nPft = $metrics->n_pft ?? $gProfitPct; // N PFT = G PFT when no ads
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -1551,6 +1499,8 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
+            'N ROI'      => round($nRoi, 2),
+            'N PFT'      => round($nPft, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,

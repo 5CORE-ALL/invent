@@ -1909,19 +1909,12 @@
                             const channel = (row['Channel'] || '').trim().toLowerCase();
                             let nRoi = 0;
                             
-                            // For Amazon and eBay, use the N ROI from backend
-                            if (channel === 'amazon' || channel === 'ebay') {
+                            // For channels that return N ROI from backend, use it directly
+                            if (row['N ROI'] !== undefined && row['N ROI'] !== null) {
                                 nRoi = pctFix(row['N ROI'] || 0);
                             } else {
-                                // For other channels, calculate N ROI = (Net Profit / COGS) * 100
-                                // Net Profit = (GPFT% - Ads%) / 100 * L30 Sales
-                                const gpft = pctFix(row['Gprofit%'] || 0);
-                                const ads = pctFix(row['Ads%'] || 0);
-                                const l30Sales = toNum(row['L30 Sales'] || 0);
-                                const cogs = toNum(row['cogs'] || 0);
-                                
-                                const netProfitAmount = ((gpft - ads) / 100) * l30Sales;
-                                nRoi = cogs !== 0 ? (netProfitAmount / cogs) * 100 : 0;
+                                // For other channels without N ROI, use G ROI (same as N ROI when no ads)
+                                nRoi = toNum(row['G Roi'] || 0);
                             }
                             
                             if (type === 'sort' || type === 'type') return nRoi;
