@@ -2487,6 +2487,21 @@
                         },
                         width: 70
                     },
+                    {
+                        title: "eBay2 <br> Ship",
+                        field: "ebay2_ship",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: "money",
+                        formatterParams: {
+                            decimal: ".",
+                            thousand: ",",
+                            symbol: "$",
+                            precision: 2
+                        },
+                        width: 70
+                    },
                   
                     // {
                     //     title: "Listed",
@@ -3104,7 +3119,8 @@
                 'Live': 'Live',
                 'SCVR': 'SCVR',
                 'kw_spend_L30': 'KW Spend L30',
-                'pmt_spend_L30': 'PMT Spend L30'
+                'pmt_spend_L30': 'PMT Spend L30',
+                'ebay2_ship': 'eBay2 Ship'
             };
 
             // Build export columns list

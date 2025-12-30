@@ -288,6 +288,7 @@ class EbayTwoController extends Controller
             $row["pmt_ads"] = $pmtAds;
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
+            $row["ebay2_ship"] = $ship;
 
             // NR & Hide
             $row['NR'] = "";
