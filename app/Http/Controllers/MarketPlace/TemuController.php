@@ -853,6 +853,7 @@ class TemuController extends Controller
             'iphone_serial_number' => 'iphone_serial_number',
             'virtual_email' => 'virtual_email',
             'activity_goods_base_price' => 'activity_goods_base_price',
+            'goods_base_price' => 'base_price_total',  // "goods base price" column maps to base_price_total
             'base_price_total' => 'base_price_total',
             'tracking_number' => 'tracking_number',
             'carrier' => 'carrier',
