@@ -890,31 +890,7 @@
                             },
                         },
 
-                        {
-                            title: "Pft%",
-                            field: "Pft%",
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const value = cell.getValue();
-                                return `
-                                    <span>${value || ''}</span>
-                                    <i class="fa fa-info-circle text-primary pft-toggle-btn" 
-                                        style="cursor:pointer; margin-left:8px;" 
-                                        title="Toggle related columns"></i>
-                                `;
-                            }
-                        },
-
-
-                        {
-                            title: "ROI%",
-                            field: "ROI%",
-                            hozAlign: "center",
-                            visible: false,
-                            formatter: function(cell) {
-                                return cell.getValue();
-                            }
-                        },
+                       
 
                         {
                             title: "GPFT%",
@@ -937,7 +913,7 @@
                         },
 
                         {
-                            title: "TACOS",
+                            title: "Ads%",
                             field: "TCOS_Percentage",
                             hozAlign: "center",
                             editor: "input",
@@ -984,6 +960,33 @@
                                 });
                             }
                         },
+
+                         {
+                            title: "Pft%",
+                            field: "Pft%",
+                            hozAlign: "center",
+                            formatter: function(cell) {
+                                const value = cell.getValue();
+                                return `
+                                    <span>${value || ''}</span>
+                                    <i class="fa fa-info-circle text-primary pft-toggle-btn" 
+                                        style="cursor:pointer; margin-left:8px;" 
+                                        title="Toggle related columns"></i>
+                                `;
+                            }
+                        },
+
+
+                        {
+                            title: "ROI%",
+                            field: "ROI%",
+                            hozAlign: "center",
+                            visible: false,
+                            formatter: function(cell) {
+                                return cell.getValue();
+                            }
+                        },
+
 
 
                         {
