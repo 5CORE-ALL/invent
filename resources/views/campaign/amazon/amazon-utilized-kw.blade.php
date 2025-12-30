@@ -1234,11 +1234,11 @@
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
                             
                             // Color logic based on UB7 only (Amazon rules)
-                            if (ub7 >= 70 && ub7 <= 90) {
+                            if (ub7 >= 66 && ub7 <= 99) {
                                 td.classList.add('green-bg');
-                            } else if (ub7 > 90) {
+                            } else if (ub7 > 99) {
                                 td.classList.add('pink-bg');
-                            } else if (ub7 < 70) {
+                            } else if (ub7 < 66) {
                                 td.classList.add('red-bg');
                             }
                             return ub7.toFixed(0) + "%";
@@ -1255,11 +1255,11 @@
                             var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub1 >= 70 && ub1 <= 90) {
+                            if (ub1 >= 66 && ub1 <= 99) {
                                 td.classList.add('green-bg');
-                            } else if (ub1 > 90) {
+                            } else if (ub1 > 99) {
                                 td.classList.add('pink-bg');
-                            } else if (ub1 < 70) {
+                            } else if (ub1 < 66) {
                                 td.classList.add('red-bg');
                             }
                             return ub1.toFixed(0) + "%";
