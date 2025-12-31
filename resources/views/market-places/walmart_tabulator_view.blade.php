@@ -161,6 +161,11 @@
                         <i class="fas fa-upload"></i> Import
                     </button>
 
+                    <!-- Import Ratings Button -->
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#importRatingsModal">
+                        <i class="fas fa-star"></i> Import Ratings
+                    </button>
+
                     <!-- Template Download Button -->
                     <a href="{{ url('/walmart-analytics/sample') }}" class="btn btn-sm btn-info">
                         <i class="fas fa-download"></i> Template
@@ -232,6 +237,42 @@
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                         <button type="submit" class="btn btn-primary" id="uploadBtn">
                             <i class="fas fa-upload"></i> Upload
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Ratings Modal -->
+    <div class="modal fade" id="importRatingsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Import Walmart Ratings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="importRatingsForm">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Select CSV/Excel File</label>
+                            <input type="file" class="form-control" id="ratingsFile" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">Upload a CSV/Excel file with columns: <strong>sku, rating</strong> (0-5)</div>
+                        </div>
+                        <div class="alert alert-info">
+                            <small><strong>Example format:</strong></small>
+                            <br><code>sku,rating<br>ABC123,4.5<br>DEF456,3.8</code>
+                        </div>
+                        <div class="mt-2">
+                            <a href="/walmart-ratings-sample" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-download"></i> Download Sample Template
+                            </a>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="uploadRatingsBtn">
+                            <i class="fa fa-upload"></i> Import
                         </button>
                     </div>
                 </form>
@@ -312,6 +353,27 @@
                                 </button>
                             </div>`;
                         }
+                    },
+                    {
+                        title: "Rating",
+                        field: "rating",
+                        hozAlign: "center",
+                        editor: "input",
+                        tooltip: "Enter rating between 0 and 5",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+
+                            if (!value || value === null || value === 0) {
+                                return '<span style="color: #999;">-</span>';
+                            }
+
+                            return `<span style="font-weight: 600;"><i class="fa fa-star" style="color: orange; font-size: 10px;"></i> ${parseFloat(value).toFixed(1)}</span>`;
+                        },
+                        width: 70
                     },
                     {
                         title: "INV",
@@ -965,6 +1027,37 @@
                             showToast('error', 'Failed to update buybox price');
                         }
                     });
+                } else if (field === 'rating') {
+                    const sku = data['(Child) sku'];
+                    const rating = parseFloat(cell.getValue());
+
+                    // Validate rating
+                    if (isNaN(rating) || rating < 0 || rating > 5) {
+                        showToast('error', 'Rating must be between 0 and 5');
+                        cell.setValue(data.rating || null);
+                        return;
+                    }
+
+                    // Save to database
+                    $.ajax({
+                        url: '/update-walmart-rating',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            sku: sku,
+                            rating: rating
+                        },
+                        success: function(response) {
+                            showToast('success', 'Rating updated successfully');
+                            row.update({ rating: rating });
+                        },
+                        error: function(xhr) {
+                            showToast('error', 'Failed to update rating');
+                            cell.setValue(data.rating || null);
+                        }
+                    });
                 } else if (field === 'price') {
                     updateCalcValues();
                 }
@@ -1425,6 +1518,49 @@
                     complete: function() {
                         $('#uploadBtn').prop('disabled', false).html(
                             '<i class="fas fa-upload"></i> Upload');
+                    }
+                });
+            });
+
+            // Import Ratings Handler
+            $('#importRatingsForm').on('submit', function(e) {
+                e.preventDefault();
+
+                const formData = new FormData();
+                const file = $('#ratingsFile')[0].files[0];
+
+                if (!file) {
+                    showToast('error', 'Please select a file');
+                    return;
+                }
+
+                formData.append('file', file);
+                formData.append('_token', $('meta[name="csrf-token"]').attr('content'));
+
+                const uploadBtn = $('#uploadRatingsBtn');
+                uploadBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Importing...');
+
+                $.ajax({
+                    url: '/import-walmart-ratings',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        uploadBtn.prop('disabled', false).html('<i class="fa fa-upload"></i> Import');
+                        $('#importRatingsModal').modal('hide');
+                        $('#ratingsFile').val('');
+                        showToast('success', response.success || 'Ratings imported successfully');
+                        
+                        // Reload table data
+                        setTimeout(() => {
+                            table.setData('/walmart-data-json');
+                        }, 1000);
+                    },
+                    error: function(xhr) {
+                        uploadBtn.prop('disabled', false).html('<i class="fa fa-upload"></i> Import');
+                        const errorMsg = xhr.responseJSON?.error || 'Failed to import ratings';
+                        showToast('error', errorMsg);
                     }
                 });
             });

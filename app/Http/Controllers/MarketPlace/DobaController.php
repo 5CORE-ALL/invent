@@ -688,4 +688,37 @@ class DobaController extends Controller
             'dobaPercentage' => $percentage,
         ]);
     }
+
+    /**
+     * Get Doba summary metrics from marketplace_daily_metrics table
+     */
+    public function getDobaSummaryMetrics()
+    {
+        $metrics = DB::table('marketplace_daily_metrics')
+            ->where('channel', 'Doba')
+            ->orderBy('date', 'desc')
+            ->first();
+
+        if (!$metrics) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No metrics found for Doba'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'date' => $metrics->date,
+                'total_orders' => $metrics->total_orders,
+                'total_quantity' => $metrics->total_quantity,
+                'total_sales' => $metrics->total_sales,
+                'total_cogs' => $metrics->total_cogs,
+                'total_pft' => $metrics->total_pft,
+                'pft_percentage' => $metrics->pft_percentage,
+                'roi_percentage' => $metrics->roi_percentage,
+                'avg_price' => $metrics->avg_price,
+            ]
+        ]);
+    }
 }
