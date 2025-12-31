@@ -73,22 +73,14 @@ class FetchEbay3DailyData extends Command
             return null;
         }
 
-        $credentials = base64_encode("{$clientId}:{$clientSecret}");
-
-        $response = Http::withoutVerifying()
-            ->asForm()
-            ->withHeaders([
-                'Authorization' => "Basic {$credentials}",
-                'Content-Type' => 'application/x-www-form-urlencoded',
-            ])
+        $response = Http::asForm()
+            ->withBasicAuth($clientId, $clientSecret)
+            ->timeout(30)
+            ->connectTimeout(15)
+            ->retry(2, 1000)
             ->post($this->baseUrl . '/identity/v1/oauth2/token', [
                 'grant_type' => 'refresh_token',
                 'refresh_token' => $refreshToken,
-                'scope' => implode(' ', [
-                    'https://api.ebay.com/oauth/api_scope',
-                    'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
-                    'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
-                ]),
             ]);
 
         if ($response->successful()) {
