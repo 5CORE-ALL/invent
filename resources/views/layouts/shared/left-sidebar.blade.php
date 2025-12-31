@@ -2458,12 +2458,9 @@
                                     <li>
                                         <a href="#">Listing Audit doba</a>
                                     </li>
-                                    <li>
-                                        <a href="{{ url('doba-pricing-cvr') }}">Doba Pricing </a>
-                                    </li>
-
+                                   
                                        <li>
-                                        <a href="{{ url('doba-tabulator') }}">Doba Listing </a>
+                                        <a href="{{ url('doba-tabulator') }}">Doba pricing Inc/Dsc </a>
                                     </li>
 
                                 </ul>

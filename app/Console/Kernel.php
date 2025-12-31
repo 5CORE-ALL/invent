@@ -148,9 +148,19 @@ class Kernel extends ConsoleKernel
         $schedule->command('app:ebay-campaign-reports')
             ->dailyAt('05:00')
             ->timezone('UTC');
+        // Doba Daily Sales Data - Fetch last 60 days (runs first)
+        $schedule->command('doba:daily --days=60')
+            ->dailyAt('01:50')
+            ->timezone('Asia/Kolkata')
+            ->name('doba-daily')
+            ->withoutOverlapping();
+
+        // Doba Metrics - Calculate L30/L60 from doba_daily_data (runs after doba:daily)
         $schedule->command('app:fetch-doba-metrics')
-            ->dailyAt('00:00')
-            ->timezone('UTC');
+            ->dailyAt('02:00')
+            ->timezone('Asia/Kolkata')
+            ->name('doba-metrics')
+            ->withoutOverlapping();
 
         // Collect FBA metrics for historical tracking
 

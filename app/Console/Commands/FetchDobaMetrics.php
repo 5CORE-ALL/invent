@@ -31,26 +31,34 @@ class FetchDobaMetrics extends Command
      */
     public function handle()
     {
-        $this->info("Calculating Doba Metrics from doba_daily_data...");
+        $this->info("Fetching Doba Metrics from API...");
         
-        // Calculate L30/L60 quantities from daily data
+        // First fetch prices from API
+        $this->fetchPricesFromApi();
+        
+        // Then calculate L30/L60 quantities from daily data
         $this->getQuantity();
         
         $this->info("Doba metrics updated successfully!");
         return;
+    }
 
-        // Skip API call for now due to IP whitelist
-        /*
-        $this->info("Fetching Doba Metrics...");
+    /**
+     * Fetch prices and item IDs from Doba API
+     */
+    private function fetchPricesFromApi()
+    {
+        $this->info("Fetching Doba prices from API...");
 
         $page = 1;
+        $totalUpdated = 0;
 
         do {
             $timestamp = $this->getMillisecond();
             $getContent = $this->getContent($timestamp);
             $sign = $this->generateSignature($getContent);
             
-            $response = Http::withHeaders([
+            $response = Http::withoutVerifying()->withHeaders([
                 'appKey' => env('DOBA_APP_KEY'),
                 'signType' => 'rsa2',
                 'timestamp' => $timestamp,
@@ -66,64 +74,74 @@ class FetchDobaMetrics extends Command
                 return;
             }
 
-            $data = $response['businessData']['data']['dsGoodsDetailResultVOS'];
-            if (empty($data)) break;
+            $responseData = $response->json();
+            $data = $responseData['businessData']['data']['dsGoodsDetailResultVOS'] ?? [];
+            
+            if (empty($data)) {
+                $this->info("No more data at page {$page}");
+                break;
+            }
+            
             foreach ($data as $product) {
                 foreach ($product['skus'] as $sku) {
                     $item = $sku['stocks'][0] ?? null;
 
                     if (!$item) continue;
 
+                    // Handle empty strings for numeric fields
+                    $selfPickPrice = !empty($item['selfPickAnticipatedIncome']) ? $item['selfPickAnticipatedIncome'] : null;
+                    $msrp = !empty($sku['msrp']) ? $sku['msrp'] : null;
+                    $map = !empty($sku['map']) ? $sku['map'] : null;
+
                     DobaMetric::updateOrCreate(
                         ['sku' => $sku['skuCode']],
                         [
                             'item_id' => $item['itemNo'],
                             'anticipated_income' => $item['anticipatedIncome'],
+                            'self_pick_price' => $selfPickPrice,
+                            'msrp' => $msrp,
+                            'map' => $map,
                         ]
                     );
+                    $totalUpdated++;
                 }
             }
+            
+            $this->info("Page {$page}: Processed " . count($data) . " products");
             $page++;
         } while (count($data) === 100);
 
-        $this->getQuantity();
-        $this->info("Done.");
-        */
+        $this->info("Updated prices for {$totalUpdated} SKUs from API");
     }
 
     private function getQuantity()
     {
-        $this->info("Calculating Doba L30/L60 from doba_daily_data..."); 
+        $this->info("Calculating Doba L30/L60 from doba_daily_data using period column..."); 
         
-        $today = Carbon::today();
-        $l30Start = $today->copy()->subDays(30);
-        $l60Start = $today->copy()->subDays(60);
-        
-        $this->info("L30 range: {$l30Start->toDateString()} to {$today->toDateString()}");
-        $this->info("L60 range: {$l60Start->toDateString()} to {$l30Start->copy()->subDay()->toDateString()}");
-        
-        // Aggregate L30 data from doba_daily_data
+        // Aggregate L30 data from doba_daily_data using period column (set by doba:daily command)
         $l30Data = DB::table('doba_daily_data')
             ->select('sku', 
                 DB::raw('SUM(quantity) as total_quantity'),
-                DB::raw('COUNT(DISTINCT order_no) as order_count'))
+                DB::raw('COUNT(DISTINCT order_no) as order_count'),
+                DB::raw('SUM(total_price) as total_sales'),
+                DB::raw('AVG(item_price) as avg_price'))
             ->whereNotNull('sku')
-            ->where('order_time', '>=', $l30Start)
-            ->where('order_time', '<=', $today)
-            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled'])
+            ->whereRaw("LOWER(period) = 'l30'")
+            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
             ->groupBy('sku')
             ->get()
             ->keyBy('sku');
         
-        // Aggregate L60 data from doba_daily_data
+        // Aggregate L60 data from doba_daily_data using period column
         $l60Data = DB::table('doba_daily_data')
             ->select('sku', 
                 DB::raw('SUM(quantity) as total_quantity'),
-                DB::raw('COUNT(DISTINCT order_no) as order_count'))
+                DB::raw('COUNT(DISTINCT order_no) as order_count'),
+                DB::raw('SUM(total_price) as total_sales'),
+                DB::raw('AVG(item_price) as avg_price'))
             ->whereNotNull('sku')
-            ->where('order_time', '>=', $l60Start)
-            ->where('order_time', '<', $l30Start)
-            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled'])
+            ->whereRaw("LOWER(period) = 'l60'")
+            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
             ->groupBy('sku')
             ->get()
             ->keyBy('sku');
@@ -134,12 +152,14 @@ class FetchDobaMetrics extends Command
         // Get all unique SKUs from both periods
         $allSkus = $l30Data->keys()->merge($l60Data->keys())->unique();
         
-        // Update doba_metrics with aggregated quantities and order counts
+        // Update doba_metrics with aggregated quantities, order counts, and price data
         foreach ($allSkus as $sku) {
             $l30Qty = $l30Data->get($sku)->total_quantity ?? 0;
             $l60Qty = $l60Data->get($sku)->total_quantity ?? 0;
             $l30Count = $l30Data->get($sku)->order_count ?? 0;
             $l60Count = $l60Data->get($sku)->order_count ?? 0;
+            $avgPrice = $l30Data->get($sku)->avg_price ?? ($l60Data->get($sku)->avg_price ?? 0);
+            $totalSales = $l30Data->get($sku)->total_sales ?? 0;
             
             DobaMetric::updateOrCreate(
                 ['sku' => $sku],
@@ -148,6 +168,7 @@ class FetchDobaMetrics extends Command
                     'quantity_l60' => (int) $l60Qty,
                     'order_count_l30' => (int) $l30Count,
                     'order_count_l60' => (int) $l60Count,
+                    'anticipated_income' => round($avgPrice, 2),
                 ]
             );
         }
