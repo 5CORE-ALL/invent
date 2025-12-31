@@ -244,15 +244,6 @@ class MFRGInProgressController extends Controller
             $row->ctn_cbm_e = $ctnCbmE;
             $row->price_from_po = $priceFromPO;
             $row->currency_from_po = $currencyFromPO;
-            
-            // Debug logging for specific SKU (can be removed later)
-            if (stripos($row->sku, 'WF 12120 8OHMS') !== false || stripos($row->sku, 'WF121208OHMS') !== false) {
-                Log::info('Image lookup for SKU: ' . $row->sku, [
-                    'normalized_sku' => $sku,
-                    'found_image' => $row->Image,
-                    'sku_variations' => $skuVariations
-                ]);
-            }
         }
 
 

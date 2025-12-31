@@ -559,6 +559,7 @@ class ForecastAnalysisController extends Controller
                                 'qty' => $qtyToSet,
                                 'ready_to_ship' => 'No',
                                 'parent' => $parent, // Update parent if different
+                                'created_at' => now(),
                                 'updated_at' => now(),
                             ]);
                     } else {

@@ -865,11 +865,7 @@
                 document.getElementById('ra-card').style.boxShadow = '';
                     
                     if (typeof table !== 'undefined' && table) {
-                        // Update column visibility for SBID only; APR BID remains hidden
-                        table.hideColumn('sbid');
-                        if (currentUtilizationType !== 'correctly' && currentUtilizationType !== 'all') {
-                            table.showColumn('sbid');
-                        }
+                        // APR BID remains hidden
                         table.hideColumn('apr_bid');
 
                         // Give Tabulator a brief moment to recalc layout, then apply filter and redraw
@@ -1345,14 +1341,29 @@
                             if (aBudget > 0) {
                                 aUb7 = (parseFloat(aData.l7_spend) || 0) / (aBudget * 7) * 100;
                             }
+                            var aUb1 = 0;
+                            if (aBudget > 0) {
+                                aUb1 = (parseFloat(aData.l1_spend) || 0) / aBudget * 100;
+                            }
+                            
+                            // Determine utilization type for row A
+                            var aRowType = 'all';
+                            if (aUb7 > 99 && aUb1 > 99) {
+                                aRowType = 'over';
+                            } else if (aUb7 < 66 && aUb1 < 66) {
+                                aRowType = 'under';
+                            } else if (aUb7 >= 66 && aUb7 <= 99 && aUb1 >= 66 && aUb1 <= 99) {
+                                aRowType = 'correctly';
+                            }
+                            
                             var aSbid = 0;
-                            if (currentUtilizationType === 'over') {
+                            if (aRowType === 'over') {
                                 if (aL7Cpc === 0) {
                                     aSbid = 0.75;
                                 } else {
                                     aSbid = Math.floor(aL1Cpc * 0.90 * 100) / 100;
                                 }
-                            } else if (currentUtilizationType === 'under') {
+                            } else if (aRowType === 'under') {
                                 if (aUb7 < 10 || aL7Cpc === 0 || aL1Cpc === 0) {
                                     aSbid = 0.75;
                                 } else {
@@ -1368,14 +1379,29 @@
                             if (bBudget > 0) {
                                 bUb7 = (parseFloat(bData.l7_spend) || 0) / (bBudget * 7) * 100;
                             }
+                            var bUb1 = 0;
+                            if (bBudget > 0) {
+                                bUb1 = (parseFloat(bData.l1_spend) || 0) / bBudget * 100;
+                            }
+                            
+                            // Determine utilization type for row B
+                            var bRowType = 'all';
+                            if (bUb7 > 99 && bUb1 > 99) {
+                                bRowType = 'over';
+                            } else if (bUb7 < 66 && bUb1 < 66) {
+                                bRowType = 'under';
+                            } else if (bUb7 >= 66 && bUb7 <= 99 && bUb1 >= 66 && bUb1 <= 99) {
+                                bRowType = 'correctly';
+                            }
+                            
                             var bSbid = 0;
-                            if (currentUtilizationType === 'over') {
+                            if (bRowType === 'over') {
                                 if (bL7Cpc === 0) {
                                     bSbid = 0.75;
                                 } else {
                                     bSbid = Math.floor(bL1Cpc * 0.90 * 100) / 100;
                                 }
-                            } else if (currentUtilizationType === 'under') {
+                            } else if (bRowType === 'under') {
                                 if (bUb7 < 10 || bL7Cpc === 0 || bL1Cpc === 0) {
                                     bSbid = 0.75;
                                 } else {
@@ -1385,9 +1411,7 @@
                             
                             return aSbid - bSbid;
                         },
-                        visible: function() {
-                            return currentUtilizationType !== 'correctly' && currentUtilizationType !== 'all';
-                        },
+                        visible: true,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
@@ -1399,14 +1423,26 @@
                             }
                             
                             var sbid = 0;
-                            if (currentUtilizationType === 'over') {
-                                // Over-utilized: l7_cpc * 0.90 (if l7_cpc === 0, then 0.75)
+                            
+                            // Determine utilization type for this row
+                            var rowUtilizationType = 'all';
+                            if (ub7 > 99 && parseFloat(row.l1_spend || 0) / budget * 100 > 99) {
+                                rowUtilizationType = 'over';
+                            } else if (ub7 < 66 && parseFloat(row.l1_spend || 0) / budget * 100 < 66) {
+                                rowUtilizationType = 'under';
+                            } else if (ub7 >= 66 && ub7 <= 99 && parseFloat(row.l1_spend || 0) / budget * 100 >= 66 && parseFloat(row.l1_spend || 0) / budget * 100 <= 99) {
+                                rowUtilizationType = 'correctly';
+                            }
+                            
+                            // Calculate SBID based on row's utilization type
+                            if (rowUtilizationType === 'over') {
+                                // Over-utilized: l1_cpc * 0.90 (if l7_cpc === 0, then 0.75)
                                 if (l7_cpc === 0) {
                                     sbid = 0.75;
                                 } else {
                                     sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                                 }
-                            } else if (currentUtilizationType === 'under') {
+                            } else if (rowUtilizationType === 'under') {
                                 // Under-utilized: Complex logic based on ub7 and l7_cpc
                                 if (ub7 < 10 || l7_cpc === 0 || l1_cpc === 0) {
                                     sbid = 0.75;
@@ -1414,10 +1450,10 @@
                                     sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
                                 }
                             } else {
-                                // Correctly-utilized: Usually no SBID (empty)
+                                // Correctly-utilized or all: no SBID change needed
                                 sbid = 0;
                             }
-                            return sbid;
+                            return sbid === 0 ? '-' : sbid;
                         }
                     },
                     {
@@ -1685,12 +1721,6 @@
             table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
                 
-                // Set initial column visibility based on current utilization type
-                if (currentUtilizationType === 'correctly' || currentUtilizationType === 'all') {
-                    table.hideColumn('sbid');
-                } else {
-                    table.showColumn('sbid');
-                }
                 // Ensure APR BID remains hidden
                 table.hideColumn('apr_bid');
 
