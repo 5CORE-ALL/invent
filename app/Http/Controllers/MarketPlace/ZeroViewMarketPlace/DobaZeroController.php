@@ -132,11 +132,9 @@ class DobaZeroController extends Controller
 
     public function getViewDobaZeroData(Request $request)
     {
-        // Get percentage from cache or database
-        $percentage = Cache::remember('mercariWShip_marketplace_percentage', now()->addDays(30), function () {
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Doba')->first();
-            return $marketplaceData ? $marketplaceData->percentage : 100;
-        });
+        // Get percentage directly from database (no cache)
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Doba')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
         $percentageValue = $percentage / 100;
 
         // Fetch ProductMaster records excluding PARENT rows (do as much filtering in DB as possible)

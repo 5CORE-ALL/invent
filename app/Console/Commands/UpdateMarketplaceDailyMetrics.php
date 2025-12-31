@@ -40,6 +40,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Amazon' => fn() => $this->calculateAmazonMetrics($date),
             'eBay' => fn() => $this->calculateEbayMetrics($date),
             'eBay 2' => fn() => $this->calculateEbay2Metrics($date),
+            'eBay 3' => fn() => $this->calculateEbay3Metrics($date),
             'Temu' => fn() => $this->calculateTemuMetrics($date),
             'Shein' => fn() => $this->calculateSheinMetrics($date),
             'Mercari With Ship' => fn() => $this->calculateMercariWithShipMetrics($date),
@@ -521,6 +522,122 @@ class UpdateMarketplaceDailyMetrics extends Command
             ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
             ->selectRaw('SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as total_spend')
             ->value('total_spend') ?? 0;
+
+        $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
+        $nPft = $pftPercentage - $tacosPercentage;
+        
+        // Net Profit Amount = Total PFT - (KW Spent + PMT Spent)
+        $netProfitAmount = $totalPft - ($kwSpent + $pmtSpent);
+        // N ROI = (Net Profit / COGS) * 100
+        $nRoi = $totalCogs > 0 ? ($netProfitAmount / $totalCogs) * 100 : 0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalRevenue,
+            'tacos_percentage' => $tacosPercentage,
+            'n_pft' => $nPft,
+            'n_roi' => $nRoi,
+            'kw_spent' => $kwSpent,
+            'pmt_spent' => $pmtSpent,
+        ];
+    }
+
+    private function calculateEbay3Metrics($date)
+    {
+        // Get L30 orders data from ebay3_daily_data
+        $orders = DB::table('ebay3_daily_data')->where('period', 'l30')->get();
+
+        if ($orders->isEmpty()) {
+            return null;
+        }
+
+        // Get unique SKUs from orders
+        $skus = $orders->pluck('sku')->filter()->unique()->toArray();
+
+        // Fetch ProductMaster data
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
+        // Get marketplace percentage for eBay 3 (85%)
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
+        $percentageDecimal = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.85;
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($orders as $order) {
+            $sku = strtoupper($order->sku ?? '');
+            if (empty($sku)) continue;
+
+            $totalOrders++;
+            $quantity = (int) ($order->quantity ?? 1);
+            $unitPrice = (float) ($order->unit_price ?? 0);
+            
+            $totalQuantity += $quantity;
+            $totalRevenue += $unitPrice * $quantity;
+
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            // Get LP, Ship from ProductMaster
+            $lp = 0;
+            $ship = 0;
+            if (isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
+                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+            }
+
+            // COGS = LP * quantity
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            // PFT Each = (unit_price * 0.85) - lp - ship
+            $pftEach = ($unitPrice * $percentageDecimal) - $lp - $ship;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        // Calculate KW and PMT Spent for eBay 3
+        // KW Spent from ebay_3_priority_reports
+        $kwSpent = DB::table('ebay_3_priority_reports')
+            ->where('report_range', 'L30')
+            ->get()
+            ->sum(function ($r) {
+                return (float) preg_replace('/[^\d.]/', '', $r->cpc_ad_fees_payout_currency ?? '0');
+            });
+
+        // PMT Spent from ebay_3_general_reports
+        $pmtSpent = DB::table('ebay_3_general_reports')
+            ->where('report_range', 'L30')
+            ->get()
+            ->sum(function ($r) {
+                return (float) preg_replace('/[^\d.]/', '', $r->ad_fees ?? '0');
+            });
 
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;

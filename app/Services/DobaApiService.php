@@ -18,11 +18,12 @@ class DobaApiService
     /**
      * Update item price in Doba API
      */
-    public function updateItemPrice($itemId, $price)
+    public function updateItemPrice($itemId, $price, $selfPickPrice = null)
     {
         Log::info('DobaApiService::updateItemPrice started', [
             'item_id' => $itemId,
-            'price' => $price
+            'price' => $price,
+            'self_pick_price' => $selfPickPrice
         ]);
 
         try {
@@ -35,10 +36,16 @@ class DobaApiService
                 'itemNo' => (string)$itemId,
                 'anticipatedIncome' => (float)$price
             ];
+            
+            // Add selfPickAnticipatedIncome if provided
+            if ($selfPickPrice !== null) {
+                $payload['selfPickAnticipatedIncome'] = (float)$selfPickPrice;
+            }
 
             Log::info('Doba API request prepared', [
                 'item_id' => $itemId,
                 'price' => $price,
+                'self_pick_price' => $selfPickPrice,
                 'payload' => $payload
             ]);
 
@@ -122,6 +129,144 @@ class DobaApiService
             Log::error('Exception in Doba updateItemPrice', [
                 'item_id' => $itemId,
                 'price' => $price,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return [
+                'errors' => 'API Exception: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Update sale price in Doba API using /api/goods/sale/update
+     * This endpoint requires different format with saleDetails array
+     */
+    public function updateSalePrice($itemId, $salePrice, $selfPickSalePrice = null)
+    {
+        Log::info('DobaApiService::updateSalePrice started', [
+            'item_id' => $itemId,
+            'sale_price' => $salePrice,
+            'self_pick_sale_price' => $selfPickSalePrice
+        ]);
+
+        try {
+            $timestamp = $this->getMillisecond();
+            $content = $this->getContent($timestamp);
+            $sign = $this->generateSignature($content);
+
+            // Calculate sale start and end dates as Unix timestamps in milliseconds (PST timezone)
+            // Start: today, End: 30 days from now (minimum promotion period)
+            $pstTimezone = new \DateTimeZone('America/Los_Angeles');
+            $startTimestamp = (new \DateTime('now', $pstTimezone))->getTimestamp() * 1000; // milliseconds
+            $endTimestamp = (new \DateTime('+30 days', $pstTimezone))->getTimestamp() * 1000; // milliseconds
+
+            // Payload for sale price update - correct format per API docs
+            $saleDetail = [
+                'itemNo' => (string)$itemId,
+                'openSale' => true,  // Enable sale (boolean, not string)
+                'salePriceAnticipated' => (float)$salePrice
+            ];
+            
+            // Add self pick sale price if provided
+            if ($selfPickSalePrice !== null) {
+                $saleDetail['selfPickSalePriceAnticipated'] = (float)$selfPickSalePrice;
+            }
+
+            $payload = [
+                'saleStartDate' => (string)$startTimestamp,
+                'saleEndDate' => (string)$endTimestamp,
+                'saleDetails' => json_encode([$saleDetail])
+            ];
+
+            Log::info('Doba Sale API request prepared', [
+                'item_id' => $itemId,
+                'sale_price' => $salePrice,
+                'self_pick_sale_price' => $selfPickSalePrice,
+                'payload' => $payload
+            ]);
+
+            $url = $this->baseUrl . "/goods/sale/update";
+
+            $headers = [
+                'appKey'     => env('DOBA_APP_KEY'),
+                'signType'   => 'rsa2',
+                'timestamp'  => $timestamp,
+                'sign'       => $sign,
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            ];
+
+            // Use POST with form data
+            $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
+
+            $statusCode = $response->status();
+            $responseData = $response->json();
+
+            Log::info('Doba Sale API response received', [
+                'item_id' => $itemId,
+                'status_code' => $statusCode,
+                'response' => $responseData
+            ]);
+
+            // Check for HTTP errors first
+            if ($response->failed()) {
+                $errorMsg = "HTTP Error {$statusCode}";
+                Log::error('Doba Sale HTTP request failed', [
+                    'item_id' => $itemId,
+                    'status' => $statusCode,
+                    'response' => $responseData
+                ]);
+                return [
+                    'errors' => $errorMsg,
+                    'debug' => array_merge(['statusCode' => $statusCode], $responseData ?? [])
+                ];
+            }
+
+            // Check Doba's response code
+            if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
+                $responseMsg = $responseData['responseMessage'] ?? 'Unknown error';
+                Log::warning('Doba Sale API returned error code', [
+                    'item_id' => $itemId,
+                    'response_code' => $responseData['responseCode'],
+                    'response_message' => $responseMsg
+                ]);
+                return [
+                    'errors' => $responseMsg,
+                    'debug' => $responseData
+                ];
+            }
+
+            // Check business-level success
+            if (isset($responseData['businessData'])) {
+                $businessData = $responseData['businessData'];
+                
+                if (isset($businessData['successful']) && $businessData['successful'] !== true) {
+                    $businessMsg = $businessData['businessMessage'] ?? 'Business validation failed';
+                    Log::warning('Doba Sale business validation failed', [
+                        'item_id' => $itemId,
+                        'business_status' => $businessData['businessStatus'] ?? 'Unknown',
+                        'business_message' => $businessMsg
+                    ]);
+                    
+                    return [
+                        'errors' => $businessMsg,
+                        'debug' => $responseData
+                    ];
+                }
+            }
+
+            Log::info('Doba sale price update successful', [
+                'item_id' => $itemId,
+                'sale_price' => $salePrice
+            ]);
+            
+            return $responseData;
+
+        } catch (Exception $e) {
+            Log::error('Exception in Doba updateSalePrice', [
+                'item_id' => $itemId,
+                'sale_price' => $salePrice,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);

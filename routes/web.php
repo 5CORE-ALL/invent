@@ -713,6 +713,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/doba-pricing-cvr', [DobaController::class, 'dobaPricingCVR']);
     Route::get('/doba-tabulator', [DobaController::class, 'dobaTabulatorView']);
     Route::post('/doba/save-sprice', [DobaController::class, 'saveSpriceToDatabase'])->name('doba.save-sprice');
+    Route::post('/doba/push-price', [DobaController::class, 'pushPriceToDoba'])->name('doba.push-price');
     Route::post('/update-all-doba-skus', [DobaController::class, 'updateAllDobaSkus']);
     Route::post('/doba-analytics/import', [DobaController::class, 'importDobaAnalytics'])->name('doba.analytics.import');
     Route::get('/doba-analytics/export', [DobaController::class, 'exportDobaAnalytics'])->name('doba.analytics.export');
@@ -806,6 +807,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay2/daily-sales', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'index'])->name('ebay2.daily.sales');
     Route::get('/ebay2-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getColumnVisibility']);
     Route::post('/ebay2-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'saveColumnVisibility']);
+    
+    // eBay 3 Sales Routes
+    Route::get('/ebay3/daily-sales-data', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'getData'])->name('ebay3.daily.sales.data');
+    Route::get('/ebay3/daily-sales', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'index'])->name('ebay3.daily.sales');
+    Route::get('/ebay3-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'getColumnVisibility']);
+    Route::post('/ebay3-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'saveColumnVisibility']);
     
     // Amazon Sales Routes
     Route::get('/amazon/daily-sales-data', [AmazonSalesController::class, 'getData'])->name('amazon.daily.sales.data');

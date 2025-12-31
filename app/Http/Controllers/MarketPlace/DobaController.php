@@ -6,6 +6,7 @@ use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Jobs\UpdateDobaSPriceJob;
 use App\Models\ChannelMaster;
+use App\Models\DobaDailyData;
 use App\Models\DobaDataView;
 use App\Models\DobaListingStatus;
 use App\Models\DobaMetric;
@@ -14,6 +15,7 @@ use App\Models\ShopifySku;
 use App\Models\ProductMaster; // Add this at the top with other use statements
 use App\Services\DobaApiService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log; // Ensure you import Log for logging
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -75,18 +77,9 @@ class DobaController extends Controller
         $mode = $request->query("mode");
         $demo = $request->query("demo");
 
-        // Get percentage from cache or database
-        $percentage = Cache::remember(
-            "doba_marketplace_percentage",
-            now()->addDays(30),
-            function () {
-                $marketplaceData = MarketplacePercentage::where(
-                    "marketplace",
-                    "Doba"
-                )->first();
-                return $marketplaceData ? $marketplaceData->percentage : 100; // Default to 100 if not set
-            }
-        );
+        // Get percentage directly from database (no cache)
+        $marketplaceData = MarketplacePercentage::where("marketplace", "Doba")->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
 
         return view("market-places.doba_pricing_cvr", [
             "mode" => $mode,
@@ -97,13 +90,17 @@ class DobaController extends Controller
 
     public function getViewdobaData(Request $request)
     {
-        // 1. Base ProductMaster fetch
-        $productMasters = ProductMaster::orderBy("parent", "asc")
+        // 1. Get Doba-listed SKUs from DobaMetric table (populated from API)
+        $dobaListedSkus = DobaMetric::pluck('sku')->filter()->unique()->values()->all();
+        
+        // 2. Base ProductMaster fetch - only for Doba-listed SKUs
+        $productMasters = ProductMaster::whereIn('sku', $dobaListedSkus)
+            ->orderBy("parent", "asc")
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy("sku", "asc")
             ->get();
 
-        // 2. SKU list
+        // 3. SKU list
         $skus = $productMasters
             ->pluck("sku")
             ->filter()
@@ -111,25 +108,7 @@ class DobaController extends Controller
             ->values()
             ->all();
 
-        // 3. Fetch doba Sheet data
-        $response = $this->apiController->fetchdobaListingData();
-        $sheetData =
-            $response->getStatusCode() === 200
-            ? $response->getData()->data ?? []
-            : [];
-
-        // 4. Map sheet data by SKU
-        $sheetSkuMap = [];
-        foreach ($sheetData as $item) {
-            $sku = isset($item->{'(Child) sku'})
-                ? strtoupper(trim($item->{'(Child) sku'}))
-                : null;
-            if ($sku) {
-                $sheetSkuMap[$sku] = $item;
-            }
-        }
-
-        // 5. Related Models
+        // 4. Related Models
         $shopifyData = ShopifySku::whereIn("sku", $skus)
             ->get()
             ->keyBy("sku");
@@ -138,18 +117,24 @@ class DobaController extends Controller
             ->keyBy("sku");
         $nrValues = DobaDataView::whereIn("sku", $skus)->pluck("value", "sku");
 
-        // 6. Get marketplace percentage
-        $percentage =
-            Cache::remember(
-                "doba_marketplace_percentage",
-                now()->addDays(30),
-                function () {
-                    return MarketplacePercentage::where(
-                        "marketplace",
-                        "Doba"
-                    )->value("percentage") ?? 100;
-                }
-            ) / 100;
+        // 5. Aggregate S L30 from doba_daily_data - sum quantity by SKU for L30 period, excluding cancelled orders
+        $dobaDailyL30 = DB::table('doba_daily_data')
+            ->select(
+                'sku',
+                DB::raw('SUM(quantity) as s_l30_count')
+            )
+            ->whereIn('sku', $skus)
+            ->whereRaw("LOWER(period) = 'l30'")
+            ->where(function($query) {
+                $query->whereNotIn('order_status', ['Canceled', 'Cancelled', 'CANCELED', 'CANCELLED', 'canceled', 'cancelled'])
+                      ->orWhereNull('order_status');
+            })
+            ->groupBy('sku')
+            ->get()
+            ->keyBy('sku');
+
+        // 6. Get marketplace percentage (no cache)
+        $percentage = (MarketplacePercentage::where("marketplace", "Doba")->value("percentage") ?? 100) / 100;
 
         // 7. Build Result
         $result = [];
@@ -159,28 +144,27 @@ class DobaController extends Controller
             $parent = $pm->parent;
             $shopify = $shopifyData[$pm->sku] ?? null;
             $dobaMetric = $dobaMetrics[$pm->sku] ?? null;
-            $apiItem = $sheetSkuMap[$sku] ?? null;
 
             $row = [];
             $row["Parent"] = $parent;
             $row["(Child) sku"] = $pm->sku;
 
-            // From Sheet
-            if ($apiItem) {
-                foreach ($apiItem as $k => $v) {
-                    $row[$k] = $v;
-                }
-            }
-
             // Shopify
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
 
-            //Doba Metrics
-            $row["doba L30"] = $dobaMetric->order_count_l30 ?? 0;
-            $row["doba L60"] = $dobaMetric->order_count_l60 ?? 0;
+            //Doba Metrics - using quantity instead of order count for SOLD column
+            $row["doba L30"] = $dobaMetric->quantity_l30 ?? 0;
+            $row["doba L60"] = $dobaMetric->quantity_l60 ?? 0;
             $row["doba Price"] = $dobaMetric->anticipated_income ?? 0;
             $row['doba_item_id'] = $dobaMetric->item_id ?? null;
+            $row['self_pick_price'] = $dobaMetric->self_pick_price ?? 0;
+            $row['msrp'] = $dobaMetric->msrp ?? 0;
+            $row['map'] = $dobaMetric->map ?? 0;
+
+            // S L30 from doba_daily_data (excluding cancelled orders)
+            $sL30Data = $dobaDailyL30[$pm->sku] ?? null;
+            $row["s_l30"] = $sL30Data ? (int) $sL30Data->s_l30_count : 0;
 
             // Values: LP & Ship
             $values = is_array($pm->Values)
@@ -237,6 +221,9 @@ class DobaController extends Controller
             $row['SPRICE'] = null;
             $row['SPFT'] = null;
             $row['SROI'] = null;
+            $row['S_SELF_PICK'] = null;
+            $row['PUSH_STATUS'] = null;
+            $row['PUSH_STATUS_UPDATED_AT'] = null;
             $row['Listed'] = null;
             $row['Live'] = null;
             $row['APlus'] = null;
@@ -253,6 +240,9 @@ class DobaController extends Controller
                     $row['SPRICE'] = $raw['SPRICE'] ?? null;
                     $row['SPFT'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;
+                    $row['S_SELF_PICK'] = $raw['S_SELF_PICK'] ?? null;
+                    $row['PUSH_STATUS'] = $raw['PUSH_STATUS'] ?? null;
+                    $row['PUSH_STATUS_UPDATED_AT'] = $raw['PUSH_STATUS_UPDATED_AT'] ?? null;
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
@@ -294,13 +284,6 @@ class DobaController extends Controller
             MarketplacePercentage::updateOrCreate(
                 ["marketplace" => "Doba"],
                 ["percentage" => $percent]
-            );
-
-            // Store in cache
-            Cache::put(
-                "doba_marketplace_percentage",
-                $percent,
-                now()->addDays(30)
             );
 
             return response()->json([
@@ -370,9 +353,9 @@ class DobaController extends Controller
     public function saveSpriceToDatabase(Request $request)
     {
         $sku = $request->input('sku');
-        $spriceData = $request->only(['sprice', 'spft_percent', 'sroi_percent']);
+        $spriceData = $request->only(['sprice', 'spft_percent', 'sroi_percent', 's_self_pick', 'push_status']);
 
-        if (!$sku || !$spriceData['sprice']) {
+        if (!$sku || !isset($spriceData['sprice'])) {
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
 
@@ -389,12 +372,103 @@ class DobaController extends Controller
             'SPRICE' => $spriceData['sprice'],
             'SPFT' => $spriceData['spft_percent'],
             'SROI' => $spriceData['sroi_percent'],
+            'S_SELF_PICK' => $spriceData['s_self_pick'] ?? null,
+            'PUSH_STATUS' => $spriceData['push_status'] ?? null,
+            'PUSH_STATUS_UPDATED_AT' => isset($spriceData['push_status']) ? now()->format('Y-m-d H:i:s') : ($existing['PUSH_STATUS_UPDATED_AT'] ?? null),
         ]);
 
         $dobaDataView->value = $merged;
         $dobaDataView->save();
 
         return response()->json(['message' => 'Data saved successfully.']);
+    }
+
+    /**
+     * Push price to Doba API
+     */
+    public function pushPriceToDoba(Request $request)
+    {
+        $sku = $request->input('sku');
+        $price = $request->input('price');
+        $selfPickPrice = $request->input('self_pick_price'); // Optional
+
+        if (!$sku || !$price) {
+            return response()->json([
+                'success' => false,
+                'errors' => [['message' => 'SKU and price are required.']]
+            ], 400);
+        }
+
+        // Get the item_id from DobaMetric table
+        $dobaMetric = DobaMetric::where('sku', $sku)->first();
+
+        if (!$dobaMetric || !$dobaMetric->item_id) {
+            return response()->json([
+                'success' => false,
+                'errors' => [['message' => 'Item ID not found for this SKU. Please run Doba metrics fetch first.']]
+            ], 404);
+        }
+
+        $itemId = $dobaMetric->item_id;
+
+        try {
+            $dobaApiService = new DobaApiService();
+            
+            // Only call Price API (Sale API disabled - requires special permission)
+            $priceResult = $dobaApiService->updateItemPrice($itemId, $price, $selfPickPrice);
+
+            // Check for errors
+            if (isset($priceResult['errors'])) {
+                Log::warning('Doba price push failed', [
+                    'sku' => $sku,
+                    'item_id' => $itemId,
+                    'price' => $price,
+                    'self_pick_price' => $selfPickPrice,
+                    'error' => $priceResult['errors']
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'errors' => [['message' => 'Price update: ' . $priceResult['errors']]]
+                ], 400);
+            }
+
+            // Success - update the anticipated_income in DobaMetric as well
+            $dobaMetric->anticipated_income = $price;
+            if ($selfPickPrice !== null) {
+                $dobaMetric->self_pick_price = $selfPickPrice;
+            }
+            $dobaMetric->save();
+
+            Log::info('Doba price push successful', [
+                'sku' => $sku,
+                'item_id' => $itemId,
+                'price' => $price,
+                'self_pick_price' => $selfPickPrice
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Price pushed to Doba successfully',
+                'data' => [
+                    'price_update' => $priceResult
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Doba price push exception', [
+                'sku' => $sku,
+                'item_id' => $itemId,
+                'price' => $price,
+                'self_pick_price' => $selfPickPrice,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'errors' => [['message' => 'API Exception: ' . $e->getMessage()]]
+            ], 500);
+        }
     }
 
     public function saveLowProfit(Request $request)
@@ -604,18 +678,9 @@ class DobaController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        // Get percentage from cache or database (same as dobaPricingCVR)
-        $percentage = Cache::remember(
-            "doba_marketplace_percentage",
-            now()->addDays(30),
-            function () {
-                $marketplaceData = MarketplacePercentage::where(
-                    "marketplace",
-                    "Doba"
-                )->first();
-                return $marketplaceData ? $marketplaceData->percentage : 100;
-            }
-        );
+        // Get percentage directly from database (no cache)
+        $marketplaceData = MarketplacePercentage::where("marketplace", "Doba")->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
 
         return view('market-places.doba_tabulator_view', [
             'mode' => $mode,
