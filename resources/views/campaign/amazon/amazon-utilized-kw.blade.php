@@ -476,19 +476,14 @@
                 const processedSkusForMissing = new Set(); // Track SKUs for missing counting
                 const processedSkusForNraMissing = new Set(); // Track SKUs for NRA missing counting
                 const processedSkusForZeroInv = new Set(); // Track SKUs for zero INV counting
+                const processedSkusForValidCount = new Set(); // Track SKUs for valid count
                 
                 allData.forEach(function(row) {
                     // Count valid SKUs (exclude parent SKUs and empty SKUs)
                     const sku = row.sku || '';
                     const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
                     
-                    // Count zero/negative inventory (INV <= 0) - count BEFORE filters
-                    // This should count all zero INV SKUs regardless of current filter
                     let inv = parseFloat(row.INV || 0);
-                    if (inv <= 0 && isValidSku && !processedSkusForZeroInv.has(sku)) {
-                        processedSkusForZeroInv.add(sku);
-                        zeroInvCount++;
-                    }
                     
                     // Apply all filters except utilization type filter
                     // Global search filter
@@ -501,6 +496,13 @@
                     let statusVal = $("#status-filter").val();
                     if (statusVal && row.campaignStatus !== statusVal) {
                         return;
+                    }
+                    
+                    // Count zero/negative inventory (INV <= 0) AFTER search and status filters
+                    // This ensures zero inv count matches the filtered dataset
+                    if (inv <= 0 && isValidSku && !processedSkusForZeroInv.has(sku)) {
+                        processedSkusForZeroInv.add(sku);
+                        zeroInvCount++;
                     }
                     
                     // Inventory filter
@@ -574,8 +576,11 @@
                             }
                         }
                         
-                        // Count valid SKUs that pass all filters
-                        validSkuCount++;
+                        // Count valid SKUs that pass ALL filters (after inventory and NRA filters) - only once per SKU
+                        if (!processedSkusForValidCount.has(sku)) {
+                            processedSkusForValidCount.add(sku);
+                            validSkuCount++;
+                        }
                     }
                     
                     // Now calculate utilization and count
@@ -594,6 +599,62 @@
                     } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
                         correctlyCount++;
                     }
+                });
+                
+                // Count ACOS ranges (SBGT mapping)
+                let acosCount8 = 0, acosCount7 = 0, acosCount6 = 0, acosCount5 = 0;
+                let acosCount4 = 0, acosCount3 = 0, acosCount2 = 0, acosCount1 = 0;
+                let acosCountZero = 0; // Count ACOS = 0 separately
+                
+                allData.forEach(function(row) {
+                    let acosVal = parseFloat(row.acos || 0);
+                    
+                    // Apply same filters as above
+                    const sku = row.sku || '';
+                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
+                    if (!isValidSku) return;
+                    
+                    let inv = parseFloat(row.INV || 0);
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
+                    
+                    let statusVal = $("#status-filter").val();
+                    if (statusVal && row.campaignStatus !== statusVal) return;
+                    
+                    let invFilterVal = $("#inv-filter").val();
+                    if (!invFilterVal || invFilterVal === '') {
+                        if (inv <= 0) return;
+                    } else if (invFilterVal === "INV_0") {
+                        if (inv !== 0) return;
+                    } else if (invFilterVal === "OTHERS") {
+                        if (inv <= 0) return;
+                    }
+                    
+                    let nraFilterVal = $("#nra-filter").val();
+                    if (nraFilterVal) {
+                        let rowNra = row.NRA ? row.NRA.trim() : "";
+                        if (nraFilterVal === 'RA') {
+                            if (rowNra === 'NRA') return;
+                        } else {
+                            if (rowNra !== nraFilterVal) return;
+                        }
+                    }
+                    
+                    // Count ACOS = 0 separately, then skip from range counts
+                    if (acosVal === 0 || isNaN(acosVal)) {
+                        acosCountZero++;
+                        return;
+                    }
+                    
+                    // Count by ACOS range
+                    if (acosVal < 5) acosCount8++;
+                    else if (acosVal < 10) acosCount7++;
+                    else if (acosVal < 15) acosCount6++;
+                    else if (acosVal < 20) acosCount5++;
+                    else if (acosVal < 25) acosCount4++;
+                    else if (acosVal < 30) acosCount3++;
+                    else if (acosVal < 35) acosCount2++;
+                    else acosCount1++;
                 });
                 
                 // Update missing campaign count
@@ -633,13 +694,28 @@
                 }
                 
                 // Update dropdown option texts with counts
-                // Use totalSkuCountFromBackend to match backend count exactly
+                // Use validSkuCount which respects inventory filter (default excludes INV <= 0)
                 const utilizationSelect = document.getElementById('utilization-type-select');
                 if (utilizationSelect) {
-                    utilizationSelect.options[0].text = `All (${totalSkuCountFromBackend || validSkuCount})`;
+                    utilizationSelect.options[0].text = `All (${validSkuCount})`;
                     utilizationSelect.options[1].text = `Over Utilized (${overCount})`;
                     utilizationSelect.options[2].text = `Under Utilized (${underCount})`;
                     utilizationSelect.options[3].text = `Correctly Utilized (${correctlyCount})`;
+                }
+                
+                // Update ACOS filter dropdown with counts
+                const sbgtSelect = document.getElementById('sbgt-filter');
+                if (sbgtSelect) {
+                    const totalAcos = acosCount8 + acosCount7 + acosCount6 + acosCount5 + acosCount4 + acosCount3 + acosCount2 + acosCount1 + acosCountZero;
+                    sbgtSelect.options[0].text = `All ACOS (${totalAcos})`;
+                    sbgtSelect.options[1].text = `ACOS < 5% (${acosCount8})`;
+                    sbgtSelect.options[2].text = `ACOS 5-9% (${acosCount7})`;
+                    sbgtSelect.options[3].text = `ACOS 10-14% (${acosCount6})`;
+                    sbgtSelect.options[4].text = `ACOS 15-19% (${acosCount5})`;
+                    sbgtSelect.options[5].text = `ACOS 20-24% (${acosCount4})`;
+                    sbgtSelect.options[6].text = `ACOS 25-29% (${acosCount3})`;
+                    sbgtSelect.options[7].text = `ACOS 30-34% (${acosCount2})`;
+                    sbgtSelect.options[8].text = `ACOS ≥ 35% (${acosCount1})`;
                 }
             }
 
@@ -1008,12 +1084,16 @@
                     {
                         title: "INV",
                         field: "INV",
-                        visible: true
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<div class="text-center">${value || 0}<i class="fa-solid fa-circle-info ms-1 info-icon-inv-toggle" style="cursor: pointer; color: #6366f1;" title="Click to show/hide details"></i></div>`;
+                        }
                     },
                     {
                         title: "FBA INV",
                         field: "FBA_INV",
-                        visible: true,
+                        visible: false,
                         headerSort: false,
                         sorter: "number",
                         formatter: function(cell) {
@@ -1024,7 +1104,7 @@
                     {
                         title: "OV L30",
                         field: "L30",
-                        visible: true
+                        visible: false
                     },
                     {
                         title: "DIL %",
@@ -1040,12 +1120,12 @@
                             }
                             return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                         },
-                        visible: true
+                        visible: false
                     },
                     {
                         title: "AL 30",
                         field: "A_L30",
-                        visible: true
+                        visible: false
                     },
                     {
                         title: "A DIL %",
@@ -1061,7 +1141,7 @@
                             }
                             return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                         },
-                        visible: true
+                        visible: false
                     },
                     {
                         title: "NRL",
@@ -1081,12 +1161,13 @@
                                 </select>
                             `;
                         },
-                        visible: true,
+                        visible: false,
                         hozAlign: "center"
                     },
                     {
                         title: "NRA",
                         field: "NRA",
+                        visible: false,
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
@@ -1107,8 +1188,7 @@
                                 </select>
                             `;
                         },
-                        hozAlign: "center",
-                        visible: true
+                        hozAlign: "center"
                     },
                     {
                         title: "FBA",
@@ -1759,6 +1839,31 @@
                             table.showColumn('roi');
                         }
                     }
+                    
+                    // INV info icon toggle for extra columns (FBA_INV, L30, DIL%, etc.)
+                    if (e.target.classList.contains('info-icon-inv-toggle')) {
+                        e.stopPropagation();
+                        const extraColumnFields = ['FBA_INV', 'L30', 'DIL %', 'A_L30', 'A DIL %', 'NRL', 'NRA'];
+                        
+                        // Check if any column is visible to determine current state
+                        const anyVisible = table.getColumn('FBA_INV').isVisible();
+                        
+                        // Toggle visibility
+                        extraColumnFields.forEach(field => {
+                            if (anyVisible) {
+                                table.hideColumn(field);
+                            } else {
+                                table.showColumn(field);
+                            }
+                        });
+                        
+                        // Update icon color
+                        if (anyVisible) {
+                            e.target.style.color = '#6366f1';
+                        } else {
+                            e.target.style.color = '#10b981';
+                        }
+                    }
                 });
 
                 // Update counts when data is filtered (debounced)
@@ -2257,5 +2362,35 @@
                 })
                 .catch(err => console.error('Error loading chart:', err));
         }
+        
+        // Toggle extra columns functionality via INV info icon
+        let extraColumnsVisible = false;
+        const extraColumnFields = ['FBA_INV', 'L30', 'DIL %', 'A_L30', 'A DIL %', 'NRL', 'NRA'];
+        
+        // Add event listener after table is built
+        table.on('tableBuilt', function() {
+            const invInfoIcon = document.getElementById('inv-info-icon');
+            if (invInfoIcon) {
+                invInfoIcon.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    extraColumnsVisible = !extraColumnsVisible;
+                    
+                    extraColumnFields.forEach(field => {
+                        if (extraColumnsVisible) {
+                            table.showColumn(field);
+                        } else {
+                            table.hideColumn(field);
+                        }
+                    });
+                    
+                    // Update icon appearance
+                    if (extraColumnsVisible) {
+                        this.style.color = '#10b981';
+                    } else {
+                        this.style.color = '#6366f1';
+                    }
+                });
+            }
+        });
     </script>
 @endsection
