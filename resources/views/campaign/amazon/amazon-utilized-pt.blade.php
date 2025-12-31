@@ -1794,15 +1794,9 @@
             table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
                 
-                // Set initial column visibility based on current utilization type
-                // Hide APR columns by default (kept for future use). Show SBID only for specific types.
+                // Hide APR columns by default (kept for future use)
                 table.hideColumn('apr_bid');
                 table.hideColumn('apr_bgt');
-                if (currentUtilizationType === 'correctly' || currentUtilizationType === 'all') {
-                    table.hideColumn('sbid');
-                } else {
-                    table.showColumn('sbid');
-                }
 
                 // Add event listener for info icon click to toggle columns
                 document.addEventListener('click', function(e) {
