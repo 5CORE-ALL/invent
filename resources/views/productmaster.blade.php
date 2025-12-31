@@ -3560,7 +3560,7 @@
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     const hiddenColumns = getUserHiddenColumns();
                     const allColumns = [
-                        "SKU", "UPC", "INV", "OV L30", "STATUS", "Unit", "LP", "CP$",
+                        "Parent", "SKU", "UPC", "INV", "OV L30", "STATUS", "Unit", "LP", "CP$",
                         "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "INITIAL QUANTITY", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
                         "CBM", "Image", "L(2)", "Verified Data", "DC", "Pcs/Box", "L1", "B", "H1", "Weight", "MSRP", "MAP", "UPC"
                     ];
@@ -3570,6 +3570,9 @@
 
                     // Column definitions with their data keys
                     const columnDefs = {
+                        "Parent": {
+                            key: "Parent"
+                        },
                         "SKU": {
                             key: "SKU"
                         },
@@ -3685,13 +3688,8 @@
                             // Add header row
                             wsData.push(visibleColumns);
 
-                            // Add data rows - exclude parent SKUs
+                            // Add data rows - include all data including parent SKUs
                             tableData.forEach(item => {
-                                // Skip parent SKUs (SKU contains "PARENT")
-                                if (item.SKU && String(item.SKU).toUpperCase().includes('PARENT')) {
-                                    return;
-                                }
-                                
                                 const row = [];
                                 visibleColumns.forEach(col => {
                                     const colDef = columnDefs[col];
@@ -3735,7 +3733,7 @@
                             // Set column widths
                             const wscols = visibleColumns.map(col => {
                                 // Adjust width based on column type
-                                if (["SKU"].includes(col)) {
+                                if (["SKU", "Parent"].includes(col)) {
                                     return {
                                         wch: 20
                                     }; // Wider for text columns

@@ -1921,9 +1921,11 @@ class AmazonSpBudgetController extends Controller
                 $campaignName = '';
             }
 
-            // Check NRA filter and get TPFT and NRL
+            // Check NRA filter and get TPFT, PFT, ROI and NRL from AmazonDataView
             $nra = '';
             $tpft = null;
+            $pft = null;
+            $roi = null;
             $nrl = 'REQ'; // Default value
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
@@ -1933,6 +1935,8 @@ class AmazonSpBudgetController extends Controller
                 if (is_array($raw)) {
                     $nra = $raw['NRA'] ?? '';
                     $tpft = $raw['TPFT'] ?? null;
+                    $pft = $raw['PFT'] ?? null;
+                    $roi = $raw['ROI'] ?? null;
                     $nrl = $raw['NRL'] ?? 'REQ';
                 }
             }
@@ -1975,7 +1979,8 @@ class AmazonSpBudgetController extends Controller
                     'acos_L7' => 0,
                     'NRA' => $nra,
                     'TPFT' => $tpft,
-                    'PFT' => $tpft,
+                    'PFT' => $pft,
+                    'roi' => $roi,
                     'NRL' => $nrl,
                     'hasCampaign' => $hasCampaign,
                 ];
@@ -2209,9 +2214,12 @@ class AmazonSpBudgetController extends Controller
                 $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
                 $shopify = $shopifyData[$pm->sku] ?? null;
                 
-                // Get NRA and TPFT
+                // Get NRA, TPFT, PFT, ROI and NRL from AmazonDataView
                 $nra = '';
                 $tpft = null;
+                $pft = null;
+                $roi = null;
+                $nrl = 'REQ';
                 if (isset($nrValues[$pm->sku])) {
                     $raw = $nrValues[$pm->sku];
                     if (!is_array($raw)) {
@@ -2220,6 +2228,9 @@ class AmazonSpBudgetController extends Controller
                     if (is_array($raw)) {
                         $nra = $raw['NRA'] ?? '';
                         $tpft = $raw['TPFT'] ?? null;
+                        $pft = $raw['PFT'] ?? null;
+                        $roi = $raw['ROI'] ?? null;
+                        $nrl = $raw['NRL'] ?? 'REQ';
                     }
                 }
                 
@@ -2332,6 +2343,8 @@ class AmazonSpBudgetController extends Controller
                     'acos_L7' => $acosL7,
                     'NRA' => $nra,
                     'TPFT' => $tpft,
+                    'PFT' => $pft,
+                    'roi' => $roi,
                     'NRL' => $nrl,
                     'hasCampaign' => $hasCampaign,
                 ];
@@ -2444,9 +2457,11 @@ class AmazonSpBudgetController extends Controller
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
             $shopify = $shopifyData[$pm->sku] ?? null;
 
-            // Get NRA and TPFT and NRL
+            // Get NRA, TPFT, PFT, ROI and NRL from AmazonDataView
             $nra = '';
             $tpft = null;
+            $pft = null;
+            $roi = null;
             $nrl = 'REQ'; // Default value
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
@@ -2456,6 +2471,8 @@ class AmazonSpBudgetController extends Controller
                 if (is_array($raw)) {
                     $nra = $raw['NRA'] ?? '';
                     $tpft = $raw['TPFT'] ?? null;
+                    $pft = $raw['PFT'] ?? null;
+                    $roi = $raw['ROI'] ?? null;
                     $nrl = $raw['NRL'] ?? 'REQ';
                 }
             }
@@ -2594,6 +2611,8 @@ class AmazonSpBudgetController extends Controller
                 'acos_L7' => $acosL7,
                 'NRA' => $nra,
                 'TPFT' => $tpft,
+                'PFT' => $pft,
+                'roi' => $roi,
                 'NRL' => $nrl,
                 'hasCampaign' => $hasCampaign,
             ];
@@ -2636,9 +2655,11 @@ class AmazonSpBudgetController extends Controller
                 $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
                 $shopify = $shopifyData[$pm->sku] ?? null;
                 
-                // Get NRA and TPFT and NRL
+                // Get NRA, TPFT, PFT, ROI and NRL from AmazonDataView
                 $nra = '';
                 $tpft = null;
+                $pft = null;
+                $roi = null;
                 $nrl = 'REQ'; // Default value
                 if (isset($nrValues[$pm->sku])) {
                     $raw = $nrValues[$pm->sku];
@@ -2648,6 +2669,8 @@ class AmazonSpBudgetController extends Controller
                     if (is_array($raw)) {
                         $nra = $raw['NRA'] ?? '';
                         $tpft = $raw['TPFT'] ?? null;
+                        $pft = $raw['PFT'] ?? null;
+                        $roi = $raw['ROI'] ?? null;
                         $nrl = $raw['NRL'] ?? 'REQ';
                     }
                 }
@@ -2761,6 +2784,8 @@ class AmazonSpBudgetController extends Controller
                     'acos_L7' => $acosL7,
                     'NRA' => $nra,
                     'TPFT' => $tpft,
+                    'PFT' => $pft,
+                    'roi' => $roi,
                     'NRL' => $nrl,
                     'hasCampaign' => $hasCampaign,
                 ];

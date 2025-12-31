@@ -90,6 +90,7 @@ class MFRGInProgressController extends Controller
             $sku = $normalizeSku($row->sku);
             $image = null;
             $cbm = null;
+            $ctnCbmE = null;
             $parent = null;
             $supplierNames = [];
             $priceFromPO = null;
@@ -191,6 +192,14 @@ class MFRGInProgressController extends Controller
                     if (isset($values['cbm'])) {
                         $cbm = $values['cbm'];
                     }
+                    // Get CTN CBM E from dim-wt-master (product_master Values JSON)
+                    if (isset($values['CBM E'])) {
+                        $ctnCbmE = $values['CBM E'];
+                    } elseif (isset($values['cbm_e'])) {
+                        $ctnCbmE = $values['cbm_e'];
+                    } elseif (isset($values['ctn_cbm_e'])) {
+                        $ctnCbmE = $values['ctn_cbm_e'];
+                    }
                 }
 
                 $parent = strtoupper(trim($productRow->parent ?? ''));
@@ -232,17 +241,9 @@ class MFRGInProgressController extends Controller
             // Assign image - ensure it's not null if found
             $row->Image = !empty($image) ? $image : null;
             $row->CBM = $cbm;
+            $row->ctn_cbm_e = $ctnCbmE;
             $row->price_from_po = $priceFromPO;
             $row->currency_from_po = $currencyFromPO;
-            
-            // Debug logging for specific SKU (can be removed later)
-            if (stripos($row->sku, 'WF 12120 8OHMS') !== false || stripos($row->sku, 'WF121208OHMS') !== false) {
-                Log::info('Image lookup for SKU: ' . $row->sku, [
-                    'normalized_sku' => $sku,
-                    'found_image' => $row->Image,
-                    'sku_variations' => $skuVariations
-                ]);
-            }
         }
 
 

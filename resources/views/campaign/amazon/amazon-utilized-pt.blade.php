@@ -570,19 +570,14 @@
                 const processedSkusForMissing = new Set(); // Track SKUs for missing counting
                 const processedSkusForNraMissing = new Set(); // Track SKUs for NRA missing counting
                 const processedSkusForZeroInv = new Set(); // Track SKUs for zero INV counting
+                const processedSkusForValidCount = new Set(); // Track SKUs for valid count
                 
                 allData.forEach(function(row) {
                     // Count valid SKUs (exclude parent SKUs and empty SKUs)
                     const sku = row.sku || '';
                     const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
                     
-                    // Count zero/negative inventory (INV <= 0) - count BEFORE filters
-                    // This should count all zero INV SKUs regardless of current filter
                     let inv = parseFloat(row.INV || 0);
-                    if (inv <= 0 && isValidSku && !processedSkusForZeroInv.has(sku)) {
-                        processedSkusForZeroInv.add(sku);
-                        zeroInvCount++;
-                    }
                     
                     // Apply all filters except utilization type filter
                     // Global search filter
@@ -595,6 +590,13 @@
                     let statusVal = $("#status-filter").val();
                     if (statusVal && row.campaignStatus !== statusVal) {
                         return;
+                    }
+                    
+                    // Count zero/negative inventory (INV <= 0) AFTER search and status filters
+                    // This ensures zero inv count matches the filtered dataset
+                    if (inv <= 0 && isValidSku && !processedSkusForZeroInv.has(sku)) {
+                        processedSkusForZeroInv.add(sku);
+                        zeroInvCount++;
                     }
                     
                     // Inventory filter
@@ -671,8 +673,11 @@
                             }
                         }
                         
-                        // Count valid SKUs that pass all filters
-                        validSkuCount++;
+                        // Count valid SKUs that pass all filters - only once per SKU
+                        if (!processedSkusForValidCount.has(sku)) {
+                            processedSkusForValidCount.add(sku);
+                            validSkuCount++;
+                        }
                     }
                     
                     // Now calculate utilization and count
@@ -691,6 +696,59 @@
                     } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
                         correctlyCount++;
                     }
+                });
+                
+                // Count ACOS ranges (SBGT mapping)
+                let acosCount8 = 0, acosCount7 = 0, acosCount6 = 0, acosCount5 = 0;
+                let acosCount4 = 0, acosCount3 = 0, acosCount2 = 0, acosCount1 = 0;
+                let acosCountZero = 0;
+                
+                allData.forEach(function(row) {
+                    let acosVal = parseFloat(row.acos || 0);
+                    
+                    const sku = row.sku || '';
+                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
+                    if (!isValidSku) return;
+                    
+                    let inv = parseFloat(row.INV || 0);
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
+                    
+                    let statusVal = $("#status-filter").val();
+                    if (statusVal && row.campaignStatus !== statusVal) return;
+                    
+                    let invFilterVal = $("#inv-filter").val();
+                    if (!invFilterVal || invFilterVal === '') {
+                        if (inv <= 0) return;
+                    } else if (invFilterVal === "INV_0") {
+                        if (inv !== 0) return;
+                    } else if (invFilterVal === "OTHERS") {
+                        if (inv <= 0) return;
+                    }
+                    
+                    let nraFilterVal = $("#nra-filter").val();
+                    if (nraFilterVal) {
+                        let rowNra = row.NRA ? row.NRA.trim() : "";
+                        if (nraFilterVal === 'RA') {
+                            if (rowNra === 'NRA') return;
+                        } else {
+                            if (rowNra !== nraFilterVal) return;
+                        }
+                    }
+                    
+                    if (acosVal === 0 || isNaN(acosVal)) {
+                        acosCountZero++;
+                        return;
+                    }
+                    
+                    if (acosVal < 5) acosCount8++;
+                    else if (acosVal < 10) acosCount7++;
+                    else if (acosVal < 15) acosCount6++;
+                    else if (acosVal < 20) acosCount5++;
+                    else if (acosVal < 25) acosCount4++;
+                    else if (acosVal < 30) acosCount3++;
+                    else if (acosVal < 35) acosCount2++;
+                    else acosCount1++;
                 });
                 
                 // Update missing campaign count
@@ -730,13 +788,27 @@
                 }
                 
                 // Update dropdown option texts with counts
-                // Use totalSkuCountFromBackend to match backend count exactly
+                // Use validSkuCount which respects inventory filter (default excludes INV <= 0)
                 const utilizationSelect = document.getElementById('utilization-type-select');
                 if (utilizationSelect) {
-                    utilizationSelect.options[0].text = `All (${totalSkuCountFromBackend || validSkuCount})`;
+                    utilizationSelect.options[0].text = `All (${validSkuCount})`;
                     utilizationSelect.options[1].text = `Over Utilized (${overCount})`;
                     utilizationSelect.options[2].text = `Under Utilized (${underCount})`;
                     utilizationSelect.options[3].text = `Correctly Utilized (${correctlyCount})`;
+                }
+                
+                const sbgtSelect = document.getElementById('sbgt-filter');
+                if (sbgtSelect) {
+                    const totalAcos = acosCount8 + acosCount7 + acosCount6 + acosCount5 + acosCount4 + acosCount3 + acosCount2 + acosCount1 + acosCountZero;
+                    sbgtSelect.options[0].text = `All ACOS (${totalAcos})`;
+                    sbgtSelect.options[1].text = `ACOS < 5% (${acosCount8})`;
+                    sbgtSelect.options[2].text = `ACOS 5-9% (${acosCount7})`;
+                    sbgtSelect.options[3].text = `ACOS 10-14% (${acosCount6})`;
+                    sbgtSelect.options[4].text = `ACOS 15-19% (${acosCount5})`;
+                    sbgtSelect.options[5].text = `ACOS 20-24% (${acosCount4})`;
+                    sbgtSelect.options[6].text = `ACOS 25-29% (${acosCount3})`;
+                    sbgtSelect.options[7].text = `ACOS 30-34% (${acosCount2})`;
+                    sbgtSelect.options[8].text = `ACOS ≥ 35% (${acosCount1})`;
                 }
             }
 
@@ -961,14 +1033,8 @@
                 showRaOnly = false;
                 document.getElementById('ra-card').style.boxShadow = '';
                 if (typeof table !== 'undefined' && table) {
-                    // Toggle columns before applying filter to avoid header/body shift
-                    table.hideColumn('sbid');
+                    // APR BID remains hidden
                     table.hideColumn('apr_bid');
-                    if (currentUtilizationType !== 'correctly' && currentUtilizationType !== 'all') {
-                        table.showColumn('sbid');
-                        // apr_bid intentionally kept hidden for now
-                        // table.showColumn('apr_bid');
-                    }
 
                     // Delay filter/apply redraw to let Tabulator recalc layout
                     setTimeout(function() {
@@ -1102,12 +1168,16 @@
                     {
                         title: "INV",
                         field: "INV",
-                        visible: true
+                        visible: true,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<div class="text-center">${value || 0}<i class="fa-solid fa-circle-info ms-1 info-icon-inv-toggle" style="cursor: pointer; color: #6366f1;" title="Click to show/hide details"></i></div>`;
+                        }
                     },
                     {
                         title: "FBA INV",
                         field: "FBA_INV",
-                        visible: true,
+                        visible: false,
                         headerSort: false,
                         sorter: "number",
                         formatter: function(cell) {
@@ -1118,7 +1188,7 @@
                     {
                         title: "OV L30",
                         field: "L30",
-                        visible: true
+                        visible: false
                     },
                     {
                         title: "DIL %",
@@ -1134,12 +1204,12 @@
                             }
                             return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                         },
-                        visible: true
+                        visible: false
                     },
                     {
                         title: "AL 30",
                         field: "A_L30",
-                        visible: true
+                        visible: false
                     },
                     {
                         title: "A DIL %",
@@ -1155,11 +1225,12 @@
                             }
                             return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                         },
-                        visible: true
+                        visible: false
                     },
                     {
                         title: "NRL",
                         field: "NRL",
+                        visible: false,
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
@@ -1175,12 +1246,12 @@
                                 </select>
                             `;
                         },
-                        visible: true,
                         hozAlign: "center"
                     },
                     {
                         title: "NRA",
                         field: "NRA",
+                        visible: false,
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
@@ -1201,8 +1272,7 @@
                                 </select>
                             `;
                         },
-                        hozAlign: "center",
-                        visible: true
+                        hozAlign: "center"
                     },
                     {
                         title: "FBA",
@@ -1433,14 +1503,29 @@
                             if (aBudget > 0) {
                                 aUb7 = (parseFloat(aData.l7_spend) || 0) / (aBudget * 7) * 100;
                             }
+                            var aUb1 = 0;
+                            if (aBudget > 0) {
+                                aUb1 = (parseFloat(aData.l1_spend) || 0) / aBudget * 100;
+                            }
+                            
+                            // Determine utilization type for row A
+                            var aRowType = 'all';
+                            if (aUb7 > 99 && aUb1 > 99) {
+                                aRowType = 'over';
+                            } else if (aUb7 < 66 && aUb1 < 66) {
+                                aRowType = 'under';
+                            } else if (aUb7 >= 66 && aUb7 <= 99 && aUb1 >= 66 && aUb1 <= 99) {
+                                aRowType = 'correctly';
+                            }
+                            
                             var aSbid = 0;
-                            if (currentUtilizationType === 'over') {
+                            if (aRowType === 'over') {
                                 if (aL7Cpc === 0) {
                                     aSbid = 0.75;
                                 } else {
                                     aSbid = Math.floor(aL1Cpc * 0.90 * 100) / 100;
                                 }
-                            } else if (currentUtilizationType === 'under') {
+                            } else if (aRowType === 'under') {
                                 if (aUb7 < 10 || aL7Cpc === 0 || aL1Cpc === 0) {
                                     aSbid = 0.75;
                                 } else {
@@ -1456,14 +1541,29 @@
                             if (bBudget > 0) {
                                 bUb7 = (parseFloat(bData.l7_spend) || 0) / (bBudget * 7) * 100;
                             }
+                            var bUb1 = 0;
+                            if (bBudget > 0) {
+                                bUb1 = (parseFloat(bData.l1_spend) || 0) / bBudget * 100;
+                            }
+                            
+                            // Determine utilization type for row B
+                            var bRowType = 'all';
+                            if (bUb7 > 99 && bUb1 > 99) {
+                                bRowType = 'over';
+                            } else if (bUb7 < 66 && bUb1 < 66) {
+                                bRowType = 'under';
+                            } else if (bUb7 >= 66 && bUb7 <= 99 && bUb1 >= 66 && bUb1 <= 99) {
+                                bRowType = 'correctly';
+                            }
+                            
                             var bSbid = 0;
-                            if (currentUtilizationType === 'over') {
+                            if (bRowType === 'over') {
                                 if (bL7Cpc === 0) {
                                     bSbid = 0.75;
                                 } else {
                                     bSbid = Math.floor(bL1Cpc * 0.90 * 100) / 100;
                                 }
-                            } else if (currentUtilizationType === 'under') {
+                            } else if (bRowType === 'under') {
                                 if (bUb7 < 10 || bL7Cpc === 0 || bL1Cpc === 0) {
                                     bSbid = 0.75;
                                 } else {
@@ -1473,9 +1573,7 @@
                             
                             return aSbid - bSbid;
                         },
-                        visible: function() {
-                            return currentUtilizationType !== 'correctly' && currentUtilizationType !== 'all';
-                        },
+                        visible: true,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
@@ -1487,14 +1585,26 @@
                             }
                             
                             var sbid = 0;
-                            if (currentUtilizationType === 'over') {
-                                // Over-utilized: l7_cpc * 0.90 (if l7_cpc === 0, then 0.75)
+                            
+                            // Determine utilization type for this row
+                            var rowUtilizationType = 'all';
+                            if (ub7 > 99 && parseFloat(row.l1_spend || 0) / budget * 100 > 99) {
+                                rowUtilizationType = 'over';
+                            } else if (ub7 < 66 && parseFloat(row.l1_spend || 0) / budget * 100 < 66) {
+                                rowUtilizationType = 'under';
+                            } else if (ub7 >= 66 && ub7 <= 99 && parseFloat(row.l1_spend || 0) / budget * 100 >= 66 && parseFloat(row.l1_spend || 0) / budget * 100 <= 99) {
+                                rowUtilizationType = 'correctly';
+                            }
+                            
+                            // Calculate SBID based on row's utilization type
+                            if (rowUtilizationType === 'over') {
+                                // Over-utilized: l1_cpc * 0.90 (if l7_cpc === 0, then 0.75)
                                 if (l7_cpc === 0) {
                                     sbid = 0.75;
                                 } else {
                                     sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                                 }
-                            } else if (currentUtilizationType === 'under') {
+                            } else if (rowUtilizationType === 'under') {
                                 // Under-utilized: Complex logic based on ub7 and l7_cpc
                                 if (ub7 < 10 || l7_cpc === 0 || l1_cpc === 0) {
                                     sbid = 0.75;
@@ -1505,7 +1615,7 @@
                                 // Correctly-utilized: Usually no SBID (empty)
                                 sbid = 0;
                             }
-                            return sbid;
+                            return sbid === 0 ? '-' : sbid;
                         }
                     },
                     {
@@ -1760,15 +1870,9 @@
             table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
                 
-                // Set initial column visibility based on current utilization type
-                // Hide APR columns by default (kept for future use). Show SBID only for specific types.
+                // Hide APR columns by default (kept for future use)
                 table.hideColumn('apr_bid');
                 table.hideColumn('apr_bgt');
-                if (currentUtilizationType === 'correctly' || currentUtilizationType === 'all') {
-                    table.hideColumn('sbid');
-                } else {
-                    table.showColumn('sbid');
-                }
 
                 // Add event listener for info icon click to toggle columns
                 document.addEventListener('click', function(e) {
@@ -1803,6 +1907,31 @@
                         } else {
                             table.showColumn('PFT');
                             table.showColumn('roi');
+                        }
+                    }
+
+                    // INV info icon toggle for extra columns (FBA_INV, L30, DIL%, etc.)
+                    if (e.target.classList.contains('info-icon-inv-toggle')) {
+                        e.stopPropagation();
+                        const extraColumnFields = ['FBA_INV', 'L30', 'DIL %', 'A_L30', 'A DIL %', 'NRL', 'NRA'];
+                        
+                        // Check if any column is visible to determine current state
+                        const anyVisible = table.getColumn('FBA_INV').isVisible();
+                        
+                        // Toggle visibility
+                        extraColumnFields.forEach(field => {
+                            if (anyVisible) {
+                                table.hideColumn(field);
+                            } else {
+                                table.showColumn(field);
+                            }
+                        });
+                        
+                        // Update icon color
+                        if (anyVisible) {
+                            e.target.style.color = '#6366f1';
+                        } else {
+                            e.target.style.color = '#10b981';
                         }
                     }
                 });

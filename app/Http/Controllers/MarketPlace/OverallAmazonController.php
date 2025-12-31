@@ -1817,6 +1817,40 @@ class OverallAmazonController extends Controller
             $finalResult[] = (object) $sumRow;
         }
 
+        // Save PFT% and ROI_percentage to AmazonDataView value column after processing all rows
+        foreach ($result as $row) {
+            try {
+                if (!isset($row->{'(Child) sku'}) || empty($row->{'(Child) sku'})) {
+                    continue;
+                }
+                
+                $sku = $row->{'(Child) sku'};
+                
+                // Skip parent rows
+                if (strpos($sku, 'PARENT ') === 0) {
+                    continue;
+                }
+                
+                $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+                $existing = is_array($amazonDataView->value)
+                    ? $amazonDataView->value
+                    : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+                
+                $merged = array_merge($existing, [
+                    'PFT' => $row->{'PFT%'} ?? 0,
+                    'ROI' => $row->ROI_percentage ?? 0,
+                    'GPFT' => $row->{'GPFT%'} ?? 0,
+                    'AD_percent' => $row->{'AD%'} ?? 0,
+                ]);
+                
+                $amazonDataView->value = $merged;
+                $amazonDataView->save();
+            } catch (\Exception $e) {
+                // Continue processing other SKUs if one fails
+                Log::error('Error saving PFT/ROI for SKU: ' . ($sku ?? 'unknown') . ' - ' . $e->getMessage());
+            }
+        }
+
         return response()->json([
             'message' => 'Data fetched successfully',
             'data' => $finalResult,

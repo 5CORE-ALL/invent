@@ -74,35 +74,42 @@
     <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-body">
-                <div class="column-controls card mb-4 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 10px;">
-                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-                        <div class="d-flex align-items-center gap-3 flex-wrap" style="flex: 1;">
-                            <!-- Title -->
-                            {{-- ▶️ Navigation --}}
-                            <div class="col-auto">
-                                <label class="form-label fw-semibold mb-1 d-block">▶️ Navigation</label>
-                                <div class="btn-group time-navigation-group" role="group">
-                                    <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-2" title="Previous parent">
-                                        <i class="fas fa-step-backward"></i>
-                                    </button>
-                                    <button id="play-pause" class="btn btn-light rounded-circle shadow-sm me-2" style="display: none;" title="Pause">
-                                        <i class="fas fa-pause"></i>
-                                    </button>
-                                    <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm me-2" title="Play">
-                                        <i class="fas fa-play"></i>
-                                    </button>
-                                    <button id="play-forward" class="btn btn-light rounded-circle shadow-sm" title="Next parent">
-                                        <i class="fas fa-step-forward"></i>
-                                    </button>
-                                </div>
+                <!-- Filters Row - First Row -->
+                <div class="column-controls card mb-3 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 10px;">
+                    <div class="d-flex flex-wrap align-items-center gap-3">
+                        <!-- Navigation -->
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block">▶️ Navigation</label>
+                            <div class="btn-group time-navigation-group" role="group">
+                                <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-2" title="Previous parent">
+                                    <i class="fas fa-step-backward"></i>
+                                </button>
+                                <button id="play-pause" class="btn btn-light rounded-circle shadow-sm me-2" style="display: none;" title="Pause">
+                                    <i class="fas fa-pause"></i>
+                                </button>
+                                <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm me-2" title="Play">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <button id="play-forward" class="btn btn-light rounded-circle shadow-sm me-2" title="Next parent">
+                                    <i class="fas fa-step-forward"></i>
+                                </button>
+                                <button id="supplier-remarks-btn" class="btn btn-success shadow-sm" style="border-radius: 6px; margin-left: 8px;" title="Supplier Remarks/Updates">
+                                    <i class="fas fa-comment-alt"></i> Remarks
+                                </button>
                             </div>
+                        </div>
 
-                            <!-- Search Table -->
+                        <!-- Search Table -->
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Search</label>
                             <input type="text" class="form-control" id="wholeSearchInput"
                                 placeholder="🔍 Search entire table..."
                                 style="width: 200px; font-size: 0.97rem; height: 36px; border-radius: 6px;">
+                        </div>
 
-                            <!-- Toggle Columns Dropdown -->
+                        <!-- Toggle Columns Dropdown -->
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Columns</label>
                             <div class="column-dropdown position-relative">
                                 <button class="btn text-white column-dropdown-btn d-flex align-items-center gap-1" id="columnDropdownBtn" style="border-radius: 6px;">
                                     <i class="mdi mdi-format-columns"></i> Toggle Columns
@@ -112,18 +119,27 @@
                                     <!-- Dynamic Checkboxes -->
                                 </div>
                             </div>
+                        </div>
 
-                            <!-- Show All Columns -->
+                        <!-- Show All Columns -->
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Show All</label>
                             <button class="btn text-white show-all-columns d-flex align-items-center gap-1" id="showAllColumns" style="border-radius: 6px;">
                                 <i class="mdi mdi-eye-check-outline"></i> Show All
                             </button>
+                        </div>
 
-                            <!-- Delete Selected Button -->
+                        <!-- Delete Selected Button -->
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Delete</label>
                             <button class="btn btn-danger d-flex align-items-center gap-1" id="deleteSelectedBtn" style="border-radius: 6px; display: none;">
                                 <i class="mdi mdi-delete"></i> Delete Selected (<span id="selectedCount">0</span>)
                             </button>
+                        </div>
 
-                            <!-- Supplier Dropdown -->
+                        <!-- Supplier Dropdown -->
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Supplier</label>
                             <div class="custom-select-wrapper" style="min-width: 150px; position: relative;">
                                 <div class="custom-select-box d-flex align-items-center justify-content-between" id="customSelectBox"
                                     style="border: 1.5px solid #e0e6ed; border-radius: 7px; background: #fff; height: 38px; padding: 0 14px; cursor: pointer; box-shadow: 0 1px 4px rgba(60,192,195,0.07); transition: border-color 0.2s;">
@@ -145,8 +161,11 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
 
-                            <!-- 💰 Advance + Pending Summary -->
+                        <!-- 💰 Advance + Pending Summary -->
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Advance</label>
                             <div id="advance-total-wrapper" style="display: none;">
                                 <div id="advance-total-display" class="py-1 px-2 rounded shadow-sm d-inline-flex align-items-center gap-2 flex-wrap"
                                     style="background: linear-gradient(90deg, #e6f4f1 60%, #f8f9fa 100%); color: #10635b; font-weight: 600; font-size: 16px; border: 1.5px solid #3bc0c3; box-shadow: 0 2px 8px rgba(60,192,195,0.08); transition: all 0.3s ease;">
@@ -173,51 +192,127 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
 
-                            <div class="mb-3" style="min-width: 120px; position: relative;">
-                                <label class="form-label fw-semibold mb-1 d-block">Pending Status</label>
-                                <select id="row-data-pending-status" class="form-select border border-primary">
-                                    <option value="">select color</option>
-                                    <option value="green">Green <span id="greenCount"></span></option>
-                                    <option value="yellow">yellow <span id="yellowCount"></span></option>
-                                    <option value="red">red <span id="redCount"></span></option>
-                                </select>
+                        <!-- Pending Status -->
+                        <div class="col-auto">
+                            <label class="form-label fw-semibold mb-1 d-block">Pending Status</label>
+                            <select id="row-data-pending-status" class="form-select border border-primary" style="min-width: 120px;">
+                                <option value="">select color</option>
+                                <option value="green">Green <span id="greenCount"></span></option>
+                                <option value="yellow">yellow <span id="yellowCount"></span></option>
+                                <option value="red">red <span id="redCount"></span></option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Counts/Stats Row - Second Row -->
+                <div class="card mb-4 shadow-sm border-0" style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);">
+                    <div class="card-body p-3">
+                        <div class="d-flex align-items-center justify-content-between" style="flex-wrap: nowrap; gap: 0; overflow-x: auto;">
+                            <div class="text-center flex-fill" style="min-width: 110px;">
+                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                    💰 Total Amount
+                                </div>
+                                <div id="total-amount" class="fw-bold text-dark" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                    0
+                                </div>
+                            </div>
+                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                            <div class="text-center flex-fill" style="min-width: 110px;">
+                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                    📦 Total Ord. Qty
+                                </div>
+                                <div id="total-order-qty" class="fw-bold text-info" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                    0
+                                </div>
+                            </div>
+                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                            <div class="text-center flex-fill" style="min-width: 110px;">
+                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                    📊 Total CBM
+                                </div>
+                                <div id="total-cbm" class="fw-bold text-success" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                    0
+                                </div>
+                            </div>
+                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                            <div class="text-center flex-fill" style="min-width: 110px;">
+                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                    🔢 Total Items
+                                </div>
+                                <div id="total-order-items" class="fw-bold text-warning" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                    0
+                                </div>
+                            </div>
+                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                            <div class="text-center flex-fill" style="min-width: 110px;">
+                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                    📦 Total CTN CBM
+                                </div>
+                                <div id="total-ctn-cbm" class="fw-bold text-primary" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                                    0
+                                </div>
+                            </div>
+                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
+                            <div class="text-center flex-fill" style="min-width: 110px;">
+                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                    👥 Follow Supplier
+                                </div>
+                                <div id="followSupplierCount" class="fw-bold text-danger" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #dc3545;">
+                                    0
+                                </div>
+                            </div>
+                            <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent); display: none;" id="supplier-badge-vr"></div>
+                            <div class="text-center flex-fill" style="min-width: 140px; display: none;" id="supplier-badge-container">
+                                <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
+                                    🏭 Current Supplier
+                                </div>
+                                <div id="current-supplier" class="fw-bold text-white" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #28a745; padding: 8px 16px; border-radius: 6px; display: inline-block; min-width: 120px; word-break: break-word;">
+                                    -
+                                </div>
                             </div>
                         </div>
-                        
-                        <!-- Combined Stats Box - Outside inner flex to prevent wrapping -->
-                        <div class="col-auto">
-                            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); min-width: 320px;">
-                                <div class="card-body p-3">
-                                    <div class="d-flex align-items-center justify-content-between">
-                                        <div class="text-center flex-fill">
-                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                                💰 Total Amount
-                                            </div>
-                                            <div id="total-amount" class="fw-bold text-dark" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                                0
-                                            </div>
-                                        </div>
-                                        <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                                        <div class="text-center flex-fill">
-                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                                📦 Total Ord. Qty
-                                            </div>
-                                            <div id="total-order-qty" class="fw-bold text-info" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                                0
-                                            </div>
-                                        </div>
-                                        <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                                        <div class="text-center flex-fill">
-                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                                📊 Total CBM
-                                            </div>
-                                            <div id="total-cbm" class="fw-bold text-success" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                                0
-                                            </div>
-                                        </div>
+                    </div>
+                </div>
+
+                <!-- Supplier Remarks Modal -->
+                <div class="modal fade" id="supplierRemarksModal" tabindex="-1" aria-labelledby="supplierRemarksModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header bg-success text-white">
+                                <h5 class="modal-title" id="supplierRemarksModalLabel">
+                                    <i class="fas fa-comment-alt"></i> Supplier Remarks/Updates
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Current Supplier:</label>
+                                    <div id="modal-supplier-name" class="badge bg-success fs-6 p-2" style="font-size: 1rem !important;">
+                                        -
                                     </div>
                                 </div>
+                                <div class="mb-3">
+                                    <label for="supplier-remark-input" class="form-label fw-bold">Add New Remark/Update:</label>
+                                    <textarea class="form-control" id="supplier-remark-input" rows="3" placeholder="Enter your remark or update here..."></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <button type="button" class="btn btn-success" id="save-remark-btn">
+                                        <i class="fas fa-save"></i> Save Remark
+                                    </button>
+                                </div>
+                                <hr>
+                                <div>
+                                    <label class="form-label fw-bold mb-2">Saved Remarks/Updates:</label>
+                                    <div id="remarks-list" style="max-height: 400px; overflow-y: auto;">
+                                        <p class="text-muted">No remarks saved yet.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                             </div>
                         </div>
                     </div>
@@ -262,6 +357,7 @@
                                 {{-- <th data-column="16">photo int.<br/>sale<div class="resizer"></div></th> --}}
                                 <th data-column="14">CBM<div class="resizer"></div></th>
                                 <th data-column="15" hidden>total<br/>cbm<div class="resizer"></div></th>
+                                <th data-column="20" class="text-center">CTN CBM E<div class="resizer"></div></th>
                                 {{-- <th data-column="19" class="text-center">BARCODE<br/>&<br/>SKU<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="20">artwork<br/>&<br/>maual<br/>book<div class="resizer"></div></th> --}}
                                 {{-- <th data-column="21">notes<div class="resizer"></div></th> --}}
@@ -439,36 +535,59 @@
                                          data-column="pay_conf_date" class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px;">
                                     </td>
                                     @php
-                                        $bgColor = '';
+                                        $textColor = '';
                                         $daysDiff = null;
+                                        $formattedDate = '';
 
                                         if (!empty($item->created_at)) {
-                                            $daysDiff = \Carbon\Carbon::parse($item->created_at)->diffInDays(\Carbon\Carbon::today());
+                                            $date = \Carbon\Carbon::parse($item->created_at);
+                                            $daysDiff = $date->diffInDays(\Carbon\Carbon::today());
+                                            
+                                            // Format date with 3-letter month in uppercase: 15 DEC (without year)
+                                            $day = $date->format('d');
+                                            $month = strtoupper($date->format('M')); // M gives 3-letter month like Jan, Feb - convert to uppercase
+                                            $formattedDate = $day . ' ' . $month;
 
                                             if ($daysDiff > 25) {
-                                                $bgColor = 'background-color: red; color: black;';
+                                                $textColor = 'color: red;';
                                             } elseif ($daysDiff >= 15 && $daysDiff <= 25) {
-                                                $bgColor = 'background-color: yellow; color: black;';
+                                                $textColor = 'color: #ffc107;'; // Yellow text
                                             } else {
-                                                $bgColor = 'color: black;';
+                                                $textColor = 'color: black;';
                                             }
                                         }
                                     @endphp
                                     <td data-column="10">
-                                        <div style="display: flex; align-items: center; gap: 4px;">
+                                        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
                                             <input type="date" data-sku="{{ $item->sku }}" data-column="created_at" value="{{ !empty($item->created_at) ? \Carbon\Carbon::parse($item->created_at)->format('Y-m-d') : '' }}" 
-                                            class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px; {{ $bgColor }}">
-                                            @if ($daysDiff !== null)
-                                                <span style="font-size: 12px; color: rgb(72, 69, 69); white-space: nowrap;">
-                                                    {{ $daysDiff }} D
+                                            class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px; {{ $textColor }}">
+                                            @if ($daysDiff !== null && !empty($formattedDate))
+                                                <span style="font-size: 11px; {{ $textColor }}; white-space: nowrap; font-weight: 500;">
+                                                    {{ $formattedDate }} ({{ $daysDiff }}D)
                                                 </span>
                                             @endif
                                         </div>
                                     </td>
                                     <td data-column="11">
-                                        <input type="date" data-sku="{{ $item->sku }}" data-column="del_date" 
-                                            value="{{ !empty($item->del_date) ? \Carbon\Carbon::parse($item->del_date)->format('Y-m-d') : '' }}" 
-                                        class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px;">
+                                        @php
+                                            $delFormattedDate = '';
+                                            if (!empty($item->del_date)) {
+                                                $delDate = \Carbon\Carbon::parse($item->del_date);
+                                                $delDay = $delDate->format('d');
+                                                $delMonth = strtoupper($delDate->format('M'));
+                                                $delFormattedDate = $delDay . ' ' . $delMonth;
+                                            }
+                                        @endphp
+                                        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                                            <input type="date" data-sku="{{ $item->sku }}" data-column="del_date" 
+                                                value="{{ !empty($item->del_date) ? \Carbon\Carbon::parse($item->del_date)->format('Y-m-d') : '' }}" 
+                                            class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px;">
+                                            @if (!empty($delFormattedDate))
+                                                <span style="font-size: 11px; color: black; white-space: nowrap; font-weight: 500;">
+                                                    {{ $delFormattedDate }}
+                                                </span>
+                                            @endif
+                                        </div>
                                     </td>
                                     {{-- <td data-column="12">
                                         <div class="input-group input-group-sm align-items-center" style="gap: 4px;">
@@ -544,6 +663,10 @@
 
                                     <td data-column="14">
                                         {{ isset($item->CBM) ? number_format($item->CBM, 4) : 'N/A' }}
+                                    </td>
+
+                                    <td data-column="20" class="text-center">
+                                        {{ isset($item->ctn_cbm_e) && $item->ctn_cbm_e !== null ? number_format($item->ctn_cbm_e, 4) : 'N/A' }}
                                     </td>
 
                                     <td data-column="15" hidden>
@@ -659,6 +782,12 @@
 
         //total amount
         calculateTotalAmount();
+
+        //total order items count
+        calculateTotalOrderItems();
+
+        //total CTN CBM
+        calculateTotalCTNCBM();
 
         // Delete with checkbox functionality
         setupDeleteWithCheckbox();
@@ -941,6 +1070,11 @@
                             this.style.border = '2px solid green';
                             setTimeout(() => this.style.border = '', 1000);
 
+                            // Update supplier counts if supplier changed
+                            if (column === 'supplier' && updateSupplierCounts) {
+                                updateSupplierCounts();
+                            }
+
                             // ✅ Recalculate Total on rate change
                             if (column === 'rate') {
                                 const qtyCell = row.querySelector('td[data-column="4"]');
@@ -1197,6 +1331,9 @@
             calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderQty();
+            calculateTotalOrderItems();
+            calculateTotalCTNCBM();
+            updateFollowSupplierCount();
         }
 
         function setupAutoUpload() {
@@ -1414,6 +1551,9 @@
                             calculateTotalCBM();
                             calculateTotalAmount();
                             calculateTotalOrderQty();
+                            calculateTotalOrderItems();
+                            calculateTotalCTNCBM();
+                            updateFollowSupplierCount();
                             
                             alert(`Successfully deleted ${data.deleted_count} item(s).`);
                         } else {
@@ -1431,6 +1571,7 @@
             updateDeleteButton();
         }
 
+
         function setupSupplierAdvanceCalculation() {
             const selectBox = document.getElementById('customSelectBox');
             const dropdown = document.getElementById('customSelectDropdown');
@@ -1446,6 +1587,10 @@
                 selectBox.classList.toggle('active', dropdown.style.display === 'block');
                 searchInput.value = '';
                 allOptions.forEach(option => option.style.display = '');
+                
+                // Update counts when dropdown opens
+                updateSupplierCounts();
+                
                 setTimeout(() => searchInput.focus(), 100);
             });
 
@@ -1455,11 +1600,17 @@
                 // UI update
                 allOptions.forEach(opt => opt.classList.remove('selected', 'bg-primary', 'text-white'));
                 e.target.classList.add('selected', 'bg-primary', 'text-white');
-                selectedText.textContent = e.target.textContent;
+                
+                // Get text without count for display
+                const optionText = e.target.textContent.trim();
+                const displayText = optionText.replace(/\s*\(\d+\)\s*$/, '');
+                selectedText.textContent = displayText;
+                
                 dropdown.style.display = 'none';
                 selectBox.classList.remove('active');
 
-                const selectedSupplier = e.target.textContent.trim();
+                // Remove count from supplier name for comparison
+                const selectedSupplier = optionText.replace(/\s*\(\d+\)\s*$/, '').trim();
                 const selectedValue = e.target.getAttribute('data-value');
                 const allRows = document.querySelectorAll('tbody tr');
 
@@ -1483,6 +1634,7 @@
                     calculateTotalCBM();
                     calculateTotalAmount();
                     calculateTotalOrderQty();
+                    calculateTotalCTNCBM();
                     return;
                 }
 
@@ -1574,6 +1726,9 @@
                     calculateTotalCBM();
                     calculateTotalAmount();
                     calculateTotalOrderQty();
+                    calculateTotalOrderItems();
+                    calculateTotalCTNCBM();
+                    updateFollowSupplierCount();
                     return;
                 } else {
                     wrapper.style.display = 'block';
@@ -1582,7 +1737,16 @@
                 // Calculate total group value
                 let totalGroupValue = 0;
                 matchingRows.forEach(row => {
-                    const qty = parseFloat(row.querySelector('td[data-column="4"]')?.innerText || '0') || 0;
+                    const qtyCell = row.querySelector('td[data-column="4"]');
+                    let qty = 0;
+                    if (qtyCell) {
+                        const qtyInput = qtyCell.querySelector('input');
+                        if (qtyInput) {
+                            qty = parseFloat(qtyInput.value) || 0;
+                        } else {
+                            qty = parseFloat(qtyCell.textContent.trim()) || parseFloat(qtyCell.getAttribute('data-qty')) || 0;
+                        }
+                    }
                     const rate = parseFloat(row.querySelector('input[data-column="rate"]')?.value || '0') || 0;
                     totalGroupValue += qty * rate;
                 });
@@ -1600,9 +1764,20 @@
                 let supplierTotalCBM = 0;
                 let supplierTotalOrderQty = 0;
                 let supplierTotalAmount = 0;
+                let supplierTotalItems = 0;
+                let supplierTotalCTNCBM = 0;
 
                 matchingRows.forEach(row => {
-                    const qty = parseFloat(row.querySelector('td[data-column="4"]')?.innerText || '0') || 0;
+                    const qtyCell = row.querySelector('td[data-column="4"]');
+                    let qty = 0;
+                    if (qtyCell) {
+                        const qtyInput = qtyCell.querySelector('input');
+                        if (qtyInput) {
+                            qty = parseFloat(qtyInput.value) || 0;
+                        } else {
+                            qty = parseFloat(qtyCell.textContent.trim()) || parseFloat(qtyCell.getAttribute('data-qty')) || 0;
+                        }
+                    }
                     const rate = parseFloat(row.querySelector('input[data-column="rate"]')?.value || '0') || 0;
                     const rowTotal = qty * rate;
 
@@ -1610,13 +1785,25 @@
                     const pendingInput = row.querySelector('input[data-column="pending"]');
 
                     const cbmInput = row.querySelector('input[data-column="total_cbm"]');
-                    const orderQtyCell = row.querySelector('td[data-column="4"]');
 
                     const cbm = parseFloat(cbmInput?.value || '0');
 
                     if (!isNaN(cbm)) supplierTotalCBM += cbm;
                     if (!isNaN(qty)) supplierTotalOrderQty += qty;
                     supplierTotalAmount += rowTotal;
+                    supplierTotalItems++;
+                    
+                    // Calculate CTN CBM E
+                    const ctnCbmECell = row.querySelector('td[data-column="20"]');
+                    let ctnCbmE = 0;
+                    if (ctnCbmECell) {
+                        const ctnCbmEText = ctnCbmECell.textContent.trim();
+                        if (ctnCbmEText !== 'N/A' && ctnCbmEText !== '') {
+                            ctnCbmE = parseFloat(ctnCbmEText.replace(/,/g, '')) || 0;
+                        }
+                    }
+                    // Add: Order Qty * CTN CBM E
+                    supplierTotalCTNCBM += qty * ctnCbmE;
 
                     let rowAdvance = 0;
                     if (totalGroupValue > 0 && rowTotal > 0) {
@@ -1634,10 +1821,12 @@
                 document.getElementById('advance-amount').textContent = totalAdvance.toFixed(2);
                 document.getElementById('pending-amount').textContent = totalPending.toFixed(2);
 
-                // Update supplier cbm and order qty
+                // Update supplier cbm and order qty (update main totals with supplier filtered values)
                 document.getElementById('total-cbm').textContent = supplierTotalCBM.toFixed(2);
                 document.getElementById('total-order-qty').textContent = supplierTotalOrderQty;
-                document.getElementById('total-amount').textContent = supplierTotalAmount;
+                document.getElementById('total-amount').textContent = supplierTotalAmount.toFixed(0);
+                document.getElementById('total-order-items').textContent = supplierTotalItems;
+                document.getElementById('total-ctn-cbm').textContent = supplierTotalCTNCBM.toFixed(2);
 
                 // Animate wrapper
                 wrapper.classList.add('animate__animated', 'animate__fadeIn');
@@ -1731,8 +1920,19 @@
         let supplierIndex = 0;
         let intervalId = null;
 
-        // Collect unique suppliers
+        // Collect unique suppliers (only from MIP stage rows)
         rows.forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only collect suppliers from MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
             const supplierCell = row.querySelector('td[data-column="6"]');
             if (supplierCell) {
                 // Get supplier from dropdown
@@ -1746,6 +1946,18 @@
 
         function showSupplierRows(supplier) {
             rows.forEach(row => {
+                // Check stage from data attribute first (more reliable)
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                
+                // Only show MIP stage rows
+                if (rowStage !== 'mip') {
+                    row.style.display = "none";
+                    return;
+                }
+                
                 const cell = row.querySelector('td[data-column="6"]');
                 if (cell) {
                     // Get supplier from dropdown
@@ -1761,13 +1973,41 @@
                 }
             });
 
-            // Optionally show current supplier name
-            const title = document.getElementById("current-supplier");
-            if (title) title.textContent = "Supplier: " + supplier;
+            // Show supplier badge with supplier name
+            const supplierBadgeContainer = document.getElementById("supplier-badge-container");
+            const supplierBadge = document.getElementById("current-supplier");
+            const supplierBadgeVr = document.getElementById("supplier-badge-vr");
+            if (supplierBadgeContainer) {
+                supplierBadgeContainer.style.display = "block";
+            }
+            if (supplierBadgeVr) {
+                supplierBadgeVr.style.display = "block";
+            }
+            if (supplierBadge) {
+                supplierBadge.textContent = supplier || "-";
+            }
 
-            calculateTotalCBM();
-            calculateTotalAmount();
-            calculateTotalOrderQty();
+            // Update modal supplier name if modal is open
+            const modalSupplierName = document.getElementById("modal-supplier-name");
+            if (modalSupplierName) {
+                modalSupplierName.textContent = supplier || "-";
+            }
+            
+            // Load and display remarks for this supplier
+            if (typeof loadSupplierRemarks === 'function') {
+                loadSupplierRemarks(supplier);
+            }
+
+            // Update counts after a small delay to ensure DOM is updated
+            setTimeout(() => {
+                calculateTotalCBM();
+                calculateTotalAmount();
+                calculateTotalOrderQty();
+                calculateTotalOrderItems();
+                calculateTotalCTNCBM();
+                updateFollowSupplierCount();
+                updateCounts(); // Update pending status counts based on visible rows
+            }, 50);
         }
 
         function playNextSupplier() {
@@ -1775,10 +2015,21 @@
             showSupplierRows(suppliers[supplierIndex]);
         }
 
-        // Function to refresh supplier list
+        // Function to refresh supplier list (only from MIP stage rows)
         function refreshSupplierList() {
             suppliers.length = 0; // Clear existing list
             rows.forEach(row => {
+                // Check stage from data attribute first (more reliable)
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                
+                // Only collect suppliers from MIP stage rows
+                if (rowStage !== 'mip') {
+                    return;
+                }
+                
                 const supplierCell = row.querySelector('td[data-column="6"]');
                 if (supplierCell) {
                     const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
@@ -1794,28 +2045,70 @@
             }
         }
 
-        document.getElementById("play-auto").addEventListener("click", function () {
-            // Refresh supplier list before playing
-            refreshSupplierList();
-            if (suppliers.length === 0) {
-                alert("No suppliers found. Please add suppliers to rows.");
-                return;
+        // Play button - use event delegation to handle multiple clicks
+        document.addEventListener("click", function(e) {
+            const playAutoBtn = e.target.closest("#play-auto");
+            if (playAutoBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Refresh supplier list before playing
+                refreshSupplierList();
+                if (suppliers.length === 0) {
+                    alert("No suppliers found. Please add suppliers to rows.");
+                    return;
+                }
+                
+                playAutoBtn.style.display = "none";
+                const playPauseBtn = document.getElementById("play-pause");
+                if (playPauseBtn) {
+                    playPauseBtn.style.display = "inline-block";
+                }
+                
+                supplierIndex = 0; // Start from first supplier
+                showSupplierRows(suppliers[supplierIndex]);
             }
-            this.style.display = "none";
-            document.getElementById("play-pause").style.display = "inline-block";
-            supplierIndex = 0; // Start from first supplier
-            showSupplierRows(suppliers[supplierIndex]);
         });
 
         document.getElementById("play-pause").addEventListener("click", function () {
             this.style.display = "none";
             document.getElementById("play-auto").style.display = "inline-block";
-            rows.forEach(row => row.style.display = "");
-                const title = document.getElementById("current-supplier");
-            if (title) title.textContent = "";
+            
+            // Hide supplier badge when pausing
+            const supplierBadgeContainer = document.getElementById("supplier-badge-container");
+            const supplierBadgeVr = document.getElementById("supplier-badge-vr");
+            if (supplierBadgeContainer) {
+                supplierBadgeContainer.style.display = "none";
+            }
+            if (supplierBadgeVr) {
+                supplierBadgeVr.style.display = "none";
+            }
+            
+            // Show only MIP stage rows when pausing
+            rows.forEach(row => {
+                // Check stage from data attribute first (more reliable)
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                
+                // Only show MIP stage rows
+                if (rowStage === 'mip') {
+                    row.style.display = "";
+                } else {
+                    row.style.display = "none";
+                }
+            });
+            
+            const title = document.getElementById("current-supplier");
+            if (title) title.textContent = "-";
             calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderQty();
+            calculateTotalOrderItems();
+            calculateTotalCTNCBM();
+            updateFollowSupplierCount();
+            updateCounts(); // Update pending status counts when pausing
         });
 
 
@@ -1842,14 +2135,48 @@
             let green = 0, yellow = 0, red = 0;
 
             rows.forEach(row => {
-                // Check created_at (Order Date) field for background color, not del_date
-                const dateInput = row.querySelector('input[data-column="created_at"]');
-                if (!dateInput) return;
+                // Check if row is MIP stage
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                if (rowStage !== 'mip') return;
 
-                const bg = dateInput.style.backgroundColor.trim().toLowerCase();
-                if (bg === "green" || bg.includes("green")) green++;
-                else if (bg === "yellow" || bg.includes("yellow")) yellow++;
-                else if (bg === "red" || bg.includes("red")) red++;
+                // Only count visible rows (filtered by play button or other filters)
+                if (row.style.display === "none") return;
+
+                // Check created_at (Order Date) field for text color
+                const dateInput = row.querySelector('input[data-column="created_at"]');
+                if (!dateInput) {
+                    green++; // Default to green if no date
+                    return;
+                }
+
+                // Check inline style first (more reliable)
+                const inlineStyle = dateInput.getAttribute('style') || '';
+                const inlineStyleLower = inlineStyle.toLowerCase();
+                
+                // Also check the span element if it exists
+                const dateSpan = dateInput.parentElement.querySelector('span');
+                const spanStyle = dateSpan ? (dateSpan.getAttribute('style') || '') : '';
+                const spanStyleLower = spanStyle.toLowerCase();
+
+                // Check for red color in inline style
+                if (inlineStyleLower.includes('color: red') || inlineStyleLower.includes('color:red') || 
+                    inlineStyleLower.includes('color: #dc3545') || inlineStyleLower.includes('color:#dc3545') ||
+                    spanStyleLower.includes('color: red') || spanStyleLower.includes('color:red') ||
+                    spanStyleLower.includes('color: #dc3545') || spanStyleLower.includes('color:#dc3545')) {
+                    red++;
+                }
+                // Check for yellow color in inline style
+                else if (inlineStyleLower.includes('color: #ffc107') || inlineStyleLower.includes('color:#ffc107') ||
+                         spanStyleLower.includes('color: #ffc107') || spanStyleLower.includes('color:#ffc107')) {
+                    yellow++;
+                }
+                // Default to green (black or no color specified)
+                else {
+                    green++;
+                }
             });
 
             greenSpan.textContent = `(${green})`;
@@ -1859,32 +2186,230 @@
 
         function filterDateRows(type) {
             rows.forEach(row => {
-                // Check created_at (Order Date) field for background color, not del_date
+                // Check if row is MIP stage first
+                const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+                const stageSelect = row.querySelector('.editable-select-stage');
+                const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+                const rowStage = rowStageSelect || rowStageAttr;
+                
+                if (rowStage !== 'mip') {
+                    row.style.display = "none";
+                    return;
+                }
+
+                if (!type) {
+                    // Show all MIP rows if no filter selected
+                    row.style.display = "";
+                    return;
+                }
+
+                // Check created_at (Order Date) field for text color
                 const dateInput = row.querySelector('input[data-column="created_at"]');
-                if (!dateInput) return;
+                if (!dateInput) {
+                    // If no date input, default to green
+                    row.style.display = (type === "green") ? "" : "none";
+                    return;
+                }
 
-                const bg = dateInput.style.backgroundColor.trim().toLowerCase();
-                const bgColor = bg.includes("green") ? "green" : (bg.includes("yellow") ? "yellow" : (bg.includes("red") ? "red" : ""));
+                // Check inline style first (more reliable)
+                const inlineStyle = dateInput.getAttribute('style') || '';
+                const inlineStyleLower = inlineStyle.toLowerCase();
+                
+                // Also check the span element if it exists
+                const dateSpan = dateInput.parentElement.querySelector('span');
+                const spanStyle = dateSpan ? (dateSpan.getAttribute('style') || '') : '';
+                const spanStyleLower = spanStyle.toLowerCase();
 
-                row.style.display = (!type || bgColor === type) ? "" : "none";
+                let rowColor = "green"; // Default to green
+                
+                // Check for red color in inline style (color: red; or color:#dc3545;)
+                if (inlineStyleLower.includes('color: red') || inlineStyleLower.includes('color:red') || 
+                    inlineStyleLower.includes('color: #dc3545') || inlineStyleLower.includes('color:#dc3545') ||
+                    spanStyleLower.includes('color: red') || spanStyleLower.includes('color:red') ||
+                    spanStyleLower.includes('color: #dc3545') || spanStyleLower.includes('color:#dc3545')) {
+                    rowColor = "red";
+                }
+                // Check for yellow color in inline style (color: #ffc107;)
+                else if (inlineStyleLower.includes('color: #ffc107') || inlineStyleLower.includes('color:#ffc107') ||
+                         spanStyleLower.includes('color: #ffc107') || spanStyleLower.includes('color:#ffc107')) {
+                    rowColor = "yellow";
+                }
+                // If no color specified or black/default, it's green
+                else {
+                    rowColor = "green";
+                }
+
+                row.style.display = (rowColor === type) ? "" : "none";
             });
 
             calculateTotalCBM();
             calculateTotalAmount();
             calculateTotalOrderQty();
+            calculateTotalOrderItems();
+            calculateTotalCTNCBM();
+            updateFollowSupplierCount();
+            updateCounts(); // Update pending status counts when filtering by date
         }
 
         updateCounts();
+        updateFollowSupplierCount();
 
         filterSelect.addEventListener("change", function () {
             filterDateRows(this.value);
         });
+
+        // Supplier Remarks Functionality
+        let currentSupplierForRemarks = '';
+
+        // Function to get supplier remarks from local storage
+        function getSupplierRemarks(supplier) {
+            if (!supplier) return [];
+            const remarksKey = `supplier_remarks_${supplier}`;
+            const remarks = localStorage.getItem(remarksKey);
+            return remarks ? JSON.parse(remarks) : [];
+        }
+
+        // Function to save supplier remark
+        function saveSupplierRemark(supplier, remark) {
+            if (!supplier || !remark.trim()) {
+                alert('Please enter a remark.');
+                return;
+            }
+
+            const remarksKey = `supplier_remarks_${supplier}`;
+            const remarks = getSupplierRemarks(supplier);
+            
+            const newRemark = {
+                id: Date.now(),
+                text: remark.trim(),
+                timestamp: new Date().toLocaleString()
+            };
+            
+            remarks.unshift(newRemark); // Add to beginning
+            localStorage.setItem(remarksKey, JSON.stringify(remarks));
+            
+            // Clear input
+            document.getElementById('supplier-remark-input').value = '';
+            
+            // Reload remarks
+            loadSupplierRemarks(supplier);
+            
+            alert('Remark saved successfully!');
+        }
+
+        // Function to load and display supplier remarks
+        function loadSupplierRemarks(supplier) {
+            const remarksList = document.getElementById('remarks-list');
+            if (!remarksList) return;
+
+            const remarks = getSupplierRemarks(supplier);
+            
+            if (remarks.length === 0) {
+                remarksList.innerHTML = '<p class="text-muted">No remarks saved yet.</p>';
+                return;
+            }
+
+            let html = '<div class="list-group">';
+            remarks.forEach(remark => {
+                html += `
+                    <div class="list-group-item mb-2" style="border-left: 4px solid #28a745;">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <p class="mb-1">${remark.text}</p>
+                                <small class="text-muted">${remark.timestamp}</small>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger delete-remark-btn" data-id="${remark.id}" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            remarksList.innerHTML = html;
+
+            // Add delete event listeners
+            remarksList.querySelectorAll('.delete-remark-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    if (confirm('Are you sure you want to delete this remark?')) {
+                        deleteSupplierRemark(supplier, parseInt(this.dataset.id));
+                    }
+                });
+            });
+        }
+
+        // Function to delete supplier remark
+        function deleteSupplierRemark(supplier, remarkId) {
+            const remarksKey = `supplier_remarks_${supplier}`;
+            const remarks = getSupplierRemarks(supplier);
+            const filteredRemarks = remarks.filter(r => r.id !== remarkId);
+            localStorage.setItem(remarksKey, JSON.stringify(filteredRemarks));
+            loadSupplierRemarks(supplier);
+        }
+
+        // Open remarks modal button
+        document.getElementById('supplier-remarks-btn').addEventListener('click', function() {
+            const supplierBadge = document.getElementById('current-supplier');
+            const currentSupplier = supplierBadge ? supplierBadge.textContent.trim() : '';
+            
+            if (!currentSupplier || currentSupplier === '-') {
+                alert('Please select a supplier first using the play button.');
+                return;
+            }
+
+            currentSupplierForRemarks = currentSupplier;
+            const modalSupplierName = document.getElementById('modal-supplier-name');
+            if (modalSupplierName) {
+                modalSupplierName.textContent = currentSupplier;
+            }
+            
+            loadSupplierRemarks(currentSupplier);
+            
+            // Show modal (using Bootstrap)
+            const modalElement = document.getElementById('supplierRemarksModal');
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+        });
+
+        // Save remark button
+        document.getElementById('save-remark-btn').addEventListener('click', function() {
+            const remarkText = document.getElementById('supplier-remark-input').value.trim();
+            if (currentSupplierForRemarks) {
+                saveSupplierRemark(currentSupplierForRemarks, remarkText);
+            } else {
+                alert('Please select a supplier first.');
+            }
+        });
+
+        // Update remarks when supplier changes (if modal is open)
+        const supplierRemarksModal = document.getElementById('supplierRemarksModal');
+        if (supplierRemarksModal) {
+            supplierRemarksModal.addEventListener('show.bs.modal', function() {
+                const supplierBadge = document.getElementById('current-supplier');
+                const currentSupplier = supplierBadge ? supplierBadge.textContent.trim() : '';
+                if (currentSupplier && currentSupplier !== '-') {
+                    currentSupplierForRemarks = currentSupplier;
+                    loadSupplierRemarks(currentSupplier);
+                }
+            });
+        }
     });
 
     function calculateTotalCBM() {
         let totalCBM = 0;
 
         document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only count MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
             if (row.style.display !== "none") {
                 const input = row.querySelector('input[data-column="total_cbm"]');
                 if (input) {
@@ -1901,6 +2426,17 @@
         let totalAmount = 0;
 
         document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only count MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
             if (row.style.display !== "none") { 
                 const td = row.querySelector('.total-value');
                 if (td) {
@@ -1918,10 +2454,31 @@
     function calculateTotalOrderQty() {
         let totalOrderQty = 0;
         document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only count MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
             if (row.style.display !== "none") { 
-                const cell = row.querySelector('[data-column="4"]');
+                const cell = row.querySelector('td[data-column="4"]');
                 if (cell) {
-                    const value = parseFloat(cell.textContent.trim());
+                    // Try to get value from input field first
+                    const input = cell.querySelector('input');
+                    let value = 0;
+                    
+                    if (input) {
+                        value = parseFloat(input.value) || 0;
+                    } else {
+                        // Fallback to textContent or data attribute
+                        value = parseFloat(cell.textContent.trim()) || parseFloat(cell.getAttribute('data-qty')) || 0;
+                    }
+                    
                     if (!isNaN(value)) {
                         totalOrderQty += value;
                     }
@@ -1930,6 +2487,182 @@
         });
 
         document.getElementById('total-order-qty').textContent = totalOrderQty;
+    }
+
+    function calculateTotalOrderItems() {
+        let totalItems = 0;
+        document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only count MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
+            // Only count visible rows
+            if (row.style.display !== "none") {
+                totalItems++;
+            }
+        });
+
+        document.getElementById('total-order-items').textContent = totalItems;
+    }
+
+    function calculateTotalCTNCBM() {
+        let totalCTNCBM = 0;
+        document.querySelectorAll('table.wide-table tbody tr').forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only count MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
+            if (row.style.display !== "none") {
+                // Get Order Qty (column 4)
+                const qtyCell = row.querySelector('td[data-column="4"]');
+                let qty = 0;
+                if (qtyCell) {
+                    const qtyInput = qtyCell.querySelector('input');
+                    if (qtyInput) {
+                        qty = parseFloat(qtyInput.value) || 0;
+                    } else {
+                        qty = parseFloat(qtyCell.textContent.trim()) || parseFloat(qtyCell.getAttribute('data-qty')) || 0;
+                    }
+                }
+                
+                // Get CTN CBM E (column 20)
+                const ctnCbmECell = row.querySelector('td[data-column="20"]');
+                let ctnCbmE = 0;
+                if (ctnCbmECell) {
+                    const ctnCbmEText = ctnCbmECell.textContent.trim();
+                    // Remove 'N/A' and parse the value
+                    if (ctnCbmEText !== 'N/A' && ctnCbmEText !== '') {
+                        ctnCbmE = parseFloat(ctnCbmEText.replace(/,/g, '')) || 0;
+                    }
+                }
+                
+                // Calculate: Order Qty * CTN CBM E
+                const rowTotal = qty * ctnCbmE;
+                if (!isNaN(rowTotal)) {
+                    totalCTNCBM += rowTotal;
+                }
+            }
+        });
+
+        document.getElementById('total-ctn-cbm').textContent = totalCTNCBM.toFixed(2);
+    }
+
+    // Function to calculate and update supplier counts (defined globally)
+    function updateSupplierCounts() {
+        const optionsContainer = document.getElementById('customSelectOptions');
+        if (!optionsContainer) return;
+        
+        const allOptions = Array.from(optionsContainer.querySelectorAll('.custom-select-option'));
+        const allRows = document.querySelectorAll('tbody tr');
+        const supplierCounts = {};
+        
+        // Count rows for each supplier (only MIP stage)
+        allRows.forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only count MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
+            const supplierCell = row.querySelector('td[data-column="6"]');
+            if (supplierCell) {
+                const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
+                const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
+                if (supplierName && supplierName !== '' && supplierName !== 'supplier') {
+                    supplierCounts[supplierName] = (supplierCounts[supplierName] || 0) + 1;
+                }
+            }
+        });
+        
+        // Update option text with counts
+        allOptions.forEach(option => {
+            const optionText = option.textContent.trim();
+            const supplierName = optionText.replace(/\s*\(\d+\)\s*$/, ''); // Remove existing count
+            
+            // Skip "All supplier" and "Supplier" options
+            if (optionText === 'All supplier' || optionText === 'Supplier' || option.getAttribute('data-value') === '__all_suppliers__') {
+                return;
+            }
+            
+            // Update with count if supplier exists
+            if (supplierCounts[supplierName] !== undefined) {
+                option.textContent = `${supplierName} (${supplierCounts[supplierName]})`;
+                option.setAttribute('data-count', supplierCounts[supplierName]);
+            } else {
+                option.textContent = supplierName;
+                option.setAttribute('data-count', '0');
+            }
+        });
+    }
+
+    // Function to update Follow Supplier count (defined globally)
+    function updateFollowSupplierCount() {
+        const followSupplierSpan = document.getElementById("followSupplierCount");
+        if (!followSupplierSpan) return;
+        
+        const supplierSet = new Set();
+        const allRows = document.querySelectorAll("table.wide-table tbody tr");
+        
+        allRows.forEach(row => {
+            // Check stage from data attribute first (more reliable)
+            const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
+            const stageSelect = row.querySelector('.editable-select-stage');
+            const rowStageSelect = stageSelect ? stageSelect.value.toLowerCase().trim() : '';
+            const rowStage = rowStageSelect || rowStageAttr;
+            
+            // Only count MIP stage rows
+            if (rowStage !== 'mip') {
+                return;
+            }
+            
+            // Get Order Qty (check all MIP rows, not just visible ones)
+            const qtyCell = row.querySelector('td[data-column="4"]');
+            let qty = 0;
+            if (qtyCell) {
+                const qtyInput = qtyCell.querySelector('input');
+                if (qtyInput) {
+                    qty = parseFloat(qtyInput.value) || 0;
+                } else {
+                    qty = parseFloat(qtyCell.textContent.trim()) || parseFloat(qtyCell.getAttribute('data-qty')) || 0;
+                }
+            }
+            
+            // Only count suppliers with order qty > 0
+            if (qty > 0) {
+                const supplierCell = row.querySelector('td[data-column="6"]');
+                if (supplierCell) {
+                    const supplierSelect = supplierCell.querySelector('select[data-column="supplier"]');
+                    if (supplierSelect) {
+                        const supplierName = supplierSelect.value.trim();
+                        // Count suppliers that have a value and it's not empty/default
+                        if (supplierName && supplierName !== '' && supplierName !== 'supplier') {
+                            supplierSet.add(supplierName);
+                        }
+                    }
+                }
+            }
+        });
+        
+        followSupplierSpan.textContent = supplierSet.size;
     }
 
     // Filter to show only MIP stage on page load
@@ -1950,10 +2683,20 @@
         calculateTotalCBM();
         calculateTotalAmount();
         calculateTotalOrderQty();
+        calculateTotalOrderItems();
+        calculateTotalCTNCBM();
+        updateFollowSupplierCount();
     }
 
     // Initialize filter on page load
     filterByMIPStageOnLoad();
+    
+    // Update supplier counts on page load
+    setTimeout(() => {
+        if (updateSupplierCounts) {
+            updateSupplierCounts();
+        }
+    }, 500);
 
 </script>
 
