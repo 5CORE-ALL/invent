@@ -410,28 +410,26 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata');
 
         $schedule->command('app:sync-cp-master-to-sheet')->hourly();
+        // FBA Commands - Daily Updates (IST)
 
-        // FBA Commands - Daily Updates
         $schedule->command('app:fetch-fba-reports')
-            ->dailyAt('01:00')
-            ->timezone('America/Los_Angeles');
+            ->dailyAt('13:30'); // 1:30 PM IST
+
         $schedule->command('app:fetch-fba-inventory --insert --prices')
-            ->dailyAt('01:30')
-            ->timezone('America/Los_Angeles');
+            ->dailyAt('14:00'); // 2:00 PM IST
+
         $schedule->command('app:fetch-fba-monthly-sales')
-            ->dailyAt('02:00')
-            ->timezone('America/Los_Angeles');
+            ->dailyAt('14:30'); // 2:30 PM IST
+
         $schedule->command('fba:collect-metrics')
-            ->dailyAt('23:30')
-            ->timezone('UTC');
+            ->dailyAt('23:30'); // 11:30 PM IST
 
-
-        // Sync FBA Shipment Status - Daily at 4 AM PST
+        // Sync FBA Shipment Status - Daily 4 AM IST
         $schedule->command('fba:sync-shipment-status')
             ->dailyAt('04:00')
-            ->timezone('America/Los_Angeles')
             ->name('fba-sync-shipment-status-daily')
             ->withoutOverlapping();
+
 
         $schedule->command('app:sync-shopify-all-channels-data')->dailyAt('12:00')->timezone('Asia/Kolkata');
         // Movement Analysis Command for Shopify Order Items (apicentral database)
@@ -460,11 +458,7 @@ class Kernel extends ConsoleKernel
             ->name('sync-meta-all-ads-from-google-sheets')
             ->withoutOverlapping();
 
-        $schedule->command('app:update-marketplace-daily-metrics')
-            ->everyFiveMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('update-marketplace-daily-metrics')
-            ->withoutOverlapping();
+
 
 
         /*
@@ -497,7 +491,11 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('fetch-amazon-orders');
 
-
+        $schedule->command('app:update-marketplace-daily-metrics')
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('update-marketplace-daily-metrics')
+            ->withoutOverlapping();
         /*
     |--------------------------------------------------------------------------
     | EBAY JOBS (IST)
@@ -561,13 +559,13 @@ class Kernel extends ConsoleKernel
     */
 
         $schedule->command('app:fetch-shopify-b2b-metrics --days=60')
-            ->dailyAt('02:00')
-            ->timezone('Asia/Kolkata')
+            ->twiceDaily(2, 14)
+            ->withoutOverlapping()
             ->name('shopify-b2b-metrics');
 
         $schedule->command('app:fetch-shopify-b2c-metrics --days=60')
-            ->dailyAt('02:10')
-            ->timezone('Asia/Kolkata')
+            ->twiceDaily(2, 14)
+            ->withoutOverlapping()
             ->name('shopify-b2c-metrics');
     }
 
