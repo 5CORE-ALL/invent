@@ -86,28 +86,116 @@ class ReadyToShipController extends Controller
             $image = null;
             $cbm = null;
 
+            // Try to get image from shopify_skus first
             if (isset($shopifyImages[$sku]) && !empty($shopifyImages[$sku]->image_src)) {
                 $image = $shopifyImages[$sku]->image_src;
             }
 
-            if (!isset($productMaster[$sku])) {
-                Log::warning("SKU missing in product_master: [$sku] <- original: [{$item->sku}]");
-            } else {
-                $valuesRaw = $productMaster[$sku]->Values ?? '{}';
-                $values = json_decode($valuesRaw, true);
-
-                if (is_array($values)) {
-                    if (!empty($values['image_path'])) {
-                        $image = 'storage/' . ltrim($values['image_path'], '/');
+            // If still no image, try direct database lookup with flexible matching
+            if (empty($image) && !empty($item->sku)) {
+                try {
+                    // Try exact match first
+                    $directImage = DB::table('shopify_skus')
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+                        ->whereNotNull('image_src')
+                        ->where('image_src', '!=', '')
+                        ->value('image_src');
+                    
+                    // If no exact match, try pattern matching
+                    if (empty($directImage)) {
+                        $skuPattern = str_replace(' ', '%', $sku);
+                        $directImage = DB::table('shopify_skus')
+                            ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . $skuPattern . '%'])
+                            ->whereNotNull('image_src')
+                            ->where('image_src', '!=', '')
+                            ->value('image_src');
                     }
+                    
+                    // If still no match, try without spaces
+                    if (empty($directImage)) {
+                        $skuNoSpaces = str_replace(' ', '', $sku);
+                        $directImage = DB::table('shopify_skus')
+                            ->whereRaw('UPPER(REPLACE(sku, " ", "")) = ?', [$skuNoSpaces])
+                            ->whereNotNull('image_src')
+                            ->where('image_src', '!=', '')
+                            ->value('image_src');
+                    }
+                    
+                    if (!empty($directImage)) {
+                        $image = $directImage;
+                    }
+                } catch (\Exception $e) {
+                    // Silently fail if database query has issues
+                    Log::warning('Image lookup query failed for SKU: ' . $item->sku, ['error' => $e->getMessage()]);
+                }
+            }
 
-                    if (isset($values['cbm'])) {
-                        $cbm = (float) $values['cbm'];
+            // Try to get image from product_master if still not found
+            if (empty($image)) {
+                // Try multiple SKU variations
+                $skuVariations = [
+                    $sku,
+                    str_replace(' ', '', $sku),
+                    str_replace(' ', ' ', $sku),
+                ];
+
+                $productRow = null;
+                foreach ($skuVariations as $skuVar) {
+                    if (isset($productMaster[$skuVar])) {
+                        $productRow = $productMaster[$skuVar];
+                        break;
+                    }
+                }
+                
+                // If still no product master, try direct database lookup
+                if (!$productRow && !empty($item->sku)) {
+                    try {
+                        $directProduct = DB::table('product_master')
+                            ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+                            ->orWhereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . str_replace(' ', '%', $sku) . '%'])
+                            ->first();
+                        
+                        if ($directProduct) {
+                            $productRow = $directProduct;
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Product master lookup query failed for SKU: ' . $item->sku, ['error' => $e->getMessage()]);
+                    }
+                }
+
+                if ($productRow) {
+                    $valuesRaw = $productRow->Values ?? '{}';
+                    $values = json_decode($valuesRaw, true);
+
+                    if (is_array($values)) {
+                        if (!empty($values['image_path']) && empty($image)) {
+                            $image = 'storage/' . ltrim($values['image_path'], '/');
+                        }
+
+                        if (isset($values['cbm'])) {
+                            $cbm = (float) $values['cbm'];
+                        } else {
+                            Log::warning("CBM missing in values for SKU: $sku");
+                        }
                     } else {
-                        Log::warning("CBM missing in values for SKU: $sku");
+                        Log::warning("Values decode failed for SKU: $sku");
                     }
                 } else {
-                    Log::warning("Values decode failed for SKU: $sku");
+                    Log::warning("SKU missing in product_master: [$sku] <- original: [{$item->sku}]");
+                }
+            } else {
+                // Image found from shopify_skus, but still need to get CBM from product_master
+                if (isset($productMaster[$sku])) {
+                    $valuesRaw = $productMaster[$sku]->Values ?? '{}';
+                    $values = json_decode($valuesRaw, true);
+
+                    if (is_array($values)) {
+                        if (isset($values['cbm'])) {
+                            $cbm = (float) $values['cbm'];
+                        } else {
+                            Log::warning("CBM missing in values for SKU: $sku");
+                        }
+                    }
                 }
             }
 

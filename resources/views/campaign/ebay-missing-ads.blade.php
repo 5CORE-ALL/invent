@@ -457,9 +457,12 @@
                             var sku = row.sku || '';
                             const isParent = sku.toUpperCase().includes("PARENT");
 
+                            // Check if NRA is set to any variant (NRA, NRA KW, NRA PMT)
+                            const isNRAVariant = nra === 'NRA' || nra === 'NRA KW' || nra === 'NRA PMT';
+
                             if (!isParent) {
                                 if (kwCampaign && ptCampaign) {
-                                    if (nra !== 'NRA') {
+                                    if (!isNRAVariant) {
                                         return `
                                             <span style="color: green;">Both Running</span>
                                             <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
@@ -468,46 +471,60 @@
                                         `;
                                     } else {
                                         return `
-                                            <span style="color: red;">NRA</span>
+                                            <span style="color: red;">${nra}</span>
                                             <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
                                                 style="cursor:pointer; margin-left:8px;">
                                             </i>
                                         `;
                                     }
                                 } else if (kwCampaign) {
-                                    if (nra !== 'NRA') {
+                                    if (nra === 'NRA PMT') {
+                                        return `
+                                            <span style="color: red;">NRA PMT</span>
+                                            <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
+                                                style="cursor:pointer; margin-left:8px;">
+                                            </i>
+                                        `;
+                                    } else if (isNRAVariant) {
+                                        return `
+                                            <span style="color: red;">${nra}</span>
+                                            <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
+                                                style="cursor:pointer; margin-left:8px;">
+                                            </i>
+                                        `;
+                                    } else {
                                         return `
                                             <span style="color: red;">PMT Missing</span>
                                             <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
                                                 style="cursor:pointer; margin-left:8px;">
                                             </i>
                                         `;
-                                    } else {
+                                    }
+                                } else if (ptCampaign) {
+                                    if (nra === 'NRA KW') {
                                         return `
-                                            <span style="color: red;">NRA</span>
+                                            <span style="color: red;">NRA KW</span>
                                             <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
                                                 style="cursor:pointer; margin-left:8px;">
                                             </i>
                                         `;
-                                    }
-                                } else if (ptCampaign) {
-                                    if (nra !== 'NRA') {
+                                    } else if (isNRAVariant) {
+                                        return `
+                                            <span style="color: red;">${nra}</span>
+                                            <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
+                                                style="cursor:pointer; margin-left:8px;">
+                                            </i>
+                                        `;
+                                    } else {
                                         return `
                                             <span style="color: red;">KW Missing</span>
                                             <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
                                                 style="cursor:pointer; margin-left:8px;">
                                             </i>
                                         `;
-                                    } else {
-                                        return `
-                                            <span style="color: red;">NRA</span>
-                                            <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                                style="cursor:pointer; margin-left:8px;">
-                                            </i>
-                                        `;
                                     }
                                 } else {
-                                    if (nra !== 'NRA') {
+                                    if (!isNRAVariant) {
                                         return `
                                             <span style="color: red;">KW Missing </br> PMT Missing</span>
                                             <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
@@ -516,7 +533,7 @@
                                         `;
                                     } else {
                                         return `
-                                            <span style="color: red;">NRA</span>
+                                            <span style="color: red;">${nra}</span>
                                             <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
                                                 style="cursor:pointer; margin-left:8px;">
                                             </i>
@@ -524,9 +541,9 @@
                                     }
                                 }
                             } else {
-                                if (nra === 'NRA') {
+                                if (isNRAVariant) {
                                     return `
-                                        <span style="color: red;">NRA</span>
+                                        <span style="color: red;">${nra}</span>
                                         <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
                                             style="cursor:pointer; margin-left:8px;">
                                         </i>
