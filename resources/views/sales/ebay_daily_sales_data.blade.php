@@ -623,8 +623,8 @@
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
                 $('#total-sales-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
                 $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-                $('#pft-percentage-badge').text('GPFT %: ' + Math.round(pftPercentage) + '%');
-                $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
+                $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
+                $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
                 $('#pft-total-badge').text('GPFT Total: $' + totalPft.toFixed(2));
 
@@ -638,14 +638,14 @@
 
                 $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
                 $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
-                $('#tacos-percentage-badge').text('TACOS %: ' + Math.round(tacosPercentage) + '%');
-                $('#m-pft-badge').text('N PFT: ' + Math.round(mPft) + '%');
-                $('#n-roi-badge').text('N ROI: ' + Math.round(nRoi) + '%');
+                $('#tacos-percentage-badge').text('TACOS %: ' + tacosPercentage.toFixed(1) + '%');
+                $('#m-pft-badge').text('N PFT: ' + mPft.toFixed(1) + '%');
+                $('#n-roi-badge').text('N ROI: ' + nRoi.toFixed(1) + '%');
 
                 // Show/hide Ads % and PFT % badges based on filter status
                 if (isFiltered) {
-                    $('#ads-percentage-badge').show().text('Ads %: ' + Math.round(adsPercentage) + '%');
-                    $('#pft-percentage-filtered-badge').show().text('PFT %: ' + Math.round(pftPercentageFiltered) +
+                    $('#ads-percentage-badge').show().text('Ads %: ' + adsPercentage.toFixed(1) + '%');
+                    $('#pft-percentage-filtered-badge').show().text('PFT %: ' + pftPercentageFiltered.toFixed(1) +
                         '%');
                 } else {
                     $('#ads-percentage-badge').hide();

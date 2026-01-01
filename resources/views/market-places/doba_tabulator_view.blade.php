@@ -198,14 +198,18 @@
                     </button>
                 </div>
 
-                <!-- Summary Stats -->
+                <!-- Summary Stats from marketplace_daily_metrics -->
                 <div id="summary-stats" class="mt-3 mb-2">
                     <div class="d-flex flex-wrap justify-content-center gap-2">
-                        <span id="total-skus" class="badge bg-primary p-2 fw-bold fs-6" style="color: #000 !important;">Total SKUs: 0</span>
-                        <span id="zero-sold-count" class="badge bg-danger p-2 fw-bold fs-6" style="color: #000 !important;">0 SOLD: 0</span>
-                        <span id="sold-count" class="badge bg-success p-2 fw-bold fs-6" style="color: #000 !important;">SOLD: 0</span>
-                        <span id="missing-count" class="badge bg-warning p-2 fw-bold fs-6" style="color: #000 !important; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
-                        <span id="promo-count" class="badge bg-info p-2 fw-bold fs-6" style="color: #000 !important;">Promo Items: 0</span>
+                        <span id="total-skus" class="badge bg-primary p-2 fw-bold fs-6" style="color: white !important;">Total SKUs: 0</span>
+                        <span id="zero-sold-count" class="badge bg-danger p-2 fw-bold fs-6" style="color: white !important;">0 SOLD: 0</span>
+                        <span id="sold-count" class="badge bg-success p-2 fw-bold fs-6" style="color: white !important;">SOLD: 0</span>
+                        <span id="missing-count" class="badge bg-warning p-2 fw-bold fs-6" style="color: black !important; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        <span id="total-sales-badge" class="badge fs-6 p-2" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0</span>
+                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">GPFT %: 0%</span>
+                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;">GPFT Total: $0</span>
+                        <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;">Total COGS: $0</span>
                     </div>
                 </div>
             </div>
@@ -1351,7 +1355,27 @@
                 applyFilters();
             });
 
-            // Update summary badges (same as original CVR logic)
+            // Fetch and display summary metrics from marketplace_daily_metrics table
+            function fetchDobaSummaryMetrics() {
+                fetch('/doba/summary-metrics')
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.success && result.data) {
+                            const data = result.data;
+                            $('#total-sales-badge').text('Total Sales: $' + Math.round(parseFloat(data.total_sales)).toLocaleString());
+                            $('#pft-percentage-badge').text('GPFT %: ' + parseFloat(data.pft_percentage).toFixed(1) + '%');
+                            $('#roi-percentage-badge').text('ROI %: ' + parseFloat(data.roi_percentage).toFixed(1) + '%');
+                            $('#pft-total-badge').text('GPFT Total: $' + Math.round(parseFloat(data.total_pft)).toLocaleString());
+                            $('#total-cogs-badge').text('Total COGS: $' + Math.round(parseFloat(data.total_cogs)).toLocaleString());
+                            $('#metrics-date-badge').text('Date: ' + data.date);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching Doba metrics:', error);
+                    });
+            }
+
+            // Update summary badges for SKU counts
             function updateSummary() {
                 const tableData = table.getData("active");
                 const filteredData = tableData.filter(row => !row.is_parent);
@@ -1364,34 +1388,29 @@
                 let zeroSold = 0;
                 let sold = 0;
                 let missing = 0;
-                let promo = 0;
 
                 filteredData.forEach(row => {
                     const inv = parseFloat(row.INV) || 0;
-                    const l30 = parseFloat(row.L30) || 0;
-                    const promoValue = parseFloat(row.Promo) || 0;
+                    const dobaL30 = parseFloat(row['doba L30']) || 0;
                     
-                    // 0 SOLD: L30 == 0, INV > 0
-                    if (l30 === 0 && inv > 0) zeroSold++;
-                    // SOLD: count all SKUs with any L30
-                    if (l30 > 0) sold++;
-                    // Promo: has promo value > 0
-                    if (promoValue > 0) promo++;
+                    // 0 SOLD: doba L30 == 0, INV > 0
+                    if (dobaL30 === 0 && inv > 0) zeroSold++;
+                    // SOLD: count all SKUs with any doba L30
+                    if (dobaL30 > 0) sold++;
                 });
 
                 // Calculate missing from all data (not filtered)
                 allNonParentData.forEach(row => {
                     const inv = parseFloat(row.INV) || 0;
-                    const l30 = parseFloat(row.L30) || 0;
-                    // Missing: INV == 0 AND L30 == 0
-                    if (inv === 0 && l30 === 0) missing++;
+                    const dobaL30 = parseFloat(row['doba L30']) || 0;
+                    // Missing: INV == 0 AND doba L30 == 0
+                    if (inv === 0 && dobaL30 === 0) missing++;
                 });
 
                 $('#total-skus').text('Total SKUs: ' + totalSkus);
                 $('#zero-sold-count').text('0 SOLD: ' + zeroSold);
                 $('#sold-count').text('SOLD: ' + sold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
-                $('#promo-count').text('Promo Items: ' + promo);
             }
 
             // Build Column Visibility Dropdown
@@ -1492,6 +1511,7 @@
             table.on('dataLoaded', function() {
                 setTimeout(() => {
                     updateSummary();
+                    fetchDobaSummaryMetrics(); // Fetch financial metrics from marketplace_daily_metrics
                     // Refresh checkboxes to reflect selectedSkus set
                     $('.sku-select-checkbox').each(function() {
                         const sku = $(this).data('sku');

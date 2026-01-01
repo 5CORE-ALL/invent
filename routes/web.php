@@ -712,6 +712,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-doba-pricing', [DobaController::class, 'updatePrice']);
     Route::get('/doba-pricing-cvr', [DobaController::class, 'dobaPricingCVR']);
     Route::get('/doba-tabulator', [DobaController::class, 'dobaTabulatorView']);
+    Route::get('/doba/summary-metrics', [DobaController::class, 'getDobaSummaryMetrics']);
     Route::post('/doba/save-sprice', [DobaController::class, 'saveSpriceToDatabase'])->name('doba.save-sprice');
     Route::post('/doba/push-price', [DobaController::class, 'pushPriceToDoba'])->name('doba.push-price');
     Route::post('/update-all-doba-skus', [DobaController::class, 'updateAllDobaSkus']);
@@ -1038,6 +1039,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/save-walmart-sprice', [WalmartControllerMarket::class, 'saveSpriceToDatabase']);
     Route::post('/save-walmart-buybox-price', [WalmartControllerMarket::class, 'saveBuyboxPrice']);
     Route::post('/save-walmart-manual-data', [WalmartControllerMarket::class, 'saveManualData']);
+    Route::get('/walmart-ratings-sample', [WalmartControllerMarket::class, 'downloadWalmartRatingsSample'])->name('walmart.ratings.sample');
+    Route::post('/import-walmart-ratings', [WalmartControllerMarket::class, 'importWalmartRatings'])->name('walmart.ratings.import');
+    Route::post('/update-walmart-rating', [WalmartControllerMarket::class, 'updateWalmartRating'])->name('walmart.rating.update');
 
     //Listing Audit amazon
     Route::get('/listing-audit-amazon', action: [ListingAuditAmazonController::class, 'listingAuditAmazon'])->name('listing.audit.amazon');

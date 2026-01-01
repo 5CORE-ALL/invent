@@ -758,6 +758,7 @@ class WalmartControllerMarket extends Controller
                 'CVR_L30' => 0,
                 'Sess30' => 0,
                 'total_review_count' => 0,
+                'rating' => null,
                 'price' => 0,
                 'LP_productmaster' => 0,
                 'Ship_productmaster' => 0,
@@ -837,6 +838,8 @@ class WalmartControllerMarket extends Controller
                 $item['SROI'] = $value['SROI'] ?? 0;
                 // Load saved buybox price
                 $item['buybox_price'] = $value['buybox_price'] ?? 0;
+                // Load rating
+                $item['rating'] = $value['rating'] ?? null;
             }
 
             // Get NR value from WalmartListingStatus (same table as Listing Walmart)
@@ -1178,5 +1181,198 @@ class WalmartControllerMarket extends Controller
             'message' => ucfirst(str_replace('_', ' ', $field)) . ' saved successfully.',
             'data' => $walmartDataView
         ]);
+    }
+
+    /**
+     * Download sample template for Walmart ratings import
+     */
+    public function downloadWalmartRatingsSample()
+    {
+        try {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+
+            // Set headers
+            $sheet->setCellValue('A1', 'sku');
+            $sheet->setCellValue('B1', 'rating');
+
+            // Add sample data
+            $sheet->setCellValue('A2', 'SAMPLE-SKU-001');
+            $sheet->setCellValue('B2', '4.5');
+            $sheet->setCellValue('A3', 'SAMPLE-SKU-002');
+            $sheet->setCellValue('B3', '4.0');
+            $sheet->setCellValue('A4', 'SAMPLE-SKU-003');
+            $sheet->setCellValue('B4', '3.5');
+
+            // Style header row
+            $headerStyle = [
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '4472C4']],
+                'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]
+            ];
+            $sheet->getStyle('A1:B1')->applyFromArray($headerStyle);
+
+            // Auto-size columns
+            foreach (range('A', 'B') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+
+            // Generate file
+            $writer = new Xlsx($spreadsheet);
+            $fileName = 'walmart_ratings_sample_' . date('Y-m-d') . '.xlsx';
+            $tempFile = tempnam(sys_get_temp_dir(), $fileName);
+            $writer->save($tempFile);
+
+            return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        } catch (\Exception $e) {
+            Log::error('Error generating Walmart ratings sample: ' . $e->getMessage());
+            return back()->with('error', 'Failed to generate sample file');
+        }
+    }
+
+    /**
+     * Import Walmart ratings from CSV/Excel file
+     */
+    public function importWalmartRatings(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt,xlsx'
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $imported = 0;
+            $skipped = 0;
+
+            // Check if it's CSV or Excel
+            $extension = $file->getClientOriginalExtension();
+
+            if ($extension === 'xlsx') {
+                // Handle Excel file
+                $spreadsheet = IOFactory::load($file->getRealPath());
+                $worksheet = $spreadsheet->getActiveSheet();
+                $rows = $worksheet->toArray();
+                
+                // Remove header
+                array_shift($rows);
+
+                foreach ($rows as $row) {
+                    if (empty($row[0])) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $sku = strtoupper(trim($row[0]));
+                    $rating = isset($row[1]) ? floatval($row[1]) : null;
+
+                    // Validate rating
+                    if ($rating === null || $rating < 0 || $rating > 5) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    // Update or create
+                    $walmartDataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+                    $currentValue = is_array($walmartDataView->value)
+                        ? $walmartDataView->value
+                        : (json_decode($walmartDataView->value, true) ?? []);
+                    
+                    $currentValue['rating'] = $rating;
+                    $walmartDataView->value = $currentValue;
+                    $walmartDataView->save();
+
+                    $imported++;
+                }
+            } else {
+                // Handle CSV file
+                $content = file_get_contents($file->getRealPath());
+                $content = preg_replace('/^\x{FEFF}/u', '', $content); // Remove BOM
+                $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8');
+                $csvData = array_map('str_getcsv', explode("\n", $content));
+                $csvData = array_filter($csvData, function($row) {
+                    return count($row) > 0 && !empty(trim(implode('', $row)));
+                });
+                
+                // Remove header
+                array_shift($csvData);
+
+                foreach ($csvData as $row) {
+                    $row = array_map('trim', $row);
+                    if (empty($row[0])) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $sku = strtoupper($row[0]);
+                    $rating = isset($row[1]) ? floatval($row[1]) : null;
+
+                    // Validate rating
+                    if ($rating === null || $rating < 0 || $rating > 5) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    // Update or create
+                    $walmartDataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+                    $currentValue = is_array($walmartDataView->value)
+                        ? $walmartDataView->value
+                        : (json_decode($walmartDataView->value, true) ?? []);
+                    
+                    $currentValue['rating'] = $rating;
+                    $walmartDataView->value = $currentValue;
+                    $walmartDataView->save();
+
+                    $imported++;
+                }
+            }
+
+            return response()->json([
+                'success' => 'Imported ' . $imported . ' ratings successfully' . 
+                            ($skipped > 0 ? ', skipped ' . $skipped . ' invalid rows' : '')
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error importing Walmart ratings: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Error importing ratings: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update single Walmart rating
+     */
+    public function updateWalmartRating(Request $request)
+    {
+        $sku = strtoupper(trim($request->input('sku')));
+        $rating = $request->input('rating');
+
+        // Validate rating
+        if (!is_numeric($rating) || $rating < 0 || $rating > 5) {
+            return response()->json([
+                'error' => 'Rating must be a number between 0 and 5'
+            ], 400);
+        }
+
+        try {
+            $walmartDataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+            $currentValue = is_array($walmartDataView->value)
+                ? $walmartDataView->value
+                : (json_decode($walmartDataView->value, true) ?? []);
+            
+            $currentValue['rating'] = floatval($rating);
+            $walmartDataView->value = $currentValue;
+            $walmartDataView->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Rating updated successfully',
+                'rating' => floatval($rating)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error updating Walmart rating: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Error updating rating: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }
