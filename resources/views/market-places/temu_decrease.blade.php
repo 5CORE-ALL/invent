@@ -916,14 +916,7 @@
                     sorter: "number",
                     width: 80
                 },
-                {
-                    title: "Temu L30",
-                    field: "temu_l30",
-                    hozAlign: "center",
-                    sorter: "number",
-                    width: 80
-                },
-                {
+                    {
                     title: "Dil%",
                     field: "dil_percent",
                     hozAlign: "center",
@@ -941,6 +934,14 @@
                     },
                     width: 80
                 },
+                {
+                    title: "Temu L30",
+                    field: "temu_l30",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 80
+                },
+            
                 {
                     title: "CVR %",
                     field: "cvr_percent",
