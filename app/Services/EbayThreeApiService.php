@@ -172,6 +172,106 @@ class EbayThreeApiService
     }
 
     /**
+     * Get competitor prices using eBay Browse API with Category/EPID filter
+     * This provides more accurate results than plain SKU search
+     * 
+     * @param string $title - Product title to search for
+     * @param string|null $categoryId - eBay category ID for filtering
+     * @param string|null $epid - eBay Product ID for exact product match
+     * @param string|null $ourItemId - Our item ID to exclude from results
+     * @return array - Array of competitor listings with price, shipping, link
+     */
+    public function doRepricingWithCategory($title, $categoryId = null, $epid = null, $ourItemId = null)
+    {
+        $token = $this->generateBrowseToken();
+        if (!$token) {
+            return [];
+        }
+
+        $constructedData = [];
+        
+        // Build search query - use first 80 chars of title for better matching
+        $searchQuery = substr($title, 0, 80);
+        
+        // Build URL with category filter if available
+        $url = 'https://api.ebay.com/buy/browse/v1/item_summary/search?q=' . urlencode($searchQuery) . '&limit=50';
+        
+        // Add category filter for more accurate results
+        if ($categoryId) {
+            $url .= '&category_ids=' . $categoryId;
+        }
+        
+        // If EPID is available, use it for exact product matching
+        if ($epid) {
+            $url = 'https://api.ebay.com/buy/browse/v1/item_summary/search?epid=' . $epid . '&limit=50';
+        }
+
+        $maxPages = 2; // Limit pages since we have category filter
+        $pageCount = 0;
+
+        do {
+            $pageCount++;
+            
+            try {
+                $response = Http::withToken($token)
+                    ->timeout(30)
+                    ->connectTimeout(15)
+                    ->get($url);
+
+                if (!$response->successful()) {
+                    break;
+                }
+
+                $responseJSON = $response->json();
+                $items = $responseJSON['itemSummaries'] ?? [];
+
+                foreach ($items as $data) {
+                    // Skip our own item
+                    $itemId = $data['itemId'] ?? '';
+                    $legacyItemId = str_replace(['v1|', '|0'], '', $itemId);
+                    if ($ourItemId && $legacyItemId == $ourItemId) {
+                        continue;
+                    }
+                    
+                    $price = floatval($data['price']['value'] ?? 0);
+                    $shippingCost = 0;
+                    
+                    // Extract shipping cost if available
+                    if (isset($data['shippingOptions'][0]['shippingCost']['value'])) {
+                        $shippingCost = floatval($data['shippingOptions'][0]['shippingCost']['value']);
+                    }
+
+                    $constructedData[] = [
+                        'title' => $data['title'] ?? '',
+                        'item_id' => $itemId,
+                        'link' => $data['itemWebUrl'] ?? '',
+                        'condition' => $data['condition'] ?? '',
+                        'price' => $price,
+                        'shipping_cost' => $shippingCost,
+                        'total_price' => $price + $shippingCost,
+                        'seller' => $data['seller']['username'] ?? '',
+                        'image' => $data['image']['imageUrl'] ?? '',
+                    ];
+                }
+
+                $url = $responseJSON['next'] ?? null;
+
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('eBay Browse API error: ' . $e->getMessage());
+                break;
+            }
+
+        } while (!empty($url) && $pageCount < $maxPages);
+
+        // Sort by total price (lowest first)
+        usort($constructedData, function($a, $b) {
+            return $a['total_price'] <=> $b['total_price'];
+        });
+
+        return $constructedData;
+    }
+
+    /**
      * Get competitor prices using eBay Browse API
      * 
      * @param string $query - SKU, title or EPID to search for

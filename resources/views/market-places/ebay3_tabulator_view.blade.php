@@ -1012,6 +1012,37 @@
                     width: 60
                 },
                 {
+                    title: "LMP",
+                    field: "lmp_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const lmpEntries = rowData.lmp_entries || [];
+                        
+                        if (!value && value !== 0) {
+                            return '<span style="color: #999;">-</span>';
+                        }
+                        
+                        if (lmpEntries.length > 0) {
+                            return `<a href="#" class="lmp-modal-trigger" style="color: #007bff; text-decoration: underline; cursor: pointer;" data-lmp-entries='${JSON.stringify(lmpEntries).replace(/'/g, "&#39;")}'>$${parseFloat(value).toFixed(2)}</a>`;
+                        }
+                        
+                        return `$${parseFloat(value).toFixed(2)}`;
+                    },
+                    cellClick: function(e, cell) {
+                        if (e.target.classList.contains('lmp-modal-trigger')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            
+                            const lmpEntries = JSON.parse(e.target.dataset.lmpEntries || '[]');
+                            showLmpModal(lmpEntries);
+                        }
+                    },
+                    width: 70
+                },
+                {
                     title: "Prc",
                     field: "eBay Price",
                     hozAlign: "center",
@@ -1944,6 +1975,68 @@
                 });
             }
         });
+        
+        // LMP Modal function
+        window.showLmpModal = function(lmpEntries) {
+            let modalHtml = `
+                <div class="modal fade" id="lmpModal" tabindex="-1" aria-labelledby="lmpModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="lmpModalLabel">Lowest Marketplace Prices</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <table class="table table-striped table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Price</th>
+                                            <th>Title</th>
+                                            <th>Seller</th>
+                                            <th>Link</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+            `;
+            
+            lmpEntries.forEach(function(entry) {
+                const price = entry.price ? '$' + parseFloat(entry.price).toFixed(2) : '-';
+                const title = entry.title || '-';
+                const seller = entry.seller || '-';
+                const link = entry.link || '#';
+                
+                modalHtml += `
+                    <tr>
+                        <td><strong>${price}</strong></td>
+                        <td>${title}</td>
+                        <td>${seller}</td>
+                        <td><a href="${link}" target="_blank" class="btn btn-sm btn-primary"><i class="fas fa-external-link-alt"></i> View</a></td>
+                    </tr>
+                `;
+            });
+            
+            modalHtml += `
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove existing modal if any
+            $('#lmpModal').remove();
+            
+            // Add modal to body
+            $('body').append(modalHtml);
+            
+            // Show modal
+            var lmpModal = new bootstrap.Modal(document.getElementById('lmpModal'));
+            lmpModal.show();
+        };
     });
 </script>
 @endsection

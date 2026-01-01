@@ -66,7 +66,7 @@ class EbayThreeController extends Controller
         });
         $skus = array_values($nonParentSkus);
 
-        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id')->whereIn('sku', $skus)->get()->keyBy('sku');
+        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch shopify data for these SKUs
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -328,6 +328,9 @@ class EbayThreeController extends Controller
                 $row['percentage'] = $percentage;
                 $row['ad_updates'] = $adUpdates;
                 $row['image_path'] = null;
+                $row['lmp_price'] = null;
+                $row['lmp_link'] = null;
+                $row['lmp_entries'] = [];
                 
             } else {
                 // Shopify data for child SKUs
@@ -348,6 +351,31 @@ class EbayThreeController extends Controller
                 // eBay3 Metrics (common fields)
                 $row['eBay L60'] = $ebayMetric->ebay_l60 ?? 0;
                 $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
+                
+                // LMP Data from ebay_3_metrics table
+                $lmpData = $ebayMetric->lmp_data ?? null;
+                $lmpEntries = [];
+                $lmpPrice = null;
+                
+                if ($lmpData) {
+                    if (is_string($lmpData)) {
+                        $lmpEntries = json_decode($lmpData, true) ?? [];
+                    } else {
+                        $lmpEntries = $lmpData;
+                    }
+                    
+                    // Get lowest price from lmp_data
+                    if (!empty($lmpEntries)) {
+                        $prices = array_column($lmpEntries, 'price');
+                        if (!empty($prices)) {
+                            $lmpPrice = min($prices);
+                        }
+                    }
+                }
+                
+                $row['lmp_price'] = $lmpPrice;
+                $row['lmp_link'] = $ebayMetric->lmp_link ?? null;
+                $row['lmp_entries'] = $lmpEntries;
 
                 // Add values from product_master
                 $values = $productMaster->Values ?: [];
@@ -821,7 +849,7 @@ class EbayThreeController extends Controller
         // Get all unique SKUs from product master
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id')->whereIn('sku', $skus)->get()->keyBy('sku');
+        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $skus)->get()->keyBy('sku');
 
 
         // Fetch shopify data for these SKUs

@@ -50,6 +50,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Shopify B2B' => fn() => $this->calculateShopifyB2BMetrics($date),
             'TikTok' => fn() => $this->calculateTikTokMetrics($date),
             'Best Buy USA' => fn() => $this->calculateBestBuyMetrics($date),
+            'Macys' => fn() => $this->calculateMacysMetrics($date),
+            'Tiendamia' => fn() => $this->calculateTiendamiaMetrics($date),
             'Doba' => fn() => $this->calculateDobaMetrics($date),
         ];
 
@@ -1753,6 +1755,258 @@ class UpdateMarketplaceDailyMetrics extends Command
         // Get marketplace percentage
         $marketplaceData = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
         $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
+        $margin = $percentage / 100;
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($orders as $order) {
+            if (!$order->sku || $order->sku === '') continue;
+
+            $totalOrders++;
+            $quantity = (int) ($order->quantity ?? 1);
+            $unitPrice = (float) ($order->unit_price ?? 0);
+            $saleAmount = $unitPrice * $quantity;
+            
+            $totalQuantity += $quantity;
+            $totalRevenue += $saleAmount;
+
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            // Get LP, Ship and Weight Act from ProductMaster
+            $sku = strtoupper($order->sku);
+            $lp = 0;
+            $ship = 0;
+            $weightAct = 0;
+
+            if (isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                
+                // Get LP
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                
+                // Get Ship
+                if (isset($values['ship'])) {
+                    $ship = (float) $values['ship'];
+                } elseif (isset($pm->ship)) {
+                    $ship = floatval($pm->ship);
+                }
+                
+                // Get Weight Act
+                if (isset($values['wt_act'])) {
+                    $weightAct = floatval($values['wt_act']);
+                }
+            }
+
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // COGS = LP * quantity
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            // PFT Each = (unitPrice * margin) - lp - ship_cost
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalRevenue,
+            'n_roi' => $roiPercentage,
+            'n_pft' => $totalPft,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+        ];
+    }
+
+    private function calculateMacysMetrics($date)
+    {
+        // Get Macy's L30 orders from mirakl_daily_data (exclude CLOSED status)
+        $orders = MiraklDailyData::where('channel_name', "Macy's, Inc.")
+            ->where('period', 'l30')
+            ->where('status', '!=', 'CLOSED')
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return null;
+        }
+
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
+        // Get marketplace percentage for Macy's
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 76;
+        $margin = $percentage / 100;
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($orders as $order) {
+            if (!$order->sku || $order->sku === '') continue;
+
+            $totalOrders++;
+            $quantity = (int) ($order->quantity ?? 1);
+            $unitPrice = (float) ($order->unit_price ?? 0);
+            $saleAmount = $unitPrice * $quantity;
+            
+            $totalQuantity += $quantity;
+            $totalRevenue += $saleAmount;
+
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            // Get LP, Ship and Weight Act from ProductMaster
+            $sku = strtoupper($order->sku);
+            $lp = 0;
+            $ship = 0;
+            $weightAct = 0;
+
+            if (isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                
+                // Get LP
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                
+                // Get Ship
+                if (isset($values['ship'])) {
+                    $ship = (float) $values['ship'];
+                } elseif (isset($pm->ship)) {
+                    $ship = floatval($pm->ship);
+                }
+                
+                // Get Weight Act
+                if (isset($values['wt_act'])) {
+                    $weightAct = floatval($values['wt_act']);
+                }
+            }
+
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // COGS = LP * quantity
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            // PFT Each = (unitPrice * margin) - lp - ship_cost
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+            $totalPft += $pft;
+        }
+
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalRevenue,
+            'n_roi' => $roiPercentage,
+            'n_pft' => $totalPft,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+        ];
+    }
+
+    private function calculateTiendamiaMetrics($date)
+    {
+        // Get Tiendamia L30 orders from mirakl_daily_data (exclude CLOSED status)
+        $orders = MiraklDailyData::where('channel_name', 'Tiendamia')
+            ->where('period', 'l30')
+            ->where('status', '!=', 'CLOSED')
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return null;
+        }
+
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
+        // Get marketplace percentage for Tiendamia
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Tiendamia')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 83;
         $margin = $percentage / 100;
 
         $totalOrders = 0;
