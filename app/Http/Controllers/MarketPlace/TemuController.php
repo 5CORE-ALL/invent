@@ -1417,8 +1417,24 @@ class TemuController extends Controller
                 ->values()
                 ->all();
 
-            // 3. Fetch Temu pricing data for matching SKUs
-            $pricingData = TemuPricing::select([
+            // Helper function to normalize SKU for matching
+            $normalizeSku = function($sku) {
+                $sku = strtoupper(trim($sku));
+                // Normalize common variations: "2 PCS" -> "2PCS", "2 PC" -> "2PC"
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                // Remove extra spaces
+                $sku = preg_replace('/\s+/', ' ', $sku);
+                return $sku;
+            };
+
+            // Create normalized SKU lookup for ProductMaster
+            $normalizedSkuMap = [];
+            foreach ($skus as $sku) {
+                $normalizedSkuMap[$normalizeSku($sku)] = $sku;
+            }
+
+            // 3. Fetch ALL Temu pricing data and match by normalized SKU
+            $allPricingData = TemuPricing::select([
                 'sku',
                 'product_name',
                 'category',
@@ -1430,10 +1446,17 @@ class TemuController extends Controller
                 'goods_id',
                 'sku_id',
                 'date_created'
-            ])
-            ->whereIn('sku', $skus)
-            ->get()
-            ->keyBy('sku');
+            ])->get();
+
+            // Build pricing data with normalized matching
+            $pricingData = collect();
+            foreach ($allPricingData as $pricing) {
+                $normalizedPricingSku = $normalizeSku($pricing->sku);
+                if (isset($normalizedSkuMap[$normalizedPricingSku])) {
+                    $originalSku = $normalizedSkuMap[$normalizedPricingSku];
+                    $pricingData[$originalSku] = $pricing;
+                }
+            }
             
             // Fetch shopify data for inventory
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
