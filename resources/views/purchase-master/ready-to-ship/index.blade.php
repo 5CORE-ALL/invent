@@ -1341,8 +1341,10 @@
                     });
                 }
 
+                // Hide advance wrapper when any supplier is selected
+                if (wrapper) wrapper.style.display = 'none';
+                
                 if (selectedValue === '__all_suppliers__' || selectedSupplier === 'Supplier') {
-                    if (wrapper) wrapper.style.display = 'none';
                     calculateTotalCBM();
                     calculateTotalAmount();
                     calculateTotalOrderQty();
@@ -1350,8 +1352,6 @@
                     calculateTotalCTNCBM();
                     updateFollowSupplierCount();
                     return;
-                } else {
-                    if (wrapper) wrapper.style.display = 'block';
                 }
 
                 // Calculate advance and pending for selected supplier
