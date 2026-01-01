@@ -307,11 +307,8 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             $matchesCondition = $condition1 || $condition2;
 
             // Other filters: NR !== 'NRA', price >= 30, INV > 0, DIL not pink
-            if ($matchesCondition && $row['NR'] !== 'NRA' && $row['price'] >= 30 && $row['INV'] > 0) {
-                $dilColor = $this->getDilColor($row['L30'], $row['INV']);
-                if ($dilColor !== 'pink') {
-                    $result[] = (object) $row;
-                }
+            if ($matchesCondition && $row['NR'] !== 'NRA' && $row['INV'] > 0) {
+                $result[] = (object) $row;
             }
 
         }

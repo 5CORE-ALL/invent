@@ -3010,13 +3010,13 @@
                     } else if (scvr >= 1.01 && scvr <= 2) {
                         sbidValue = 7; // Flat 7
                     } else if (scvr >= 2.01 && scvr <= 3) {
-                        sbidValue = 5; // Flat 5
+                        sbidValue = 6; // Flat 6
                     } else if (scvr >= 3.01 && scvr <= 5) {
-                        sbidValue = 3; // Flat 3
+                        sbidValue = 5; // Flat 5
                     } else if (scvr >= 5.01 && scvr <= 7) {
-                        sbidValue = 3; // Flat 3
+                        sbidValue = 4; // Flat 4
                     } else if (scvr >= 7.01 && scvr <= 13) {
-                        sbidValue = 2; // Flat 3
+                        sbidValue = 3; // Flat 3
                     } else { // scvr > 13
                         sbidValue = 2; // Flat 2
                     }
