@@ -1445,10 +1445,8 @@ class TemuController extends Controller
                 ->get()
                 ->keyBy('sku');
 
-            // Fetch last 30 days view data from temu_view_data
-            $thirtyDaysAgo = Carbon::now()->subDays(30)->format('Y-m-d');
-            $viewData = TemuViewData::where('date', '>=', $thirtyDaysAgo)
-                ->selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
+            // Fetch all view data from temu_view_data (no date filter)
+            $viewData = TemuViewData::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
                 ->groupBy('goods_id')
                 ->get()
                 ->keyBy('goods_id');
@@ -1825,9 +1823,9 @@ class TemuController extends Controller
                         $ctr = (float)$ctrValue;
                     }
 
+                    $goodsId = $rowData['Goods ID'] ?? null;
+
                     $viewData = [
-                        'date' => $date,
-                        'goods_id' => $rowData['Goods ID'] ?? null,
                         'goods_name' => $rowData['Goods Name'] ?? null,
                         'product_impressions' => !empty($rowData['Product impressions']) ? (int)$rowData['Product impressions'] : 0,
                         'visitor_impressions' => !empty($rowData['Number of visitor impressions of the product']) ? (int)$rowData['Number of visitor impressions of the product'] : 0,
@@ -1836,8 +1834,11 @@ class TemuController extends Controller
                         'ctr' => $ctr,
                     ];
 
-                    // Insert new record (no update or truncate)
-                    TemuViewData::create($viewData);
+                    // Upsert: Update if date + goods_id exists, else insert
+                    TemuViewData::updateOrCreate(
+                        ['date' => $date, 'goods_id' => $goodsId],
+                        $viewData
+                    );
                     $imported++;
                 }
 
