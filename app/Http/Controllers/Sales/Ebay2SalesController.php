@@ -57,8 +57,23 @@ class Ebay2SalesController extends Controller
         $skus = array_unique($skus);
         $itemIds = array_unique($itemIds);
 
-        // Fetch ProductMaster data for LP and Ship
-        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+        // Fetch ProductMaster data for LP and Ship (case-insensitive matching)
+        // Build case-insensitive query for better performance
+        $skuLowerMap = [];
+        foreach ($skus as $sku) {
+            $skuLowerMap[strtolower($sku)] = $sku;
+        }
+        
+        $productMastersRaw = ProductMaster::whereRaw('LOWER(sku) IN (' . implode(',', array_fill(0, count($skuLowerMap), '?')) . ')', array_keys($skuLowerMap))->get();
+        
+        // Key by original order SKU (preserving order SKU case)
+        $productMasters = collect();
+        foreach ($productMastersRaw as $pm) {
+            $pmSkuLower = strtolower($pm->sku);
+            if (isset($skuLowerMap[$pmSkuLower])) {
+                $productMasters[$skuLowerMap[$pmSkuLower]] = $pm;
+            }
+        }
 
         // Calculate PMT Spent per item_id (from ebay_2_general_reports)
         $generalReports = DB::table('ebay_2_general_reports')
@@ -88,6 +103,12 @@ class Ebay2SalesController extends Controller
         $data = [];
         foreach ($orders as $order) {
             foreach ($order->items as $item) {
+                // Skip OPEN BOX and USED items - they don't have ProductMaster entries
+                $skuUpper = strtoupper($item->sku);
+                if (strpos($skuUpper, 'OPEN BOX') !== false || strpos($skuUpper, 'USED') !== false) {
+                    continue;
+                }
+
                 $pm = $productMasters[$item->sku] ?? null;
 
                 // Extract LP, Ship, and Weight Act
@@ -117,14 +138,8 @@ class Ebay2SalesController extends Controller
                 // T Weight = Weight Act * Quantity
                 $tWeight = $weightAct * $quantity;
 
-                // Ship Cost calculation (same as eBay 1)
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
+                // Ship Cost = ship (not divided by quantity - each unit bears full shipping cost)
+                $shipCost = $ship;
 
                 // COGS = LP * quantity
                 $cogs = $lp * $quantity;

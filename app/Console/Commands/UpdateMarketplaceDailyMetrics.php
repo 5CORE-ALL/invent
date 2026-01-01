@@ -416,8 +416,22 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
         $skus = array_unique($skus);
 
-        // Fetch ProductMaster data using exact SKU match (same as Ebay2SalesController)
-        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+        // Fetch ProductMaster data using case-insensitive SKU match (same as Ebay2SalesController)
+        $skuLowerMap = [];
+        foreach ($skus as $sku) {
+            $skuLowerMap[strtolower($sku)] = $sku;
+        }
+        
+        $productMastersRaw = ProductMaster::whereRaw('LOWER(sku) IN (' . implode(',', array_fill(0, count($skuLowerMap), '?')) . ')', array_keys($skuLowerMap))->get();
+        
+        // Key by original order SKU (preserving order SKU case)
+        $productMasters = collect();
+        foreach ($productMastersRaw as $pm) {
+            $pmSkuLower = strtolower($pm->sku);
+            if (isset($skuLowerMap[$pmSkuLower])) {
+                $productMasters[$skuLowerMap[$pmSkuLower]] = $pm;
+            }
+        }
 
         // Get marketplace percentage for eBay 2
         // NOTE: Ebay2SalesController uses hardcoded 0.85, so we use the same for consistency
@@ -434,6 +448,12 @@ class UpdateMarketplaceDailyMetrics extends Command
         foreach ($orders as $order) {
             foreach ($order->items as $item) {
                 if (!$item->sku || $item->sku === '') continue;
+
+                // Skip OPEN BOX and USED items - they don't have ProductMaster entries
+                $skuUpper = strtoupper($item->sku);
+                if (strpos($skuUpper, 'OPEN BOX') !== false || strpos($skuUpper, 'USED') !== false) {
+                    continue;
+                }
 
                 $totalOrders++;
                 $quantity = (int) ($item->quantity ?? 1);
@@ -455,7 +475,6 @@ class UpdateMarketplaceDailyMetrics extends Command
                 $pm = $productMasters[$sku] ?? null;
                 $lp = 0;
                 $ship = 0;
-                $weightAct = 0;
 
                 if ($pm) {
                     $values = is_array($pm->Values) ? $pm->Values :
@@ -476,24 +495,10 @@ class UpdateMarketplaceDailyMetrics extends Command
                     $ship = isset($values["ebay2_ship"]) && $values["ebay2_ship"] !== null 
                         ? floatval($values["ebay2_ship"]) 
                         : (isset($values["ship"]) ? floatval($values["ship"]) : 0);
-                    
-                    // Get Weight Act
-                    if (isset($values['wt_act'])) {
-                        $weightAct = floatval($values['wt_act']);
-                    }
                 }
 
-                // T Weight = Weight Act * Quantity
-                $tWeight = $weightAct * $quantity;
-
-                // Ship Cost calculation (same as Ebay2SalesController):
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
+                // Ship Cost = ship (NOT divided by quantity, as per Excel formula)
+                $shipCost = $ship;
 
                 // COGS = LP * quantity
                 $cogs = $lp * $quantity;
