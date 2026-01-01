@@ -1417,8 +1417,24 @@ class TemuController extends Controller
                 ->values()
                 ->all();
 
-            // 3. Fetch Temu pricing data for matching SKUs
-            $pricingData = TemuPricing::select([
+            // Helper function to normalize SKU for matching
+            $normalizeSku = function($sku) {
+                $sku = strtoupper(trim($sku));
+                // Normalize common variations: "2 PCS" -> "2PCS", "2 PC" -> "2PC"
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                // Remove extra spaces
+                $sku = preg_replace('/\s+/', ' ', $sku);
+                return $sku;
+            };
+
+            // Create normalized SKU lookup for ProductMaster
+            $normalizedSkuMap = [];
+            foreach ($skus as $sku) {
+                $normalizedSkuMap[$normalizeSku($sku)] = $sku;
+            }
+
+            // 3. Fetch ALL Temu pricing data and match by normalized SKU
+            $allPricingData = TemuPricing::select([
                 'sku',
                 'product_name',
                 'category',
@@ -1430,10 +1446,17 @@ class TemuController extends Controller
                 'goods_id',
                 'sku_id',
                 'date_created'
-            ])
-            ->whereIn('sku', $skus)
-            ->get()
-            ->keyBy('sku');
+            ])->get();
+
+            // Build pricing data with normalized matching
+            $pricingData = collect();
+            foreach ($allPricingData as $pricing) {
+                $normalizedPricingSku = $normalizeSku($pricing->sku);
+                if (isset($normalizedSkuMap[$normalizedPricingSku])) {
+                    $originalSku = $normalizedSkuMap[$normalizedPricingSku];
+                    $pricingData[$originalSku] = $pricing;
+                }
+            }
             
             // Fetch shopify data for inventory
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -1445,10 +1468,8 @@ class TemuController extends Controller
                 ->get()
                 ->keyBy('sku');
 
-            // Fetch last 30 days view data from temu_view_data
-            $thirtyDaysAgo = Carbon::now()->subDays(30)->format('Y-m-d');
-            $viewData = TemuViewData::where('date', '>=', $thirtyDaysAgo)
-                ->selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
+            // Fetch all view data from temu_view_data (no date filter)
+            $viewData = TemuViewData::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
                 ->groupBy('goods_id')
                 ->get()
                 ->keyBy('goods_id');
@@ -1826,7 +1847,7 @@ class TemuController extends Controller
                     }
 
                     $goodsId = $rowData['Goods ID'] ?? null;
-                    
+
                     $viewData = [
                         'goods_name' => $rowData['Goods Name'] ?? null,
                         'product_impressions' => !empty($rowData['Product impressions']) ? (int)$rowData['Product impressions'] : 0,
@@ -1837,10 +1858,9 @@ class TemuController extends Controller
                     ];
 
                     // Upsert: Update if date + goods_id exists, else insert
-                    // This prevents duplicates when same sheet is uploaded multiple times
                     TemuViewData::updateOrCreate(
-                        ['date' => $date, 'goods_id' => $goodsId], // Match criteria
-                        $viewData // Data to update/insert
+                        ['date' => $date, 'goods_id' => $goodsId],
+                        $viewData
                     );
                     $imported++;
                 }
