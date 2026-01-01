@@ -1016,6 +1016,7 @@
                             sbid = sbid.toFixed(2);
                             return sbid;
                         },
+                        visible: true,
                     },
                     {
                         title: "APR BID",

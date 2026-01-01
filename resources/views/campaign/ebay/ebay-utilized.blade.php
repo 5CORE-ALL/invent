@@ -693,7 +693,7 @@
                     currentUtilizationType = this.value;
                     if (typeof table !== 'undefined' && table) {
                         // Update SBID column visibility based on utilization type
-                        if (currentUtilizationType === 'correctly' || currentUtilizationType === 'all') {
+                        if (currentUtilizationType === 'correctly') {
                             table.hideColumn('sbid');
                         } else {
                             table.showColumn('sbid');
@@ -712,9 +712,9 @@
                     // Reset dropdown to "All" when showing campaigns only
                     document.getElementById('utilization-type-select').value = 'all';
                     currentUtilizationType = 'all';
-                    // Hide SBID column when showing all
+                    // Show SBID column when showing all
                     if (typeof table !== 'undefined' && table) {
-                        table.hideColumn('sbid');
+                        table.showColumn('sbid');
                     }
                     // Reset missing filter
                     showMissingOnly = false;
@@ -1923,7 +1923,7 @@
                 table.setFilter(combinedFilter);
 
                 // Set initial column visibility based on current utilization type
-                if (currentUtilizationType === 'correctly' || currentUtilizationType === 'all') {
+                if (currentUtilizationType === 'correctly') {
                     table.hideColumn('sbid');
                 } else {
                     table.showColumn('sbid');
