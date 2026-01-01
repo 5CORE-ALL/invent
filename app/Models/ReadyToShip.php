@@ -18,6 +18,7 @@ class ReadyToShip extends Model
         'qty',
         'rate',
         'supplier',
+        'supplier_sku',
         'rec_qty',
         'cbm',
         'area',

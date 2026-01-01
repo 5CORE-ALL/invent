@@ -344,6 +344,7 @@
                                 <th data-column="4" class="text-center">Order<br/>QTY<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div></th>
+                                <th data-column="21" class="text-center" style="width: 120px; min-width: 120px;">Supplier<br/>SKU<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
@@ -495,6 +496,15 @@
                                             @endforeach
                                         </select>
                                     </td>
+                                    <td data-column="21" class="text-center" style="width: 120px; min-width: 120px;">
+                                        <input type="text" 
+                                            data-sku="{{ $item->sku }}" 
+                                            data-column="supplier_sku" 
+                                            class="form-control form-control-sm auto-save" 
+                                            value="{{ $item->supplier_sku ?? '' }}" 
+                                            placeholder="Supplier SKU"
+                                            style="min-width: 110px; font-size: 12px; text-align: center;">
+                                    </td>
                                     <td data-column="7" hidden>
                                         @php
                                             $supplier = $item->supplier ?? '';
@@ -563,7 +573,7 @@
                                             class="form-control form-control-sm auto-save" style="width: 80px; font-size: 13px; {{ $textColor }}">
                                             @if ($daysDiff !== null && !empty($formattedDate))
                                                 <span style="font-size: 11px; {{ $textColor }}; white-space: nowrap; font-weight: 500;">
-                                                    {{ $formattedDate }} ({{ $daysDiff }}D)
+                                                    {{ $formattedDate }} ({{ $daysDiff }} D)
                                                 </span>
                                             @endif
                                         </div>
@@ -1719,9 +1729,14 @@
                     return;
                 }
                 
-                // For "Supplier" option, hide advance wrapper as it shows multiple suppliers
+                // Hide advance wrapper when any supplier is selected
+                wrapper.style.display = 'none';
+                
+                // For "Supplier" option, sort visible rows by order date (oldest first)
                 if (selectedValue === '__all_suppliers__' || selectedSupplier === 'Supplier') {
-                    wrapper.style.display = 'none';
+                    // Sort visible rows by order date (oldest first)
+                    const visibleRows = Array.from(allRows).filter(row => row.style.display !== 'none');
+                    sortRowsByOrderDate(visibleRows);
                     // Recalculate totals for all visible rows
                     calculateTotalCBM();
                     calculateTotalAmount();
@@ -1731,7 +1746,8 @@
                     updateFollowSupplierCount();
                     return;
                 } else {
-                    wrapper.style.display = 'block';
+                    // Sort matching rows by order date (oldest first)
+                    sortRowsByOrderDate(matchingRows);
                 }
 
                 // Calculate total group value
@@ -1909,6 +1925,113 @@
     });
 </script>
 <script>
+    // Helper function to sort rows by order date (oldest first) - Global scope
+    function sortRowsByOrderDate(rows) {
+        const tbody = document.querySelector('table.wide-table tbody');
+        if (!tbody) return;
+        
+        // Convert NodeList to Array if needed
+        const rowsArray = Array.isArray(rows) ? [...rows] : Array.from(rows);
+        
+        if (rowsArray.length === 0) return;
+        
+        // Sort by order date (oldest first)
+        rowsArray.sort((a, b) => {
+            // First, try to extract days difference from span (most reliable for sorting)
+            const dateCellA = a.querySelector('td[data-column="10"]');
+            const dateCellB = b.querySelector('td[data-column="10"]');
+            const spanA = dateCellA ? dateCellA.querySelector('span') : null;
+            const spanB = dateCellB ? dateCellB.querySelector('span') : null;
+            
+            let daysA = 0;
+            let daysB = 0;
+            
+            if (spanA) {
+                const matchA = spanA.textContent.match(/\((\d+)\s*D\)/);
+                daysA = matchA ? parseInt(matchA[1]) : 0;
+            }
+            if (spanB) {
+                const matchB = spanB.textContent.match(/\((\d+)\s*D\)/);
+                daysB = matchB ? parseInt(matchB[1]) : 0;
+            }
+            
+            // If both have days difference, sort by that (higher days = older = comes first)
+            if (daysA > 0 && daysB > 0) {
+                return daysB - daysA; // Descending: 26D comes before 25D
+            }
+            
+            // Fallback to date input if days difference not available
+            const dateInputA = a.querySelector('input[data-column="created_at"]');
+            const dateInputB = b.querySelector('input[data-column="created_at"]');
+            
+            let dateA = dateInputA ? dateInputA.value.trim() : '';
+            let dateB = dateInputB ? dateInputB.value.trim() : '';
+            
+            // Extract only date part (YYYY-MM-DD) if timestamp is present
+            if (dateA) {
+                dateA = dateA.substring(0, 10);
+            }
+            if (dateB) {
+                dateB = dateB.substring(0, 10);
+            }
+            
+            // If no date, put at the end
+            if (!dateA && !dateB) return 0;
+            if (!dateA) return 1;
+            if (!dateB) return -1;
+            
+            // Validate date format (YYYY-MM-DD)
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(dateA) || !dateRegex.test(dateB)) {
+                // If invalid format, use days difference if available
+                return daysB - daysA;
+            }
+            
+            // Compare dates (oldest first) - split and compare year, month, day
+            const partsA = dateA.split('-').map(Number);
+            const partsB = dateB.split('-').map(Number);
+            
+            // Compare year first
+            if (partsA[0] !== partsB[0]) {
+                return partsA[0] - partsB[0]; // Older year comes first
+            }
+            // Compare month
+            if (partsA[1] !== partsB[1]) {
+                return partsA[1] - partsB[1]; // Older month comes first
+            }
+            // Compare day
+            if (partsA[2] !== partsB[2]) {
+                return partsA[2] - partsB[2]; // Older day comes first
+            }
+            
+            // If dates are exactly the same, use days difference as tiebreaker
+            // Higher days = older = should come first (descending order)
+            return daysB - daysA;
+        });
+        
+        // Get all rows from tbody to preserve hidden rows
+        const allRowsInTbody = Array.from(tbody.querySelectorAll('tr'));
+        const sortedRowsSet = new Set(rowsArray);
+        const hiddenRows = allRowsInTbody.filter(row => !sortedRowsSet.has(row));
+        
+        // Remove all rows from tbody temporarily
+        rowsArray.forEach(row => {
+            if (row.parentNode) {
+                row.parentNode.removeChild(row);
+            }
+        });
+        
+        // Append sorted visible rows first (oldest first)
+        rowsArray.forEach(row => {
+            tbody.appendChild(row);
+        });
+        
+        // Append hidden rows at the end (maintain their original order)
+        hiddenRows.forEach(row => {
+            tbody.appendChild(row);
+        });
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
         const rows = document.querySelectorAll("table.wide-table tbody tr");
         const filterSelect = document.getElementById("row-data-pending-status");
@@ -1945,6 +2068,8 @@
         });
 
         function showSupplierRows(supplier) {
+            const visibleRows = [];
+            
             rows.forEach(row => {
                 // Check stage from data attribute first (more reliable)
                 const rowStageAttr = row.getAttribute('data-stage') ? row.getAttribute('data-stage').toLowerCase().trim() : '';
@@ -1965,6 +2090,7 @@
                     const supplierName = supplierSelect ? supplierSelect.value.trim() : '';
                     if (supplierName === supplier) {
                         row.style.display = "";
+                        visibleRows.push(row);
                     } else {
                         row.style.display = "none";
                     }
@@ -1972,6 +2098,11 @@
                     row.style.display = "none";
                 }
             });
+
+            // Sort visible rows by order date (oldest first)
+            if (visibleRows.length > 0) {
+                sortRowsByOrderDate(visibleRows);
+            }
 
             // Show supplier badge with supplier name
             const supplierBadgeContainer = document.getElementById("supplier-badge-container");

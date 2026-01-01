@@ -355,6 +355,8 @@
                                 <th data-column="18" data-column-name="qty" class="text-center" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="5" data-column-name="supplier">Supplier<div class="resizer"></div>
                                 </th>
+                                <th data-column="23" data-column-name="supplier_sku" class="text-center">Supplier<br/>SKU<div class="resizer"></div>
+                                </th>
                                 <th data-column="6" data-column-name="cbm" hidden>CBM<div class="resizer"></div>
                                 </th>
                                 <th data-column="19" data-column-name="total_cbm">Total CBM<div class="resizer"></div>
@@ -527,6 +529,15 @@
                                             </option>
                                         @endforeach
                                     </select>
+                                </td>
+                                <td data-column="23" class="text-center">
+                                    <input type="text" 
+                                        data-sku="{{ $item->sku }}" 
+                                        data-column="supplier_sku" 
+                                        class="form-control form-control-sm auto-save" 
+                                        value="{{ $item->supplier_sku ?? '' }}" 
+                                        placeholder="Supplier SKU"
+                                        style="min-width: 120px; font-size: 13px; text-align: center;">
                                 </td>
                                 <td data-column="6" hidden>{{ isset($item->CBM) && $item->CBM !== null ? number_format((float)$item->CBM, 4) : 'N/A' }}</td>
                                 <td data-column="19">{{ is_numeric($item->qty ?? null) && is_numeric($item->CBM ?? null) ? number_format($item->qty * $item->CBM, 2, '.', '') : '' }}</td>
@@ -1341,8 +1352,10 @@
                     });
                 }
 
+                // Hide advance wrapper when any supplier is selected
+                if (wrapper) wrapper.style.display = 'none';
+                
                 if (selectedValue === '__all_suppliers__' || selectedSupplier === 'Supplier') {
-                    if (wrapper) wrapper.style.display = 'none';
                     calculateTotalCBM();
                     calculateTotalAmount();
                     calculateTotalOrderQty();
@@ -1350,8 +1363,6 @@
                     calculateTotalCTNCBM();
                     updateFollowSupplierCount();
                     return;
-                } else {
-                    if (wrapper) wrapper.style.display = 'block';
                 }
 
                 // Calculate advance and pending for selected supplier

@@ -257,6 +257,7 @@ class ReadyToShipController extends Controller
             'pay_term',
             'payment_confirmation',
             'supplier',
+            'supplier_sku',
         ])) {
             return response()->json(['success' => false, 'message' => 'Invalid column.']);
         }
