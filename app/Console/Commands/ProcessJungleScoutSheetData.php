@@ -30,35 +30,24 @@ class ProcessJungleScoutSheetData extends Command
      */
     public function handle()
     {
-        $sheetUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS-08j7tTaA8eHfXdRkj5sZP9AfFMIyNSiViuBHeTFbd1sJnVhC4cg_BzQeHgCh60nH3vOkJqrlM3xM/pub?gid=0&single=true&output=csv';
+        // Fetch ASINs, SKUs and Parent from amazon_datsheets table instead of Google Sheet
+        $data = \DB::table('amazon_datsheets as ad')
+            ->join('product_master as pm', 'ad.sku', '=', 'pm.sku')
+            ->whereNotNull('ad.asin')
+            ->where('ad.asin', '!=', '')
+            ->whereNull('pm.deleted_at')
+            ->select('ad.asin as ASIN', 'ad.sku as SKU', 'pm.parent as PARENT')
+            ->distinct()
+            ->get()
+            ->toArray();
+        
+        $data = array_map(function($item) {
+            return (array) $item;
+        }, $data);
+        
+        $this->info('Fetched ' . count($data) . ' ASINs from amazon_datsheets table');
         
         try {
-            $response = Http::timeout(120)->get($sheetUrl);
-
-            if (!$response->ok()) {
-                throw new \Exception('Failed to fetch Google Sheet: HTTP ' . $response->status());
-            }
-
-            $rows = array_map('str_getcsv', explode("\n", $response->body()));
-            $headers = array_map('trim', array_shift($rows));
-            $data = [];
-            
-            foreach ($rows as $row) {
-                if (empty(array_filter($row))) {
-                    continue;
-                }
-
-                if (count($headers) !== count($row)) {
-                    Log::warning('Skipping row due to column mismatch', ['row' => $row]);
-                    continue;
-                }
-
-                $rowData = array_combine($headers, $row);
-            
-                if (isset($rowData['ASIN'], $rowData['SKU'], $rowData['PARENT'])) {
-                    $data[] = $rowData;
-                }
-            }
 
             $chunks = array_chunk($data, 100);
 

@@ -1430,26 +1430,69 @@ class OverallAmazonController extends Controller
 
         $ratings = AmazonFbmManual::whereIn('sku', $skus)->pluck('data', 'sku')->toArray();
 
-        $parents = $productMasters->pluck('parent')->filter()->unique()->map('strtoupper')->values()->all();
-
-        $jungleScoutData = JungleScoutProductData::whereIn('parent', $parents)
-            ->get()
+        // Get all JungleScout data - group by SKU first, then also by ASIN for fallback
+        $allJungleScoutData = JungleScoutProductData::all();
+        
+        // Group by SKU (case-insensitive) - for products with SKU in Jungle Scout
+        $jungleScoutBySku = $allJungleScoutData
+            ->filter(function ($item) {
+                return !empty($item->sku);
+            })
             ->groupBy(function ($item) {
-                return strtoupper(trim($item->parent));
+                return strtoupper(trim($item->sku));
             })
             ->map(function ($group) {
                 $validPrices = $group->filter(function ($item) {
-                    $data = is_array($item->data) ? $item->data : [];
+                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
                     $price = $data['price'] ?? null;
                     return is_numeric($price) && $price > 0;
-                })->pluck('data.price');
+                })->map(function ($item) {
+                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
+                    return $data['price'];
+                });
 
                 return [
                     'scout_parent' => $group->first()->parent,
                     'min_price' => $validPrices->isNotEmpty() ? $validPrices->min() : null,
                     'product_count' => $group->count(),
                     'all_data' => $group->map(function ($item) {
-                        $data = is_array($item->data) ? $item->data : [];
+                        $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
+                        if (isset($data['price'])) {
+                            $data['price'] = is_numeric($data['price']) ? (float) $data['price'] : null;
+                        }
+                        return $data;
+                    })->toArray()
+                ];
+            });
+        
+        // Group by ASIN (from data->id field) - for fallback when SKU doesn't match
+        $jungleScoutByAsin = $allJungleScoutData
+            ->filter(function ($item) {
+                $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
+                return isset($data['id']) && !empty($data['id']);
+            })
+            ->groupBy(function ($item) {
+                $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
+                $id = $data['id'] ?? '';
+                $asin = str_replace('us/', '', $id);
+                return strtoupper(trim($asin));
+            })
+            ->map(function ($group) {
+                $validPrices = $group->filter(function ($item) {
+                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
+                    $price = $data['price'] ?? null;
+                    return is_numeric($price) && $price > 0;
+                })->map(function ($item) {
+                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
+                    return $data['price'];
+                });
+
+                return [
+                    'scout_parent' => $group->first()->parent,
+                    'min_price' => $validPrices->isNotEmpty() ? $validPrices->min() : null,
+                    'product_count' => $group->count(),
+                    'all_data' => $group->map(function ($item) {
+                        $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
                         if (isset($data['price'])) {
                             $data['price'] = is_numeric($data['price']) ? (float) $data['price'] : null;
                         }
@@ -1519,8 +1562,30 @@ class OverallAmazonController extends Controller
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $row = [];
-            $ratingData = isset($ratings[strtoupper($pm->sku)]) ? json_decode($ratings[strtoupper($pm->sku)], true) : null;
-            $row['rating'] = $ratingData['rating'] ?? null;
+            // Get rating and reviews from Jungle Scout - Try SKU first, fallback to ASIN
+            $jsData = $jungleScoutBySku->get($sku);
+            
+            // If no match by SKU, try ASIN fallback
+            if (!$jsData && $amazonSheet && $amazonSheet->asin) {
+                $asinKey = strtoupper(trim($amazonSheet->asin));
+                $jsData = $jungleScoutByAsin->get($asinKey);
+            }
+            
+            $jsAllData = $jsData['all_data'] ?? [];
+            
+            // Extract rating and reviews from jungle scout data (first entry with valid data)
+            $rating = null;
+            $reviews = null;
+            foreach ($jsAllData as $jsEntry) {
+                if (isset($jsEntry['rating']) && $jsEntry['rating'] > 0) {
+                    $rating = $jsEntry['rating'];
+                    $reviews = $jsEntry['reviews'] ?? null;
+                    break;
+                }
+            }
+            
+            $row['rating'] = $rating;
+            $row['reviews'] = $reviews;
             $row['Parent'] = $parent;
             $row['(Child) sku'] = $pm->sku;
 
@@ -1563,8 +1628,10 @@ class OverallAmazonController extends Controller
             $row['ad_updates'] = $adUpdates;
 
             $parentKey = strtoupper($parent);
-            if (!empty($parentKey) && $jungleScoutData->has($parentKey)) {
-                $row['scout_data'] = $jungleScoutData[$parentKey];
+            if (!empty($parentKey) && $jungleScoutBySku->has($parentKey)) {
+                $row['scout_data'] = $jungleScoutBySku[$parentKey];
+            } elseif (!empty($parentKey) && $jungleScoutByAsin->has($parentKey)) {
+                $row['scout_data'] = $jungleScoutByAsin[$parentKey];
             }
 
             $row['percentage'] = $percentage;
