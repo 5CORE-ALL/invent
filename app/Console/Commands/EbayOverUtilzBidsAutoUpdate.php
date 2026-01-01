@@ -272,20 +272,18 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             $l7_cpc = floatval($row['l7_cpc']);
             
             // Calculate SBID - handle cases where l1_cpc is 0 or missing
-            if($l1_cpc > 0){
+            if($l1_cpc > 1.25){
+                $row['sbid'] = floor($l1_cpc * 0.80 * 100) / 100;
+            }elseif($l1_cpc > 0){
                 $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
-            }elseif($l7_cpc > 0){
-                // If l1_cpc is 0, use l7_cpc as fallback
-                $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
-            }else{
-                // If both are 0, use default minimum bid
-                $row['sbid'] = 0.50;
             }
 
             $budget = floatval($row['campaignBudgetAmount']);
             $l7_spend = floatval($row['l7_spend']);
+            $l1_spend = floatval($row['l1_spend']);
 
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+            $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
             $row['NR'] = '';
             if (isset($nrValues[$pm->sku])) {
@@ -298,16 +296,9 @@ class EbayOverUtilzBidsAutoUpdate extends Command
                 }
             }
 
-            // Apply filter conditions:
-            // Condition 1: ACOS > TOTAL_ACOS AND UB7 > 33%
-            // OR
-            // Condition 2: ACOS <= TOTAL_ACOS AND UB7 > 90%
-            $condition1 = ($rowAcos > $totalACOSAll && $ub7 > 33);
-            $condition2 = ($rowAcos <= $totalACOSAll && $ub7 > 90);
-            $matchesCondition = $condition1 || $condition2;
-
-            // Other filters: NR !== 'NRA', price >= 30, INV > 0, DIL not pink
-            if ($matchesCondition && $row['NR'] !== 'NRA' && $row['INV'] > 0) {
+            // Apply filter conditions: ub7 > 99 AND ub1 > 99
+            // Other filters: NR !== 'NRA', INV > 0
+            if ($ub7 > 99 && $ub1 > 99 && $row['NR'] !== 'NRA' && $row['INV'] > 0) {
                 $result[] = (object) $row;
             }
 

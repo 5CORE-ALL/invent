@@ -50,15 +50,52 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
         $this->info("📊 Found " . count($validCampaigns) . " campaigns to update");
         $this->info("");
 
-        // Log all campaigns before update
-        $this->info("📋 Campaigns to be updated:");
+        // Log all campaigns before update with detailed SBID calculation info
+        $this->info("📋 Campaigns to be updated (with SBID calculation details):");
         foreach ($validCampaigns as $index => $campaign) {
             $campaignName = $campaign->campaign_name ?? 'Unknown';
             $campaignId = $campaign->campaign_id ?? 'N/A';
             $newBid = $campaign->sbid ?? 0;
-            $oldCpc = $campaign->l7_cpc ?? 0;
+            $l1Cpc = $campaign->l1_cpc ?? 0;
+            $l7Cpc = $campaign->l7_cpc ?? 0;
+            $price = $campaign->price ?? 0;
             
-            $this->line("   " . ($index + 1) . ". Campaign: {$campaignName} | ID: {$campaignId} | Old CPC: \${$oldCpc} | New Bid: \${$newBid}");
+            // Calculate UB7 and UB1 for display
+            $budget = floatval($campaign->campaignBudgetAmount ?? 0);
+            $l7Spend = floatval($campaign->l7_spend ?? 0);
+            $l1Spend = floatval($campaign->l1_spend ?? 0);
+            $ub7 = $budget > 0 ? ($l7Spend / ($budget * 7)) * 100 : 0;
+            $ub1 = $budget > 0 ? ($l1Spend / $budget) * 100 : 0;
+            
+            // Determine which rule was applied
+            $ruleApplied = '';
+            if ($ub7 == 0 && $ub1 == 0) {
+                $ruleApplied = 'Price-based (UB7=0%, UB1=0%)';
+            } else {
+                $cpcToUse = ($l1Cpc > 0) ? $l1Cpc : (($l7Cpc > 0) ? $l7Cpc : 0);
+                if ($cpcToUse > 0) {
+                    if ($cpcToUse < 0.10) {
+                        $ruleApplied = "CPC-based (L1CPC={$l1Cpc}, L7CPC={$l7Cpc}) × 2.00";
+                    } elseif ($cpcToUse >= 0.10 && $cpcToUse <= 0.20) {
+                        $ruleApplied = "CPC-based (L1CPC={$l1Cpc}, L7CPC={$l7Cpc}) × 1.50";
+                    } elseif ($cpcToUse >= 0.21 && $cpcToUse <= 0.30) {
+                        $ruleApplied = "CPC-based (L1CPC={$l1Cpc}, L7CPC={$l7Cpc}) × 1.25";
+                    } else {
+                        $ruleApplied = "CPC-based (L1CPC={$l1Cpc}, L7CPC={$l7Cpc}) × 1.10";
+                    }
+                    if ($price < 20) {
+                        $ruleApplied .= " [Price cap: <\$20 → max 0.20]";
+                    }
+                } else {
+                    $ruleApplied = 'Default (both CPC=0) → 0.75';
+                }
+            }
+            
+            $this->line("   " . ($index + 1) . ". Campaign: {$campaignName}");
+            $this->line("       ID: {$campaignId} | Price: \${$price} | UB7: " . number_format($ub7, 2) . "% | UB1: " . number_format($ub1, 2) . "%");
+            $this->line("       L1CPC: \${$l1Cpc} | L7CPC: \${$l7Cpc} | Calculated SBID: \${$newBid}");
+            $this->line("       Rule Applied: {$ruleApplied}");
+            $this->line("");
         }
         
         $this->info("");
@@ -217,20 +254,48 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
 
             $budget = floatval($row['campaignBudgetAmount']);
             $l7_spend = floatval($row['l7_spend']);
+            $l1_spend = floatval($row['l1_spend']);
 
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+            $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // Calculate SBID - handle cases where l7_cpc is 0 or missing
-            if($ub7 < 10){
-                $row['sbid'] = 0.50;
-            }else{
-                // If l7_cpc is 0 or missing, use l1_cpc as fallback, otherwise use default
-                if($l7_cpc > 0){
-                    $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
-                }elseif($l1_cpc > 0){
-                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
-                }else{
-                    // If both l7_cpc and l1_cpc are 0, use default minimum bid
+            // Calculate SBID using under-utilized rules
+            $price = floatval($row['price']);
+            
+            // Special rule: If UB7 = 0% and UB1 = 0%, use price-based SBID
+            if ($ub7 == 0 && $ub1 == 0) {
+                if ($price < 20) {
+                    $row['sbid'] = 0.20;
+                } elseif ($price >= 20 && $price < 50) {
+                    $row['sbid'] = 0.75;
+                } elseif ($price >= 50 && $price < 100) {
+                    $row['sbid'] = 1.00;
+                } elseif ($price >= 100 && $price < 200) {
+                    $row['sbid'] = 1.50;
+                } else {
+                    $row['sbid'] = 2.00;
+                }
+            } else {
+                // Use L1CPC if available (not 0), otherwise use L7CPC
+                $cpcToUse = ($l1_cpc > 0) ? $l1_cpc : (($l7_cpc > 0) ? $l7_cpc : 0);
+                
+                if ($cpcToUse > 0) {
+                    if ($cpcToUse < 0.10) {
+                        $row['sbid'] = floor($cpcToUse * 2.00 * 100) / 100;
+                    } elseif ($cpcToUse >= 0.10 && $cpcToUse <= 0.20) {
+                        $row['sbid'] = floor($cpcToUse * 1.50 * 100) / 100;
+                    } elseif ($cpcToUse >= 0.21 && $cpcToUse <= 0.30) {
+                        $row['sbid'] = floor($cpcToUse * 1.25 * 100) / 100;
+                    } else {
+                        $row['sbid'] = floor($cpcToUse * 1.10 * 100) / 100;
+                    }
+                    
+                    // Price cap: If price < $20, cap SBID at 0.20
+                    if ($price < 20) {
+                        $row['sbid'] = min($row['sbid'], 0.20);
+                    }
+                } else {
+                    // If both L1CPC and L7CPC are 0, use default
                     $row['sbid'] = 0.75;
                 }
             }
@@ -246,11 +311,8 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
                 }
             }
 
-            if ($row['NR'] !== 'NRA' && $ub7 < 70 && $row['price'] >= 30 && $row['INV'] > 0) {
-                $dilColor = $this->getDilColor($row['L30'], $row['INV']);
-                if ($dilColor !== 'pink') {
-                    $result[] = (object) $row;
-                }
+            if ($row['NR'] !== 'NRA' && $ub7 < 66 && $ub1 < 66 && $row['INV'] > 0) {
+                $result[] = (object) $row;
             }
 
         }
