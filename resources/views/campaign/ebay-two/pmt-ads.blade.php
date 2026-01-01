@@ -2682,19 +2682,23 @@
                     // Calculate SBID based on CVR ranges
                     let sbidValue;
                     
-                    // First rule: if CVR < 0.01% OR sold (eBay L30) = 0, use ESBID
-                    if (scvr < 0.01 || ebayL30 === 0) {
-                        sbidValue = item.ESBID || 0; // Use ESBID for CVR < 0.01% or sold 0
-                    } else if ((scvr >= 0.01 && scvr <= 1) || views < 100) {
+                    // New rule: if SBID between 0.01-1% OR DIL red OR views < 100, set to 8%
+                    if ((scvr >= 0.01 && scvr <= 1) || views < 100) {
                         sbidValue = 8; // Flat 8
+                    } else if (scvr < 0.01) {
+                        sbidValue = item.ESBID || 0; // Use ESBID for CVR < 0.01%
                     } else if (scvr >= 1.01 && scvr <= 2) {
-                        sbidValue = 6; // Flat 6
+                        sbidValue = 7; // Flat 7
                     } else if (scvr >= 2.01 && scvr <= 3) {
-                        sbidValue = 5; // Flat 5
+                        sbidValue = 6; // Flat 6
                     } else if (scvr >= 3.01 && scvr <= 5) {
+                        sbidValue = 5; // Flat 5
+                    } else if (scvr >= 5.01 && scvr <= 7) {
+                        sbidValue = 4; // Flat 4
+                    } else if (scvr >= 7.01 && scvr <= 13) {
                         sbidValue = 3; // Flat 3
-                    } else if (scvr > 5) {
-                        sbidValue = 2; // Above 5% CVR = SBID 2%
+                    } else { // scvr > 13
+                        sbidValue = 2; // Flat 2
                     }
 
                     // Cap sbidValue to maximum of 15
