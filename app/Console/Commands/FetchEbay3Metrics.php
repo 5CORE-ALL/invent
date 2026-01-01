@@ -135,6 +135,7 @@ class FetchEbay3Metrics extends Command
 
         $ebayService = app(EbayThreeApiService::class);
         $allMetrics = Ebay3Metric::whereNotNull('sku')
+            ->whereNotNull('item_id')
             ->where('sku', 'not like', '%PARENT%')
             ->get();
 
@@ -144,16 +145,33 @@ class FetchEbay3Metrics extends Command
 
         foreach ($allMetrics as $metric) {
             $sku = $metric->sku;
+            $itemId = $metric->item_id;
 
-            // Use SKU to search for competitor prices
-            $competitors = $ebayService->doRepricing($sku);
+            // First, get the item details (title, categoryId, epid) from eBay
+            $itemDetails = $this->getItemDetails($itemId);
+            
+            if (empty($itemDetails) || empty($itemDetails['title'])) {
+                $this->warn("⚠️  No details found for {$sku} (item_id: {$itemId}), skipping LMP");
+                $processedCount++;
+                continue;
+            }
+            
+            $itemTitle = $itemDetails['title'];
+            $categoryId = $itemDetails['categoryId'] ?? null;
+            $epid = $itemDetails['epid'] ?? null;
+            
+            // Use EPID-based search if available, otherwise category + title search
+            $this->info("🔍 {$sku}: Title: " . substr($itemTitle, 0, 40) . "... | Cat: {$categoryId} | EPID: " . ($epid ?? 'N/A'));
+            
+            $competitors = $ebayService->doRepricingWithCategory($itemTitle, $categoryId, $epid, $itemId);
 
             if (!empty($competitors)) {
                 // Filter out our own listing and get top competitors
                 $filteredCompetitors = [];
                 foreach ($competitors as $comp) {
-                    // Skip if it's our own item
-                    if ($comp['item_id'] === $metric->item_id) {
+                    // Skip if it's our own item (compare as string)
+                    $compItemId = str_replace(['v1|', '|0'], '', $comp['item_id']);
+                    if ($compItemId == $metric->item_id) {
                         continue;
                     }
                     
@@ -198,6 +216,46 @@ class FetchEbay3Metrics extends Command
         }
 
         $this->info("✅ Competitor prices updated for {$processedCount} SKUs");
+    }
+
+    /**
+     * Get item details (title, categoryId, epid) from eBay using Browse API
+     */
+    private function getItemDetails($itemId)
+    {
+        $ebayService = app(EbayThreeApiService::class);
+        $token = $ebayService->generateBrowseToken();
+        
+        if (!$token) {
+            return null;
+        }
+
+        try {
+            // Use get_items_by_item_group API - this works with legacy item IDs
+            $response = Http::withToken($token)
+                ->timeout(30)
+                ->connectTimeout(15)
+                ->get("https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id={$itemId}");
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $items = $data['items'] ?? [];
+                
+                if (!empty($items)) {
+                    $item = $items[0];
+                    return [
+                        'title' => $item['title'] ?? null,
+                        'categoryId' => $item['categoryId'] ?? null,
+                        'epid' => $item['epid'] ?? null,
+                    ];
+                }
+            }
+
+        } catch (\Exception $e) {
+            Log::warning("Failed to get item details for {$itemId}: " . $e->getMessage());
+        }
+
+        return null;
     }
 
     private function dateRanges()

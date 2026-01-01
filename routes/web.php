@@ -793,6 +793,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/bestbuy-daily-sales-column-visibility', [BestBuySalesController::class, 'getColumnVisibility']);
     Route::post('/bestbuy-daily-sales-column-visibility', [BestBuySalesController::class, 'saveColumnVisibility']);
     
+    // Macy's Sales Routes
+    Route::get('/macys/daily-sales-data', [\App\Http\Controllers\Sales\MacysSalesController::class, 'getData'])->name('macys.daily.sales.data');
+    Route::get('/macys/daily-sales', [\App\Http\Controllers\Sales\MacysSalesController::class, 'index'])->name('macys.daily.sales');
+    Route::get('/macys-daily-sales-column-visibility', [\App\Http\Controllers\Sales\MacysSalesController::class, 'getColumnVisibility']);
+    Route::post('/macys-daily-sales-column-visibility', [\App\Http\Controllers\Sales\MacysSalesController::class, 'saveColumnVisibility']);
+    
+    // Tiendamia Sales Routes
+    Route::get('/tiendamia/daily-sales-data', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'getData'])->name('tiendamia.daily.sales.data');
+    Route::get('/tiendamia/daily-sales', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'index'])->name('tiendamia.daily.sales');
+    Route::get('/tiendamia-daily-sales-column-visibility', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'getColumnVisibility']);
+    Route::post('/tiendamia-daily-sales-column-visibility', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'saveColumnVisibility']);
+    
     // Best Buy Pricing Routes
     Route::get('/bestbuy-pricing', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyPricingView'])->name('bestbuy.pricing');
     Route::get('/bestbuy-data-json', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyDataJson'])->name('bestbuy.data.json');
