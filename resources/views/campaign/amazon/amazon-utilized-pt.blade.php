@@ -1092,43 +1092,13 @@
                         }
                     },
                     {
-                        title: "Price",
-                        field: "price",
-                        hozAlign: "right",
+                        title: "Ratings",
+                        field: "ratings",
+                        hozAlign: "center",
                         formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var value = parseFloat(cell.getValue() || 0);
-                            var tpft = parseFloat(row.PFT || 0);
-                            var roi = parseFloat(row.roi || 0);
-                            var tooltipText = "PFT%: " + tpft.toFixed(2) + "%\nROI%: " + roi.toFixed(2) + "%";
-                            
-                            return `<div class="text-center">$${value.toFixed(2)}<i class="bi bi-info-circle ms-1 info-icon-price-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
+                            var value = cell.getValue();
+                            return value ? value + ' <span style="color: #ffc107;">★</span>' : '-';
                         },
-                        sorter: "number",
-                        width: 90
-                    },
-                    {
-                        title: "PFT%",
-                        field: "PFT",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(2) + "%";
-                        },
-                        sorter: "number",
-                        width: 80
-                    },
-                    {
-                        title: "ROI%",
-                        field: "roi",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(2) + "%";
-                        },
-                        sorter: "number",
                         width: 80
                     },
                     {
@@ -1270,6 +1240,46 @@
                             `;
                         },
                         hozAlign: "center"
+                    },
+                    {
+                        title: "Price",
+                        field: "price",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var value = parseFloat(cell.getValue() || 0);
+                            var tpft = parseFloat(row.PFT || 0);
+                            var roi = parseFloat(row.roi || 0);
+                            var tooltipText = "PFT%: " + tpft.toFixed(2) + "%\nROI%: " + roi.toFixed(2) + "%";
+                            
+                            return `<div class="text-center">$${value.toFixed(2)}<i class="bi bi-info-circle ms-1 info-icon-price-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "PFT%",
+                        field: "PFT",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2) + "%";
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
+                        title: "ROI%",
+                        field: "roi",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2) + "%";
+                        },
+                        sorter: "number",
+                        width: 80
                     },
                     {
                         title: "FBA",
