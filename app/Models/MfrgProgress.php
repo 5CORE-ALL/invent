@@ -15,6 +15,7 @@ class MfrgProgress extends Model
         'qty',
         'rate',
         'supplier',
+        'supplier_sku',
         'advance_amt',
         'adv_date',
         'pay_conf_date',

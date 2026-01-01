@@ -344,6 +344,7 @@
                                 <th data-column="4" class="text-center">Order<br/>QTY<div class="resizer"></div></th>
                                 <th data-column="5" hidden>Rate<div class="resizer"></div></th>
                                 <th data-column="6" class="text-center" style="width: 150px; min-width: 150px; max-width: 150px;">Supplier<div class="resizer"></div></th>
+                                <th data-column="21" class="text-center" style="width: 120px; min-width: 120px;">Supplier<br/>SKU<div class="resizer"></div></th>
                                 <th data-column="7" hidden>Advance<br/>Amt<div class="resizer"></div></th>
                                 <th data-column="8" hidden>Adv<br/>Date<div class="resizer"></div></th>
                                 <th data-column="9" hidden>pay conf.<br/>date<div class="resizer"></div></th>
@@ -494,6 +495,15 @@
                                                 </option>
                                             @endforeach
                                         </select>
+                                    </td>
+                                    <td data-column="21" class="text-center" style="width: 120px; min-width: 120px;">
+                                        <input type="text" 
+                                            data-sku="{{ $item->sku }}" 
+                                            data-column="supplier_sku" 
+                                            class="form-control form-control-sm auto-save" 
+                                            value="{{ $item->supplier_sku ?? '' }}" 
+                                            placeholder="Supplier SKU"
+                                            style="min-width: 110px; font-size: 12px; text-align: center;">
                                     </td>
                                     <td data-column="7" hidden>
                                         @php

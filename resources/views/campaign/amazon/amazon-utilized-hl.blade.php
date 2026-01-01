@@ -1174,7 +1174,7 @@
                             var row = cell.getRow().getData();
                             var value = parseFloat(cell.getValue() || 0);
                             var tpft = parseFloat(row.PFT || 0);
-                            var roi = value > 0 ? ((tpft / value) * 100) : 0;
+                            var roi = parseFloat(row.roi || 0);
                             var tooltipText = "PFT%: " + tpft.toFixed(2) + "%\nROI%: " + roi.toFixed(2) + "%";
                             
                             return `<div class="text-center">$${value.toFixed(2)}<i class="bi bi-info-circle ms-1 info-icon-price-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
@@ -1200,11 +1200,8 @@
                         hozAlign: "right",
                         visible: false,
                         formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var price = parseFloat(row.price || 0);
-                            var tpft = parseFloat(row.PFT || 0);
-                            var roi = price > 0 ? ((tpft / price) * 100) : 0;
-                            return roi.toFixed(2) + "%";
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2) + "%";
                         },
                         sorter: "number",
                         width: 80
