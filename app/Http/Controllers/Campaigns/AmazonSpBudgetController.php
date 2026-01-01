@@ -13,6 +13,7 @@ use App\Models\FbaTable;
 use AWS\CRT\Log;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log as FacadesLog;
 
 class AmazonSpBudgetController extends Controller
@@ -1629,6 +1630,42 @@ class AmazonSpBudgetController extends Controller
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
+        // Fetch latest ratings from junglescout_product_data
+        // Use subquery to get latest record for each sku/parent
+        $junglescoutData = collect();
+        
+        // Get latest by SKU
+        $skuRatings = DB::table('junglescout_product_data as j1')
+            ->select('j1.sku', 'j1.data')
+            ->whereNotNull('j1.sku')
+            ->whereIn('j1.sku', $skus)
+            ->whereRaw('j1.updated_at = (SELECT MAX(j2.updated_at) FROM junglescout_product_data j2 WHERE j2.sku = j1.sku)')
+            ->get();
+        
+        foreach ($skuRatings as $item) {
+            $data = json_decode($item->data, true);
+            $rating = $data['rating'] ?? null;
+            if ($item->sku && !$junglescoutData->has($item->sku)) {
+                $junglescoutData->put($item->sku, $rating);
+            }
+        }
+        
+        // Get latest by parent
+        $parentRatings = DB::table('junglescout_product_data as j1')
+            ->select('j1.parent', 'j1.data')
+            ->whereNotNull('j1.parent')
+            ->whereIn('j1.parent', $skus)
+            ->whereRaw('j1.updated_at = (SELECT MAX(j2.updated_at) FROM junglescout_product_data j2 WHERE j2.parent = j1.parent)')
+            ->get();
+        
+        foreach ($parentRatings as $item) {
+            $data = json_decode($item->data, true);
+            $rating = $data['rating'] ?? null;
+            if ($item->parent && !$junglescoutData->has($item->parent)) {
+                $junglescoutData->put($item->parent, $rating);
+            }
+        }
+
         // For HL, use SPONSORED_BRANDS, for KW and PT use SPONSORED_PRODUCTS
         if ($campaignType === 'HL') {
             $amazonSpCampaignReportsL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
@@ -1969,6 +2006,7 @@ class AmazonSpBudgetController extends Controller
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                     'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
                     'price' => ($amazonSheet && isset($amazonSheet->price)) ? $amazonSheet->price : 0,
+                    'ratings' => $junglescoutData[$sku] ?? null,
                     'l7_spend' => 0,
                     'l7_cpc' => 0,
                     'l1_spend' => 0,

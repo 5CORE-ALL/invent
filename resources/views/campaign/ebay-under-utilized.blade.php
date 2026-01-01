@@ -961,6 +961,41 @@
                         title: "SBID",
                         field: "sbid",
                         hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            // Calculate SBID for row A
+                            var aData = aRow.getData();
+                            var a_l1_cpc = parseFloat(aData.l1_cpc) || 0;
+                            var a_l7_cpc = parseFloat(aData.l7_cpc) || 0;
+                            var a_budget = parseFloat(aData.campaignBudgetAmount) || 0;
+                            var a_l7_spend = parseFloat(aData.l7_spend) || 0;
+                            var a_ub7 = a_budget > 0 ? (a_l7_spend / (a_budget * 7)) * 100 : 0;
+                            var a_sbid = 0;
+                            if (a_ub7 < 10) {
+                                a_sbid = 0.50;
+                            } else if(a_l7_cpc > 0) {
+                                a_sbid = Math.floor(a_l7_cpc * 1.10 * 100) / 100;
+                            } else if(a_l1_cpc > 0) {
+                                a_sbid = Math.floor(a_l1_cpc * 1.10 * 100) / 100;
+                            }
+                            
+                            // Calculate SBID for row B
+                            var bData = bRow.getData();
+                            var b_l1_cpc = parseFloat(bData.l1_cpc) || 0;
+                            var b_l7_cpc = parseFloat(bData.l7_cpc) || 0;
+                            var b_budget = parseFloat(bData.campaignBudgetAmount) || 0;
+                            var b_l7_spend = parseFloat(bData.l7_spend) || 0;
+                            var b_ub7 = b_budget > 0 ? (b_l7_spend / (b_budget * 7)) * 100 : 0;
+                            var b_sbid = 0;
+                            if (b_ub7 < 10) {
+                                b_sbid = 0.50;
+                            } else if(b_l7_cpc > 0) {
+                                b_sbid = Math.floor(b_l7_cpc * 1.10 * 100) / 100;
+                            } else if(b_l1_cpc > 0) {
+                                b_sbid = Math.floor(b_l1_cpc * 1.10 * 100) / 100;
+                            }
+                            
+                            return a_sbid - b_sbid;
+                        },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
@@ -981,6 +1016,7 @@
                             sbid = sbid.toFixed(2);
                             return sbid;
                         },
+                        visible: true,
                     },
                     {
                         title: "APR BID",
@@ -1274,18 +1310,50 @@
                 let exportData = filteredData.map(row => {
                     let l1_cpc = parseFloat(row.l1_cpc || 0);
                     let l7_cpc = parseFloat(row.l7_cpc || 0);
+                    let budget = parseFloat(row.campaignBudgetAmount || 0);
+                    let l7_spend = parseFloat(row.l7_spend || 0);
+                    let l1_spend = parseFloat(row.l1_spend || 0);
+                    let inv = parseFloat(row.INV || 0);
+                    let l30 = parseFloat(row.L30 || 0);
+                    
+                    // Calculate SBID
                     let sbid = 0;
-
-                    if(l7_cpc == 0) {
-                        sbid = 0.75;
-                    }else{
+                    let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                    if (ub7 < 10) {
+                        sbid = 0.50;
+                    } else if(l7_cpc > 0) {
                         sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                    } else if(l1_cpc > 0) {
+                        sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
                     }
-                    sbid = sbid.toFixed(2);
+                    sbid = parseFloat(sbid.toFixed(2));
+                    
+                    // Calculate UB7
+                    let ub7Value = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                    
+                    // Calculate UB1
+                    let ub1Value = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                    
+                    // Calculate DIL%
+                    let dilPercent = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? Math.round((l30 / inv) * 100) : 0;
 
                     return {
-                        campaignName: row.campaignName || "",
-                        sbid: sbid
+                        Parent: row.parent || "",
+                        SKU: row.sku || "",
+                        INV: inv,
+                        "OV L30": l30,
+                        "DIL %": dilPercent,
+                        NRA: row.NR || "",
+                        Campaign: row.campaignName || "",
+                        Price: parseFloat(row.price || 0).toFixed(2),
+                        BGT: budget,
+                        ACOS: parseFloat(row.acos || 0).toFixed(0) + "%",
+                        "7 UB%": ub7Value.toFixed(0) + "%",
+                        "1 UB%": ub1Value.toFixed(0) + "%",
+                        "L7 CPC": l7_cpc.toFixed(2),
+                        "L1 CPC": l1_cpc.toFixed(2),
+                        SBID: sbid,
+                        Status: row.campaignStatus || ""
                     };
                 });
 
@@ -1298,7 +1366,7 @@
                 let wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "Campaigns");
 
-                XLSX.writeFile(wb, "ebay_over_acos_pink.xlsx");
+                XLSX.writeFile(wb, "ebay_under_utilized.xlsx");
             });
 
 
