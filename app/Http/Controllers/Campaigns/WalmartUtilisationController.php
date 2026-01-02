@@ -77,6 +77,11 @@ class WalmartUtilisationController extends Controller
             $sku = $normalizeSku($pm->sku);
             $parent = $pm->parent;
 
+            // Skip rows where SKU starts with "PARENT"
+            if (stripos($sku, 'PARENT') === 0) {
+                continue;
+            }
+
             $amazonSheet = $walmartProductSheet[$sku] ?? null;
             $shopify = $shopifyData[$sku] ?? null;
 
