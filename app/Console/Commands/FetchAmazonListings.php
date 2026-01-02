@@ -151,6 +151,12 @@ class FetchAmazonListings extends Command
         $accessToken = $this->getAccessToken();
         $marketplaceId = env('SPAPI_MARKETPLACE_ID');
 
+        $l7End = Carbon::today()->copy()->subDay()->endOfDay();           
+        $l7Start = $l7End->copy()->subDays(7)->startOfDay();
+
+        $l15End = Carbon::today()->copy()->subDay()->endOfDay();           
+        $l15Start = $l15End->copy()->subDays(15)->startOfDay();
+
         $l30End = Carbon::today()->copy()->subDay()->endOfDay();           
         $l30Start = $l30End->copy()->subDays(30)->startOfDay();   
 
@@ -161,6 +167,8 @@ class FetchAmazonListings extends Command
         $l90Start = $l90End->copy()->subDays(30)->startOfDay();
 
         $dateRanges = [
+            'l7' => [$l7Start->toIso8601ZuluString(), $l7End->toIso8601ZuluString()],
+            'l15' => [$l15Start->toIso8601ZuluString(), $l15End->toIso8601ZuluString()],
             'l30' => [$l30Start->toIso8601ZuluString(), $l30End->toIso8601ZuluString()],
             'l60' => [$l60Start->toIso8601ZuluString(), $l60End->toIso8601ZuluString()],
             'l90' => [$l90Start->toIso8601ZuluString(), $l90End->toIso8601ZuluString()],
@@ -339,7 +347,7 @@ class FetchAmazonListings extends Command
             }
         }
     
-        $this->info('Sales and traffic data updated for L30, L60, and L90.');
+        $this->info('Sales and traffic data updated for L7, L15, L30, L60, and L90.');
     }
 
     private function getGZConvertedData($url)

@@ -1590,8 +1590,11 @@ class OverallAmazonController extends Controller
             $row['(Child) sku'] = $pm->sku;
 
             if ($amazonSheet) {
-                $row['A_L30'] = $amazonSheet->units_ordered_l30;
-                $row['Sess30'] = $amazonSheet->sessions_l30;
+                $row['A_L30'] = $amazonSheet->units_ordered_l30 ?? 0;
+                $row['A_L15'] = $amazonSheet->units_ordered_l15 ?? 0;
+                $row['A_L7'] = $amazonSheet->units_ordered_l7 ?? 0;
+                $row['Sess30'] = $amazonSheet->sessions_l30 ?? 0;
+                $row['Sess7'] = $amazonSheet->sessions_l7 ?? 0;
                 $row['price'] = $amazonSheet->price;
                 $row['price_lmpa'] = $amazonSheet->price_lmpa;
                 $row['sessions_l60'] = $amazonSheet->sessions_l60;

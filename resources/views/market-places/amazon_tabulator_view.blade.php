@@ -1690,6 +1690,37 @@
                         width: 60
                     },
 
+                    {
+                        title: "CVR L7",
+                        field: "CVR_L7",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const aL7 = parseFloat(row['A_L7']) || 0;
+                            const sess7 = parseFloat(row['Sess7']) || 0;
+
+                            if (sess7 === 0) return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
+
+                            const cvr = (aL7 / sess7) * 100;
+                            let color = '';
+                            
+                            if (cvr <= 4) color = '#a00211'; // red
+                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcCVR = (row) => {
+                                const aL7 = parseFloat(row['A_L7']) || 0;
+                                const sess7 = parseFloat(row['Sess7']) || 0;
+                                return sess7 === 0 ? 0 : (aL7 / sess7) * 100;
+                            };
+                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                        },
+                        width: 60
+                    },
 
                     {
                         title: "View",
