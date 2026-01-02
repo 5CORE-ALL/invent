@@ -181,10 +181,10 @@
             <div class="card shadow-sm border-0">
                 <div class="card-body">
                     <div class="row text-center">
-                        <!-- Total Campaign Count -->
+                        <!-- TOTAL SKU -->
                         <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
-                                <div class="text-muted small">Total Campaign Count</div>
+                                <div class="text-muted small">TOTAL SKU</div>
                                 <div class="h3 mb-0 fw-bold text-primary" id="total-campaign-count">0</div>
                             </div>
                         </div>
@@ -233,27 +233,31 @@
                         <div class="row g-3 mb-3">
                             <div class="col-12">
                                 <div class="d-flex gap-2 align-items-center">
-                                    <button id="zero-inv-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); color: white; border: none; min-width: 150px;">
+                                    <button id="zero-inv-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
                                         <div>0 INV</div>
                                         <div id="zero-inv-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
                                     </button>
-                                    <button id="over-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); color: white; border: none; min-width: 150px;">
+                                    <button id="over-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
                                         <div>OVER UTILIZED</div>
                                         <div id="over-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
                                     </button>
-                                    <button id="under-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ff2727 0%, #ff6b6b 100%); color: white; border: none; min-width: 150px;">
+                                    <button id="under-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ff2727 0%, #ff6b6b 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
                                         <div>UNDER UTILIZED</div>
                                         <div id="under-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
                                     </button>
-                                    <button id="correctly-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); color: white; border: none; min-width: 150px;">
+                                    <button id="correctly-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
                                         <div>CORRECTLY UTILIZED</div>
                                         <div id="correctly-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
                                     </button>
-                                    <button id="missing-ads-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; min-width: 150px;">
+                                    <button id="missing-ads-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
                                         <div>MISSING ADS</div>
                                         <div id="missing-ads-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
                                     </button>
-                                    <button id="show-all-btn" class="btn btn-sm btn-secondary" style="min-width: 150px; margin-left: 10px;">
+                                    <button id="running-ads-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
+                                        <div>RUNNING ADS</div>
+                                        <div id="running-ads-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
+                                    </button>
+                                    <button id="show-all-btn" class="btn btn-sm btn-secondary" style="min-width: 150px; height: 60px; padding: 8px 12px; margin-left: 10px;">
                                         <i class="fa fa-refresh me-1"></i>
                                         <div>SHOW ALL</div>
                                     </button>
@@ -392,17 +396,12 @@
                 return 'pink';
             };
 
-            // Variable to store avg_acos for use in column formatters
+            // Global filter states
             var avgAcosValue = 0;
-            
-            // Variable to store current utilization filter (global)
             window.currentUtilizationFilter = null;
-            
-            // Variable to store missing ads filter state (global)
             window.showMissingOnly = false;
-            
-            // Variable to store 0 INV filter state (global)
             window.showZeroInvOnly = false;
+            window.showRunningAdsOnly = false;
 
             // Helper function to calculate ALD BGT from ACOS
             function calculateAldBgt(acos) {
@@ -456,10 +455,6 @@
                         width: 50
                     },
                     {
-                        title: "Parent",
-                        field: "parent"
-                    },
-                    {
                         title: "SKU",
                         field: "sku",
                         formatter: function(cell) {
@@ -478,19 +473,12 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
-                            // Check if campaign exists
-                            const hasCampaign = row.hasCampaign !== undefined 
-                                ? row.hasCampaign 
-                                : (row.campaignName && row.campaignName.trim() !== '');
-                            
+                            const hasCampaign = row.hasCampaign ?? (row.campaignName?.trim() !== '');
                             const dotColor = hasCampaign ? 'green' : 'red';
                             const title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
-                            
-                            return `
-                                <div style="display: flex; align-items: center; justify-content: center;">
-                                    <span class="status-dot ${dotColor}" title="${title}"></span>
-                                </div>
-                            `;
+                            return `<div style="display: flex; align-items: center; justify-content: center;">
+                                <span class="status-dot ${dotColor}" title="${title}"></span>
+                            </div>`;
                         }
                     },
                     {
@@ -552,10 +540,6 @@
                         },
                         visible: false,
                         hozAlign: "center"
-                    },
-                    {
-                        title: "CAMPAIGN",
-                        field: "campaignName"
                     },
                     {
                         title: "BGT",
@@ -736,6 +720,13 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            
+                            // Check if campaign is missing (red dot)
+                            const hasCampaign = row.hasCampaign ?? (row.campaignName?.trim() !== '');
+                            if (!hasCampaign) {
+                                return ''; // Return blank for missing ads
+                            }
+                            
                             var cpc_l7 = parseFloat(row.cpc_l7) || 0;
                             var spend_l7 = parseFloat(row.spend_l7) || 0;
                             var acos = parseFloat(row.acos_l30) || 0;
@@ -795,6 +786,10 @@
                             }
                         },
                         visible: false
+                    },
+                    {
+                        title: "CAMPAIGN",
+                        field: "campaignName"
                     },
                     {
                         title: "Status",
@@ -903,161 +898,127 @@
                 });
             });
 
+            // Helper: Check if campaign exists
+            function hasCampaign(row) {
+                return row.hasCampaign ?? (row.campaignName?.trim() !== '');
+            }
+
+            // Helper: Calculate 7UB percentage
+            function calculate7UB(row) {
+                const spend_l7 = parseFloat(row.spend_l7 || 0);
+                const acos = parseFloat(row.acos_l30 || 0);
+                const aldBgt = calculateAldBgt(acos);
+                return (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+            }
+
             window.table.on("tableBuilt", function () {
-
+                // Combined filter function
                 function combinedFilter(data) {
-                    // 0 INV filter - show only SKUs with 0 inventory
-                    if (window.showZeroInvOnly) {
-                        const inv = parseFloat(data.INV || 0);
-                        if (inv !== 0) return false; // Hide if inventory is not 0
-                    }
+                    // 0 INV filter
+                    if (window.showZeroInvOnly && parseFloat(data.INV || 0) !== 0) return false;
                     
-                    // Missing ads filter - show only red dots (missing campaigns)
-                    if (window.showMissingOnly) {
-                        const hasCampaign = data.hasCampaign !== undefined 
-                            ? data.hasCampaign 
-                            : (data.campaignName && data.campaignName.trim() !== '');
-                        if (hasCampaign) return false; // Hide if campaign exists (green dot)
-                    }
+                    // Missing ads filter (red dots only)
+                    if (window.showMissingOnly && hasCampaign(data)) return false;
                     
-                    // Utilization filter (7UB) - always read current value
-                    const currentFilter = window.currentUtilizationFilter;
-                    if (currentFilter) {
-                        const spend_l7 = parseFloat(data.spend_l7) || 0;
-                        const acos = parseFloat(data.acos_l30) || 0;
-                        
-                        // Calculate ALD BGT using new ranges
-                        let aldBgt = calculateAldBgt(acos);
-                        
-                        // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
-                        const ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
-                        
-                        // Match the type - use currentFilter variable to ensure we get latest value
-                        if (currentFilter === 'pink' && ub7 <= 90) return false;
-                        if (currentFilter === 'red' && ub7 >= 70) return false;
-                        if (currentFilter === 'green' && (ub7 < 70 || ub7 > 90)) return false;
+                    // Running ads filter (green dots only - campaigns that exist)
+                    if (window.showRunningAdsOnly && !hasCampaign(data)) return false;
+                    
+                    // Utilization filter (7UB)
+                    if (window.currentUtilizationFilter) {
+                        const ub7 = calculate7UB(data);
+                        const filter = window.currentUtilizationFilter;
+                        if (filter === 'pink' && ub7 <= 90) return false;
+                        if (filter === 'red' && ub7 >= 70) return false;
+                        if (filter === 'green' && (ub7 < 70 || ub7 > 90)) return false;
                     }
 
-                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    // Search filter
+                    const searchVal = $("#global-search").val()?.toLowerCase() || "";
                     if (searchVal) {
-                        let campaignMatch = data.campaignName?.toLowerCase().includes(searchVal);
-                        let skuMatch = data.sku?.toLowerCase().includes(searchVal);
-
-                        if (!(campaignMatch || skuMatch)) {
-                            return false;
-                        }
+                        const matches = data.campaignName?.toLowerCase().includes(searchVal) || 
+                                       data.sku?.toLowerCase().includes(searchVal);
+                        if (!matches) return false;
                     }
 
-                    let statusVal = $("#status-filter").val();
-                    if (statusVal && data.campaignStatus !== statusVal) {
-                        return false;
-                    }
+                    // Status filter
+                    const statusVal = $("#status-filter").val();
+                    if (statusVal && data.campaignStatus !== statusVal) return false;
 
-                    let invFilterVal = $("#inv-filter").val();
-                    let invVal = parseFloat(data.INV || 0);
+                    // Inventory filter
+                    const invFilterVal = $("#inv-filter").val();
+                    const invVal = parseFloat(data.INV || 0);
+                    if (invFilterVal === "INV_0" && invVal !== 0) return false;
+                    if (invFilterVal === "OTHERS" && invVal === 0) return false;
 
-                    if (invFilterVal === "INV_0") {
-                        if (invVal !== 0) return false;
-                    } else if (invFilterVal === "OTHERS") {
-                        if (invVal === 0) return false;
-                    }
-
-                    let nrlFilterVal = $("#nrl-filter").val();
+                    // NRL filter
+                    const nrlFilterVal = $("#nrl-filter").val();
                     if (nrlFilterVal) {
-                        let rowSelect = getRowSelectBySkuAndField(data.sku, "NRL");
-                        let rowVal = rowSelect ? rowSelect.value : "";
-                        if (!rowVal) rowVal = data.NRL || "";
-
+                        const rowSelect = getRowSelectBySkuAndField(data.sku, "NRL");
+                        const rowVal = rowSelect?.value || data.NRL || "";
                         if (rowVal !== nrlFilterVal) return false;
                     }
 
                     return true;
                 }
 
+                // Update campaign statistics
                 function updateCampaignStats() {
                     if (!window.table) return;
-                    let total = window.table.getDataCount();                 
-                    let filtered = window.table.getDataCount("active");      
-                    let percentage = total > 0 ? ((filtered / total) * 100).toFixed(0) : 0;
+                    const total = window.table.getDataCount();
+                    const filtered = window.table.getDataCount("active");
+                    const percentage = total > 0 ? ((filtered / total) * 100).toFixed(0) : 0;
 
-                    // Update total campaign count (unfiltered)
                     document.getElementById("total-campaign-count").innerText = total;
                     document.getElementById("total-campaigns").innerText = filtered;
                     document.getElementById("percentage-campaigns").innerText = percentage + "%";
-                    
-                    // Update utilization counts
                     updateUtilizationCounts();
                 }
                 
+                // Update filter button counts
                 function updateUtilizationCounts() {
                     if (!window.table) return;
                     
                     const allData = window.table.getData();
-                    let pinkCount = 0;
-                    let redCount = 0;
-                    let greenCount = 0;
-                    let missingCount = 0;
-                    let zeroInvCount = 0;
+                    let counts = { pink: 0, red: 0, green: 0, missing: 0, zeroInv: 0, running: 0 };
                     
                     allData.forEach(row => {
-                        // Count 0 INV SKUs
-                        const inv = parseFloat(row.INV || 0);
-                        if (inv === 0) {
-                            zeroInvCount++;
-                        }
+                        // Count 0 INV
+                        if (parseFloat(row.INV || 0) === 0) counts.zeroInv++;
                         
-                        // Count missing campaigns (red dots)
-                        const hasCampaign = row.hasCampaign !== undefined 
-                            ? row.hasCampaign 
-                            : (row.campaignName && row.campaignName.trim() !== '');
-                        if (!hasCampaign) {
-                            missingCount++;
-                        }
+                        // Count missing campaigns
+                        if (!hasCampaign(row)) counts.missing++;
                         
-                        const spend_l7 = parseFloat(row.spend_l7) || 0;
-                        const acos = parseFloat(row.acos_l30) || 0;
+                        // Count running campaigns (green dots - campaigns that exist)
+                        if (hasCampaign(row)) counts.running++;
                         
-                        // Calculate ALD BGT using new ranges
-                        let aldBgt = calculateAldBgt(acos);
-                        
-                        // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
-                        const ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
-                        
-                        // Categorize
-                        if (ub7 > 90) {
-                            pinkCount++;
-                        } else if (ub7 < 70) {
-                            redCount++;
-                        } else if (ub7 >= 70 && ub7 <= 90) {
-                            greenCount++;
-                        }
+                        // Count utilization types
+                        const ub7 = calculate7UB(row);
+                        if (ub7 > 90) counts.pink++;
+                        else if (ub7 < 70) counts.red++;
+                        else if (ub7 >= 70 && ub7 <= 90) counts.green++;
                     });
                     
                     // Update button counts
-                    const overCountEl = document.getElementById("over-utilized-count");
-                    const underCountEl = document.getElementById("under-utilized-count");
-                    const correctlyCountEl = document.getElementById("correctly-utilized-count");
-                    const missingCountEl = document.getElementById("missing-ads-count");
-                    const zeroInvCountEl = document.getElementById("zero-inv-count");
+                    const elements = {
+                        'over-utilized-count': counts.pink,
+                        'under-utilized-count': counts.red,
+                        'correctly-utilized-count': counts.green,
+                        'missing-ads-count': counts.missing,
+                        'zero-inv-count': counts.zeroInv,
+                        'running-ads-count': counts.running
+                    };
                     
-                    if (overCountEl) overCountEl.innerText = pinkCount;
-                    if (underCountEl) underCountEl.innerText = redCount;
-                    if (correctlyCountEl) correctlyCountEl.innerText = greenCount;
-                    if (missingCountEl) missingCountEl.innerText = missingCount;
-                    if (zeroInvCountEl) zeroInvCountEl.innerText = zeroInvCount;
+                    Object.entries(elements).forEach(([id, count]) => {
+                        const el = document.getElementById(id);
+                        if (el) el.innerText = count;
+                    });
                 }
 
+                // Refresh table filters
                 function refreshFilters() {
                     if (window.table) {
-                        // Create a new function reference to force Tabulator to re-evaluate
-                        // This ensures it reads the current window.currentUtilizationFilter value
-                        const filterWrapper = function(data) {
-                            return combinedFilter(data);
-                        };
-                        
-                        // Set filter with new function reference
-                        window.table.setFilter(filterWrapper);
-                        updateCampaignStats(); 
+                        window.table.setFilter(combinedFilter);
+                        updateCampaignStats();
                     }
                 }
 
@@ -1129,36 +1090,34 @@
                 show7ubChart();
             });
 
+            // Helper: Toggle filter button state
+            function toggleFilterButton(btnId, isActive, shadowColor) {
+                const btn = document.getElementById(btnId);
+                if (!btn) return;
+                if (isActive) {
+                    btn.style.transform = 'scale(1.05)';
+                    btn.style.boxShadow = `0 4px 12px ${shadowColor}`;
+                } else {
+                    btn.style.transform = 'scale(1)';
+                    btn.style.boxShadow = 'none';
+                }
+            }
+
             // 0 INV Button Handler
             document.getElementById("zero-inv-btn").addEventListener("click", function() {
                 window.showZeroInvOnly = !window.showZeroInvOnly;
                 
-                // Update button visual state
-                const zeroInvBtn = document.getElementById("zero-inv-btn");
                 if (window.showZeroInvOnly) {
-                    zeroInvBtn.style.opacity = '1';
-                    zeroInvBtn.style.transform = 'scale(1.05)';
-                    zeroInvBtn.style.boxShadow = '0 4px 12px rgba(255, 193, 7, 0.5)';
-                    // Clear other filters when showing 0 INV only
                     window.currentUtilizationFilter = null;
                     window.showMissingOnly = false;
+                    window.showRunningAdsOnly = false;
                     updateUtilizationButtonStates();
-                    const missingBtn = document.getElementById("missing-ads-btn");
-                    if (missingBtn) {
-                        missingBtn.style.opacity = '1';
-                        missingBtn.style.transform = 'scale(1)';
-                        missingBtn.style.boxShadow = 'none';
-                    }
-                } else {
-                    zeroInvBtn.style.opacity = '1';
-                    zeroInvBtn.style.transform = 'scale(1)';
-                    zeroInvBtn.style.boxShadow = 'none';
+                    toggleFilterButton("missing-ads-btn", false);
+                    toggleFilterButton("running-ads-btn", false);
                 }
                 
-                // Refresh filters
-                if (window.table && window.refreshFilters) {
-                    window.refreshFilters();
-                }
+                toggleFilterButton("zero-inv-btn", window.showZeroInvOnly, 'rgba(255, 193, 7, 0.5)');
+                if (window.refreshFilters) window.refreshFilters();
             });
 
             // Utilization Filter Button Handlers
@@ -1190,61 +1149,46 @@
             document.getElementById("missing-ads-btn").addEventListener("click", function() {
                 window.showMissingOnly = !window.showMissingOnly;
                 
-                // Update button visual state
-                const missingBtn = document.getElementById("missing-ads-btn");
                 if (window.showMissingOnly) {
-                    missingBtn.style.opacity = '1';
-                    missingBtn.style.transform = 'scale(1.05)';
-                    missingBtn.style.boxShadow = '0 4px 12px rgba(220, 53, 69, 0.5)';
-                    // Clear other filters when showing missing only
                     window.currentUtilizationFilter = null;
                     window.showZeroInvOnly = false;
+                    window.showRunningAdsOnly = false;
                     updateUtilizationButtonStates();
-                    const zeroInvBtn = document.getElementById("zero-inv-btn");
-                    if (zeroInvBtn) {
-                        zeroInvBtn.style.opacity = '1';
-                        zeroInvBtn.style.transform = 'scale(1)';
-                        zeroInvBtn.style.boxShadow = 'none';
-                    }
-                } else {
-                    missingBtn.style.opacity = '1';
-                    missingBtn.style.transform = 'scale(1)';
-                    missingBtn.style.boxShadow = 'none';
+                    toggleFilterButton("zero-inv-btn", false);
+                    toggleFilterButton("running-ads-btn", false);
                 }
                 
-                // Refresh filters
-                if (window.table && window.refreshFilters) {
-                    window.refreshFilters();
+                toggleFilterButton("missing-ads-btn", window.showMissingOnly, 'rgba(220, 53, 69, 0.5)');
+                if (window.refreshFilters) window.refreshFilters();
+            });
+
+            // Running Ads Button Handler
+            document.getElementById("running-ads-btn").addEventListener("click", function() {
+                window.showRunningAdsOnly = !window.showRunningAdsOnly;
+                
+                if (window.showRunningAdsOnly) {
+                    window.currentUtilizationFilter = null;
+                    window.showZeroInvOnly = false;
+                    window.showMissingOnly = false;
+                    updateUtilizationButtonStates();
+                    toggleFilterButton("zero-inv-btn", false);
+                    toggleFilterButton("missing-ads-btn", false);
                 }
+                
+                toggleFilterButton("running-ads-btn", window.showRunningAdsOnly, 'rgba(40, 167, 69, 0.5)');
+                if (window.refreshFilters) window.refreshFilters();
             });
 
             // Show All Button Handler
             document.getElementById("show-all-btn").addEventListener("click", function() {
-                // Clear utilization filter
                 filterByUtilization(null);
-                
-                // Clear missing filter
                 window.showMissingOnly = false;
-                const missingBtn = document.getElementById("missing-ads-btn");
-                if (missingBtn) {
-                    missingBtn.style.opacity = '1';
-                    missingBtn.style.transform = 'scale(1)';
-                    missingBtn.style.boxShadow = 'none';
-                }
-                
-                // Clear 0 INV filter
                 window.showZeroInvOnly = false;
-                const zeroInvBtn = document.getElementById("zero-inv-btn");
-                if (zeroInvBtn) {
-                    zeroInvBtn.style.opacity = '1';
-                    zeroInvBtn.style.transform = 'scale(1)';
-                    zeroInvBtn.style.boxShadow = 'none';
-                }
-                
-                // Refresh filters to apply changes
-                if (window.table && window.refreshFilters) {
-                    window.refreshFilters();
-                }
+                window.showRunningAdsOnly = false;
+                toggleFilterButton("missing-ads-btn", false);
+                toggleFilterButton("zero-inv-btn", false);
+                toggleFilterButton("running-ads-btn", false);
+                if (window.refreshFilters) window.refreshFilters();
             });
         });
 
@@ -1519,55 +1463,21 @@
             }
         }
 
+        // Filter by utilization type
         function filterByUtilization(type) {
-            // Set the current utilization filter
             window.currentUtilizationFilter = type;
             
-            // Reset other filters when utilization filter is applied
             if (type !== null) {
                 window.showMissingOnly = false;
-                const missingBtn = document.getElementById("missing-ads-btn");
-                if (missingBtn) {
-                    missingBtn.style.opacity = '1';
-                    missingBtn.style.transform = 'scale(1)';
-                    missingBtn.style.boxShadow = 'none';
-                }
-                
                 window.showZeroInvOnly = false;
-                const zeroInvBtn = document.getElementById("zero-inv-btn");
-                if (zeroInvBtn) {
-                    zeroInvBtn.style.opacity = '1';
-                    zeroInvBtn.style.transform = 'scale(1)';
-                    zeroInvBtn.style.boxShadow = 'none';
-                }
+                window.showRunningAdsOnly = false;
+                toggleFilterButton("missing-ads-btn", false);
+                toggleFilterButton("zero-inv-btn", false);
+                toggleFilterButton("running-ads-btn", false);
             }
             
-            console.log('Filter changed to:', type, 'Current filter value:', window.currentUtilizationFilter);
-            
-            // Update button visual states
             updateUtilizationButtonStates();
-            
-            // Refresh the table filter - use refreshFilters which preserves other filters
-            if (window.table && window.refreshFilters) {
-                // Use refreshFilters which will reapply the combinedFilter
-                // The combinedFilter function reads window.currentUtilizationFilter dynamically
-                window.refreshFilters();
-            } else if (window.table && window.combinedFilter) {
-                // Fallback: recreate filter function to force re-evaluation
-                const filterWrapper = function(data) {
-                    return window.combinedFilter(data);
-                };
-                
-                // Set filter with new function reference to force re-evaluation
-                window.table.setFilter(filterWrapper);
-                
-                // Update stats
-                if (window.updateCampaignStats) {
-                    setTimeout(function() {
-                        window.updateCampaignStats();
-                    }, 100);
-                }
-            }
+            if (window.refreshFilters) window.refreshFilters();
         }
     </script>
 @endsection
