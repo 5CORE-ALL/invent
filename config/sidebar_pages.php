@@ -112,6 +112,7 @@ return [
     ['value' => 'listing_audit_shopifyb2c', 'text' => 'Listing Audit Shopify B2C', 'group' => 'Marketplace'],
 
     ['value' => 'macys', 'text' => 'Macy\'s', 'group' => 'Marketplace'],
+    ['value' => 'macys_pricing_tabulator', 'text' => "Macy's Pricing Tabulator", 'group' => 'Marketplace'],
     ['value' => 'macys_zero_view', 'text' => 'Macy\'s 0 View', 'group' => 'Marketplace'],
     ['value' => 'macy_low_visibility', 'text' => 'Macy\'s Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_macys', 'text' => 'Listing Macy\'s', 'group' => 'Marketplace'],

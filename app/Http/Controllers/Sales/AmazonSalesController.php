@@ -42,9 +42,20 @@ class AmazonSalesController extends Controller
         
         $ptSpent = $ptSpentData->sum('max_spend') ?? 0;
 
+        // Calculate HL Spent - same logic as amazonHlAdsView
+        // Uses L30 report_date_range, group by campaignName to get MAX(cost), then sum
+        $hlSpentData = DB::table('amazon_sb_campaign_reports')
+            ->selectRaw('campaignName, MAX(cost) as max_cost')
+            ->where('report_date_range', 'L30')
+            ->groupBy('campaignName')
+            ->get();
+        
+        $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
+
         return view('sales.amazon_daily_sales_data', [
             'kwSpent' => (float) $kwSpent,
-            'ptSpent' => (float) $ptSpent
+            'ptSpent' => (float) $ptSpent,
+            'hlSpent' => (float) $hlSpent
         ]);
     }
 

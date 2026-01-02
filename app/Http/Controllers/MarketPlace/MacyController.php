@@ -7,11 +7,14 @@ use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
 use App\Models\MacyDataView;
 use App\Models\MacyProduct;
+use App\Models\MacysListingStatus;
 use App\Models\MarketplacePercentage;
+use App\Models\MiraklDailyData;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -24,6 +27,372 @@ class MacyController extends Controller
     {
         $this->apiController = $apiController;
     }
+
+    // ==================== TABULATOR PRICING VIEW ====================
+    
+    public function macysTabulatorView(Request $request)
+    {
+        $mode = $request->query("mode");
+        $demo = $request->query("demo");
+
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 76;
+
+        return view("market-places.macys_tabulator_view", [
+            "mode" => $mode,
+            "demo" => $demo,
+            "macysPercentage" => $percentage,
+        ]);
+    }
+
+    public function macysDataJson(Request $request)
+    {
+        try {
+            $response = $this->getViewMacysTabulatorData($request);
+            $data = json_decode($response->getContent(), true);
+            
+            return response()->json($data['data'] ?? []);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Macys data for Tabulator: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
+
+    public function getViewMacysTabulatorData(Request $request)
+    {
+        // 1. Base ProductMaster fetch
+        $productMasters = ProductMaster::orderBy("parent", "asc")
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy("sku", "asc")
+            ->get();
+
+        $productMasters = $productMasters->filter(function ($item) {
+            return stripos($item->sku, 'PARENT') === false;
+        })->values();
+
+        // 2. SKU list
+        $skus = $productMasters->pluck("sku")
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        // 3. Related Models
+        $shopifyData = ShopifySku::whereIn("sku", $skus)
+            ->get()
+            ->keyBy("sku");
+
+        $macysMetrics = MacyProduct::whereIn('sku', $skus)
+            ->get()
+            ->keyBy('sku');
+
+        // NR/REQ + SPRICE data from MacyDataView
+        $dataViews = MacyDataView::whereIn("sku", $skus)->pluck("value", "sku");
+
+        // Listing status data
+        $listingStatusData = MacysListingStatus::whereIn("sku", $skus)
+            ->get()
+            ->mapWithKeys(function ($item) {
+                return [strtolower($item->sku) => $item];
+            });
+
+        // Macy's Sales Quantity (sum from MiraklDailyData for L30)
+        $salesQtyData = MiraklDailyData::where('channel_name', "Macy's, Inc.")
+            ->whereIn('sku', $skus)
+            ->where('period', 'l30')
+            ->where('status', '!=', 'CLOSED')
+            ->selectRaw('LOWER(sku) as sku_lower, SUM(quantity) as total_qty')
+            ->groupBy('sku_lower')
+            ->pluck('total_qty', 'sku_lower');
+
+        // 4. Marketplace percentage (76% for Macys)
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.76;
+
+        // 5. Build Result
+        $result = [];
+
+        foreach ($productMasters as $pm) {
+            $sku = strtoupper($pm->sku);
+            $parent = $pm->parent;
+
+            $shopify = $shopifyData[$pm->sku] ?? null;
+            $macysMetric = $macysMetrics[$pm->sku] ?? null;
+            $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
+
+            $row = [];
+            $row["Parent"] = $parent;
+            $row["(Child) sku"] = $pm->sku;
+
+            // Shopify data
+            $row["INV"] = $shopify->inv ?? 0;
+            $row["L30"] = $shopify->quantity ?? 0;
+
+            // Macys Metrics from macy_products table
+            $row["MC L30"] = $macysMetric->m_l30 ?? 0;
+            $row["MC Price"] = $macysMetric->price ?? 0;
+
+            // Macy's Sales Qty from MiraklDailyData (L30)
+            $row["MC Sales Qty"] = $salesQtyData[strtolower($pm->sku)] ?? 0;
+
+            // NR/REQ + Links from MacysListingStatus
+            $row['nr_req'] = 'REQ';
+            $row['B Link'] = '';
+            $row['S Link'] = '';
+
+            if ($listingStatus) {
+                $statusValue = is_array($listingStatus->value)
+                    ? $listingStatus->value
+                    : (json_decode($listingStatus->value, true) ?? []);
+
+                if (!empty($statusValue['nr_req'])) {
+                    $row['nr_req'] = $statusValue['nr_req'];
+                }
+                if (!empty($statusValue['buyer_link'])) {
+                    $row['B Link'] = $statusValue['buyer_link'];
+                }
+                if (!empty($statusValue['seller_link'])) {
+                    $row['S Link'] = $statusValue['seller_link'];
+                }
+            }
+
+            // Calculate DIL%
+            $row["MC Dil%"] = ($row["MC L30"] && $row["INV"] > 0)
+                ? round(($row["MC L30"] / $row["INV"]), 2)
+                : 0;
+
+            // Values: LP & Ship from ProductMaster
+            $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+            $lp = 0;
+            foreach ($values as $k => $v) {
+                if (strtolower($k) === "lp") {
+                    $lp = floatval($v);
+                    break;
+                }
+            }
+            if ($lp === 0 && isset($pm->lp)) {
+                $lp = floatval($pm->lp);
+            }
+
+            $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+
+            // Price and units for calculations
+            $price = floatval($row["MC Price"] ?? 0);
+            $units_ordered_l30 = floatval($row["MC L30"] ?? 0);
+
+            // Profit/Sales calculations
+            $row["Total_pft"] = round(($price * $percentage - $lp - $ship) * $units_ordered_l30, 2);
+            $row["Profit"] = $row["Total_pft"];
+            $row["T_Sale_l30"] = round($price * $units_ordered_l30, 2);
+            $row["Sales L30"] = $row["T_Sale_l30"];
+
+            // GPFT% = ((price * percentage - ship - lp) / price) * 100
+            $gpft = $price > 0 ? (($price * $percentage - $ship - $lp) / $price) * 100 : 0;
+            $row["GPFT%"] = round($gpft, 2);
+
+            // PFT% = GPFT% (no ads for Macys)
+            $row["PFT %"] = round($gpft, 2);
+
+            // ROI% = ((price * percentage - lp - ship) / lp) * 100
+            $row["ROI%"] = round(
+                $lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) * 100 : 0,
+                2
+            );
+
+            $row["percentage"] = $percentage;
+            $row["LP_productmaster"] = $lp;
+            $row["Ship_productmaster"] = $ship;
+
+            // NR & SPRICE data from dataview
+            $row['NR'] = "";
+            $row['Listed'] = null;
+            $row['Live'] = null;
+            
+            if (isset($dataViews[$pm->sku])) {
+                $raw = $dataViews[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $row['NR'] = $raw['NR'] ?? null;
+                    $row['NRL'] = $raw['NRL'] ?? null;
+                    $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
+                    $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
+                }
+            }
+
+            // SPRICE calculation
+            $calculatedSprice = $price > 0 ? round($price * 0.99, 2) : null;
+            
+            // Check for saved SPRICE
+            $savedSprice = null;
+            $savedStatus = null;
+            if (isset($dataViews[$pm->sku])) {
+                $raw = $dataViews[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    if (isset($raw['SPRICE'])) {
+                        $savedSprice = floatval($raw['SPRICE']);
+                    }
+                    if (isset($raw['SPRICE_STATUS'])) {
+                        $savedStatus = $raw['SPRICE_STATUS'];
+                    }
+                }
+            }
+
+            // Use saved SPRICE if exists, otherwise calculated
+            if ($savedSprice !== null && abs($savedSprice - $calculatedSprice) > 0.01) {
+                $row['SPRICE'] = $savedSprice;
+                $row['has_custom_sprice'] = true;
+                $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
+            } else {
+                $row['SPRICE'] = $calculatedSprice;
+                $row['has_custom_sprice'] = false;
+                $row['SPRICE_STATUS'] = $savedStatus;
+            }
+
+            // Calculate SGPFT based on SPRICE
+            $sprice = $row['SPRICE'] ?? 0;
+            $sgpft = round(
+                $sprice > 0 ? (($sprice * $percentage - $ship - $lp) / $sprice) * 100 : 0,
+                2
+            );
+            $row['SGPFT'] = $sgpft;
+            $row['SPFT'] = $sgpft;
+
+            // SROI: ((SPRICE * percentage - lp - ship) / lp) * 100
+            $row['SROI'] = round(
+                $lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0,
+                2
+            );
+
+            // Image
+            $row["image_path"] = $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
+
+            $result[] = (object) $row;
+        }
+
+        return response()->json([
+            "message" => "Macys Data Fetched Successfully",
+            "data" => $result,
+            "status" => 200,
+        ]);
+    }
+
+    // Update NR/REQ for Tabulator
+    public function updateNrReq(Request $request)
+    {
+        $sku = trim($request->input('sku'));
+        $nrReq = $request->input('nr_req');
+
+        $status = MacysListingStatus::where('sku', $sku)->first();
+        
+        if ($status) {
+            $existing = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+        } else {
+            $existing = [];
+        }
+        
+        $existing['nr_req'] = $nrReq;
+        
+        MacysListingStatus::where('sku', $sku)->delete();
+        MacysListingStatus::create([
+            'sku' => $sku,
+            'value' => $existing
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'NR/REQ updated']);
+    }
+
+    // Save SPRICE for Tabulator
+    public function saveSpriceTabulator(Request $request)
+    {
+        Log::info('Saving Macys pricing data', $request->all());
+        $sku = strtoupper($request->input('sku'));
+        $sprice = $request->input('sprice');
+
+        if (!$sku || !$sprice) {
+            return response()->json(['error' => 'SKU and SPRICE are required'], 400);
+        }
+
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.76;
+
+        $pm = ProductMaster::where('sku', $sku)->first();
+        if (!$pm) {
+            return response()->json(['error' => 'SKU not found in product master'], 404);
+        }
+
+        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+        $lp = 0;
+        foreach ($values as $k => $v) {
+            if (strtolower($k) === "lp") {
+                $lp = floatval($v);
+                break;
+            }
+        }
+        if ($lp === 0 && isset($pm->lp)) {
+            $lp = floatval($pm->lp);
+        }
+
+        $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+
+        $spriceFloat = floatval($sprice);
+        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
+        $spft = $sgpft;
+        $sroi = round(
+            $lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0,
+            2
+        );
+
+        $dataView = MacyDataView::firstOrNew(['sku' => $sku]);
+        $existing = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?? []);
+
+        $merged = array_merge($existing, [
+            'SPRICE' => $spriceFloat,
+            'SPFT' => $spft,
+            'SROI' => $sroi,
+            'SGPFT' => $sgpft,
+        ]);
+
+        $dataView->value = $merged;
+        $dataView->save();
+
+        return response()->json([
+            'success' => true,
+            'spft_percent' => $spft,
+            'sroi_percent' => $sroi,
+            'sgpft_percent' => $sgpft
+        ]);
+    }
+
+    // Column Visibility for Tabulator
+    public function getTabulatorColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "macys_tabulator_column_visibility_{$userId}";
+        
+        $visibility = Cache::get($key, []);
+        
+        return response()->json($visibility);
+    }
+
+    public function setTabulatorColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "macys_tabulator_column_visibility_{$userId}";
+        
+        $visibility = $request->input('visibility', []);
+        
+        Cache::put($key, $visibility, now()->addDays(365));
+        
+        return response()->json(['success' => true]);
+    }
+
+    // ==================== ORIGINAL METHODS ====================
+
     public function macyView(Request $request)
     {
         $mode = $request->query('mode');

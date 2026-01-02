@@ -212,11 +212,21 @@ class UpdateMarketplaceDailyMetrics extends Command
         
         $ptSpent = $ptSpentData->sum('max_spend') ?? 0;
 
-        $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $ptSpent) / $totalRevenue) * 100 : 0;
+        // Calculate HL Spent - same logic as amazonHlAdsView
+        // Uses L30 report_date_range, group by campaignName to get MAX(cost), then sum
+        $hlSpentData = DB::table('amazon_sb_campaign_reports')
+            ->selectRaw('campaignName, MAX(cost) as max_cost')
+            ->where('report_date_range', 'L30')
+            ->groupBy('campaignName')
+            ->get();
+        
+        $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
+
+        $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $ptSpent + $hlSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
-        // Net Profit Amount = Total PFT - (KW Spent + PT Spent)
-        $netProfitAmount = $totalPft - ($kwSpent + $ptSpent);
+        // Net Profit Amount = Total PFT - (KW Spent + PT Spent + HL Spent)
+        $netProfitAmount = $totalPft - ($kwSpent + $ptSpent + $hlSpent);
         // N ROI = (Net Profit / COGS) * 100
         $nRoi = $totalCogs > 0 ? ($netProfitAmount / $totalCogs) * 100 : 0;
 
@@ -236,6 +246,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'n_roi' => $nRoi,
             'kw_spent' => $kwSpent,
             'pmt_spent' => $ptSpent,
+            'hl_spent' => $hlSpent,
         ];
     }
 

@@ -2252,7 +2252,7 @@
                                     </li>
 
                                     <li>
-                                        <a href="{{ url('macy-pricing-increase-decrease') }}">Pricing - Increase
+                                        <a href="{{ url('/macys-pricing') }}">Pricing - Increase
                                             / Decrease</a>
 
 
