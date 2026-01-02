@@ -12,10 +12,15 @@ class AmazonDatasheet extends Model
     protected $table = 'amazon_datsheets';
 
     protected $fillable = [
+        'units_ordered_l7',
+        'units_ordered_l15',
         'units_ordered_l30',
         'units_ordered_l60',
         'units_ordered_l90',
+        'sessions_l7',
+        'sessions_l15',
         'sessions_l30',
+        
         'sessions_l60',
         'sessions_l90',        
         'asin',

@@ -1523,13 +1523,8 @@
                                 return `<span style="font-weight: bold;">${sku}</span>`;
                             }
 
-                            // Ratings display with star icon (like FBA format)
-                            const ratingDisplay = (rowData.rating && rowData.rating > 0) 
-                                ? ` <i class="fa fa-star" style="color: orange;"></i> ${rowData.rating}` 
-                                : '';
-
                             return `<div style="display: flex; align-items: center; gap: 5px;">
-                                <span>${sku}${ratingDisplay}</span>
+                                <span>${sku}</span>
                                 <button class="btn btn-sm btn-link copy-sku-btn p-0" data-sku="${sku}" title="Copy SKU">
                                     <i class="fas fa-copy"></i>
                                 </button>
@@ -1541,11 +1536,34 @@
                      
                     },
                     {
-                        title: "Ratings",
+                        title: "Rating",
                         field: "rating",
                         hozAlign: "center",
-                        editor: "input",
-                        tooltip: "Enter rating between 0 and 5",
+                        headerSort: false,
+                        tooltip: "Rating and Reviews from Jungle Scout",
+                        formatter: function(cell) {
+                            const rating = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const reviews = rowData.reviews || 0;
+                            
+                            if (!rating || rating === 0) {
+                                return '<span style="color: #6c757d;">-</span>';
+                            }
+                            
+                            // Red and bold if reviews < 4
+                            const ratingColor = reviews < 4 ? '#a00211' : 'orange';
+                            const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
+                            const fontWeight = reviews < 4 ? '700' : '600';
+                            
+                            return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                <span style="color: ${ratingColor}; font-weight: ${fontWeight};">
+                                    <i class="fa fa-star"></i> ${parseFloat(rating).toFixed(1)}
+                                </span>
+                                <span style="font-size: 11px; color: ${reviewColor}; font-weight: ${fontWeight};">
+                                    ${parseInt(reviews).toLocaleString()} reviews
+                                </span>
+                            </div>`;
+                        },
                         width: 80
                     },
                     {
@@ -1643,9 +1661,32 @@
                         sorter: "number"
                     },
 
+                    {
+                        title: "A L7",
+                        field: "A_L7",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number"
+                    },
 
-                     {
-                        title: "CVR",
+                    {
+                        title: "View L30",
+                        field: "Sess30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 55
+                    },
+
+                    {
+                        title: "View L7",
+                        field: "Sess7",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 50
+                    },
+
+                    {
+                        title: "CVR L30",
                         field: "CVR_L30",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -1674,29 +1715,39 @@
                             };
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                         },
-                        width: 60
-                    },
-
-
-                    {
-                        title: "View",
-                        field: "Sess30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 50
+                        width: 65
                     },
 
                     {
-                        title: "Reviews",
-                        field: "total_review_count",
+                        title: "CVR L7",
+                        field: "CVR_L7",
                         hozAlign: "center",
-                        sorter: "number",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (!value || value === 0) return '<span style="color: #6c757d;">0</span>';
-                            return `<span style="font-weight: 600;">${parseInt(value).toLocaleString()}</span>`;
+                            const row = cell.getRow().getData();
+                            const aL7 = parseFloat(row['A_L7']) || 0;
+                            const sess7 = parseFloat(row['Sess7']) || 0;
+
+                            if (sess7 === 0) return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
+
+                            const cvr = (aL7 / sess7) * 100;
+                            let color = '';
+                            
+                            if (cvr <= 4) color = '#a00211'; // red
+                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
                         },
-                        width: 70
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcCVR = (row) => {
+                                const aL7 = parseFloat(row['A_L7']) || 0;
+                                const sess7 = parseFloat(row['Sess7']) || 0;
+                                return sess7 === 0 ? 0 : (aL7 / sess7) * 100;
+                            };
+                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                        },
+                        width: 60
                     },
 
                     {
@@ -2276,39 +2327,6 @@
                 var data = row.getData();
                 var field = cell.getColumn().getField();
                 var value = cell.getValue();
-
-                // Validate and save ratings field (must be between 0 and 5)
-                if (field === 'rating') {
-                    var numValue = parseFloat(value);
-                    if (isNaN(numValue) || numValue < 0 || numValue > 5) {
-                        alert('Ratings must be a number between 0 and 5');
-                        cell.setValue(data.rating || 0); // Revert to original value
-                        return;
-                    }
-                    
-                    // Save rating to database
-                    $.ajax({
-                        url: '/update-amazon-rating',
-                        method: 'POST',
-                        data: {
-                            sku: data['(Child) sku'],
-                            rating: numValue,
-                            _token: $('meta[name="csrf-token"]').attr('content')
-                        },
-                        success: function(response) {
-                            console.log('Rating saved successfully');
-                            showToast('success', 'Rating updated successfully');
-                            // Update the row data
-                            row.update({rating: numValue});
-                        },
-                        error: function(xhr) {
-                            console.error('Error saving rating:', xhr.responseText);
-                            showToast('error', 'Error saving rating');
-                            cell.setValue(data.rating || 0); // Revert on error
-                        }
-                    });
-                    return;
-                }
 
                 if (field === 'SPRICE') {
                     const sku = data['(Child) sku'];
