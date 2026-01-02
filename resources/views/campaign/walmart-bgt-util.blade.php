@@ -1159,6 +1159,7 @@
                 progressOverlay.style.display = 'block';
             }
             
+            // First refresh product sheet
             fetch('/walmart/utilized/bgt/refresh-sheet', {
                 method: 'POST',
                 headers: {
@@ -1169,20 +1170,35 @@
             .then(response => response.json())
             .then(data => {
                 if (data.status === 200) {
+                    // Then refresh campaign data (L30, L7, L1)
+                    return fetch('/walmart/utilized/bgt/refresh-campaign-data', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        }
+                    });
+                } else {
+                    throw new Error(data.message || 'Error refreshing product sheet');
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 200) {
                     // Show success message
-                    alert('Walmart sheet refreshed successfully! Synced ' + (data.synced_count || 0) + ' records.');
+                    alert('Walmart data refreshed successfully! Synced ' + (data.synced_count || 0) + ' campaign records.');
                     
                     // Reload table data
                     if (window.table) {
                         window.table.replaceData();
                     }
                 } else {
-                    alert('Error refreshing sheet: ' + (data.message || 'Unknown error'));
+                    alert('Error refreshing campaign data: ' + (data.message || 'Unknown error'));
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error refreshing sheet. Please try again.');
+                alert('Error refreshing data: ' + error.message);
             })
             .finally(() => {
                 // Re-enable button and restore original state

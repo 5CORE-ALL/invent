@@ -2734,6 +2734,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/walmart/utilized/kw/data', 'getWalmartAdsData');
         Route::get('/walmart/utilized/bgt/7ub-chart-data', 'get7ubChartData');
         Route::post('/walmart/utilized/bgt/refresh-sheet', 'refreshWalmartSheet');
+        Route::post('/walmart/utilized/bgt/refresh-campaign-data', 'refreshWalmartCampaignData');
     });
 
     Route::controller(WalmartMissingAdsController::class)->group(function () {
