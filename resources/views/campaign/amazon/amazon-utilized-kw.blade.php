@@ -357,6 +357,7 @@
                                             <option value="3">ACOS 25-29%</option>
                                             <option value="2">ACOS 30-34%</option>
                                             <option value="1">ACOS ≥ 35%</option>
+                                            <option value="acos35spend10">ACOS>35% and SPEND >10</option>
                                         </select>
                                     </div>
                                     <div class="col-md-4 d-flex gap-2">
@@ -605,6 +606,7 @@
                 let acosCount8 = 0, acosCount7 = 0, acosCount6 = 0, acosCount5 = 0;
                 let acosCount4 = 0, acosCount3 = 0, acosCount2 = 0, acosCount1 = 0;
                 let acosCountZero = 0; // Count ACOS = 0 separately
+                let acos35Spend10Count = 0; // Count ACOS > 35% AND SPEND > 10
                 
                 allData.forEach(function(row) {
                     let acosVal = parseFloat(row.acos || 0);
@@ -644,6 +646,12 @@
                     if (acosVal === 0 || isNaN(acosVal)) {
                         acosCountZero++;
                         return;
+                    }
+                    
+                    // Count ACOS > 35% AND SPEND > 10
+                    let spendVal = parseFloat(row.l30_spend || 0);
+                    if (acosVal >= 35 && spendVal > 10) {
+                        acos35Spend10Count++;
                     }
                     
                     // Count by ACOS range
@@ -716,6 +724,7 @@
                     sbgtSelect.options[6].text = `ACOS 25-29% (${acosCount3})`;
                     sbgtSelect.options[7].text = `ACOS 30-34% (${acosCount2})`;
                     sbgtSelect.options[8].text = `ACOS ≥ 35% (${acosCount1})`;
+                    sbgtSelect.options[9].text = `ACOS>35% and SPEND >10 (${acos35Spend10Count})`;
                 }
             }
 
@@ -1292,7 +1301,7 @@
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
                             
                             var clicks = parseInt(row.l30_clicks || 0).toLocaleString();
-                            var spend = "$" + parseFloat(row.l30_spend || 0).toFixed(0);
+                            var spend = parseFloat(row.l30_spend || 0).toFixed(0);
                             var adSold = parseInt(row.l30_purchases || 0).toLocaleString();
                             var tooltipText = "Clicks: " + clicks + "\nSpend: " + spend + "\nAd Sold: " + adSold;
                             
@@ -1848,31 +1857,41 @@
                 // SBGT filter (computed from ACOS using same mapping as display)
                 let sbgtFilterVal = $("#sbgt-filter").val();
                 if (sbgtFilterVal) {
-                    let acosVal = parseFloat(data.acos || 0);
-                    // Exclude ACOS = 0 (which displays as 100%) from all SBGT filters
-                    if (acosVal === 0 || isNaN(acosVal)) {
-                        return false;
-                    }
-                    let rowSbgt;
-                    if (acosVal < 5) {
-                        rowSbgt = '8';
-                    } else if (acosVal < 10) {
-                        rowSbgt = '7';
-                    } else if (acosVal < 15) {
-                        rowSbgt = '6';
-                    } else if (acosVal < 20) {
-                        rowSbgt = '5';
-                    } else if (acosVal < 25) {
-                        rowSbgt = '4';
-                    } else if (acosVal < 30) {
-                        rowSbgt = '3';
-                    } else if (acosVal < 35) {
-                        rowSbgt = '2';
+                    // Special filter for ACOS > 35% AND SPEND > 10
+                    if (sbgtFilterVal === 'acos35spend10') {
+                        let acosVal = parseFloat(data.acos || 0);
+                        let spendVal = parseFloat(data.l30_spend || 0);
+                        // Show only items where ACOS > 35% AND spend > 10
+                        if (acosVal <= 35 || spendVal <= 10 || isNaN(acosVal) || isNaN(spendVal)) {
+                            return false;
+                        }
                     } else {
-                        rowSbgt = '1';
-                    }
+                        let acosVal = parseFloat(data.acos || 0);
+                        // Exclude ACOS = 0 (which displays as 100%) from all SBGT filters
+                        if (acosVal === 0 || isNaN(acosVal)) {
+                            return false;
+                        }
+                        let rowSbgt;
+                        if (acosVal < 5) {
+                            rowSbgt = '8';
+                        } else if (acosVal < 10) {
+                            rowSbgt = '7';
+                        } else if (acosVal < 15) {
+                            rowSbgt = '6';
+                        } else if (acosVal < 20) {
+                            rowSbgt = '5';
+                        } else if (acosVal < 25) {
+                            rowSbgt = '4';
+                        } else if (acosVal < 30) {
+                            rowSbgt = '3';
+                        } else if (acosVal < 35) {
+                            rowSbgt = '2';
+                        } else {
+                            rowSbgt = '1';
+                        }
 
-                    if (rowSbgt !== sbgtFilterVal) return false;
+                        if (rowSbgt !== sbgtFilterVal) return false;
+                    }
                 }
 
                 // Apply zero INV filter first (if enabled)

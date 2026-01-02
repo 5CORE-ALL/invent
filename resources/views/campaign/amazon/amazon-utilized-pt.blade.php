@@ -462,6 +462,7 @@
                                             <option value="3">ACOS 25-29%</option>
                                             <option value="2">ACOS 30-34%</option>
                                             <option value="1">ACOS ≥ 35%</option>
+                                            <option value="acos35spend10">ACOS>35% and SPEND >10</option>
                                         </select>
                                         <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
                                             <i class="fa-solid fa-check-double me-1"></i>
@@ -702,6 +703,7 @@
                 let acosCount8 = 0, acosCount7 = 0, acosCount6 = 0, acosCount5 = 0;
                 let acosCount4 = 0, acosCount3 = 0, acosCount2 = 0, acosCount1 = 0;
                 let acosCountZero = 0;
+                let acos35Spend10Count = 0; // Count ACOS > 35% AND SPEND > 10
                 
                 allData.forEach(function(row) {
                     let acosVal = parseFloat(row.acos || 0);
@@ -739,6 +741,12 @@
                     if (acosVal === 0 || isNaN(acosVal)) {
                         acosCountZero++;
                         return;
+                    }
+                    
+                    // Count ACOS > 35% AND SPEND > 10
+                    let spendVal = parseFloat(row.l30_spend || 0);
+                    if (acosVal >= 35 && spendVal > 10) {
+                        acos35Spend10Count++;
                     }
                     
                     if (acosVal < 5) acosCount8++;
@@ -809,6 +817,7 @@
                     sbgtSelect.options[6].text = `ACOS 25-29% (${acosCount3})`;
                     sbgtSelect.options[7].text = `ACOS 30-34% (${acosCount2})`;
                     sbgtSelect.options[8].text = `ACOS ≥ 35% (${acosCount1})`;
+                    sbgtSelect.options[9].text = `ACOS>35% and SPEND >10 (${acos35Spend10Count})`;
                 }
             }
 
@@ -1374,7 +1383,7 @@
                             }
                             
                             var clicks = parseInt(row.l30_clicks || 0).toLocaleString();
-                            var spend = "$" + parseFloat(row.l30_spend || 0).toFixed(0);
+                            var spend = parseFloat(row.l30_spend || 0).toFixed(0);
                             var adSold = parseInt(row.l30_purchases || 0).toLocaleString();
                             var tooltipText = "Clicks: " + clicks + "\nSpend: " + spend + "\nAd Sold: " + adSold;
                             var td = cell.getElement();
@@ -1415,7 +1424,7 @@
                         visible: false,
                         formatter: function(cell) {
                             var value = parseFloat(cell.getValue() || 0);
-                            return "$" + value.toFixed(0);
+                            return value.toFixed(0);
                         },
                         sorter: "number",
                         width: 90
@@ -1894,7 +1903,16 @@
                 // SBGT filter (if selected)
                 let sbgtFilterVal = $('#sbgt-filter').val();
                 if (sbgtFilterVal && sbgtFilterVal !== '') {
-                    if (parseInt(sbgtFilterVal) !== parseInt(rowSbgt)) return false;
+                    // Special filter for ACOS > 35% AND SPEND > 10
+                    if (sbgtFilterVal === 'acos35spend10') {
+                        let spendVal = parseFloat(data.l30_spend || 0);
+                        // Show only items where ACOS > 35% AND spend > 10
+                        if (rowAcos <= 35 || spendVal <= 10 || isNaN(rowAcos) || isNaN(spendVal)) {
+                            return false;
+                        }
+                    } else {
+                        if (parseInt(sbgtFilterVal) !== parseInt(rowSbgt)) return false;
+                    }
                 }
 
                 // Check if campaign is missing
