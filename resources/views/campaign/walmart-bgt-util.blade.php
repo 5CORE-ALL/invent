@@ -232,6 +232,10 @@
                             <!-- Stats -->
                             <div class="col-md-6">
                                 <div class="d-flex gap-2 justify-content-end align-items-center">
+                                    <button id="refresh-sheet-btn" class="btn btn-warning btn-md" title="Refresh data from Walmart source sheet">
+                                        <i class="fa fa-refresh me-1"></i>
+                                        Refresh Sheet
+                                    </button>
                                     <button id="export-btn" class="btn btn-success btn-md">
                                         <i class="fa fa-download me-1"></i>
                                         Export
@@ -996,6 +1000,11 @@
                 showAllBtn.classList.add('btn-primary');
             }
 
+            // Refresh Sheet Button Handler
+            document.getElementById("refresh-sheet-btn").addEventListener("click", function() {
+                refreshWalmartSheet();
+            });
+
             // Export Button Handler
             document.getElementById("export-btn").addEventListener("click", function() {
                 exportTableData();
@@ -1134,6 +1143,57 @@
                         parent.innerHTML = '<div class="text-center p-5"><p class="text-danger">Error loading chart data. Please try again later.</p><p class="text-muted small">' + err.message + '</p></div>';
                     }
                 });
+        }
+
+        function refreshWalmartSheet() {
+            const refreshBtn = document.getElementById("refresh-sheet-btn");
+            const originalHtml = refreshBtn.innerHTML;
+            
+            // Disable button and show loading state
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>Refreshing...';
+            
+            // Show progress overlay
+            const progressOverlay = document.getElementById("progress-overlay");
+            if (progressOverlay) {
+                progressOverlay.style.display = 'block';
+            }
+            
+            fetch('/walmart/utilized/bgt/refresh-sheet', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 200) {
+                    // Show success message
+                    alert('Walmart sheet refreshed successfully! Synced ' + (data.synced_count || 0) + ' records.');
+                    
+                    // Reload table data
+                    if (window.table) {
+                        window.table.replaceData();
+                    }
+                } else {
+                    alert('Error refreshing sheet: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error refreshing sheet. Please try again.');
+            })
+            .finally(() => {
+                // Re-enable button and restore original state
+                refreshBtn.disabled = false;
+                refreshBtn.innerHTML = originalHtml;
+                
+                // Hide progress overlay
+                if (progressOverlay) {
+                    progressOverlay.style.display = 'none';
+                }
+            });
         }
 
         function exportTableData() {
