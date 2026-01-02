@@ -11,6 +11,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmzUnderKwBids extends Command
 {
@@ -136,6 +137,10 @@ class AutoUpdateAmzUnderKwBids extends Command
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
+        $amazonDatasheets = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
@@ -195,6 +200,31 @@ class AutoUpdateAmzUnderKwBids extends Command
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
 
+            // Get price from AmazonDatasheet
+            $amazonSheet = $amazonDatasheets[strtoupper($pm->sku)] ?? null;
+            $price = ($amazonSheet && isset($amazonSheet->price)) ? floatval($amazonSheet->price) : 0;
+
+            // Calculate avg_cpc (lifetime average from daily records)
+            $campaignId = $row['campaign_id'];
+            $avgCpc = 0;
+            try {
+                $avgCpcRecord = DB::table('amazon_sp_campaign_reports')
+                    ->select(DB::raw('AVG(costPerClick) as avg_cpc'))
+                    ->where('campaign_id', $campaignId)
+                    ->where('ad_type', 'SPONSORED_PRODUCTS')
+                    ->where('campaignStatus', '!=', 'ARCHIVED')
+                    ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                    ->where('costPerClick', '>', 0)
+                    ->whereNotNull('campaign_id')
+                    ->first();
+                
+                if ($avgCpcRecord && $avgCpcRecord->avg_cpc > 0) {
+                    $avgCpc = floatval($avgCpcRecord->avg_cpc);
+                }
+            } catch (\Exception $e) {
+                // Continue without avg_cpc if there's an error
+            }
+
             $row['NRA'] = '';
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
@@ -214,14 +244,40 @@ class AutoUpdateAmzUnderKwBids extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // New SBID rule - matching page filter: INV > 0, NRA !== 'NRA', campaignName !== '', ub7 < 70 && ub1 < 70
+            // Under-utilized rule: INV > 0, NRA !== 'NRA', campaignName !== '', ub7 < 66 && ub1 < 66
             if ($row['INV'] > 0 && $row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
-                if ($ub7 < 10 || $l7_cpc == 0 || $l1_cpc == 0) {
-                    $row['sbid'] = 0.75;
+                // Calculate SBID based on blade file logic
+                // Special case: If UB7 and UB1 = 0%, use price-based default
+                if ($ub7 === 0 && $ub1 === 0) {
+                    if ($price < 50) {
+                        $row['sbid'] = 0.50;
+                    } else if ($price >= 50 && $price < 100) {
+                        $row['sbid'] = 1.00;
+                    } else if ($price >= 100 && $price < 200) {
+                        $row['sbid'] = 1.50;
+                    } else {
+                        $row['sbid'] = 2.00;
+                    }
                 } else {
-                    // UB7 is between 10%-70%: use L1 CPC * 1.1
-                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
+                    // Under-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                    if ($l1_cpc > 0) {
+                        $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
+                    } else if ($l7_cpc > 0) {
+                        $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
+                    } else if ($avgCpc > 0) {
+                        $row['sbid'] = floor($avgCpc * 1.10 * 100) / 100;
+                    } else {
+                        $row['sbid'] = 1.00;
+                    }
                 }
+                
+                // Apply price-based caps
+                if ($price < 10 && $row['sbid'] > 0.10) {
+                    $row['sbid'] = 0.10;
+                } else if ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
+                    $row['sbid'] = 0.20;
+                }
+                
                 $result[] = (object) $row;
             }
         }

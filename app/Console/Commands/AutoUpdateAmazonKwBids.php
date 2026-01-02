@@ -250,6 +250,10 @@ class AutoUpdateAmazonKwBids extends Command
 
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
+            $amazonDatasheets = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
+                return strtoupper($item->sku);
+            });
+
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
             ->where(function ($q) use ($skus) {
@@ -315,13 +319,28 @@ class AutoUpdateAmazonKwBids extends Command
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
 
-            $l1_cpc = floatval($row['l1_cpc']);
-            $l7_cpc = floatval($row['l7_cpc']);
-            
-            if ($l7_cpc === 0.0) {
-                $row['sbid'] = 0.75;
-            } else {
-                $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
+            // Get price from AmazonDatasheet
+            $amazonSheet = $amazonDatasheets[strtoupper($pm->sku)] ?? null;
+            $price = ($amazonSheet && isset($amazonSheet->price)) ? floatval($amazonSheet->price) : 0;
+
+            // Calculate avg_cpc (lifetime average from daily records)
+            $avgCpc = 0;
+            try {
+                $avgCpcRecord = DB::table('amazon_sp_campaign_reports')
+                    ->select(DB::raw('AVG(costPerClick) as avg_cpc'))
+                    ->where('campaign_id', $campaignId)
+                    ->where('ad_type', 'SPONSORED_PRODUCTS')
+                    ->where('campaignStatus', '!=', 'ARCHIVED')
+                    ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                    ->where('costPerClick', '>', 0)
+                    ->whereNotNull('campaign_id')
+                    ->first();
+                
+                if ($avgCpcRecord && $avgCpcRecord->avg_cpc > 0) {
+                    $avgCpc = floatval($avgCpcRecord->avg_cpc);
+                }
+            } catch (\Exception $e) {
+                // Continue without avg_cpc if there's an error
             }
 
             $budget = floatval($row['campaignBudgetAmount']);
@@ -330,6 +349,41 @@ class AutoUpdateAmazonKwBids extends Command
 
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+
+            // Calculate SBID based on blade file logic
+            $l1_cpc = floatval($row['l1_cpc']);
+            $l7_cpc = floatval($row['l7_cpc']);
+            
+            // Special case: If UB7 and UB1 = 0%, use price-based default
+            if ($ub7 === 0 && $ub1 === 0) {
+                if ($price < 50) {
+                    $row['sbid'] = 0.50;
+                } else if ($price >= 50 && $price < 100) {
+                    $row['sbid'] = 1.00;
+                } else if ($price >= 100 && $price < 200) {
+                    $row['sbid'] = 1.50;
+                } else {
+                    $row['sbid'] = 2.00;
+                }
+            } else {
+                // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                if ($l1_cpc > 0) {
+                    $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
+                } else if ($l7_cpc > 0) {
+                    $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
+                } else if ($avgCpc > 0) {
+                    $row['sbid'] = floor($avgCpc * 0.90 * 100) / 100;
+                } else {
+                    $row['sbid'] = 1.00;
+                }
+            }
+            
+            // Apply price-based caps
+            if ($price < 10 && $row['sbid'] > 0.10) {
+                $row['sbid'] = 0.10;
+            } else if ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
+                $row['sbid'] = 0.20;
+            }
 
             // Validate all required fields before adding
             if (empty($row['campaign_id'])) {

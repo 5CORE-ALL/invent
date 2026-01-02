@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
-use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\AmazonSbCampaignReport;
 use Illuminate\Console\Command;
@@ -328,15 +327,24 @@ class AutoUpdateAmazonHlBids extends Command
             $row['l1_spend'] = $matchedCampaignL1->cost ?? 0;
             $row['l1_cpc']   = $costPerClick1;
 
-            $l1_cpc = floatval($row['l1_cpc']);
-            $l7_cpc = floatval($row['l7_cpc']);
-            
-            if ($l7_cpc === 0.0) {
-                $row['sbid'] = 0.75;
-            } else {
-                $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
+            // Calculate avg_cpc (lifetime average from daily records)
+            $avgCpc = 0;
+            try {
+                $avgCpcRecord = DB::table('amazon_sb_campaign_reports')
+                    ->select(DB::raw('AVG(CASE WHEN clicks > 0 THEN cost / clicks ELSE 0 END) as avg_cpc'))
+                    ->where('campaign_id', $campaignId)
+                    ->where('ad_type', 'SPONSORED_BRANDS')
+                    ->where('campaignStatus', '!=', 'ARCHIVED')
+                    ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                    ->whereNotNull('campaign_id')
+                    ->first();
+                
+                if ($avgCpcRecord && $avgCpcRecord->avg_cpc > 0) {
+                    $avgCpc = floatval($avgCpcRecord->avg_cpc);
+                }
+            } catch (\Exception $e) {
+                // Continue without avg_cpc if there's an error
             }
-
 
             $budget = floatval($row['campaignBudgetAmount']);
             $l7_spend = floatval($row['l7_spend']);
@@ -344,6 +352,21 @@ class AutoUpdateAmazonHlBids extends Command
 
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+
+            // Calculate SBID for HL campaigns (no price-based rules)
+            $l1_cpc = floatval($row['l1_cpc']);
+            $l7_cpc = floatval($row['l7_cpc']);
+            
+            // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+            if ($l1_cpc > 0) {
+                $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
+            } else if ($l7_cpc > 0) {
+                $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
+            } else if ($avgCpc > 0) {
+                $row['sbid'] = floor($avgCpc * 0.90 * 100) / 100;
+            } else {
+                $row['sbid'] = 1.00;
+            }
 
             // Validate all required fields before adding
             if (empty($row['campaign_id'])) {

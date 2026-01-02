@@ -103,9 +103,9 @@ class AutoUpdateAmazonBgtHl extends Command
 
             $sales = $matchedCampaignL30->sales ?? 0;
             $cost = $matchedCampaignL30->cost ?? 0;
-            if ($sales > 0) {
+            if ($cost > 0 && $sales > 0) {
                 $row['acos_L30'] = round(($cost / $sales) * 100, 2);
-            } elseif ($cost > 0) {
+            } elseif ($cost > 0 && $sales == 0) {
                 $row['acos_L30'] = 100;
             } else {
                 $row['acos_L30'] = 0;
