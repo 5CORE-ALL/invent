@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ApiController;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\WalmartCampaignReport;
@@ -11,6 +12,7 @@ use App\Models\WalmartProductSheet;
 use App\Models\Walmart7ubDailyCount;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class WalmartUtilisationController extends Controller
@@ -300,6 +302,62 @@ class WalmartUtilisationController extends Controller
                 'data' => [],
             ], 500);
         }
+    }
+
+    /**
+     * Refresh Walmart sheet data from source
+     */
+    public function refreshWalmartSheet()
+    {
+        try {
+            $controller = new ApiController();
+            $sheet = $controller->fetchDataFromWalmartListingDataSheet();
+            $rows = collect($sheet->getData()->data ?? []);
+
+            $syncedCount = 0;
+            foreach ($rows as $row) {
+                $sku = trim($row->{'(Child) sku'} ?? '');
+                if (!$sku) continue;
+
+                WalmartProductSheet::updateOrCreate(
+                    ['sku' => $sku],
+                    [
+                        'price'     => $this->toDecimalOrNull($row->{'Price'} ?? null),
+                        'pft'       => $this->toDecimalOrNull($row->{'Pft%'} ?? null),
+                        'roi'       => $this->toDecimalOrNull($row->{'ROI%'} ?? null),
+                        'l30'       => $this->toIntOrNull($row->{'WL30'} ?? null),
+                        'l90'       => $this->toIntOrNull($row->{'WL90'} ?? null),
+                        'dil'       => $this->toDecimalOrNull($row->{'Dil%'} ?? null),
+                        'buy_link'  => trim($row->{'Buyer Link'} ?? ''),
+                        'views'     => $this->toIntOrNull($row->{'Views'} ?? null),
+                    ]
+                );
+                $syncedCount++;
+            }
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'Walmart sheet synced successfully!',
+                'synced_count' => $syncedCount,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error refreshing Walmart sheet: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error syncing Walmart sheet: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    private function toDecimalOrNull($value)
+    {
+        return is_numeric($value) ? round((float)$value, 2) : null;
+    }
+
+    private function toIntOrNull($value)
+    {
+        return is_numeric($value) ? (int)$value : null;
     }
 
 }
