@@ -325,6 +325,15 @@
                                         <option value="LIVE">Live</option>
                                         <option value="PAUSED">Paused</option>
                                     </select>
+                                    <select id="acos-filter" class="form-select form-select-md" style="width: 180px;">
+                                        <option value="">All ACOS</option>
+                                        <option value="gt25">ACOS > 25% (ALD BGT = 1)</option>
+                                        <option value="20-25">ACOS 20%-25% (ALD BGT = 2)</option>
+                                        <option value="15-20">ACOS 15%-20% (ALD BGT = 4)</option>
+                                        <option value="10-15">ACOS 10%-15% (ALD BGT = 6)</option>
+                                        <option value="5-10">ACOS 5%-10% (ALD BGT = 8)</option>
+                                        <option value="0.01-5">ACOS 0.01%-5% (ALD BGT = 10)</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
@@ -514,7 +523,7 @@
                             var gpft = parseFloat(row.GPFT || 0);
                             var pft = parseFloat(row.PFT || 0);
                             var roi = parseFloat(row.ROI || 0);
-                            var tooltipText = "GPFT%: " + gpft.toFixed(2) + "%\nPFT%: " + pft.toFixed(2) + "%\nROI%: " + roi.toFixed(2) + "%";
+                            var tooltipText = "GPFT%: " + Math.round(gpft) + "%\nPFT%: " + Math.round(pft) + "%\nROI%: " + Math.round(roi) + "%";
                             
                             return `<div class="text-center">$${value.toFixed(2)}<i class="fa fa-info-circle ms-1 info-icon-price-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
                         },
@@ -528,7 +537,16 @@
                         visible: false,
                         formatter: function(cell) {
                             var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(2) + "%";
+                            const percent = Math.round(value);
+                            let color = '';
+                            
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent}%</span>`;
                         },
                         sorter: "number",
                         width: 80
@@ -540,7 +558,17 @@
                         visible: false,
                         formatter: function(cell) {
                             var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(2) + "%";
+                            const percent = Math.round(value);
+                            let color = '';
+                            
+                            // Same color logic as GPFT%
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent}%</span>`;
                         },
                         sorter: "number",
                         width: 80
@@ -552,7 +580,16 @@
                         visible: false,
                         formatter: function(cell) {
                             var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(2) + "%";
+                            const percent = Math.round(value);
+                            let color = '';
+                            
+                            // ROI% color logic from walmart tabulator view
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent}%</span>`;
                         },
                         sorter: "number",
                         width: 80
@@ -663,56 +700,10 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var spend_l7 = parseFloat(row.spend_l7) || 0;
-                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
-                            var ub7 = budget > 0 ? (spend_l7 / (budget * 7)) * 100 : 0;
-
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 70 && ub7 <= 90) {
-                                td.classList.add('green-bg');
-                            } else if (ub7 > 90) {
-                                td.classList.add('pink-bg');
-                            } else if (ub7 < 70) {
-                                td.classList.add('red-bg');
-                            }
-
-                            return Math.round(ub7) + "%";
-                        }
-                    },
-                    {
-                        title: "1 UB%",
-                        field: "spend_l1",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var spend_l1 = parseFloat(row.spend_l1) || 0;
-                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
-                            var ub1 = budget > 0 ? (spend_l1 / budget) * 100 : 0;
-
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub1 >= 70 && ub1 <= 90) {
-                                td.classList.add('green-bg');
-                            } else if (ub1 > 90) {
-                                td.classList.add('pink-bg');
-                            } else if (ub1 < 70) {
-                                td.classList.add('red-bg');
-                            }
-
-                            return Math.round(ub1) + "%";
-                        }
-                    },
-                    {
-                        title: "7 UB",
-                        field: "spend_l7",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var spend_l7 = parseFloat(row.spend_l7) || 0;
                             var acos = parseFloat(row.acos_l30) || 0;
                             var aldBgt = calculateAldBgt(acos);
                             
-                            // 7 UB = (L7 ad spend/(ald bgt*7))*100
+                            // 7 UB% = (L7 spend/(ald bgt*7))*100
                             var ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
 
                             var td = cell.getElement();
@@ -737,7 +728,7 @@
                         visible: true,
                     },
                     {
-                        title: "1 UB",
+                        title: "1 UB%",
                         field: "spend_l1",
                         hozAlign: "right",
                         formatter: function(cell) {
@@ -746,7 +737,7 @@
                             var acos = parseFloat(row.acos_l30) || 0;
                             var aldBgt = calculateAldBgt(acos);
                             
-                            // 1 UB = (L1 ad spend/(ald bgt))*100
+                            // 1 UB% = (L1 spend/(ald bgt))*100
                             var ub1 = aldBgt > 0 ? (spend_l1 / aldBgt) * 100 : 0;
 
                             var td = cell.getElement();
@@ -984,6 +975,7 @@
                 const spend_l7 = parseFloat(row.spend_l7 || 0);
                 const acos = parseFloat(row.acos_l30 || 0);
                 const aldBgt = calculateAldBgt(acos);
+                // 7 UB% = (L7 spend/(ald bgt*7))*100
                 return (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
             }
 
@@ -1039,6 +1031,42 @@
                         const rowSelect = getRowSelectBySkuAndField(data.sku, "NRL");
                         const rowVal = rowSelect?.value || data.NRL || "";
                         if (rowVal !== nrlFilterVal) return false;
+                    }
+
+                    // ACOS filter (based on ALD BGT ranges)
+                    const acosFilterVal = $("#acos-filter").val();
+                    if (acosFilterVal) {
+                        const acos = parseFloat(data.acos_l30 || 0);
+                        let shouldInclude = false;
+                        
+                        switch(acosFilterVal) {
+                            case 'gt25':
+                                // ACOS > 25% → ALD BGT = 1
+                                shouldInclude = acos > 25;
+                                break;
+                            case '20-25':
+                                // ACOS 20%-25% → ALD BGT = 2
+                                shouldInclude = acos >= 20 && acos <= 25;
+                                break;
+                            case '15-20':
+                                // ACOS 15%-20% → ALD BGT = 4
+                                shouldInclude = acos >= 15 && acos < 20;
+                                break;
+                            case '10-15':
+                                // ACOS 10%-15% → ALD BGT = 6
+                                shouldInclude = acos >= 10 && acos < 15;
+                                break;
+                            case '5-10':
+                                // ACOS 5%-10% → ALD BGT = 8
+                                shouldInclude = acos >= 5 && acos < 10;
+                                break;
+                            case '0.01-5':
+                                // ACOS 0.01%-5% → ALD BGT = 10
+                                shouldInclude = acos >= 0.01 && acos < 5;
+                                break;
+                        }
+                        
+                        if (!shouldInclude) return false;
                     }
 
                     return true;
@@ -1124,7 +1152,7 @@
                 window.table.on("dataLoaded", updateCampaignStats);
 
                 $("#global-search").on("keyup", refreshFilters);
-                $("#status-filter, #nrl-filter, #inv-filter").on("change", refreshFilters);
+                $("#status-filter, #nrl-filter, #inv-filter, #acos-filter").on("change", refreshFilters);
 
                 updateCampaignStats();
             });
