@@ -402,6 +402,7 @@
             window.showMissingOnly = false;
             window.showZeroInvOnly = false;
             window.showRunningAdsOnly = false;
+            window.showRunningAdsOnly = false;
 
             // Helper function to calculate ALD BGT from ACOS
             function calculateAldBgt(acos) {
@@ -540,6 +541,10 @@
                         },
                         visible: false,
                         hozAlign: "center"
+                    },
+                    {
+                        title: "CAMPAIGN",
+                        field: "campaignName"
                     },
                     {
                         title: "BGT",
@@ -788,10 +793,6 @@
                         visible: false
                     },
                     {
-                        title: "CAMPAIGN",
-                        field: "campaignName"
-                    },
-                    {
                         title: "Status",
                         field: "campaignStatus",
                         hozAlign: "center",
@@ -914,6 +915,10 @@
             window.table.on("tableBuilt", function () {
                 // Combined filter function
                 function combinedFilter(data) {
+                    // Filter out parent rows
+                    const sku = data.sku || '';
+                    if (sku.toUpperCase().includes("PARENT")) return false;
+                    
                     // 0 INV filter
                     if (window.showZeroInvOnly && parseFloat(data.INV || 0) !== 0) return false;
                     
@@ -982,6 +987,10 @@
                     let counts = { pink: 0, red: 0, green: 0, missing: 0, zeroInv: 0, running: 0 };
                     
                     allData.forEach(row => {
+                        // Skip parent rows
+                        const sku = row.sku || '';
+                        if (sku.toUpperCase().includes("PARENT")) return;
+                        
                         // Count 0 INV
                         if (parseFloat(row.INV || 0) === 0) counts.zeroInv++;
                         

@@ -77,11 +77,6 @@ class WalmartUtilisationController extends Controller
             $sku = $normalizeSku($pm->sku);
             $parent = $pm->parent;
 
-            // Skip SKU rows that have a parent SKU
-            if (!empty($parent) && trim($parent) !== '') {
-                continue;
-            }
-
             $amazonSheet = $walmartProductSheet[$sku] ?? null;
             $shopify = $shopifyData[$sku] ?? null;
 
