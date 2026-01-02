@@ -23,9 +23,28 @@
         }
 
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
             writing-mode: vertical-rl;
             text-orientation: mixed;
             white-space: nowrap;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            line-height: 1.5;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            line-height: 1.5;
         }
 
         .tabulator .tabulator-header .tabulator-col:hover {
@@ -132,6 +151,22 @@
         .red-bg {
             color: #ff2727 !important;
         }
+
+        .status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .status-dot.green {
+            background-color: #28a745;
+        }
+
+        .status-dot.red {
+            background-color: #dc3545;
+        }
     </style>
 @endsection
 @section('content')
@@ -146,8 +181,16 @@
             <div class="card shadow-sm border-0">
                 <div class="card-body">
                     <div class="row text-center">
+                        <!-- Total Campaign Count -->
+                        <div class="col-md-3 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Total Campaign Count</div>
+                                <div class="h3 mb-0 fw-bold text-primary" id="total-campaign-count">0</div>
+                            </div>
+                        </div>
+
                         <!-- Total Spend -->
-                        <div class="col-md-4 mb-3 mb-md-0">
+                        <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Total Spend</div>
                                 <div class="h3 mb-0 fw-bold text-success" id="total-spend">$0.00</div>
@@ -155,7 +198,7 @@
                         </div>
 
                         <!-- Total Sales -->
-                        <div class="col-md-4 mb-3 mb-md-0">
+                        <div class="col-md-3 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Total Sales</div>
                                 <div class="h3 mb-0 fw-bold text-info" id="total-sales">$0.00</div>
@@ -163,7 +206,7 @@
                         </div>
 
                         <!-- Avg ACOS -->
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Avg ACOS</div>
                                 <div class="h3 mb-0 fw-bold text-danger" id="avg-acos">0.00%</div>
@@ -190,6 +233,10 @@
                         <div class="row g-3 mb-3">
                             <div class="col-12">
                                 <div class="d-flex gap-2 align-items-center">
+                                    <button id="zero-inv-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); color: white; border: none; min-width: 150px;">
+                                        <div>0 INV</div>
+                                        <div id="zero-inv-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
+                                    </button>
                                     <button id="over-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); color: white; border: none; min-width: 150px;">
                                         <div>OVER UTILIZED</div>
                                         <div id="over-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
@@ -201,6 +248,10 @@
                                     <button id="correctly-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); color: white; border: none; min-width: 150px;">
                                         <div>CORRECTLY UTILIZED</div>
                                         <div id="correctly-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
+                                    </button>
+                                    <button id="missing-ads-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; min-width: 150px;">
+                                        <div>MISSING ADS</div>
+                                        <div id="missing-ads-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
                                     </button>
                                     <button id="show-all-btn" class="btn btn-sm btn-secondary" style="min-width: 150px; margin-left: 10px;">
                                         <i class="fa fa-refresh me-1"></i>
@@ -346,6 +397,12 @@
             
             // Variable to store current utilization filter (global)
             window.currentUtilizationFilter = null;
+            
+            // Variable to store missing ads filter state (global)
+            window.showMissingOnly = false;
+            
+            // Variable to store 0 INV filter state (global)
+            window.showZeroInvOnly = false;
 
             // Helper function to calculate ALD BGT from ACOS
             function calculateAldBgt(acos) {
@@ -412,6 +469,27 @@
                                 <i class="fa fa-info-circle text-primary toggle-cols-btn" 
                                 data-sku="${sku}" 
                                 style="cursor:pointer; margin-left:8px;"></i>
+                            `;
+                        }
+                    },
+                    {
+                        title: "MISSING",
+                        field: "hasCampaign",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            // Check if campaign exists
+                            const hasCampaign = row.hasCampaign !== undefined 
+                                ? row.hasCampaign 
+                                : (row.campaignName && row.campaignName.trim() !== '');
+                            
+                            const dotColor = hasCampaign ? 'green' : 'red';
+                            const title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
+                            
+                            return `
+                                <div style="display: flex; align-items: center; justify-content: center;">
+                                    <span class="status-dot ${dotColor}" title="${title}"></span>
+                                </div>
                             `;
                         }
                     },
@@ -828,6 +906,20 @@
             window.table.on("tableBuilt", function () {
 
                 function combinedFilter(data) {
+                    // 0 INV filter - show only SKUs with 0 inventory
+                    if (window.showZeroInvOnly) {
+                        const inv = parseFloat(data.INV || 0);
+                        if (inv !== 0) return false; // Hide if inventory is not 0
+                    }
+                    
+                    // Missing ads filter - show only red dots (missing campaigns)
+                    if (window.showMissingOnly) {
+                        const hasCampaign = data.hasCampaign !== undefined 
+                            ? data.hasCampaign 
+                            : (data.campaignName && data.campaignName.trim() !== '');
+                        if (hasCampaign) return false; // Hide if campaign exists (green dot)
+                    }
+                    
                     // Utilization filter (7UB) - always read current value
                     const currentFilter = window.currentUtilizationFilter;
                     if (currentFilter) {
@@ -888,6 +980,8 @@
                     let filtered = window.table.getDataCount("active");      
                     let percentage = total > 0 ? ((filtered / total) * 100).toFixed(0) : 0;
 
+                    // Update total campaign count (unfiltered)
+                    document.getElementById("total-campaign-count").innerText = total;
                     document.getElementById("total-campaigns").innerText = filtered;
                     document.getElementById("percentage-campaigns").innerText = percentage + "%";
                     
@@ -902,8 +996,24 @@
                     let pinkCount = 0;
                     let redCount = 0;
                     let greenCount = 0;
+                    let missingCount = 0;
+                    let zeroInvCount = 0;
                     
                     allData.forEach(row => {
+                        // Count 0 INV SKUs
+                        const inv = parseFloat(row.INV || 0);
+                        if (inv === 0) {
+                            zeroInvCount++;
+                        }
+                        
+                        // Count missing campaigns (red dots)
+                        const hasCampaign = row.hasCampaign !== undefined 
+                            ? row.hasCampaign 
+                            : (row.campaignName && row.campaignName.trim() !== '');
+                        if (!hasCampaign) {
+                            missingCount++;
+                        }
+                        
                         const spend_l7 = parseFloat(row.spend_l7) || 0;
                         const acos = parseFloat(row.acos_l30) || 0;
                         
@@ -927,10 +1037,14 @@
                     const overCountEl = document.getElementById("over-utilized-count");
                     const underCountEl = document.getElementById("under-utilized-count");
                     const correctlyCountEl = document.getElementById("correctly-utilized-count");
+                    const missingCountEl = document.getElementById("missing-ads-count");
+                    const zeroInvCountEl = document.getElementById("zero-inv-count");
                     
                     if (overCountEl) overCountEl.innerText = pinkCount;
                     if (underCountEl) underCountEl.innerText = redCount;
                     if (correctlyCountEl) correctlyCountEl.innerText = greenCount;
+                    if (missingCountEl) missingCountEl.innerText = missingCount;
+                    if (zeroInvCountEl) zeroInvCountEl.innerText = zeroInvCount;
                 }
 
                 function refreshFilters() {
@@ -1015,6 +1129,38 @@
                 show7ubChart();
             });
 
+            // 0 INV Button Handler
+            document.getElementById("zero-inv-btn").addEventListener("click", function() {
+                window.showZeroInvOnly = !window.showZeroInvOnly;
+                
+                // Update button visual state
+                const zeroInvBtn = document.getElementById("zero-inv-btn");
+                if (window.showZeroInvOnly) {
+                    zeroInvBtn.style.opacity = '1';
+                    zeroInvBtn.style.transform = 'scale(1.05)';
+                    zeroInvBtn.style.boxShadow = '0 4px 12px rgba(255, 193, 7, 0.5)';
+                    // Clear other filters when showing 0 INV only
+                    window.currentUtilizationFilter = null;
+                    window.showMissingOnly = false;
+                    updateUtilizationButtonStates();
+                    const missingBtn = document.getElementById("missing-ads-btn");
+                    if (missingBtn) {
+                        missingBtn.style.opacity = '1';
+                        missingBtn.style.transform = 'scale(1)';
+                        missingBtn.style.boxShadow = 'none';
+                    }
+                } else {
+                    zeroInvBtn.style.opacity = '1';
+                    zeroInvBtn.style.transform = 'scale(1)';
+                    zeroInvBtn.style.boxShadow = 'none';
+                }
+                
+                // Refresh filters
+                if (window.table && window.refreshFilters) {
+                    window.refreshFilters();
+                }
+            });
+
             // Utilization Filter Button Handlers
             document.getElementById("over-utilized-btn").addEventListener("click", function() {
                 if (window.currentUtilizationFilter === 'pink') {
@@ -1040,9 +1186,65 @@
                 }
             });
 
+            // Missing Ads Button Handler
+            document.getElementById("missing-ads-btn").addEventListener("click", function() {
+                window.showMissingOnly = !window.showMissingOnly;
+                
+                // Update button visual state
+                const missingBtn = document.getElementById("missing-ads-btn");
+                if (window.showMissingOnly) {
+                    missingBtn.style.opacity = '1';
+                    missingBtn.style.transform = 'scale(1.05)';
+                    missingBtn.style.boxShadow = '0 4px 12px rgba(220, 53, 69, 0.5)';
+                    // Clear other filters when showing missing only
+                    window.currentUtilizationFilter = null;
+                    window.showZeroInvOnly = false;
+                    updateUtilizationButtonStates();
+                    const zeroInvBtn = document.getElementById("zero-inv-btn");
+                    if (zeroInvBtn) {
+                        zeroInvBtn.style.opacity = '1';
+                        zeroInvBtn.style.transform = 'scale(1)';
+                        zeroInvBtn.style.boxShadow = 'none';
+                    }
+                } else {
+                    missingBtn.style.opacity = '1';
+                    missingBtn.style.transform = 'scale(1)';
+                    missingBtn.style.boxShadow = 'none';
+                }
+                
+                // Refresh filters
+                if (window.table && window.refreshFilters) {
+                    window.refreshFilters();
+                }
+            });
+
             // Show All Button Handler
             document.getElementById("show-all-btn").addEventListener("click", function() {
-                filterByUtilization(null); // Clear filter to show all campaigns
+                // Clear utilization filter
+                filterByUtilization(null);
+                
+                // Clear missing filter
+                window.showMissingOnly = false;
+                const missingBtn = document.getElementById("missing-ads-btn");
+                if (missingBtn) {
+                    missingBtn.style.opacity = '1';
+                    missingBtn.style.transform = 'scale(1)';
+                    missingBtn.style.boxShadow = 'none';
+                }
+                
+                // Clear 0 INV filter
+                window.showZeroInvOnly = false;
+                const zeroInvBtn = document.getElementById("zero-inv-btn");
+                if (zeroInvBtn) {
+                    zeroInvBtn.style.opacity = '1';
+                    zeroInvBtn.style.transform = 'scale(1)';
+                    zeroInvBtn.style.boxShadow = 'none';
+                }
+                
+                // Refresh filters to apply changes
+                if (window.table && window.refreshFilters) {
+                    window.refreshFilters();
+                }
             });
         });
 
@@ -1276,13 +1478,7 @@
             XLSX.writeFile(wb, filename);
         }
 
-        function filterByUtilization(type) {
-            // Set the current utilization filter
-            window.currentUtilizationFilter = type;
-            
-            console.log('Filter changed to:', type, 'Current filter value:', window.currentUtilizationFilter);
-            
-            // Update button visual states
+        function updateUtilizationButtonStates() {
             const overBtn = document.getElementById("over-utilized-btn");
             const underBtn = document.getElementById("under-utilized-btn");
             const correctlyBtn = document.getElementById("correctly-utilized-btn");
@@ -1294,6 +1490,8 @@
                 btn.style.transform = 'scale(1)';
                 btn.style.boxShadow = 'none';
             });
+            
+            const type = window.currentUtilizationFilter;
             
             // Highlight active filter button or show all button
             if (type === 'pink') {
@@ -1319,6 +1517,35 @@
                 showAllBtn.classList.remove('btn-secondary');
                 showAllBtn.classList.add('btn-primary');
             }
+        }
+
+        function filterByUtilization(type) {
+            // Set the current utilization filter
+            window.currentUtilizationFilter = type;
+            
+            // Reset other filters when utilization filter is applied
+            if (type !== null) {
+                window.showMissingOnly = false;
+                const missingBtn = document.getElementById("missing-ads-btn");
+                if (missingBtn) {
+                    missingBtn.style.opacity = '1';
+                    missingBtn.style.transform = 'scale(1)';
+                    missingBtn.style.boxShadow = 'none';
+                }
+                
+                window.showZeroInvOnly = false;
+                const zeroInvBtn = document.getElementById("zero-inv-btn");
+                if (zeroInvBtn) {
+                    zeroInvBtn.style.opacity = '1';
+                    zeroInvBtn.style.transform = 'scale(1)';
+                    zeroInvBtn.style.boxShadow = 'none';
+                }
+            }
+            
+            console.log('Filter changed to:', type, 'Current filter value:', window.currentUtilizationFilter);
+            
+            // Update button visual states
+            updateUtilizationButtonStates();
             
             // Refresh the table filter - use refreshFilters which preserves other filters
             if (window.table && window.refreshFilters) {
@@ -1344,4 +1571,5 @@
         }
     </script>
 @endsection
+
 

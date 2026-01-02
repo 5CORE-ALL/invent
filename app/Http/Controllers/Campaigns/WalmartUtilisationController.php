@@ -83,9 +83,8 @@ class WalmartUtilisationController extends Controller
             // Campaign name & budget - get from any report range
             $matchedCampaign = $walmartCampaignReportsAll[$sku] ?? null;
 
-            if (!$matchedCampaign) {
-                continue;
-            }
+            // Check if campaign exists
+            $hasCampaign = $matchedCampaign !== null;
 
             // Metrics by report_range
             $matchedCampaignL30 = $walmartCampaignReportsL30[$sku] ?? null;
@@ -99,9 +98,10 @@ class WalmartUtilisationController extends Controller
             $row['L30']    = $shopify->quantity ?? 0;
             $row['WA_L30'] = $amazonSheet->l30 ?? 0;
 
-            // Campaign info (all SKUs)
+            // Campaign info (all SKUs) - set defaults if no campaign
             $row['campaignName'] = $matchedCampaign->campaignName ?? '';
-            $row['campaignBudgetAmount'] = $matchedCampaign->budget ?? '';
+            $row['campaignBudgetAmount'] = $matchedCampaign->budget ?? 0;
+            $row['hasCampaign'] = $hasCampaign;
             
             // Get status from L30 first, then L1, then L7, then any
             $status = null;
@@ -111,7 +111,7 @@ class WalmartUtilisationController extends Controller
                 $status = $matchedCampaignL1->status;
             } elseif ($matchedCampaignL7 && $matchedCampaignL7->status) {
                 $status = $matchedCampaignL7->status;
-            } elseif ($matchedCampaign->status) {
+            } elseif ($matchedCampaign && $matchedCampaign->status) {
                 $status = $matchedCampaign->status;
             }
             
@@ -120,10 +120,10 @@ class WalmartUtilisationController extends Controller
             if (in_array($statusUpper, ['LIVE', 'ENABLED', 'ACTIVE', 'RUNNING'])) {
                 $row['campaignStatus'] = 'LIVE';
             } else {
-                $row['campaignStatus'] = 'PAUSED';
+                $row['campaignStatus'] = $hasCampaign ? 'PAUSED' : '';
             }
 
-            // Metrics
+            // Metrics - set to 0 if no campaign
             $row['clicks_l30'] = $matchedCampaignL30 ? ($matchedCampaignL30->clicks ?? 0) : 0;
             $row['spend_l30']  = $matchedCampaignL30 ? (float)($matchedCampaignL30->spend ?? 0) : 0;
             $row['sales_l30']  = $matchedCampaignL30 ? (float)($matchedCampaignL30->sales ?? 0) : 0;
