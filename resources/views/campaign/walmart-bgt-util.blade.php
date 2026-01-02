@@ -464,8 +464,21 @@
                                 <span>${sku}</span>
                                 <i class="fa fa-info-circle text-primary toggle-cols-btn" 
                                 data-sku="${sku}" 
-                                style="cursor:pointer; margin-left:8px;"></i>
+                                style="cursor:pointer; margin-left:8px; pointer-events: auto;"></i>
                             `;
+                        },
+                        cellClick: function(e, cell) {
+                            const target = e.target;
+                            if (target.classList.contains("toggle-cols-btn") || target.closest(".toggle-cols-btn")) {
+                                e.stopPropagation();
+                                let colsToToggle = ["INV", "L30", "DIL %", "WA_L30", "NRL"];
+                                colsToToggle.forEach(colName => {
+                                    let col = window.table.getColumn(colName);
+                                    if (col) {
+                                        col.toggle();
+                                    }
+                                });
+                            }
                         }
                     },
                     {
@@ -474,6 +487,15 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
+                            const inv = parseFloat(row.INV || 0);
+                            
+                            // Don't show red dot for 0 INV items
+                            if (inv === 0) {
+                                return `<div style="display: flex; align-items: center; justify-content: center;">
+                                    <span class="status-dot green" title="0 INV - Not applicable"></span>
+                                </div>`;
+                            }
+                            
                             const hasCampaign = row.hasCampaign ?? (row.campaignName?.trim() !== '');
                             const dotColor = hasCampaign ? 'green' : 'red';
                             const title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
@@ -481,6 +503,59 @@
                                 <span class="status-dot ${dotColor}" title="${title}"></span>
                             </div>`;
                         }
+                    },
+                    {
+                        title: "Price",
+                        field: "price",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var value = parseFloat(cell.getValue() || 0);
+                            var gpft = parseFloat(row.GPFT || 0);
+                            var pft = parseFloat(row.PFT || 0);
+                            var roi = parseFloat(row.ROI || 0);
+                            var tooltipText = "GPFT%: " + gpft.toFixed(2) + "%\nPFT%: " + pft.toFixed(2) + "%\nROI%: " + roi.toFixed(2) + "%";
+                            
+                            return `<div class="text-center">$${value.toFixed(2)}<i class="fa fa-info-circle ms-1 info-icon-price-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
+                        },
+                        sorter: "number",
+                        width: 100
+                    },
+                    {
+                        title: "GPFT%",
+                        field: "GPFT",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2) + "%";
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
+                        title: "PFT%",
+                        field: "PFT",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2) + "%";
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
+                        title: "ROI%",
+                        field: "ROI",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2) + "%";
+                        },
+                        sorter: "number",
+                        width: 80
                     },
                     {
                         title: "INV",
@@ -541,10 +616,6 @@
                         },
                         visible: false,
                         hozAlign: "center"
-                    },
-                    {
-                        title: "CAMPAIGN",
-                        field: "campaignName"
                     },
                     {
                         title: "BGT",
@@ -793,6 +864,10 @@
                         visible: false
                     },
                     {
+                        title: "CAMPAIGN",
+                        field: "campaignName"
+                    },
+                    {
                         title: "Status",
                         field: "campaignStatus",
                         hozAlign: "center",
@@ -922,8 +997,11 @@
                     // 0 INV filter
                     if (window.showZeroInvOnly && parseFloat(data.INV || 0) !== 0) return false;
                     
-                    // Missing ads filter (red dots only)
-                    if (window.showMissingOnly && hasCampaign(data)) return false;
+                    // Missing ads filter (red dots only, exclude 0 INV items)
+                    if (window.showMissingOnly) {
+                        const inv = parseFloat(data.INV || 0);
+                        if (inv === 0 || hasCampaign(data)) return false;
+                    }
                     
                     // Running ads filter (green dots only - campaigns that exist)
                     if (window.showRunningAdsOnly && !hasCampaign(data)) return false;
@@ -994,8 +1072,9 @@
                         // Count 0 INV
                         if (parseFloat(row.INV || 0) === 0) counts.zeroInv++;
                         
-                        // Count missing campaigns
-                        if (!hasCampaign(row)) counts.missing++;
+                        // Count missing campaigns (exclude 0 INV items)
+                        const inv = parseFloat(row.INV || 0);
+                        if (inv !== 0 && !hasCampaign(row)) counts.missing++;
                         
                         // Count running campaigns (green dots - campaigns that exist)
                         if (hasCampaign(row)) counts.running++;
@@ -1051,9 +1130,11 @@
             });
 
             document.addEventListener("click", function(e) {
-                if (e.target.classList.contains("toggle-cols-btn")) {
-                    let btn = e.target;
-
+                // Check if clicked element or its parent has the toggle-cols-btn class
+                const toggleBtn = e.target.closest(".toggle-cols-btn") || 
+                                 (e.target.classList.contains("toggle-cols-btn") ? e.target : null);
+                
+                if (toggleBtn) {
                     let colsToToggle = ["INV", "L30", "DIL %", "WA_L30", "NRL"];
 
                     colsToToggle.forEach(colName => {
@@ -1062,6 +1143,25 @@
                             col.toggle();
                         }
                     });
+                }
+                
+                // Price info icon toggle for GPFT%, PFT%, ROI%
+                if (e.target.classList.contains('info-icon-price-toggle')) {
+                    e.stopPropagation();
+                    var gpftCol = window.table.getColumn('GPFT');
+                    var pftCol = window.table.getColumn('PFT');
+                    var roiCol = window.table.getColumn('ROI');
+                    
+                    // Toggle visibility
+                    if (gpftCol && gpftCol.isVisible()) {
+                        gpftCol.hide();
+                        pftCol.hide();
+                        roiCol.hide();
+                    } else {
+                        gpftCol.show();
+                        pftCol.show();
+                        roiCol.show();
+                    }
                 }
             });
 
