@@ -1550,11 +1550,16 @@
                                 return '<span style="color: #6c757d;">-</span>';
                             }
                             
+                            // Red and bold if reviews < 4
+                            const ratingColor = reviews < 4 ? '#a00211' : 'orange';
+                            const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
+                            const fontWeight = reviews < 4 ? '700' : '600';
+                            
                             return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                                <span style="color: orange; font-weight: 600;">
+                                <span style="color: ${ratingColor}; font-weight: ${fontWeight};">
                                     <i class="fa fa-star"></i> ${parseFloat(rating).toFixed(1)}
                                 </span>
-                                <span style="font-size: 11px; color: #6c757d;">
+                                <span style="font-size: 11px; color: ${reviewColor}; font-weight: ${fontWeight};">
                                     ${parseInt(reviews).toLocaleString()} reviews
                                 </span>
                             </div>`;
@@ -1656,9 +1661,32 @@
                         sorter: "number"
                     },
 
+                    {
+                        title: "A L7",
+                        field: "A_L7",
+                        hozAlign: "center",
+                        width: 50,
+                        sorter: "number"
+                    },
 
-                     {
-                        title: "CVR",
+                    {
+                        title: "View L30",
+                        field: "Sess30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 55
+                    },
+
+                    {
+                        title: "View L7",
+                        field: "Sess7",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 50
+                    },
+
+                    {
+                        title: "CVR L30",
                         field: "CVR_L30",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -1687,7 +1715,7 @@
                             };
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                         },
-                        width: 60
+                        width: 65
                     },
 
                     {
@@ -1720,14 +1748,6 @@
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                         },
                         width: 60
-                    },
-
-                    {
-                        title: "View",
-                        field: "Sess30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 50
                     },
 
                     {
