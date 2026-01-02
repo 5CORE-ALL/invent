@@ -1255,27 +1255,27 @@ class AmazonSpBudgetController extends Controller
             $spend7 = $matchedCampaignL7->spend ?? 0;
 
             // ACOS L30
-            if ($sales30 > 0) {
+            if ($spend30 > 0 && $sales30 > 0) {
                 $row['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
-            } elseif ($spend30 > 0) {
+            } elseif ($spend30 > 0 && $sales30 == 0) {
                 $row['acos_L30'] = 100;
             } else {
                 $row['acos_L30'] = 0;
             }
 
             // ACOS L15
-            if ($sales15 > 0) {
+            if ($spend15 > 0 && $sales15 > 0) {
                 $row['acos_L15'] = round(($spend15 / $sales15) * 100, 2);
-            } elseif ($spend15 > 0) {
+            } elseif ($spend15 > 0 && $sales15 == 0) {
                 $row['acos_L15'] = 100;
             } else {
                 $row['acos_L15'] = 0;
             }
 
             // ACOS L7
-            if ($sales7 > 0) {
+            if ($spend7 > 0 && $sales7 > 0) {
                 $row['acos_L7'] = round(($spend7 / $sales7) * 100, 2);
-            } elseif ($spend7 > 0) {
+            } elseif ($spend7 > 0 && $sales7 == 0) {
                 $row['acos_L7'] = 100;
             } else {
                 $row['acos_L7'] = 0;
@@ -1448,27 +1448,27 @@ class AmazonSpBudgetController extends Controller
             $spend7 = $matchedCampaignL7->spend ?? 0;
 
             // ACOS L30
-            if ($sales30 > 0) {
+            if ($spend30 > 0 && $sales30 > 0) {
                 $row['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
-            } elseif ($spend30 > 0) {
+            } elseif ($spend30 > 0 && $sales30 == 0) {
                 $row['acos_L30'] = 100;
             } else {
                 $row['acos_L30'] = 0;
             }
 
             // ACOS L15
-            if ($sales15 > 0) {
+            if ($spend15 > 0 && $sales15 > 0) {
                 $row['acos_L15'] = round(($spend15 / $sales15) * 100, 2);
-            } elseif ($spend15 > 0) {
+            } elseif ($spend15 > 0 && $sales15 == 0) {
                 $row['acos_L15'] = 100;
             } else {
                 $row['acos_L15'] = 0;
             }
 
             // ACOS L7
-            if ($sales7 > 0) {
+            if ($spend7 > 0 && $sales7 > 0) {
                 $row['acos_L7'] = round(($spend7 / $sales7) * 100, 2);
-            } elseif ($spend7 > 0) {
+            } elseif ($spend7 > 0 && $sales7 == 0) {
                 $row['acos_L7'] = 100;
             } else {
                 $row['acos_L7'] = 0;
@@ -1629,6 +1629,40 @@ class AmazonSpBudgetController extends Controller
             });
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+
+        // Calculate AVG CPC from all daily records (lifetime average)
+        $avgCpcData = collect();
+        try {
+            if ($campaignType === 'HL') {
+                $dailyRecords = DB::table('amazon_sb_campaign_reports')
+                    ->select('campaign_id', DB::raw('AVG(CASE WHEN clicks > 0 THEN cost / clicks ELSE 0 END) as avg_cpc'))
+                    ->where('ad_type', 'SPONSORED_BRANDS')
+                    ->where('campaignStatus', '!=', 'ARCHIVED')
+                    ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                    ->whereNotNull('campaign_id')
+                    ->groupBy('campaign_id')
+                    ->get();
+            } else {
+                $dailyRecords = DB::table('amazon_sp_campaign_reports')
+                    ->select('campaign_id', DB::raw('AVG(costPerClick) as avg_cpc'))
+                    ->where('ad_type', 'SPONSORED_PRODUCTS')
+                    ->where('campaignStatus', '!=', 'ARCHIVED')
+                    ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                    ->where('costPerClick', '>', 0)
+                    ->whereNotNull('campaign_id')
+                    ->groupBy('campaign_id')
+                    ->get();
+            }
+            
+            foreach ($dailyRecords as $record) {
+                if ($record->campaign_id && $record->avg_cpc > 0) {
+                    $avgCpcData->put($record->campaign_id, round($record->avg_cpc, 2));
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::error('Error calculating AVG CPC: ' . $e->getMessage());
+            // Continue without avg_cpc data if there's an error
+        }
 
         // Fetch latest ratings from junglescout_product_data
         // Use subquery to get latest record for each sku/parent
@@ -2011,6 +2045,7 @@ class AmazonSpBudgetController extends Controller
                     'l7_cpc' => 0,
                     'l1_spend' => 0,
                     'l1_cpc' => 0,
+                    'avg_cpc' => 0,
                     'acos' => 0,
                     'acos_L30' => 0,
                     'acos_L15' => 0,
@@ -2124,10 +2159,12 @@ class AmazonSpBudgetController extends Controller
                     $purchases30 = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
                     $unitsSold30 = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
                 }
-                if ($sales30 > 0) {
+                if ($spend30 > 0 && $sales30 > 0) {
                     $campaignMap[$mapKey]['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
-                } elseif ($spend30 > 0) {
+                } elseif ($spend30 > 0 && $sales30 == 0) {
                     $campaignMap[$mapKey]['acos_L30'] = 100;
+                } else {
+                    $campaignMap[$mapKey]['acos_L30'] = 0;
                 }
                 $campaignMap[$mapKey]['acos'] = $campaignMap[$mapKey]['acos_L30'];
                 $campaignMap[$mapKey]['l30_spend'] = $spend30;
@@ -2135,6 +2172,8 @@ class AmazonSpBudgetController extends Controller
                 $campaignMap[$mapKey]['l30_purchases'] = $unitsSold30;
                 // Calculate AD CVR: (purchases / clicks) * 100
                 $campaignMap[$mapKey]['ad_cvr'] = $clicks30 > 0 ? round(($purchases30 / $clicks30) * 100, 2) : 0;
+                // Set lifetime avg_cpc
+                $campaignMap[$mapKey]['avg_cpc'] = $avgCpcData->get($campaignId, 0);
             }
 
             if (isset($matchedCampaignL15) && isset($matchedCampaignL1) && $matchedCampaignL15 && $matchedCampaignL1) {
@@ -2145,10 +2184,12 @@ class AmazonSpBudgetController extends Controller
                     $sales15 = ($matchedCampaignL15->sales14d ?? 0) + ($matchedCampaignL1->sales1d ?? 0);
                     $spend15 = $matchedCampaignL15->spend ?? 0;
                 }
-                if ($sales15 > 0) {
+                if ($spend15 > 0 && $sales15 > 0) {
                     $campaignMap[$mapKey]['acos_L15'] = round(($spend15 / $sales15) * 100, 2);
-                } elseif ($spend15 > 0) {
+                } elseif ($spend15 > 0 && $sales15 == 0) {
                     $campaignMap[$mapKey]['acos_L15'] = 100;
+                } else {
+                    $campaignMap[$mapKey]['acos_L15'] = 0;
                 }
             }
 
@@ -2160,10 +2201,12 @@ class AmazonSpBudgetController extends Controller
                     $sales7 = $matchedCampaignL7->sales7d ?? 0;
                     $spend7 = $matchedCampaignL7->spend ?? 0;
                 }
-                if ($sales7 > 0) {
+                if ($spend7 > 0 && $sales7 > 0) {
                     $campaignMap[$mapKey]['acos_L7'] = round(($spend7 / $sales7) * 100, 2);
-                } elseif ($spend7 > 0) {
+                } elseif ($spend7 > 0 && $sales7 == 0) {
                     $campaignMap[$mapKey]['acos_L7'] = 100;
+                } else {
+                    $campaignMap[$mapKey]['acos_L7'] = 0;
                 }
             }
         }
@@ -2325,10 +2368,12 @@ class AmazonSpBudgetController extends Controller
                 if (isset($matchedCampaignL30) && $matchedCampaignL30) {
                     $sales30 = $matchedCampaignL30->sales30d ?? 0;
                     $spend30 = $matchedCampaignL30->cost ?? 0;
-                    if ($sales30 > 0) {
+                    if ($spend30 > 0 && $sales30 > 0) {
                         $acosL30 = round(($spend30 / $sales30) * 100, 2);
-                    } elseif ($spend30 > 0) {
+                    } elseif ($spend30 > 0 && $sales30 == 0) {
                         $acosL30 = 100;
+                    } else {
+                        $acosL30 = 0;
                     }
                     $acos = $acosL30;
                 }
@@ -2375,6 +2420,7 @@ class AmazonSpBudgetController extends Controller
                     'l7_cpc' => $l7Cpc,
                     'l1_spend' => $l1Spend,
                     'l1_cpc' => $l1Cpc,
+                    'avg_cpc' => $avgCpcData->get($campaignId, 0),
                     'acos' => $acos,
                     'acos_L30' => $acosL30,
                     'acos_L15' => $acosL15,
@@ -2560,10 +2606,12 @@ class AmazonSpBudgetController extends Controller
                     $sales30 = $matchedCampaignL30->sales30d ?? 0;
                     $spend30 = $matchedCampaignL30->spend ?? 0;
                 }
-                if ($sales30 > 0) {
+                if ($spend30 > 0 && $sales30 > 0) {
                     $acosL30 = round(($spend30 / $sales30) * 100, 2);
-                } elseif ($spend30 > 0) {
+                } elseif ($spend30 > 0 && $sales30 == 0) {
                     $acosL30 = 100;
+                } else {
+                    $acosL30 = 0;
                 }
                 $acos = $acosL30;
             }
@@ -2643,6 +2691,7 @@ class AmazonSpBudgetController extends Controller
                 'l7_cpc' => $l7Cpc,
                 'l1_spend' => $l1Spend,
                 'l1_cpc' => $l1Cpc,
+                'avg_cpc' => $avgCpcData->get($campaignId, 0),
                 'acos' => $acos,
                 'acos_L30' => $acosL30,
                 'acos_L15' => $acosL15,
@@ -2766,10 +2815,12 @@ class AmazonSpBudgetController extends Controller
                 if (isset($matchedCampaignL30) && $matchedCampaignL30) {
                     $sales30 = $matchedCampaignL30->sales30d ?? 0;
                     $spend30 = $matchedCampaignL30->cost ?? 0;
-                    if ($sales30 > 0) {
+                    if ($spend30 > 0 && $sales30 > 0) {
                         $acosL30 = round(($spend30 / $sales30) * 100, 2);
-                    } elseif ($spend30 > 0) {
+                    } elseif ($spend30 > 0 && $sales30 == 0) {
                         $acosL30 = 100;
+                    } else {
+                        $acosL30 = 0;
                     }
                     $acos = $acosL30;
                 }
@@ -2816,6 +2867,7 @@ class AmazonSpBudgetController extends Controller
                     'l7_cpc' => $l7Cpc,
                     'l1_spend' => $l1Spend,
                     'l1_cpc' => $l1Cpc,
+                    'avg_cpc' => $avgCpcData->get($campaignId, 0),
                     'acos' => $acos,
                     'acos_L30' => $acosL30,
                     'acos_L15' => $acosL15,
@@ -2939,6 +2991,7 @@ class AmazonSpBudgetController extends Controller
                     $row['l7_cpc'] = ($matchedCampaignL7 && $matchedCampaignL7->clicks > 0) ? ($matchedCampaignL7->cost / $matchedCampaignL7->clicks) : 0;
                     $row['l1_spend'] = $matchedCampaignL1->cost ?? 0;
                     $row['l1_cpc'] = ($matchedCampaignL1 && $matchedCampaignL1->clicks > 0) ? ($matchedCampaignL1->cost / $matchedCampaignL1->clicks) : 0;
+                    $row['avg_cpc'] = $avgCpcData->get($campaignId, 0);
                     $row['acos'] = 0;
                     $row['acos_L30'] = 0;
                     $row['acos_L15'] = 0;
@@ -2950,10 +3003,12 @@ class AmazonSpBudgetController extends Controller
                     if (isset($matchedCampaignL30) && $matchedCampaignL30) {
                         $sales30 = $matchedCampaignL30->sales30d ?? 0;
                         $spend30 = $matchedCampaignL30->cost ?? 0;
-                        if ($sales30 > 0) {
+                        if ($spend30 > 0 && $sales30 > 0) {
                             $row['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
-                        } elseif ($spend30 > 0) {
+                        } elseif ($spend30 > 0 && $sales30 == 0) {
                             $row['acos_L30'] = 100;
+                        } else {
+                            $row['acos_L30'] = 0;
                         }
                         $row['acos'] = $row['acos_L30'];
                     }
@@ -3046,6 +3101,7 @@ class AmazonSpBudgetController extends Controller
                     $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
                     $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
                     $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
+                    $row['avg_cpc'] = $avgCpcData->get($campaignId, 0);
                     $row['acos'] = 0;
                     $row['acos_L30'] = 0;
                     $row['acos_L15'] = 0;
@@ -3063,10 +3119,12 @@ class AmazonSpBudgetController extends Controller
                         $clicks30 = $matchedCampaignL30->clicks ?? 0;
                         $purchases30 = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
                         $unitsSold30 = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
-                        if ($sales30 > 0) {
+                        if ($spend30 > 0 && $sales30 > 0) {
                             $row['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
-                        } elseif ($spend30 > 0) {
+                        } elseif ($spend30 > 0 && $sales30 == 0) {
                             $row['acos_L30'] = 100;
+                        } else {
+                            $row['acos_L30'] = 0;
                         }
                         $row['acos'] = $row['acos_L30'];
                         $row['l30_spend'] = $spend30;

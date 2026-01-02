@@ -170,9 +170,9 @@ class AutoUpdateAmazonBgtPt extends Command
             $sales = $matchedCampaignL30->sales30d ?? 0;
             $spend = $matchedCampaignL30->spend ?? 0;
 
-            if ($sales > 0) {
+            if ($spend > 0 && $sales > 0) {
                 $row['acos_L30'] = round(($spend / $sales) * 100, 2);
-            } elseif ($spend > 0) {
+            } elseif ($spend > 0 && $sales == 0) {
                 $row['acos_L30'] = 100;
             } else {
                 $row['acos_L30'] = 0;
@@ -192,25 +192,35 @@ class AutoUpdateAmazonBgtPt extends Command
 
             $price = (float) ($row['price'] ?? 0);
 
-            // New ACOS-based sbgt rule
+            // ACOS-based sbgt rule
             if ($acos < 5) {
-                $sbgt = 8;
+                $acos_sbgt = 8;
             } elseif ($acos < 10) {
-                $sbgt = 7;
+                $acos_sbgt = 7;
             } elseif ($acos < 15) {
-                $sbgt = 6;
+                $acos_sbgt = 6;
             } elseif ($acos < 20) {
-                $sbgt = 5;
+                $acos_sbgt = 5;
             } elseif ($acos < 25) {
-                $sbgt = 4;
+                $acos_sbgt = 4;
             } elseif ($acos < 30) {
-                $sbgt = 3;
+                $acos_sbgt = 3;
             } elseif ($acos < 35) {
-                $sbgt = 2;
+                $acos_sbgt = 2;
             } else {
-                $sbgt = 1;
+                $acos_sbgt = 1;
             }
-            $row['sbgt'] = $sbgt;
+
+            // Price-based sbgt rule (if applicable)
+            $price_sbgt = 0;
+            if ($price > 100) {
+                $price_sbgt = 5;
+            } elseif ($price >= 50 && $price <= 100) {
+                $price_sbgt = 3;
+            }
+
+            // Final sbgt is the higher of the ACOS-based and price-based rules
+            $row['sbgt'] = max($acos_sbgt, $price_sbgt);
 
             $result[] = (object) $row;
         }

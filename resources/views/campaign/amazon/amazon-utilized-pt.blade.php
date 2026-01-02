@@ -1325,16 +1325,31 @@
                         formatter: function(cell) {
                             var data = cell.getRow().getData();
                             var acos = parseFloat(data.acos || 0);
+                            var price = parseFloat(data.price || 0);
+                            var sbgtAcos, sbgtPrice;
+                            
+                            // Calculate ACOS-based SBGT
                             if (isNaN(acos) || acos === 0) acos = 100;
-                            var sbgt = '';
-                            if (acos < 5) sbgt = 8;
-                            else if (acos < 10) sbgt = 7;
-                            else if (acos < 15) sbgt = 6;
-                            else if (acos < 20) sbgt = 5;
-                            else if (acos < 25) sbgt = 4;
-                            else if (acos < 30) sbgt = 3;
-                            else if (acos < 35) sbgt = 2;
-                            else sbgt = 1;
+                            if (acos < 5) sbgtAcos = 8;
+                            else if (acos < 10) sbgtAcos = 7;
+                            else if (acos < 15) sbgtAcos = 6;
+                            else if (acos < 20) sbgtAcos = 5;
+                            else if (acos < 25) sbgtAcos = 4;
+                            else if (acos < 30) sbgtAcos = 3;
+                            else if (acos < 35) sbgtAcos = 2;
+                            else sbgtAcos = 1;
+                            
+                            // Calculate Price-based SBGT
+                            if (price > 100) {
+                                sbgtPrice = 5;
+                            } else if (price >= 50 && price <= 100) {
+                                sbgtPrice = 3;
+                            } else {
+                                sbgtPrice = 0; // No price-based SBGT for price < 50
+                            }
+                            
+                            // Return whichever is higher
+                            var sbgt = Math.max(sbgtAcos, sbgtPrice);
                             
                             return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
                         }
@@ -1367,8 +1382,7 @@
                             
                             var acosDisplay;
                             if (acos === 0) {
-                                td.classList.add('red-bg');
-                                acosDisplay = "100%"; 
+                                acosDisplay = "0%"; 
                             } else if (acos < 7) {
                                 td.classList.add('pink-bg');
                                 acosDisplay = acos.toFixed(0) + "%";
@@ -1474,6 +1488,16 @@
                         }
                     },
                     {
+                        title: "AVG CPC",
+                        field: "avg_cpc",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var avg_cpc = parseFloat(row.avg_cpc) || 0;
+                            return avg_cpc.toFixed(2);
+                        }
+                    },
+                    {
                         title: "L7 CPC",
                         field: "l7_cpc",
                         hozAlign: "center",
@@ -1526,18 +1550,54 @@
                             }
                             
                             var aSbid = 0;
-                            if (aRowType === 'over') {
-                                if (aL7Cpc === 0) {
-                                    aSbid = 0.75;
+                            var aPrice = parseFloat(aData.price) || 0;
+                            var aUb1 = 0;
+                            if (aBudget > 0) {
+                                aUb1 = (parseFloat(aData.l1_spend) || 0) / aBudget * 100;
+                            }
+                            
+                            // Special case: If UB7 and UB1 = 0%, use price-based default
+                            if (aUb7 === 0 && aUb1 === 0) {
+                                if (aPrice < 50) {
+                                    aSbid = 0.50;
+                                } else if (aPrice >= 50 && aPrice < 100) {
+                                    aSbid = 1.00;
+                                } else if (aPrice >= 100 && aPrice < 200) {
+                                    aSbid = 1.50;
                                 } else {
+                                    aSbid = 2.00;
+                                }
+                            } else if (aRowType === 'over') {
+                                // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                                var aAvgCpc = parseFloat(aData.avg_cpc) || 0;
+                                if (aL1Cpc > 0) {
                                     aSbid = Math.floor(aL1Cpc * 0.90 * 100) / 100;
+                                } else if (aL7Cpc > 0) {
+                                    aSbid = Math.floor(aL7Cpc * 0.90 * 100) / 100;
+                                } else if (aAvgCpc > 0) {
+                                    aSbid = Math.floor(aAvgCpc * 0.90 * 100) / 100;
+                                } else {
+                                    aSbid = 1.00;
                                 }
                             } else if (aRowType === 'under') {
-                                if (aUb7 < 10 || aL7Cpc === 0 || aL1Cpc === 0) {
-                                    aSbid = 0.75;
-                                } else {
+                                // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00
+                                var aAvgCpc = parseFloat(aData.avg_cpc) || 0;
+                                if (aL1Cpc > 0) {
                                     aSbid = Math.floor(aL1Cpc * 1.10 * 100) / 100;
+                                } else if (aL7Cpc > 0) {
+                                    aSbid = Math.floor(aL7Cpc * 1.10 * 100) / 100;
+                                } else if (aAvgCpc > 0) {
+                                    aSbid = Math.floor(aAvgCpc * 1.10 * 100) / 100;
+                                } else {
+                                    aSbid = 1.00;
                                 }
+                            }
+                            
+                            // Apply price-based caps
+                            if (aPrice < 10 && aSbid > 0.10) {
+                                aSbid = 0.10;
+                            } else if (aPrice >= 10 && aPrice < 20 && aSbid > 0.20) {
+                                aSbid = 0.20;
                             }
                             
                             // Calculate SBID for row B
@@ -1564,18 +1624,50 @@
                             }
                             
                             var bSbid = 0;
-                            if (bRowType === 'over') {
-                                if (bL7Cpc === 0) {
-                                    bSbid = 0.75;
+                            var bPrice = parseFloat(bData.price) || 0;
+                            
+                            // Special case: If UB7 and UB1 = 0%, use price-based default
+                            if (bUb7 === 0 && bUb1 === 0) {
+                                if (bPrice < 50) {
+                                    bSbid = 0.50;
+                                } else if (bPrice >= 50 && bPrice < 100) {
+                                    bSbid = 1.00;
+                                } else if (bPrice >= 100 && bPrice < 200) {
+                                    bSbid = 1.50;
                                 } else {
+                                    bSbid = 2.00;
+                                }
+                            } else if (bRowType === 'over') {
+                                // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                                var bAvgCpc = parseFloat(bData.avg_cpc) || 0;
+                                if (bL1Cpc > 0) {
                                     bSbid = Math.floor(bL1Cpc * 0.90 * 100) / 100;
+                                } else if (bL7Cpc > 0) {
+                                    bSbid = Math.floor(bL7Cpc * 0.90 * 100) / 100;
+                                } else if (bAvgCpc > 0) {
+                                    bSbid = Math.floor(bAvgCpc * 0.90 * 100) / 100;
+                                } else {
+                                    bSbid = 1.00;
                                 }
                             } else if (bRowType === 'under') {
-                                if (bUb7 < 10 || bL7Cpc === 0 || bL1Cpc === 0) {
-                                    bSbid = 0.75;
-                                } else {
+                                // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00
+                                var bAvgCpc = parseFloat(bData.avg_cpc) || 0;
+                                if (bL1Cpc > 0) {
                                     bSbid = Math.floor(bL1Cpc * 1.10 * 100) / 100;
+                                } else if (bL7Cpc > 0) {
+                                    bSbid = Math.floor(bL7Cpc * 1.10 * 100) / 100;
+                                } else if (bAvgCpc > 0) {
+                                    bSbid = Math.floor(bAvgCpc * 1.10 * 100) / 100;
+                                } else {
+                                    bSbid = 1.00;
                                 }
+                            }
+                            
+                            // Apply price-based caps
+                            if (bPrice < 10 && bSbid > 0.10) {
+                                bSbid = 0.10;
+                            } else if (bPrice >= 10 && bPrice < 20 && bSbid > 0.20) {
+                                bSbid = 0.20;
                             }
                             
                             return aSbid - bSbid;
@@ -1592,35 +1684,67 @@
                             }
                             
                             var sbid = 0;
+                            var price = parseFloat(row.price) || 0;
+                            var ub1 = 0;
+                            if (budget > 0) {
+                                ub1 = (parseFloat(row.l1_spend) || 0) / budget * 100;
+                            }
                             
                             // Determine utilization type for this row
                             var rowUtilizationType = 'all';
-                            if (ub7 > 99 && parseFloat(row.l1_spend || 0) / budget * 100 > 99) {
+                            if (ub7 > 99 && ub1 > 99) {
                                 rowUtilizationType = 'over';
-                            } else if (ub7 < 66 && parseFloat(row.l1_spend || 0) / budget * 100 < 66) {
+                            } else if (ub7 < 66 && ub1 < 66) {
                                 rowUtilizationType = 'under';
-                            } else if (ub7 >= 66 && ub7 <= 99 && parseFloat(row.l1_spend || 0) / budget * 100 >= 66 && parseFloat(row.l1_spend || 0) / budget * 100 <= 99) {
+                            } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
                                 rowUtilizationType = 'correctly';
                             }
                             
-                            // Calculate SBID based on row's utilization type
-                            if (rowUtilizationType === 'over') {
-                                // Over-utilized: l1_cpc * 0.90 (if l7_cpc === 0, then 0.75)
-                                if (l7_cpc === 0) {
-                                    sbid = 0.75;
+                            // Special case: If UB7 and UB1 = 0%, use price-based default
+                            if (ub7 === 0 && ub1 === 0) {
+                                if (price < 50) {
+                                    sbid = 0.50;
+                                } else if (price >= 50 && price < 100) {
+                                    sbid = 1.00;
+                                } else if (price >= 100 && price < 200) {
+                                    sbid = 1.50;
                                 } else {
+                                    sbid = 2.00;
+                                }
+                            } else if (rowUtilizationType === 'over') {
+                                // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                                var avg_cpc = parseFloat(row.avg_cpc) || 0;
+                                if (l1_cpc > 0) {
                                     sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                } else if (l7_cpc > 0) {
+                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                } else if (avg_cpc > 0) {
+                                    sbid = Math.floor(avg_cpc * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 1.00;
                                 }
                             } else if (rowUtilizationType === 'under') {
-                                // Under-utilized: Complex logic based on ub7 and l7_cpc
-                                if (ub7 < 10 || l7_cpc === 0 || l1_cpc === 0) {
-                                    sbid = 0.75;
-                                } else {
+                                // Under-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00
+                                var avg_cpc = parseFloat(row.avg_cpc) || 0;
+                                if (l1_cpc > 0) {
                                     sbid = Math.floor(l1_cpc * 1.10 * 100) / 100;
+                                } else if (l7_cpc > 0) {
+                                    sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                                } else if (avg_cpc > 0) {
+                                    sbid = Math.floor(avg_cpc * 1.10 * 100) / 100;
+                                } else {
+                                    sbid = 1.00;
                                 }
                             } else {
                                 // Correctly-utilized: Usually no SBID (empty)
                                 sbid = 0;
+                            }
+                            
+                            // Apply price-based caps
+                            if (price < 10 && sbid > 0.10) {
+                                sbid = 0.10;
+                            } else if (price >= 10 && price < 20 && sbid > 0.20) {
+                                sbid = 0.20;
                             }
                             return sbid === 0 ? '-' : sbid;
                         }
@@ -1755,9 +1879,6 @@
                 let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
                 let rowAcos = parseFloat(acos) || 0;
-                if (isNaN(rowAcos) || rowAcos === 0) {
-                    rowAcos = 100;
-                }
 
                 // Compute SBGT from ACOS mapping (same rules as ACOS control)
                 let rowSbgt = null;

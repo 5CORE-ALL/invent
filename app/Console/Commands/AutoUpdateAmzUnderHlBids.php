@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
-use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\AmazonSbCampaignReport;
 use Illuminate\Console\Command;
@@ -13,6 +12,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmzUnderHlBids extends Command
 {
@@ -200,6 +200,26 @@ class AutoUpdateAmzUnderHlBids extends Command
             $row['l1_spend'] = $matchedCampaignL1->cost ?? 0;
             $row['l1_cpc']   = $costPerClick1;
 
+            // Calculate avg_cpc (lifetime average from daily records)
+            $campaignId = $row['campaign_id'];
+            $avgCpc = 0;
+            try {
+                $avgCpcRecord = DB::table('amazon_sb_campaign_reports')
+                    ->select(DB::raw('AVG(CASE WHEN clicks > 0 THEN cost / clicks ELSE 0 END) as avg_cpc'))
+                    ->where('campaign_id', $campaignId)
+                    ->where('ad_type', 'SPONSORED_BRANDS')
+                    ->where('campaignStatus', '!=', 'ARCHIVED')
+                    ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                    ->whereNotNull('campaign_id')
+                    ->first();
+                
+                if ($avgCpcRecord && $avgCpcRecord->avg_cpc > 0) {
+                    $avgCpc = floatval($avgCpcRecord->avg_cpc);
+                }
+            } catch (\Exception $e) {
+                // Continue without avg_cpc if there's an error
+            }
+
             $row['NRA'] = '';
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
@@ -219,15 +239,20 @@ class AutoUpdateAmzUnderHlBids extends Command
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
             $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
 
-            // New SBID rule - matching page filter: NRA !== 'NRA', campaignName !== '', ub7 < 70 && ub1 < 70
+            // Under-utilized rule: NRA !== 'NRA', campaignName !== '', ub7 < 66 && ub1 < 66
             if ($row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
-                if ($ub7 < 10 || $l7_cpc == 0) {
-                    $row['sbid'] = 0.75;
-                } else if ($l7_cpc > 0 && $l7_cpc < 0.30) {
-                    $row['sbid'] = round($l7_cpc + 0.20, 2);
-                } else {
+                // Calculate SBID for HL campaigns (no price-based rules)
+                // Under-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                if ($l1_cpc > 0) {
+                    $row['sbid'] = floor($l1_cpc * 1.10 * 100) / 100;
+                } else if ($l7_cpc > 0) {
                     $row['sbid'] = floor($l7_cpc * 1.10 * 100) / 100;
+                } else if ($avgCpc > 0) {
+                    $row['sbid'] = floor($avgCpc * 1.10 * 100) / 100;
+                } else {
+                    $row['sbid'] = 1.00;
                 }
+                
                 $result[] = (object) $row;
             }
         }
