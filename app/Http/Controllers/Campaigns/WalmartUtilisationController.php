@@ -11,6 +11,7 @@ use App\Models\WalmartDataView;
 use App\Models\WalmartProductSheet;
 use App\Models\Walmart7ubDailyCount;
 use App\Models\MarketplacePercentage;
+use App\Models\WalmartListingStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
@@ -59,6 +60,22 @@ class WalmartUtilisationController extends Controller
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
 
         $nrValues = WalmartDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        
+        // Get NRL values from WalmartListingStatus - normalize SKUs for key matching
+        $walmartListingStatusesRaw = WalmartListingStatus::whereIn('sku', $skus)->get();
+        $walmartListingStatuses = [];
+        foreach ($walmartListingStatusesRaw as $status) {
+            $normalizedSku = $normalizeSku($status->sku);
+            $walmartListingStatuses[$normalizedSku] = $status;
+        }
+        
+        // Get NRA values from WalmartDataView - normalize SKUs for key matching
+        $walmartDataViewsRaw = WalmartDataView::whereIn('sku', $skus)->get();
+        $walmartDataViews = [];
+        foreach ($walmartDataViewsRaw as $dataView) {
+            $normalizedSku = $normalizeSku($dataView->sku);
+            $walmartDataViews[$normalizedSku] = $dataView;
+        }
 
         // Get percentage from database for GPFT%, PFT%, ROI% calculations
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();
@@ -149,6 +166,7 @@ class WalmartUtilisationController extends Controller
             $row['clicks_l30'] = $matchedCampaignL30 ? ($matchedCampaignL30->clicks ?? 0) : 0;
             $row['spend_l30']  = $matchedCampaignL30 ? (float)($matchedCampaignL30->spend ?? 0) : 0;
             $row['sales_l30']  = $matchedCampaignL30 ? (float)($matchedCampaignL30->sales ?? 0) : 0;
+            $row['sold_l30']   = $matchedCampaignL30 ? (int)($matchedCampaignL30->sold ?? 0) : 0;
             $row['spend_l7']   = $matchedCampaignL7 ? ($matchedCampaignL7->spend ?? 0) : 0;
             $row['spend_l1']   = $matchedCampaignL1 ? ($matchedCampaignL1->spend ?? 0) : 0;
             $row['cpc_l7']     = $matchedCampaignL7 ? ($matchedCampaignL7->cpc ?? 0) : 0;
@@ -213,16 +231,37 @@ class WalmartUtilisationController extends Controller
             }
             $row['ROI'] = $roiPercent;
 
-            // NR
-            $row['NRA']  = '';
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
-                if (!is_array($raw)) $raw = json_decode($raw, true);
-                if (is_array($raw)) {
-                    $row['NRA'] = $raw['NR'] ?? null;
+            // NRL - Get from WalmartListingStatus (no default, only set if exists)
+            // Use normalized SKU for lookup
+            $normalizedSku = $normalizeSku($pm->sku);
+            $row['NRL'] = null;
+            if (isset($walmartListingStatuses[$normalizedSku])) {
+                $statusRecord = $walmartListingStatuses[$normalizedSku];
+                $statusValue = is_array($statusRecord->value) ? $statusRecord->value : (json_decode($statusRecord->value, true) ?? []);
+                if (isset($statusValue['rl_nrl']) && !empty($statusValue['rl_nrl']) && $statusValue['rl_nrl'] !== '') {
+                    $row['NRL'] = $statusValue['rl_nrl']; // Should be "RL" or "NRL"
+                }
+            }
+            
+            // NRA - Get from WalmartDataView (no default, only set if exists)
+            // Use normalized SKU for lookup
+            $row['NRA'] = null;
+            if (isset($walmartDataViews[$normalizedSku])) {
+                $dataView = $walmartDataViews[$normalizedSku];
+                $dataValue = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?? []);
+                if (isset($dataValue['ra_nra']) && !empty($dataValue['ra_nra']) && $dataValue['ra_nra'] !== '') {
+                    $row['NRA'] = $dataValue['ra_nra']; // Should be "RA" or "NRA"
                 }
             }
 
+            // Ensure NRL and NRA are null (not empty string) when not set
+            if (empty($row['NRL']) || $row['NRL'] === '') {
+                $row['NRL'] = null;
+            }
+            if (empty($row['NRA']) || $row['NRA'] === '') {
+                $row['NRA'] = null;
+            }
+            
             $result[] = (object) $row;
         }
 
@@ -277,7 +316,7 @@ class WalmartUtilisationController extends Controller
     }
 
     /**
-     * Calculate and store daily 7UB counts
+     * Calculate and store daily 7UB, 1UB, and combined counts
      */
     private function calculateAndStore7ubCounts($avgAcos, $data)
     {
@@ -291,12 +330,24 @@ class WalmartUtilisationController extends Controller
             return;
         }
 
-        $pinkCount = 0;
-        $redCount = 0;
-        $greenCount = 0;
+        // 7UB counts
+        $pinkCount7ub = 0;
+        $redCount7ub = 0;
+        $greenCount7ub = 0;
+        
+        // 1UB counts
+        $pinkCount1ub = 0;
+        $redCount1ub = 0;
+        $greenCount1ub = 0;
+        
+        // Combined counts (both 7UB and 1UB match)
+        $combinedPinkCount = 0;
+        $combinedRedCount = 0;
+        $combinedGreenCount = 0;
 
         foreach ($data as $row) {
             $spend_l7 = (float)($row->spend_l7 ?? 0);
+            $spend_l1 = (float)($row->spend_l1 ?? 0);
             $acos = (float)($row->acos_l30 ?? 0);
             
             // Calculate ALD BGT using new ranges
@@ -329,29 +380,66 @@ class WalmartUtilisationController extends Controller
             // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
             $ub7 = ($aldBgt > 0 && $aldBgt * 7 > 0) ? ($spend_l7 / ($aldBgt * 7)) * 100 : 0;
             
-            // Categorize
+            // Calculate 1UB = (L1 ad spend/(ald bgt))*100
+            $ub1 = $aldBgt > 0 ? ($spend_l1 / $aldBgt) * 100 : 0;
+            
+            // Get status for 7UB
+            $status7ub = null;
             if ($ub7 > 90) {
-                $pinkCount++;
+                $status7ub = 'pink';
+                $pinkCount7ub++;
             } elseif ($ub7 < 70) {
-                $redCount++;
+                $status7ub = 'red';
+                $redCount7ub++;
             } elseif ($ub7 >= 70 && $ub7 <= 90) {
-                $greenCount++;
+                $status7ub = 'green';
+                $greenCount7ub++;
+            }
+            
+            // Get status for 1UB
+            $status1ub = null;
+            if ($ub1 > 90) {
+                $status1ub = 'pink';
+                $pinkCount1ub++;
+            } elseif ($ub1 < 70) {
+                $status1ub = 'red';
+                $redCount1ub++;
+            } elseif ($ub1 >= 70 && $ub1 <= 90) {
+                $status1ub = 'green';
+                $greenCount1ub++;
+            }
+            
+            // Count combined (both must match)
+            if ($status7ub && $status1ub && $status7ub === $status1ub) {
+                if ($status7ub === 'pink') {
+                    $combinedPinkCount++;
+                } elseif ($status7ub === 'red') {
+                    $combinedRedCount++;
+                } elseif ($status7ub === 'green') {
+                    $combinedGreenCount++;
+                }
             }
         }
 
-        // Store the counts
+        // Store all the counts
         Walmart7ubDailyCount::updateOrCreate(
             ['date' => $today],
             [
-                'pink_count' => $pinkCount,
-                'red_count' => $redCount,
-                'green_count' => $greenCount,
+                'pink_count' => $pinkCount7ub,
+                'red_count' => $redCount7ub,
+                'green_count' => $greenCount7ub,
+                'ub1_pink_count' => $pinkCount1ub,
+                'ub1_red_count' => $redCount1ub,
+                'ub1_green_count' => $greenCount1ub,
+                'combined_pink_count' => $combinedPinkCount,
+                'combined_red_count' => $combinedRedCount,
+                'combined_green_count' => $combinedGreenCount,
             ]
         );
     }
 
     /**
-     * Get 7UB chart data
+     * Get 7UB chart data (7UB only)
      */
     public function get7ubChartData()
     {
@@ -389,6 +477,54 @@ class WalmartUtilisationController extends Controller
             ]);
         } catch (\Exception $e) {
             \Log::error('Error in get7ubChartData: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error loading chart data: ' . $e->getMessage(),
+                'data' => [],
+            ], 500);
+        }
+    }
+
+    /**
+     * Get combined 7UB+1UB chart data (items that match in both)
+     */
+    public function getCombined7ub1ubChartData()
+    {
+        try {
+            // Check if table exists
+            if (!\Schema::hasTable('walmart_7ub_daily_counts')) {
+                return response()->json([
+                    'status' => 200,
+                    'data' => [],
+                    'message' => 'Table does not exist yet. Please run migration.',
+                ]);
+            }
+
+            $data = Walmart7ubDailyCount::orderBy('date', 'asc')
+                ->get()
+                ->map(function ($item) {
+                    $date = $item->date;
+                    if ($date instanceof \Carbon\Carbon || $date instanceof \DateTime) {
+                        $dateStr = $date->format('Y-m-d');
+                    } else {
+                        $dateStr = is_string($date) ? $date : (string)$date;
+                    }
+                    
+                    return [
+                        'date' => $dateStr,
+                        'pink_count' => (int)($item->combined_pink_count ?? 0),
+                        'red_count' => (int)($item->combined_red_count ?? 0),
+                        'green_count' => (int)($item->combined_green_count ?? 0),
+                    ];
+                });
+
+            return response()->json([
+                'status' => 200,
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in getCombined7ub1ubChartData: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json([
                 'status' => 500,
