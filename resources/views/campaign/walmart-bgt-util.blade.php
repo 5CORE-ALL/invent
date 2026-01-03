@@ -167,6 +167,88 @@
         .status-dot.red {
             background-color: #dc3545;
         }
+
+        .status-dot.yellow {
+            background-color: #ffc107;
+        }
+
+        .dot-dropdown {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .dot-dropdown-btn {
+            width: 100%;
+            padding: 4px 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.875rem;
+        }
+
+        .dot-dropdown-btn:hover {
+            background-color: #f8f9fa;
+        }
+
+        .dot-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 10000;
+            min-width: 120px;
+            width: 100%;
+            background: white;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            margin-top: 2px;
+        }
+
+        /* Ensure dropdowns can overflow cells */
+        #budget-under-table .tabulator-cell {
+            overflow: visible !important;
+        }
+        
+        #budget-under-table .tabulator-row {
+            overflow: visible !important;
+        }
+
+        .tabulator-cell {
+            position: relative;
+            overflow: visible !important;
+        }
+
+        .tabulator-row .tabulator-cell {
+            overflow: visible !important;
+        }
+
+        .dot-dropdown-menu.show {
+            display: block;
+        }
+
+        .dot-dropdown-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.875rem;
+        }
+
+        .dot-dropdown-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .dot-dropdown-item.selected {
+            background-color: #e7f3ff;
+        }
     </style>
 @endsection
 @section('content')
@@ -237,18 +319,6 @@
                                         <div>0 INV</div>
                                         <div id="zero-inv-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
                                     </button>
-                                    <button id="over-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
-                                        <div>OVER UTILIZED</div>
-                                        <div id="over-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
-                                    </button>
-                                    <button id="under-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #ff2727 0%, #ff6b6b 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
-                                        <div>UNDER UTILIZED</div>
-                                        <div id="under-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
-                                    </button>
-                                    <button id="correctly-utilized-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
-                                        <div>CORRECTLY UTILIZED</div>
-                                        <div id="correctly-utilized-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
-                                    </button>
                                     <button id="missing-ads-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
                                         <div>MISSING ADS</div>
                                         <div id="missing-ads-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
@@ -256,6 +326,18 @@
                                     <button id="running-ads-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
                                         <div>RUNNING ADS</div>
                                         <div id="running-ads-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
+                                    </button>
+                                    <button id="nrl-red-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
+                                        <div>NRL (RED)</div>
+                                        <div id="nrl-red-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
+                                    </button>
+                                    <button id="nra-red-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
+                                        <div>NRA (RED)</div>
+                                        <div id="nra-red-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
+                                    </button>
+                                    <button id="ra-btn" class="btn btn-sm" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); color: white; border: none; min-width: 150px; height: 60px; padding: 8px 12px;">
+                                        <div>RA</div>
+                                        <div id="ra-count" style="font-size: 1.2rem; font-weight: bold;">0</div>
                                     </button>
                                     <button id="show-all-btn" class="btn btn-sm btn-secondary" style="min-width: 150px; height: 60px; padding: 8px 12px; margin-left: 10px;">
                                         <i class="fa fa-refresh me-1"></i>
@@ -281,6 +363,13 @@
                                         <option value="NRL">NRL</option>
                                         <option value="RL">RL</option>
                                     </select>
+
+                                    <select id="utilization-filter" class="form-select form-select-md">
+                                        <option value="">All Utilization</option>
+                                        <option value="underutilized" id="opt-underutilized">UNDERUTILIZED (0)</option>
+                                        <option value="overutilized" id="opt-overutilized">OVERUTILIZED (0)</option>
+                                        <option value="correctly-utilized" id="opt-correctly-utilized">CORRECTLY UTILIZED (0)</option>
+                                    </select>
                                 </div>
                             </div>
 
@@ -299,15 +388,15 @@
                                         <i class="fa fa-chart-line me-1"></i>
                                         7UB
                                     </button>
+                                    <button id="7ub-1ub-chart-btn" class="btn btn-primary btn-md">
+                                        <i class="fa fa-chart-line me-1"></i>
+                                        7UB+1UB
+                                    </button>
                                     <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none">
                                         APR ALL SBID
                                     </button>
                                     <button class="btn btn-success btn-md">
                                         Total bids: <span id="total-campaigns" class="fw-bold ms-1 fs-4">0</span>
-                                    </button>
-                                    <button class="btn btn-primary btn-md">
-                                        <i class="fa fa-percent me-1"></i>
-                                        of Total: <span id="percentage-campaigns" class="fw-bold ms-1 fs-4">0%</span>
                                     </button>
                                 </div>
                             </div>
@@ -346,7 +435,7 @@
         </div>
     </div>
 
-    <!-- Chart Modal -->
+    <!-- 7UB Chart Modal -->
     <div class="modal fade" id="7ubChartModal" tabindex="-1" aria-labelledby="7ubChartModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
             <div class="modal-content">
@@ -359,6 +448,27 @@
                 </div>
                 <div class="modal-body p-4">
                     <canvas id="7ubChart" height="80"></canvas>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7UB+1UB Combined Chart Modal -->
+    <div class="modal fade" id="7ub1ubChartModal" tabindex="-1" aria-labelledby="7ub1ubChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="7ub1ubChartModalLabel">
+                        <i class="fa-solid fa-chart-line me-2"></i>
+                        7UB+1UB Combined Daily Counts Trend
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <canvas id="7ub1ubChart" height="80"></canvas>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -411,7 +521,9 @@
             window.showMissingOnly = false;
             window.showZeroInvOnly = false;
             window.showRunningAdsOnly = false;
-            window.showRunningAdsOnly = false;
+            window.showNrlRedOnly = false;
+            window.showNraRedOnly = false;
+            window.showRaOnly = false;
 
             // Helper function to calculate ALD BGT from ACOS
             function calculateAldBgt(acos) {
@@ -497,17 +609,33 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const inv = parseFloat(row.INV || 0);
-                            
+
                             // Don't show red dot for 0 INV items
                             if (inv === 0) {
                                 return `<div style="display: flex; align-items: center; justify-content: center;">
                                     <span class="status-dot green" title="0 INV - Not applicable"></span>
                                 </div>`;
                             }
-                            
+
                             const hasCampaign = row.hasCampaign ?? (row.campaignName?.trim() !== '');
-                            const dotColor = hasCampaign ? 'green' : 'red';
-                            const title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
+                            
+                            // Check if NRA is selected (red dot) - value should be "NRA"
+                            const nraValue = row.NRA;
+                            const isNRA = nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                            
+                            // If campaign is missing and NRA is selected, show yellow dot
+                            let dotColor, title;
+                            if (!hasCampaign && isNRA) {
+                                dotColor = 'yellow';
+                                title = 'Campaign Missing - NRA Selected';
+                            } else if (hasCampaign) {
+                                dotColor = 'green';
+                                title = 'Campaign Exists';
+                            } else {
+                                dotColor = 'red';
+                                title = 'Campaign Missing';
+                            }
+                            
                             return `<div style="display: flex; align-items: center; justify-content: center;">
                                 <span class="status-dot ${dotColor}" title="${title}"></span>
                             </div>`;
@@ -597,7 +725,7 @@
                     {
                         title: "INV",
                         field: "INV",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "OV L30",
@@ -627,31 +755,112 @@
                         visible: false
                     },
                     {
+                        title: "NRL",
+                        field: "NRL",
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const rowData = row.getData();
+                            const sku = rowData.sku;
+                            let value = cell.getValue();
+                            
+                            // Handle different value formats - no default, keep empty if not set
+                            let hasValue = false;
+                            let normalizedValue = null;
+                            
+                            // Check if value exists and is not empty/null/undefined
+                            if (value !== null && value !== undefined && value !== '' && String(value).trim() !== '') {
+                                normalizedValue = String(value).trim().toUpperCase();
+                                // Ensure value is either RL or NRL
+                                if (normalizedValue === "RL" || normalizedValue === "NRL") {
+                                    hasValue = true;
+                                    value = normalizedValue;
+                                } else {
+                                    // Invalid value, treat as empty
+                                    hasValue = false;
+                                    value = null;
+                                }
+                            } else {
+                                // No value set
+                                hasValue = false;
+                                value = null;
+                            }
+                            
+                            const displayText = hasValue ? (value === "RL" ? "RL" : "NRL") : "Select";
+                            const dotClass = hasValue ? (value === "RL" ? "green" : "red") : "";
+                            const displayHtml = hasValue 
+                                ? `<span class="status-dot ${dotClass}"></span><span>${displayText}</span>`
+                                : `<span style="color: #6c757d;">${displayText}</span>`;
+
+                            return `
+                                <div class="dot-dropdown" style="position: relative; width: 100%;">
+                                    <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="NRL" data-value="${value || ''}">
+                                        ${displayHtml}
+                                    </button>
+                                    <div class="dot-dropdown-menu">
+                                        <div class="dot-dropdown-item ${value === 'RL' ? 'selected' : ''}" data-value="RL">
+                                            <span class="status-dot green"></span>
+                                            <span>RL</span>
+                                        </div>
+                                        <div class="dot-dropdown-item ${value === 'NRL' ? 'selected' : ''}" data-value="NRL">
+                                            <span class="status-dot red"></span>
+                                            <span>NRL</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        },
+                        visible: true,
+                        hozAlign: "center"
+                    },
+                    {
                         title: "NRA",
                         field: "NRA",
                         formatter: function(cell) {
                             const row = cell.getRow();
-                            const sku = row.getData().sku;
-                            const value = cell.getValue();
-
-                            let bgColor = "";
-                            if (value === "NRA") {
-                                bgColor = "background-color:#dc3545;color:#fff;"; // red
-                            } else if (value === "RA") {
-                                bgColor = "background-color:#28a745;color:#fff;"; // green
+                            const rowData = row.getData();
+                            const sku = rowData.sku;
+                            let value = cell.getValue();
+                            
+                            // Handle different value formats - no default, keep empty if not set
+                            let hasValue = false;
+                            if (value && value !== '' && value !== null && value !== undefined) {
+                                value = String(value).trim().toUpperCase();
+                                // Ensure value is either RA or NRA
+                                if (value === "RA" || value === "NRA") {
+                                    hasValue = true;
+                                } else {
+                                    value = null;
+                                }
+                            } else {
+                                value = null;
                             }
+                            
+                            const isGreen = value === "RA";
+                            const displayText = hasValue ? (isGreen ? "RA" : "NRA") : "Select";
+                            const dotClass = hasValue ? (isGreen ? "green" : "red") : "";
+                            const displayHtml = hasValue 
+                                ? `<span class="status-dot ${dotClass}"></span><span>${displayText}</span>`
+                                : `<span style="color: #6c757d;">${displayText}</span>`;
 
                             return `
-                                <select class="form-select form-select-sm editable-select" 
-                                        data-sku="${sku}" 
-                                        data-field="NR"
-                                        style="width: 90px; ${bgColor}">
-                                    <option value="RA" ${value === 'RA' ? 'selected' : ''}>RA</option>
-                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>NRA</option>
-                                </select>
+                                <div class="dot-dropdown" style="position: relative; width: 100%;">
+                                    <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="NRA" data-value="${value || ''}">
+                                        ${displayHtml}
+                                    </button>
+                                    <div class="dot-dropdown-menu">
+                                        <div class="dot-dropdown-item ${value === 'RA' ? 'selected' : ''}" data-value="RA">
+                                            <span class="status-dot green"></span>
+                                            <span>RA</span>
+                                        </div>
+                                        <div class="dot-dropdown-item ${value === 'NRA' ? 'selected' : ''}" data-value="NRA">
+                                            <span class="status-dot red"></span>
+                                            <span>NRA</span>
+                                        </div>
+                                    </div>
+                                </div>
                             `;
                         },
-                        visible: false,
+                        visible: true,
                         hozAlign: "center"
                     },
                     {
@@ -667,8 +876,26 @@
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             return `
-                                <span>${Math.round(value) + "%"}</span>
+                                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+                                    <span>${Math.round(value) + "%"}</span>
+                                    <i class="fa fa-info-circle text-primary toggle-acos-cols-btn" 
+                                       style="cursor:pointer; pointer-events: auto;" 
+                                       title="Toggle SPEND L30, CLICKS L30, AD SOLD L30 columns"></i>
+                                </div>
                             `;
+                        },
+                        cellClick: function(e, cell) {
+                            const target = e.target;
+                            if (target.classList.contains("toggle-acos-cols-btn") || target.closest(".toggle-acos-cols-btn")) {
+                                e.stopPropagation();
+                                let colsToToggle = ["SPEND L30", "Clicks L30", "AD SOLD L30"];
+                                colsToToggle.forEach(colName => {
+                                    let col = window.table.getColumn(colName);
+                                    if (col) {
+                                        col.toggle();
+                                    }
+                                });
+                            }
                         },
                         visible: true,
                     },
@@ -684,6 +911,16 @@
                         visible: true,
                     },
                     {
+                        title: "SPEND L30",
+                        field: "spend_l30",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `<span>$${value.toFixed(2)}</span>`;
+                        },
+                        visible: false
+                    },
+                    {
                         title: "Clicks L30",
                         field: "clicks_l30",
                         hozAlign: "right",
@@ -691,7 +928,35 @@
                             return `
                                 <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
                             `;
-                        }
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "AD SOLD L30",
+                        field: "sold_l30",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            return `
+                                <span>${parseFloat(cell.getValue() || 0).toFixed(0)}</span>
+                            `;
+                        },
+                        visible: false
+                    },
+                    {
+                        title: "AD CVR",
+                        field: "ad_cvr",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const sold = parseFloat(row.sold_l30 || 0);
+                            const clicks = parseFloat(row.clicks_l30 || 0);
+                            let cvr = 0;
+                            if (clicks > 0) {
+                                cvr = (sold / clicks) * 100;
+                            }
+                            return `<span>${cvr.toFixed(2)}%</span>`;
+                        },
+                        visible: true
                     },
                     {
                         title: "7 UB%",
@@ -965,9 +1230,176 @@
                 });
             });
 
+            // Handle dot dropdown button clicks
+            $(document).on("click", ".dot-dropdown-btn", function (e) {
+                e.stopPropagation();
+                e.preventDefault();
+                const $button = $(this);
+                const dropdown = $button.siblings(".dot-dropdown-menu");
+                const allMenus = $(".dot-dropdown-menu");
+                
+                // Close all other dropdowns
+                allMenus.not(dropdown).removeClass("show");
+                
+                // Toggle current dropdown
+                dropdown.toggleClass("show");
+                
+                // Debug: log current value
+                const currentValue = $button.data("value");
+                const sku = $button.data("sku");
+                const field = $button.data("field");
+                console.log(`Dropdown opened - SKU: ${sku}, Field: ${field}, Current Value: ${currentValue}`);
+            });
+
+            // Handle dot dropdown item selection
+            $(document).on("click", ".dot-dropdown-item", function (e) {
+                e.stopPropagation();
+                e.preventDefault();
+                const item = $(this);
+                const value = item.data("value");
+                const dropdown = item.closest(".dot-dropdown");
+                const button = dropdown.find(".dot-dropdown-btn");
+                const sku = button.data("sku");
+                const field = button.data("field");
+                const menu = dropdown.find(".dot-dropdown-menu");
+
+                console.log(`Selection made - SKU: ${sku}, Field: ${field}, New Value: ${value}`);
+
+                // Update button display
+                const isGreen = value === "RL" || value === "RA";
+                const displayText = field === "NRL" ? (isGreen ? "RL" : "NRL") : (isGreen ? "RA" : "NRA");
+                const dotClass = isGreen ? 'green' : 'red';
+                
+                button.html(`
+                    <span class="status-dot ${dotClass}"></span>
+                    <span>${displayText}</span>
+                `);
+                button.data("value", value);
+
+                // Update selected state
+                menu.find(".dot-dropdown-item").removeClass("selected");
+                item.addClass("selected");
+
+                // Close dropdown
+                menu.removeClass("show");
+
+                // Update table cell value
+                const cellElement = button.closest(".tabulator-cell");
+                if (cellElement.length && window.table) {
+                    const row = cellElement.closest(".tabulator-row");
+                    if (row.length && row[0]) {
+                        const tabulatorRow = window.table.getRowFromElement(row[0]);
+                        if (tabulatorRow) {
+                            const rowData = tabulatorRow.getData();
+                            rowData[field] = value;
+                            
+                            // If NRL is set to "NRL" (red dot), automatically set NRA to "NRA" (red dot) as well
+                            if (field === "NRL" && value === "NRL") {
+                                rowData.NRA = "NRA";
+                                
+                                // Update NRA dropdown button display
+                                const nraCell = tabulatorRow.getCell("NRA");
+                                if (nraCell) {
+                                    const nraCellElement = nraCell.getElement();
+                                    const nraDropdown = $(nraCellElement).find(".dot-dropdown");
+                                    const nraButton = nraDropdown.find(".dot-dropdown-btn");
+                                    const nraMenu = nraDropdown.find(".dot-dropdown-menu");
+                                    
+                                    // Update NRA button display
+                                    nraButton.html(`
+                                        <span class="status-dot red"></span>
+                                        <span>NRA</span>
+                                    `);
+                                    nraButton.data("value", "NRA");
+                                    
+                                    // Update NRA dropdown selected state
+                                    nraMenu.find(".dot-dropdown-item").removeClass("selected");
+                                    nraMenu.find('.dot-dropdown-item[data-value="NRA"]').addClass("selected");
+                                }
+                            }
+                            
+                            tabulatorRow.update(rowData);
+                            console.log(`Table updated - ${field}: ${value}`);
+                            
+                            // If NRA was updated, also refresh the MISSING column cell to show yellow dot if needed
+                            if (field === "NRA" || (field === "NRL" && value === "NRL")) {
+                                const missingCell = tabulatorRow.getCell("hasCampaign");
+                                if (missingCell) {
+                                    missingCell.reformat();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Save to backend
+                const endpoint = field === "NRL" ? '/walmart/save-nrl' : '/walmart/save-nra';
+                const savePromises = [fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ sku, value: value })
+                })];
+
+                // If NRL is set to "NRL", also save NRA as "NRA"
+                if (field === "NRL" && value === "NRL") {
+                    savePromises.push(fetch('/walmart/save-nra', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ sku, value: "NRA" })
+                    }));
+                }
+
+                Promise.all(savePromises)
+                .then(responses => Promise.all(responses.map(r => r.json())))
+                .then(results => {
+                    results.forEach((data, index) => {
+                        const savedField = index === 0 ? field : 'NRA';
+                        if (data.success) {
+                            console.log(`Successfully saved ${savedField} for ${sku}: ${index === 0 ? value : 'NRA'}`);
+                        } else {
+                            console.error(`Failed to update ${savedField}:`, data);
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error saving:', error);
+                });
+            });
+
+            // Close dropdowns when clicking outside
+            $(document).on("click", function (e) {
+                if (!$(e.target).closest(".dot-dropdown").length) {
+                    $(".dot-dropdown-menu").removeClass("show");
+                }
+            });
+
             // Helper: Check if campaign exists
             function hasCampaign(row) {
                 return row.hasCampaign ?? (row.campaignName?.trim() !== '');
+            }
+
+            // Helper: Check if NRL has red dot (value is "NRL")
+            function isNrlRed(row) {
+                const nrlValue = row.NRL;
+                return nrlValue && String(nrlValue).trim().toUpperCase() === "NRL";
+            }
+
+            // Helper: Check if NRA has red dot (value is "NRA")
+            function isNraRed(row) {
+                const nraValue = row.NRA;
+                return nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+            }
+
+            // Helper: Check if NRA has green dot (value is "RA")
+            function isNraGreen(row) {
+                const nraValue = row.NRA;
+                return nraValue && String(nraValue).trim().toUpperCase() === "RA";
             }
 
             // Helper: Calculate 7UB percentage
@@ -977,6 +1409,41 @@
                 const aldBgt = calculateAldBgt(acos);
                 // 7 UB% = (L7 spend/(ald bgt*7))*100
                 return (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+            }
+
+            // Helper: Calculate 1UB percentage
+            function calculate1UB(row) {
+                const spend_l1 = parseFloat(row.spend_l1 || 0);
+                const acos = parseFloat(row.acos_l30 || 0);
+                const aldBgt = calculateAldBgt(acos);
+                // 1 UB% = (L1 spend/(ald bgt))*100
+                return aldBgt > 0 ? (spend_l1 / aldBgt) * 100 : 0;
+            }
+
+            // Helper: Get utilization status (red, pink, or green) for a UB value
+            function getUtilizationStatus(ubValue) {
+                if (ubValue >= 70 && ubValue <= 90) {
+                    return 'green'; // Correctly utilized
+                } else if (ubValue > 90) {
+                    return 'pink'; // Over utilized
+                } else if (ubValue < 70) {
+                    return 'red'; // Under utilized
+                }
+                return null; // No status if value is invalid
+            }
+
+            // Helper: Get combined utilization status (both 7UB and 1UB must match)
+            function getCombinedUtilizationStatus(row) {
+                const ub7 = calculate7UB(row);
+                const ub1 = calculate1UB(row);
+                const status7 = getUtilizationStatus(ub7);
+                const status1 = getUtilizationStatus(ub1);
+                
+                // Both must have the same status
+                if (status7 && status1 && status7 === status1) {
+                    return status7;
+                }
+                return null; // Not matching or invalid
             }
 
             window.table.on("tableBuilt", function () {
@@ -997,6 +1464,15 @@
                     
                     // Running ads filter (green dots only - campaigns that exist)
                     if (window.showRunningAdsOnly && !hasCampaign(data)) return false;
+                    
+                    // NRL Red filter (red dots only in NRL column)
+                    if (window.showNrlRedOnly && !isNrlRed(data)) return false;
+                    
+                    // NRA Red filter (red dots only in NRA column)
+                    if (window.showNraRedOnly && !isNraRed(data)) return false;
+                    
+                    // RA filter (green dots only in NRA column)
+                    if (window.showRaOnly && !isNraGreen(data)) return false;
                     
                     // Utilization filter (7UB)
                     if (window.currentUtilizationFilter) {
@@ -1069,6 +1545,15 @@
                         if (!shouldInclude) return false;
                     }
 
+                    // Combined Utilization filter (both 7UB and 1UB must match)
+                    const utilizationFilterVal = $("#utilization-filter").val();
+                    if (utilizationFilterVal) {
+                        const combinedStatus = getCombinedUtilizationStatus(data);
+                        if (utilizationFilterVal === 'underutilized' && combinedStatus !== 'red') return false;
+                        if (utilizationFilterVal === 'overutilized' && combinedStatus !== 'pink') return false;
+                        if (utilizationFilterVal === 'correctly-utilized' && combinedStatus !== 'green') return false;
+                    }
+
                     return true;
                 }
 
@@ -1077,12 +1562,74 @@
                     if (!window.table) return;
                     const total = window.table.getDataCount();
                     const filtered = window.table.getDataCount("active");
-                    const percentage = total > 0 ? ((filtered / total) * 100).toFixed(0) : 0;
 
                     document.getElementById("total-campaign-count").innerText = total;
                     document.getElementById("total-campaigns").innerText = filtered;
-                    document.getElementById("percentage-campaigns").innerText = percentage + "%";
                     updateUtilizationCounts();
+                    updateAcosFilterCounts();
+                }
+                
+                // Update ACOS filter counts
+                function updateAcosFilterCounts() {
+                    if (!window.table) return;
+                    
+                    const allData = window.table.getData();
+                    const acosCounts = {
+                        'gt25': 0,
+                        '20-25': 0,
+                        '15-20': 0,
+                        '10-15': 0,
+                        '5-10': 0,
+                        '0.01-5': 0
+                    };
+                    
+                    allData.forEach(row => {
+                        // Skip parent rows
+                        const sku = row.sku || '';
+                        if (sku.toUpperCase().includes("PARENT")) return;
+                        
+                        const acos = parseFloat(row.acos_l30 || 0);
+                        
+                        if (acos > 25) {
+                            acosCounts['gt25']++;
+                        } else if (acos >= 20 && acos <= 25) {
+                            acosCounts['20-25']++;
+                        } else if (acos >= 15 && acos < 20) {
+                            acosCounts['15-20']++;
+                        } else if (acos >= 10 && acos < 15) {
+                            acosCounts['10-15']++;
+                        } else if (acos >= 5 && acos < 10) {
+                            acosCounts['5-10']++;
+                        } else if (acos >= 0.01 && acos < 5) {
+                            acosCounts['0.01-5']++;
+                        }
+                    });
+                    
+                    // Update dropdown option texts with counts
+                    const optMap = {
+                        'gt25': 'opt-acos-gt25',
+                        '20-25': 'opt-acos-20-25',
+                        '15-20': 'opt-acos-15-20',
+                        '10-15': 'opt-acos-10-15',
+                        '5-10': 'opt-acos-5-10',
+                        '0.01-5': 'opt-acos-0-01-5'
+                    };
+                    
+                    const labelMap = {
+                        'gt25': 'ACOS > 25% (ALD BGT = 1)',
+                        '20-25': 'ACOS 20%-25% (ALD BGT = 2)',
+                        '15-20': 'ACOS 15%-20% (ALD BGT = 4)',
+                        '10-15': 'ACOS 10%-15% (ALD BGT = 6)',
+                        '5-10': 'ACOS 5%-10% (ALD BGT = 8)',
+                        '0.01-5': 'ACOS 0.01%-5% (ALD BGT = 10)'
+                    };
+                    
+                    Object.entries(optMap).forEach(([key, optId]) => {
+                        const opt = document.getElementById(optId);
+                        if (opt) {
+                            opt.textContent = `${labelMap[key]} (${acosCounts[key]})`;
+                        }
+                    });
                 }
                 
                 // Update filter button counts
@@ -1090,7 +1637,8 @@
                     if (!window.table) return;
                     
                     const allData = window.table.getData();
-                    let counts = { pink: 0, red: 0, green: 0, missing: 0, zeroInv: 0, running: 0 };
+                    let counts = { pink: 0, red: 0, green: 0, missing: 0, zeroInv: 0, running: 0, nrlRed: 0, nraRed: 0, ra: 0 };
+                    let combinedCounts = { underutilized: 0, overutilized: 0, correctlyUtilized: 0 };
                     
                     allData.forEach(row => {
                         // Skip parent rows
@@ -1107,27 +1655,57 @@
                         // Count running campaigns (green dots - campaigns that exist)
                         if (hasCampaign(row)) counts.running++;
                         
-                        // Count utilization types
+                        // Count utilization types (7UB only)
                         const ub7 = calculate7UB(row);
                         if (ub7 > 90) counts.pink++;
                         else if (ub7 < 70) counts.red++;
                         else if (ub7 >= 70 && ub7 <= 90) counts.green++;
+                        
+                        // Count combined utilization (both 7UB and 1UB must match)
+                        const combinedStatus = getCombinedUtilizationStatus(row);
+                        if (combinedStatus === 'red') combinedCounts.underutilized++;
+                        else if (combinedStatus === 'pink') combinedCounts.overutilized++;
+                        else if (combinedStatus === 'green') combinedCounts.correctlyUtilized++;
+                        
+                        // Count NRL red dots
+                        if (isNrlRed(row)) counts.nrlRed++;
+                        
+                        // Count NRA red dots
+                        if (isNraRed(row)) counts.nraRed++;
+                        
+                        // Count RA (green dots in NRA column)
+                        if (isNraGreen(row)) counts.ra++;
                     });
                     
-                    // Update button counts
+                    // Update button counts (removed over/under/correctly utilized buttons, but keeping counts for potential future use)
                     const elements = {
-                        'over-utilized-count': counts.pink,
-                        'under-utilized-count': counts.red,
-                        'correctly-utilized-count': counts.green,
                         'missing-ads-count': counts.missing,
                         'zero-inv-count': counts.zeroInv,
-                        'running-ads-count': counts.running
+                        'running-ads-count': counts.running,
+                        'nrl-red-count': counts.nrlRed,
+                        'nra-red-count': counts.nraRed,
+                        'ra-count': counts.ra
                     };
                     
                     Object.entries(elements).forEach(([id, count]) => {
                         const el = document.getElementById(id);
                         if (el) el.innerText = count;
                     });
+                    
+                    // Update dropdown filter counts
+                    const optUnderutilized = document.getElementById('opt-underutilized');
+                    const optOverutilized = document.getElementById('opt-overutilized');
+                    const optCorrectlyUtilized = document.getElementById('opt-correctly-utilized');
+                    
+                    if (optUnderutilized) {
+                        optUnderutilized.textContent = `UNDERUTILIZED (${combinedCounts.underutilized})`;
+                    }
+                    if (optOverutilized) {
+                        optOverutilized.textContent = `OVERUTILIZED (${combinedCounts.overutilized})`;
+                    }
+                    if (optCorrectlyUtilized) {
+                        optCorrectlyUtilized.textContent = `CORRECTLY UTILIZED (${combinedCounts.correctlyUtilized})`;
+                    }
                 }
 
                 // Refresh table filters
@@ -1142,6 +1720,7 @@
                 window.combinedFilter = combinedFilter;
                 window.updateCampaignStats = updateCampaignStats;
                 window.updateUtilizationCounts = updateUtilizationCounts;
+                window.updateAcosFilterCounts = updateAcosFilterCounts;
                 window.refreshFilters = refreshFilters;
 
                 window.table.setFilter(combinedFilter);
@@ -1152,7 +1731,7 @@
                 window.table.on("dataLoaded", updateCampaignStats);
 
                 $("#global-search").on("keyup", refreshFilters);
-                $("#status-filter, #nrl-filter, #inv-filter, #acos-filter").on("change", refreshFilters);
+                $("#status-filter, #nrl-filter, #inv-filter, #acos-filter, #utilization-filter").on("change", refreshFilters);
 
                 updateCampaignStats();
             });
@@ -1165,6 +1744,20 @@
                 if (toggleBtn) {
                     let colsToToggle = ["INV", "L30", "DIL %", "WA_L30", "NRL"];
 
+                    colsToToggle.forEach(colName => {
+                        let col = window.table.getColumn(colName);
+                        if (col) {
+                            col.toggle();
+                        }
+                    });
+                }
+                
+                // Check if clicked element or its parent has the toggle-acos-cols-btn class
+                const toggleAcosBtn = e.target.closest(".toggle-acos-cols-btn") || 
+                                     (e.target.classList.contains("toggle-acos-cols-btn") ? e.target : null);
+                
+                if (toggleAcosBtn) {
+                    let colsToToggle = ["SPEND L30", "Clicks L30", "AD SOLD L30"];
                     colsToToggle.forEach(colName => {
                         let col = window.table.getColumn(colName);
                         if (col) {
@@ -1227,6 +1820,11 @@
                 show7ubChart();
             });
 
+            // 7UB+1UB Chart Button Handler
+            document.getElementById("7ub-1ub-chart-btn").addEventListener("click", function() {
+                show7ub1ubChart();
+            });
+
             // Helper: Toggle filter button state
             function toggleFilterButton(btnId, isActive, shadowColor) {
                 const btn = document.getElementById(btnId);
@@ -1248,39 +1846,21 @@
                     window.currentUtilizationFilter = null;
                     window.showMissingOnly = false;
                     window.showRunningAdsOnly = false;
+                    window.showNrlRedOnly = false;
+                    window.showNraRedOnly = false;
+                    window.showRaOnly = false;
                     updateUtilizationButtonStates();
                     toggleFilterButton("missing-ads-btn", false);
                     toggleFilterButton("running-ads-btn", false);
+                    toggleFilterButton("nrl-red-btn", false);
+                    toggleFilterButton("nra-red-btn", false);
+                    toggleFilterButton("ra-btn", false);
                 }
                 
                 toggleFilterButton("zero-inv-btn", window.showZeroInvOnly, 'rgba(255, 193, 7, 0.5)');
                 if (window.refreshFilters) window.refreshFilters();
             });
 
-            // Utilization Filter Button Handlers
-            document.getElementById("over-utilized-btn").addEventListener("click", function() {
-                if (window.currentUtilizationFilter === 'pink') {
-                    filterByUtilization(null); // Clear filter
-                } else {
-                    filterByUtilization('pink');
-                }
-            });
-
-            document.getElementById("under-utilized-btn").addEventListener("click", function() {
-                if (window.currentUtilizationFilter === 'red') {
-                    filterByUtilization(null); // Clear filter
-                } else {
-                    filterByUtilization('red');
-                }
-            });
-
-            document.getElementById("correctly-utilized-btn").addEventListener("click", function() {
-                if (window.currentUtilizationFilter === 'green') {
-                    filterByUtilization(null); // Clear filter
-                } else {
-                    filterByUtilization('green');
-                }
-            });
 
             // Missing Ads Button Handler
             document.getElementById("missing-ads-btn").addEventListener("click", function() {
@@ -1290,9 +1870,15 @@
                     window.currentUtilizationFilter = null;
                     window.showZeroInvOnly = false;
                     window.showRunningAdsOnly = false;
+                    window.showNrlRedOnly = false;
+                    window.showNraRedOnly = false;
+                    window.showRaOnly = false;
                     updateUtilizationButtonStates();
                     toggleFilterButton("zero-inv-btn", false);
                     toggleFilterButton("running-ads-btn", false);
+                    toggleFilterButton("nrl-red-btn", false);
+                    toggleFilterButton("nra-red-btn", false);
+                    toggleFilterButton("ra-btn", false);
                 }
                 
                 toggleFilterButton("missing-ads-btn", window.showMissingOnly, 'rgba(220, 53, 69, 0.5)');
@@ -1307,12 +1893,87 @@
                     window.currentUtilizationFilter = null;
                     window.showZeroInvOnly = false;
                     window.showMissingOnly = false;
+                    window.showNrlRedOnly = false;
+                    window.showNraRedOnly = false;
+                    window.showRaOnly = false;
                     updateUtilizationButtonStates();
                     toggleFilterButton("zero-inv-btn", false);
                     toggleFilterButton("missing-ads-btn", false);
+                    toggleFilterButton("nrl-red-btn", false);
+                    toggleFilterButton("nra-red-btn", false);
+                    toggleFilterButton("ra-btn", false);
                 }
                 
                 toggleFilterButton("running-ads-btn", window.showRunningAdsOnly, 'rgba(40, 167, 69, 0.5)');
+                if (window.refreshFilters) window.refreshFilters();
+            });
+
+            // NRL Red Button Handler
+            document.getElementById("nrl-red-btn").addEventListener("click", function() {
+                window.showNrlRedOnly = !window.showNrlRedOnly;
+                
+                if (window.showNrlRedOnly) {
+                    window.currentUtilizationFilter = null;
+                    window.showZeroInvOnly = false;
+                    window.showMissingOnly = false;
+                    window.showRunningAdsOnly = false;
+                    window.showNraRedOnly = false;
+                    window.showRaOnly = false;
+                    updateUtilizationButtonStates();
+                    toggleFilterButton("zero-inv-btn", false);
+                    toggleFilterButton("missing-ads-btn", false);
+                    toggleFilterButton("running-ads-btn", false);
+                    toggleFilterButton("nra-red-btn", false);
+                    toggleFilterButton("ra-btn", false);
+                }
+                
+                toggleFilterButton("nrl-red-btn", window.showNrlRedOnly, 'rgba(220, 53, 69, 0.5)');
+                if (window.refreshFilters) window.refreshFilters();
+            });
+
+            // NRA Red Button Handler
+            document.getElementById("nra-red-btn").addEventListener("click", function() {
+                window.showNraRedOnly = !window.showNraRedOnly;
+                
+                if (window.showNraRedOnly) {
+                    window.currentUtilizationFilter = null;
+                    window.showZeroInvOnly = false;
+                    window.showMissingOnly = false;
+                    window.showRunningAdsOnly = false;
+                    window.showNrlRedOnly = false;
+                    window.showRaOnly = false;
+                    updateUtilizationButtonStates();
+                    toggleFilterButton("zero-inv-btn", false);
+                    toggleFilterButton("missing-ads-btn", false);
+                    toggleFilterButton("running-ads-btn", false);
+                    toggleFilterButton("nrl-red-btn", false);
+                    toggleFilterButton("ra-btn", false);
+                }
+                
+                toggleFilterButton("nra-red-btn", window.showNraRedOnly, 'rgba(220, 53, 69, 0.5)');
+                if (window.refreshFilters) window.refreshFilters();
+            });
+
+            // RA Button Handler
+            document.getElementById("ra-btn").addEventListener("click", function() {
+                window.showRaOnly = !window.showRaOnly;
+                
+                if (window.showRaOnly) {
+                    window.currentUtilizationFilter = null;
+                    window.showZeroInvOnly = false;
+                    window.showMissingOnly = false;
+                    window.showRunningAdsOnly = false;
+                    window.showNrlRedOnly = false;
+                    window.showNraRedOnly = false;
+                    updateUtilizationButtonStates();
+                    toggleFilterButton("zero-inv-btn", false);
+                    toggleFilterButton("missing-ads-btn", false);
+                    toggleFilterButton("running-ads-btn", false);
+                    toggleFilterButton("nrl-red-btn", false);
+                    toggleFilterButton("nra-red-btn", false);
+                }
+                
+                toggleFilterButton("ra-btn", window.showRaOnly, 'rgba(40, 167, 69, 0.5)');
                 if (window.refreshFilters) window.refreshFilters();
             });
 
@@ -1322,14 +1983,21 @@
                 window.showMissingOnly = false;
                 window.showZeroInvOnly = false;
                 window.showRunningAdsOnly = false;
+                window.showNrlRedOnly = false;
+                window.showNraRedOnly = false;
+                window.showRaOnly = false;
                 toggleFilterButton("missing-ads-btn", false);
                 toggleFilterButton("zero-inv-btn", false);
                 toggleFilterButton("running-ads-btn", false);
+                toggleFilterButton("nrl-red-btn", false);
+                toggleFilterButton("nra-red-btn", false);
+                toggleFilterButton("ra-btn", false);
                 if (window.refreshFilters) window.refreshFilters();
             });
         });
 
         let chart7ubInstance = null;
+        let chart7ub1ubInstance = null;
 
         function show7ubChart() {
             const modal = new bootstrap.Modal(document.getElementById('7ubChartModal'));
@@ -1421,6 +2089,103 @@
                 .catch(err => {
                     console.error('Error loading chart:', err);
                     const canvas = document.getElementById('7ubChart');
+                    if (canvas) {
+                        const parent = canvas.parentElement;
+                        parent.innerHTML = '<div class="text-center p-5"><p class="text-danger">Error loading chart data. Please try again later.</p><p class="text-muted small">' + err.message + '</p></div>';
+                    }
+                });
+        }
+
+        function show7ub1ubChart() {
+            const modal = new bootstrap.Modal(document.getElementById('7ub1ubChartModal'));
+            modal.show();
+
+            fetch('/walmart/utilized/bgt/combined-7ub-1ub-chart-data')
+                .then(res => {
+                    if (!res.ok) {
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    if(data.status === 200 && data.data && data.data.length > 0) {
+                        const chartData = data.data;
+                        const dates = chartData.map(d => d.date);
+                        
+                        const ctx = document.getElementById('7ub1ubChart').getContext('2d');
+                        
+                        // Destroy existing chart if any
+                        if(chart7ub1ubInstance) {
+                            chart7ub1ubInstance.destroy();
+                        }
+
+                        chart7ub1ubInstance = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: dates,
+                                datasets: [
+                                    {
+                                        label: 'Pink (> 90% in both)',
+                                        data: chartData.map(d => d.pink_count),
+                                        borderColor: '#ff01d0',
+                                        backgroundColor: 'rgba(255, 1, 208, 0.1)',
+                                        tension: 0.4,
+                                        fill: true,
+                                        borderWidth: 2
+                                    },
+                                    {
+                                        label: 'Red (< 70% in both)',
+                                        data: chartData.map(d => d.red_count),
+                                        borderColor: '#ff2727',
+                                        backgroundColor: 'rgba(255, 39, 39, 0.1)',
+                                        tension: 0.4,
+                                        fill: true,
+                                        borderWidth: 2
+                                    },
+                                    {
+                                        label: 'Green (70-90% in both)',
+                                        data: chartData.map(d => d.green_count),
+                                        borderColor: '#05bd30',
+                                        backgroundColor: 'rgba(5, 189, 48, 0.1)',
+                                        tension: 0.4,
+                                        fill: true,
+                                        borderWidth: 2
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        position: 'top'
+                                    },
+                                    tooltip: {
+                                        enabled: true
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: {
+                                            precision: 0
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    } else {
+                        // Show message in modal
+                        const ctx = document.getElementById('7ub1ubChart').getContext('2d');
+                        const canvas = document.getElementById('7ub1ubChart');
+                        const parent = canvas.parentElement;
+                        parent.innerHTML = '<div class="text-center p-5"><p class="text-muted">No chart data available yet. Data will be collected starting from today.</p></div>';
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading chart:', err);
+                    const canvas = document.getElementById('7ub1ubChart');
                     if (canvas) {
                         const parent = canvas.parentElement;
                         parent.innerHTML = '<div class="text-center p-5"><p class="text-danger">Error loading chart data. Please try again later.</p><p class="text-muted small">' + err.message + '</p></div>';
@@ -1560,43 +2325,18 @@
         }
 
         function updateUtilizationButtonStates() {
-            const overBtn = document.getElementById("over-utilized-btn");
-            const underBtn = document.getElementById("under-utilized-btn");
-            const correctlyBtn = document.getElementById("correctly-utilized-btn");
             const showAllBtn = document.getElementById("show-all-btn");
-            
-            // Reset all button styles
-            [overBtn, underBtn, correctlyBtn].forEach(btn => {
-                btn.style.opacity = '1';
-                btn.style.transform = 'scale(1)';
-                btn.style.boxShadow = 'none';
-            });
             
             const type = window.currentUtilizationFilter;
             
-            // Highlight active filter button or show all button
-            if (type === 'pink') {
-                overBtn.style.opacity = '1';
-                overBtn.style.transform = 'scale(1.05)';
-                overBtn.style.boxShadow = '0 4px 12px rgba(255, 1, 208, 0.5)';
-                showAllBtn.classList.remove('btn-primary');
-                showAllBtn.classList.add('btn-secondary');
-            } else if (type === 'red') {
-                underBtn.style.opacity = '1';
-                underBtn.style.transform = 'scale(1.05)';
-                underBtn.style.boxShadow = '0 4px 12px rgba(255, 39, 39, 0.5)';
-                showAllBtn.classList.remove('btn-primary');
-                showAllBtn.classList.add('btn-secondary');
-            } else if (type === 'green') {
-                correctlyBtn.style.opacity = '1';
-                correctlyBtn.style.transform = 'scale(1.05)';
-                correctlyBtn.style.boxShadow = '0 4px 12px rgba(40, 167, 69, 0.5)';
-                showAllBtn.classList.remove('btn-primary');
-                showAllBtn.classList.add('btn-secondary');
-            } else {
+            // Highlight show all button based on filter state
+            if (type === null) {
                 // No filter active - highlight show all button
                 showAllBtn.classList.remove('btn-secondary');
                 showAllBtn.classList.add('btn-primary');
+            } else {
+                showAllBtn.classList.remove('btn-primary');
+                showAllBtn.classList.add('btn-secondary');
             }
         }
 
@@ -1608,9 +2348,15 @@
                 window.showMissingOnly = false;
                 window.showZeroInvOnly = false;
                 window.showRunningAdsOnly = false;
+                window.showNrlRedOnly = false;
+                window.showNraRedOnly = false;
+                window.showRaOnly = false;
                 toggleFilterButton("missing-ads-btn", false);
                 toggleFilterButton("zero-inv-btn", false);
                 toggleFilterButton("running-ads-btn", false);
+                toggleFilterButton("nrl-red-btn", false);
+                toggleFilterButton("nra-red-btn", false);
+                toggleFilterButton("ra-btn", false);
             }
             
             updateUtilizationButtonStates();
