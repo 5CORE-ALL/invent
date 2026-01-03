@@ -186,6 +186,7 @@
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-orders-badge" style="color: black; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-walmart-l30-badge" style="color: black; font-weight: bold;">Total Walmart L30: $0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
                     </div>
                 </div>
             </div>
@@ -517,6 +518,8 @@
             let totalWeightedPrice = 0;
             let totalQty = 0;
             let totalViews = 0;
+            let totalDilPercent = 0;
+            let dilCount = 0;
             
             data.forEach(row => {
                 const qty = parseInt(row['total_qty']) || 0;
@@ -533,8 +536,9 @@
                 totalWeightedPrice += price * qty;
                 totalQty += qty;
                 
-                // Sales amount = Price × Qty (with Walmart 80% commission already in profit calc)
-                const salesAmt = price * qty;
+                // Sales amount = Use actual total_revenue from orders (actual item_cost sum)
+                // This is the real sales data from Walmart orders, not calculated
+                const salesAmt = parseFloat(row['total_revenue']) || 0;
                 totalSalesAmt += salesAmt;
                 
                 // Ad spend (TCOS)
@@ -554,6 +558,15 @@
                 
                 // Views
                 totalViews += parseInt(row['page_views']) || 0;
+                
+                // Dil calculation
+                const INV = parseFloat(row['INV']) || 0;
+                const L30 = parseFloat(row['L30']) || 0;
+                if (INV > 0) {
+                    const dil = (L30 / INV) * 100;
+                    totalDilPercent += dil;
+                    dilCount++;
+                }
                 
                 // Walmart L30 (total sales value)
                 totalWalmartL30 += salesAmt;
@@ -583,6 +596,9 @@
             // CVR = (Total Qty / Total Views) * 100
             const avgCvr = totalViews > 0 ? (totalQty / totalViews * 100) : 0;
             
+            // AVG DIL %
+            const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
+            
             // Update badges (same order as Amazon)
             $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt).toLocaleString());
             $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt).toLocaleString());
@@ -599,27 +615,32 @@
             $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
             
             // Financial metrics
-            $('#total-tcos-badge').text('Total TCOS: ' + Math.round(tacosPercent) + '%');
-            // Fetch campaign spend total
+            $('#total-tcos-badge').text('Total TCOS: Calculating...');
             $('#total-spend-badge').text('Total SPEND L30: Loading...');
+            
+            // Fetch campaign spend to calculate TACOS
             fetch('/walmart/running/ads/data')
                 .then(response => response.json())
                 .then(responseData => {
                     const campaignSpendTotal = responseData.data.reduce((sum, row) => sum + (parseFloat(row.SPEND_L30) || 0), 0);
                     $('#total-spend-badge').text('Total SPEND L30: $' + Math.round(campaignSpendTotal).toLocaleString());
                     
-                    // Update TACOS% with correct spend
-                    const tacosPercent = totalSalesAmt > 0 ? ((campaignSpendTotal / totalSalesAmt) * 100) : 0;
-                    $('#total-tcos-badge').text('Total TCOS: ' + Math.round(tacosPercent) + '%');
+                    // Update TACOS% with actual order sales and campaign spend
+                    // TACOS = (Campaign Spend / Actual Order Sales) * 100
+                    const actualTacosPercent = totalSalesAmt > 0 ? ((campaignSpendTotal / totalSalesAmt) * 100) : 0;
+                    $('#total-tcos-badge').text('Total TCOS: ' + actualTacosPercent.toFixed(1) + '%');
                 })
                 .catch(error => {
                     console.error('Error fetching campaign spend data:', error);
                     $('#total-spend-badge').text('Total SPEND L30: Error');
+                    $('#total-tcos-badge').text('Total TCOS: Error');
                 });
+            
             $('#total-cogs-badge').text('COGS AMT: $' + Math.round(totalCogsAmt).toLocaleString());
             $('#roi-percent-badge').text('ROI %: ' + roiPercent.toFixed(1) + '%');
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-walmart-l30-badge').text('Total Walmart L30: $' + Math.round(totalWalmartL30).toLocaleString());
+            $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
         }
 
         // Color functions (same as Temu)
@@ -655,6 +676,45 @@
                     headerFilter: "input",
                     frozen: true,
                     width: 150
+                },
+                {
+                    title: "INV",
+                    field: "INV",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 50
+                },
+                {
+                    title: "OV L30",
+                    field: "L30",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 50
+                },
+                {
+                    title: "Dil",
+                    field: "dil_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const INV = parseFloat(rowData.INV) || 0;
+                        const OVL30 = parseFloat(rowData.L30) || 0;
+
+                        if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
+
+                        const dil = (OVL30 / INV) * 100;
+                        let color = '';
+
+                        // Color logic same as Amazon
+                        if (dil < 16.66) color = '#a00211'; // red
+                        else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
+                        else if (dil >= 25 && dil < 50) color = '#28a745'; // green
+                        else color = '#e83e8c'; // pink (50 and above)
+
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                    },
+                    width: 50
                 },
                 {
                     title: "W L30",

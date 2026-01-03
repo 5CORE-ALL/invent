@@ -9,6 +9,7 @@ use App\Models\WalmartListingViewsData;
 use App\Models\WalmartOrderData;
 use App\Models\ProductMaster;
 use App\Models\WalmartCampaignReport;
+use App\Models\ShopifySku;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -364,7 +365,7 @@ class WalmartSheetUploadController extends Controller
                 SUM(shipping_cost) as total_shipping,
                 SUM(tax) as total_tax
             ')
-            // ->where('status', '!=', 'Canceled')
+            ->where('status', '!=', 'Canceled')
             ->groupBy('sku')
             ->get()
             ->keyBy('sku');
@@ -375,6 +376,7 @@ class WalmartSheetUploadController extends Controller
                 ->unique();
             
             $productMasterRows = ProductMaster::whereIn('sku', $allSkus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::whereIn('sku', $allSkus)->get()->keyBy('sku');
             
             // Fetch spend data from WalmartCampaignReport (L30) - campaign name matches SKU
             $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', str_replace("\xc2\xa0", ' ', $sku))));
@@ -392,6 +394,7 @@ class WalmartSheetUploadController extends Controller
                 $listing = $listingData->get($sku);
                 $orders = $orderData->get($sku);
                 $pm = $productMasterRows->get($sku);
+                $shopify = $shopifyData->get($sku);
                 
                 // Get campaign data
                 $normalizedSku = $normalizeSku($sku);
@@ -425,8 +428,8 @@ class WalmartSheetUploadController extends Controller
                 // Get price (SPRICE)
                 $sprice = floatval($price->price ?? $price->comparison_price ?? 0);
                 
-                // Get quantities (aggregated from orders)
-                $totalQty = $orders ? intval($orders->total_qty) : 0;
+                // Get quantities (from Shopify L30 sales)
+                $totalQty = $shopify ? intval($shopify->quantity) : 0;
                 $totalOrders = $orders ? intval($orders->total_orders) : 0;
                 $totalRevenue = $orders ? floatval($orders->total_revenue) : 0;
                 
@@ -470,6 +473,8 @@ class WalmartSheetUploadController extends Controller
 
                 $row = [
                     'sku' => $sku,
+                    'INV' => $shopify ? intval($shopify->inv) : 0,
+                    'L30' => $shopify ? intval($shopify->quantity) : 0,
                     'product_name' => $price->product_name ?? $listing->product_name ?? null,
                     'lp' => $lp,
                     'ship' => $ship,
@@ -537,7 +542,7 @@ class WalmartSheetUploadController extends Controller
             $orderCount = WalmartOrderData::count();
             
             $totalRevenue = WalmartOrderData::where('status', '!=', 'Canceled')->sum('item_cost');
-            $totalQty = WalmartOrderData::where('status', '!=', 'Canceled')->sum('qty');
+            $totalQty = \App\Models\ShopifySku::sum('quantity');
             $avgConversionRate = WalmartListingViewsData::avg('conversion_rate');
             $totalPageViews = WalmartListingViewsData::sum('page_views');
             
